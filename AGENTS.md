@@ -33,6 +33,21 @@ These constrain the architecture; they do not authorize implementing future comp
 3. Run the verification that is executable for the current milestone; report skipped checks, deviations, and unresolved ambiguity.
 4. When changing a documented invariant, update `docs/invariants.md` first, then this file, then the related tests, as required by the invariant change process.
 
+### Workflow validation
+When a task is explicitly designated as a workflow simulation, workflow validation, or Codex-process test, do not modify implementation files unless the task explicitly requests implementation.
+After completing the simulation, update docs/development/workflow-validation.md with the observed result.
+Each entry should record:
+the simulation objective/scenario;
+the repository state relevant to the simulation;
+the observed Codex behavior;
+expected behavior versus actual behavior;
+discrepancies, ambiguities, or failures discovered;
+lessons or workflow rules derived from the result;
+any resulting documentation or AGENTS.md changes.
+Do not fabricate expected results after the fact. Clearly distinguish documented expectations from observations.
+Keep the validation record chronological and append new results rather than rewriting historical observations.
+A workflow-validation result does not by itself authorize architectural or implementation changes. Apply changes only when explicitly requested or when the repository's documented change process requires them.
+
 ### Commands and tooling status
 
 No environment/dependency setup command or essential development command is defined for this checkout. K0 requires a Python 3.12+ virtual environment and dependency lock, but does not specify an install command or dependency manager; do not invent one. No single-test command is established yet.
