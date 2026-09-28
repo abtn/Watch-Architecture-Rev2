@@ -6,12 +6,15 @@ Establish the revised architecture first, then implement the smallest executable
 
 The Control layer is introduced only after the Kernel tooling and basic Task/Proposal/Commit semantics are working.
 
+<<<<<<< HEAD
 Current implementation milestone:
 K0
 
 Historical terminology:
 M0
 
+=======
+>>>>>>> 7b0578572d1e0d4327b042be3b32a588763cc452
 ## Phase K0 — Kernel baseline (tooling)
 
 Before any Control-layer code, establish the project skeleton and deterministic test harness.
