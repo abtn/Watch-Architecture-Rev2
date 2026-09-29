@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: watch
+      POSTGRES_USER: watch
+      POSTGRES_PASSWORD: watch
+    ports:
+      - "5432:5432"
+    volumes:
+      - watch-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watch -d watch"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  watch-postgres-data:
