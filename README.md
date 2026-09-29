@@ -1,10 +1,10 @@
 # Watch — Architecture Revision 2
 
-Watch is currently in the architecture and specification phase. The repository intentionally contains no implementation code. The purpose of this phase is to establish the conceptual model, invariants, information architecture, reasoning model, and execution semantics before implementation begins.
+K0 tooling and the baseline are implemented; K1 has not begun. This repository contains Watch's architecture specifications and the initial project tooling.
 
 ## Purpose
 
-This folder contains a proposed architectural revision for Watch before implementation begins.
+This repository contains Watch's Revision 2 architecture and implementation plan.
 
 Original Watch documents remain authoritative for concepts Revision 2 has not explicitly revised. Revision 2 documents are authoritative only for concepts explicitly revised and mapped in `CHANGE_MAP.md`. Codex must not silently resolve conflicting specifications; when authority is unclear, stop and report the ambiguity.
 
