@@ -391,7 +391,7 @@ Task
     completed_at: datetime | null
 ```
 
-`allowed_writes` is enforced by application code at commit (INV-14). Task types include manual Operator types, so **every durable write traces to a Task** — operator seeding, outcome recording, expert updates, consultation answers, approvals, and team setup included.
+`allowed_writes` is enforced by application code at commit (INV-14) for worker-proposed business/domain writes. The `docs/tasks.md` scope matrix also marks bounded Kernel-managed Task lifecycle, explicitly permitted enqueue, and companion effects (`K`), including Task-attributed Events and task-specific Snapshots; these are application-authored and do not grant workers direct write access. Task types include manual Operator types, so **every durable write traces to a Task** — operator seeding, outcome recording, expert updates, consultation answers, approvals, and team setup included.
 
 ### `Trigger`
 
@@ -422,7 +422,7 @@ Event
     created_at: datetime
 ```
 
-Events cover, at minimum: hypothesis rejected/superseded, confidence changed, disposition recorded, outcome recorded, evaluation recorded/rejected, learning change proposed/accepted/rejected, policy version activated, decay applied, trigger fired, consultation requested/answered/withdrawn/expired, team created/activated, draft proposed/approved/discarded, commit rejected (with reason). Events are an audit trail and idempotency substrate, not a substitute for current entity state. Operator identity is recorded in the payload of Events caused by manual tasks.
+Events cover, at minimum: hypothesis rejected/superseded, confidence changed, disposition recorded, outcome recorded, evaluation recorded/rejected, learning change proposed/accepted/rejected, policy version activated, decay applied, trigger fired, consultation requested/answered/withdrawn/expired, team created/activated, draft proposed/approved/discarded, commit rejected (with reason). Events are an audit trail and idempotency substrate, not a substitute for current entity state. Every Event is written by application code under the Event (K) scope of its Task type; workers cannot write arbitrary Events or choose their Task attribution. Operator identity is recorded in the payload of Events caused by manual tasks.
 
 ## 4. State machines
 

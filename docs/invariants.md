@@ -91,7 +91,7 @@ At commit time, all preconditions are re-checked atomically: entity status, owne
 ### INV-14 — Tasks stay in scope
 A Task may write only its type's allowed entity kinds, use only its allowed tools, and only within its budget. Out-of-scope write attempts are rejected and recorded.
 **Why:** scoped tasks are what make "agents propose, code commits" enforceable per-action, and budgets are what make costs bounded.
-**Enforcement:** scope matrix in `docs/tasks.md` enforced in the commit path; tool calls and token usage attributed to the Task and counted against its budget.
+**Enforcement:** scope matrix in `docs/tasks.md` enforced in the commit path/runtime. `W`/`C` entries bound business/domain proposals; explicitly marked `K` entries bound only the corresponding application-managed Task lifecycle, Event, Snapshot, or enqueue side effect. Those writes are not exceptions to scope and are never worker-authored. Tool calls and token usage are attributed to the Task and counted against its budget.
 **Violation:** a render task "helpfully" also updates the Thread summary.
 
 ### INV-15 — Human input enters through the same gates

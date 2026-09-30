@@ -15,6 +15,38 @@ Before Control-layer tests exist:
 - idempotency under retry
 - invalid proposal rejection with Event
 
+### K1 `ingest_source` contract tests
+
+Use a disposable PostgreSQL database and fixture-created prerequisite records:
+an active Team, the policy version referenced by the Task with matching
+source configuration, and a running
+`ingest_source` Task with matching Team provenance, allowed writes, and
+budget fields. Use a temporary local filesystem directory for immutable
+content-addressed Snapshot objects. Fixture setup is not production Team/Task
+bootstrap; tests must invoke the K1 validator and commit path for the behavior
+under test.
+
+Each test asserts persisted rows, filesystem content/reference consistency,
+and Task-attributed Events:
+
+| Case | Setup and action | Expected durable result |
+|---|---|---|
+| Valid ingestion | Valid Task/source fixture; proposal bytes and SHA-256 agree; submit once. | One immutable content-addressed object, one Signal referencing it, and one success Event in the same database transaction. |
+| Invalid hash/proposal | Valid prerequisites; claimed hash differs from SHA-256 of supplied bytes. | No Snapshot object is written, no Signal or committed Snapshot reference exists, and a `proposal_rejected` Event records reason and Task ID. |
+| Atomic database failure | Valid proposal; fail the database transaction after a write is attempted. | No Signal or success Event committed. A previously written content object may remain unreferenced; no Signal may refer to a missing object. |
+| Duplicate content | Existing Signal for `(origin_url, content_hash)`; submit identical content under another valid Task. | No second Signal; existing Snapshot/Signal reused without changing the bytes; `fetch_no_change` Event attributed to the second Task. |
+| Same-Task retry | Successful or no-change outcome Event already exists for this Task and proposal identity; replay. | No duplicate Signal or outcome Event; return the recorded outcome. |
+| Task scope/provenance | Wrong Task type, non-running Task, inactive Team, source configured only under another Team's policy, or missing Signal business-write scope. | No Signal or committed Snapshot reference; reason-bearing `proposal_rejected` Event tied to the offending Task, within its Event (K) scope. |
+| Kernel-managed scope | Valid Task with `allowed_writes=["Signal"]`; attempt to supply/author an Event or unrelated Snapshot as a worker proposal. | Worker-authored side effects are rejected; application code still creates only the matrix-authorized Signal Snapshot and Task-attributed Event. No extra entity is committed. |
+| Event attribution | Inspect success, no-change, and rejection results. | Every Event has the invoking Task ID and enough source/hash identity to audit the outcome; success includes Signal and Snapshot references. |
+
+These tests directly exercise INV-02 (application validation before writes),
+INV-03 (immutable content-addressed Snapshots and unchanged-refetch behavior),
+INV-13 (commit-time revalidation and Task-event retry idempotency), and INV-14
+(Task write scope, including the matrix's bounded Kernel-managed effects).
+Do not add triage or SignalDisposition behavior to K1;
+INV-09 belongs to the later triage path.
+
 ## 3. Existing invariant tests
 
 Preserve the existing invariant suite:

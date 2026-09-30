@@ -9,7 +9,9 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 - Every Task has: Team, `task_type`, optional Thread, `input_refs`, `allowed_tools`, `allowed_writes`, `policy_version`, `budget` (`max_tool_calls`, `max_cost_usd`, `deadline_seconds`).
 - Task statuses and transitions: see `docs/architecture.md` §4.
 - **All durable writes go through core repositories/services** that enforce schema, ownership, scope, and transitions (INV-02, INV-14). Graph nodes return proposal objects; they never write.
-- Every transition emits an Event. Commit-time preconditions are re-checked (INV-13).
+- `allowed_writes` names the business/domain entity kinds that the Task's worker may propose to create or change, subject to this matrix. It does not grant the worker direct database or object-storage access.
+- The matrix also marks `K` operations: explicitly scoped Task lifecycle or companion writes performed only by application/Kernel code. They are mandatory, conditional, or optional only as the row's specification states. `K` is an explicit scope category, not an exception to INV-14. A `K` cell authorizes only the exact Task, Event, or Snapshot operation specified for that Task type; it never permits a worker to request arbitrary Tasks, Events, or Snapshots. The application controls Task lifecycle/enqueue data and Event type, payload, and attribution, and validates Snapshot content/reference and association with the permitted business write.
+- Every Task transition emits a Task-attributed Event. A commit emits its required success, no-change, or rejection Event as applicable. These Kernel-generated records are constrained by the row's `K` entries; the worker cannot write them directly. Commit-time preconditions are re-checked (INV-13).
 - **Per-proposal validation:** valid proposals commit atomically as one set; invalid proposals are rejected with Events carrying reasons; a Task whose proposals all fail is marked failed.
 - Retries (arq) re-execute idempotently: prior commits are detected via the Task's Events and skipped.
 - Tool calls and token usage are attributed to the Task and counted against its budget.
@@ -22,7 +24,7 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 
 1. Task status is `running` and budget is not exhausted (operator task types: no model cost, no enforced deadline).
 2. All referenced entities exist and belong to the Task's Team.
-3. All writes are within the Task's scope matrix entry (§4).
+3. All worker-proposed business writes are within `allowed_writes` and the Task's scope matrix entry (§4). Kernel-managed side effects are permitted only where the same row explicitly marks `K`, and only in the documented association with that Task operation.
 4. Snapshots referenced by quotes exist and hashes match (INV-03, INV-04).
 5. All state transitions are legal per the architecture §4 tables.
 6. The Task's Team is `active`, except for the team-setup task types.
@@ -35,8 +37,41 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 - **Writes:** Signal (+Snapshot first), Event.
 - **Flow:** F1 steps 1–3.
 - **Validation:** identical `(origin_url, content_hash)` → no new Signal (fetch-no-change Event); Snapshot stored before Signal commit; atomic.
-- **Failure:** connector error → retry per arq policy; partial state impossible (snapshot-and-signal commit together or not at all).
+- **Failure:** connector error → retry per arq policy. Signal and Event database records commit together or not at all. Snapshot bytes are stored first in immutable content-addressed object storage; a failed database commit may leave an unreferenced object, but no committed Signal may reference a missing object.
 - **Budget:** no model calls; see §5.
+
+#### K1 implementation boundary
+
+K1 exercises the deterministic proposal/validation/commit path only. It
+receives fetched bytes and source identity in a transient typed application
+object; it does not poll a source or implement a connector, scheduler, Trigger,
+Task creation/runtime, triage, or embeddings. The fixture supplies an active
+Team, the policy version referenced by the Task with matching source
+configuration, and a running, in-scope
+`ingest_source` Task.
+
+In development, Snapshot bytes use the immutable content-addressed local
+filesystem storage specified in `docs/architecture.md` §10. The reference and
+hash are persisted on Signal; K1 does not store bytes in PostgreSQL or require
+a separate Snapshot table. Snapshot objects are written and verified before
+database references are committed. The Signal row and success Event commit in
+one database transaction. A failed transaction may leave an unreferenced
+immutable file; such a file is not visible as committed domain state, and a
+retry reuses it. K1 does not add garbage collection.
+
+`fetch_no_change` is the documented Event for identical
+`(origin_url, content_hash)`. The walkthrough uses `proposal_rejected` for a
+rejection; the architecture requires rejection Events with reasons but does
+not fix a string type. K1 uses `proposal_rejected`. The success Event name is
+not fixed in the architecture; K1 may use `signal_ingested` as a local choice.
+Every Event is attributed to the Task. Events for a Task's already-recorded
+matching outcome are reused on retry; the retry emits no second outcome
+Event.
+
+The Signal fields required for K1 are `domain`, `source_type`, `origin_url`,
+`fetched_at`, `content_hash`, and `snapshot_ref`. `domain` comes from the
+Team. `extracted_summary` is optional/non-authoritative; `embedding` and
+`embedding_model` are projections and are not generated or required by K1.
 
 ### `manual_signal_ingest` — Operator via API/CLI
 - **Purpose:** admit externally obtained material with provenance.
@@ -125,7 +160,7 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 ### `request_consultation` — model worker (or created by policy/Trigger/enqueue)
 - **Purpose:** the loop asks for expert opinion (ADR-0020).
 - **Reads:** subject entity and related evidence.
-- **Writes:** Consultation (`status="open"`, context Snapshot + hash of exactly what the expert will be shown), Event; optionally enqueue of the follow-up work after answering.
+- **Writes:** Consultation (`status="open"`, context Snapshot + hash of exactly what the expert will be shown), Event. Any follow-up Task after the answer is enqueued by the later `answer_consultation` Task; this Task ends when it opens the Consultation.
 - **Validation:** subject exists, same Team; context Snapshot stored before commit; `check_by` set when the question is time-bound.
 - **Key rule:** opening the Consultation **ends this Task**. Waiting for a human happens between Tasks, never inside one.
 
@@ -154,31 +189,74 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 
 ## 4. Write-scope matrix
 
-| Task type | Team | Signal | SignalDisposition | Thread | Hypothesis | EvidenceLink | ConfidenceChange | Artifact | Outcome | Evaluation | KnowledgeItem | TeamPolicy | LearningChange | Trigger | Consultation | TeamDraft |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `ingest_source` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `manual_signal_ingest` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `triage_signal` | — | — | W | C/W¹ | — | — | — | — | — | — | — | — | — | — | — | — |
-| `update_thread` | — | — | W² | W³ | W | W | W | — | — | — | — | — | — | — | — | — |
-| `operator_update` | — | — | W² | W³ | W | W | W | — | — | — | — | — | — | — | — | — |
-| `apply_decay` | — | — | — | W⁴ | — | — | W | — | — | — | — | — | — | — | — | — |
-| `check_triggers` | — | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — |
-| `review_knowledge` | — | — | — | — | — | — | — | — | — | W⁵ | — | — | — | — | — | — |
-| `render_output` | — | — | — | — | — | — | — | W | — | — | — | — | — | — | — | — |
-| `record_outcome` | — | — | — | — | — | — | — | — | W | — | — | — | — | — | — | — |
-| `evaluate_outcome` | — | — | — | — | — | W⁶ | — | — | — | W | — | — | — | — | — | — |
-| `propose_learning_change` | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | — |
-| `approve_learning_change` | — | — | — | — | — | — | — | — | — | — | W | W | W | — | — | — |
-| `seed_knowledge` | — | — | — | — | — | — | — | — | — | — | W | W | W | — | — | — |
-| `request_consultation` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W⁷ | — |
-| `answer_consultation` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W⁸ | — |
-| `create_team` | W⁹ | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `configure_team` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W |
-| `activate_team` | W¹⁰ | — | — | C | — | — | — | — | — | — | — | W | — | — | — | W¹¹ |
+`W`/`C` identify business/domain entity mutations available for application
+validation of worker proposals. `K` identifies an explicitly bounded,
+Kernel-managed operation; it is not included in the worker's `allowed_writes`
+list. The `Task (K)` column always covers the current Task's documented runtime
+transitions. Superscripts there additionally permit only the named Task
+enqueue operation. `—` means that the Task type cannot cause that write.
+All Task, Snapshot, and Event writes are performed by application code, never
+by a worker.
 
-¹ Create on `new_thread`; reactivate `dormant → active`. ² Refine `deferred` only. ³ Summary projection and explicit resolution only. ⁴ `active → dormant` only. ⁵ `active → needs_review` only. ⁶ With `subject_kind="evaluation"`. ⁷ Create only (`open`). ⁸ `open → answered` only. ⁹ Create only (`configuring`). ¹⁰ `configuring → active` only. ¹¹ `draft → approved` only.
+| Task type | Team | Signal | SignalDisposition | Thread | Hypothesis | EvidenceLink | ConfidenceChange | Artifact | Outcome | Evaluation | KnowledgeItem | TeamPolicy | LearningChange | Trigger | Consultation | TeamDraft | Task (K) | Snapshot (K) | Event (K) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `ingest_source` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | K¹ | K |
+| `manual_signal_ingest` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | K¹ | K |
+| `triage_signal` | — | — | W | C/W² | — | — | — | — | — | — | — | — | — | — | — | — | K²³ | — | K |
+| `update_thread` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | K | — | K |
+| `operator_update` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | K | — | K |
+| `apply_decay` | — | — | — | W⁵ | — | — | W | — | — | — | — | — | — | — | — | — | K | — | K |
+| `check_triggers` | — | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | K²⁰ | — | K |
+| `review_knowledge` | — | — | — | — | — | — | — | — | — | W⁶ | — | — | — | — | — | — | K | — | K |
+| `render_output` | — | — | — | — | — | — | — | W | — | — | — | — | — | — | — | — | K²¹ | K⁷ | K |
+| `record_outcome` | — | — | — | — | — | — | — | — | W | — | — | — | — | — | — | — | K | K⁸ | K |
+| `evaluate_outcome` | — | — | — | — | — | W⁹ | — | — | — | W | — | — | — | — | — | — | K | — | K |
+| `propose_learning_change` | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | — | K | — | K |
+| `approve_learning_change` | — | — | — | — | — | — | — | — | — | — | W | W | W | — | — | — | K | — | K |
+| `seed_knowledge` | — | — | — | — | — | — | — | — | — | — | W | W | W | — | — | — | K | — | K |
+| `request_consultation` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W¹⁰ | — | K | K¹¹ | K |
+| `answer_consultation` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W¹² | — | K²² | K¹³ | K |
+| `create_team` | W¹⁴ | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | K¹⁵ | K |
+| `configure_team` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W | K | K¹⁶ | K |
+| `activate_team` | W¹⁷ | — | — | C | — | — | — | — | — | — | — | W | — | — | — | W¹⁸ | K | K¹⁹ | K |
 
-Every cell is enforced at commit; attempts outside the matrix are rejected and recorded (INV-14). The `operator_update` row is intentionally identical to `update_thread` — that is INV-15 expressed as a table.
+¹ Store only the immutable Snapshot for the Signal created by this ingestion
+operation. ² Create on `new_thread`; reactivate `dormant → active`.
+³ Refine `deferred` only. ⁴ Summary projection and explicit resolution only.
+⁵ `active → dormant` only. ⁶ `active → needs_review` only.
+⁷ Store only the Snapshot for the Artifact produced by this operation.
+⁸ Store only the observation Snapshot when the Outcome type has an observation.
+⁹ With `subject_kind="evaluation"`. ¹⁰ Create only (`open`).
+¹¹ Store only the context Snapshot for the Consultation created by this
+operation. ¹² `open → answered` only. ¹³ Store only the answer Snapshot for
+this Consultation operation. ¹⁴ Create only (`configuring`). ¹⁵ Store only
+the subject-brief Snapshot for this Team creation. ¹⁶ Store only the
+configuration Snapshot for the TeamDraft produced by this operation.
+¹⁷ `configuring → active` only. ¹⁸ `draft → approved` only.
+¹⁹ Store a new config Snapshot only when the Operator edits the approved
+configuration; do not rewrite the prior immutable Snapshot. For every row,
+Task (K) also permits only the current Task's own state-machine transitions
+and associated runtime metadata, never worker-authored Task changes.
+²⁰ In addition to its own lifecycle, create only the target Task of a Trigger
+that passed deterministic validation. ²¹ In addition to its own lifecycle,
+enqueue only `request_consultation` when the documented delivery gate applies.
+²² In addition to its own lifecycle, optionally enqueue only the documented
+follow-up update/evaluation work after recording the consultation answer.
+²³ In addition to its own lifecycle, enqueue only `update_thread` for the
+documented deferred/matched triage cases.
+
+For each task type, Event (K) permits only Task-attributed Events generated
+by application code for its normal transition and commit outcomes, including
+success, no-change where specified, and rejection with a reason. The worker
+cannot choose an unrelated Event type, payload, or Task ID. Snapshot (K)
+permits only the content explicitly named by the corresponding task
+specification and association above. A Task cannot use its Signal permission
+to create an unrelated Snapshot, nor use `render_output` to store arbitrary
+world content. Task enqueue permissions are similarly limited to the named
+operations; they do not authorize arbitrary Task creation. All cells and K
+side effects are enforced at commit/runtime (INV-14).
+The `operator_update` row remains identical to `update_thread` — this is
+INV-15 expressed as a table.
 
 ## 5. Budget defaults
 

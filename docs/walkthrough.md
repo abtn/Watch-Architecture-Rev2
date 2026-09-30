@@ -16,7 +16,11 @@ The deep trace: ingestion → triage → update with rejections → decay → re
 
 ### A.1 Setup (2025-05-20)
 
-The Operator seeds the team via `seed_knowledge` (TSK-001):
+This trace starts with an already-created and active Team TM-01. Team
+creation/activation is a prerequisite to this scenario, not a write performed
+by `seed_knowledge`. The Team record below is shown as prerequisite scenario
+state. The Operator seeds the initial policy and KnowledgeItem via
+`seed_knowledge` (TSK-001):
 
 ```json
 {
