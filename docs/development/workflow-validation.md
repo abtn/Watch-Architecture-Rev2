@@ -94,3 +94,112 @@ source establishes it.
   Report verification as planned, not passed.
 - **Resulting documentation changes:** This record captures the observed
   workflow. No K0 implementation was performed.
+
+### 3. Beginning-of-K1 implementation-planning simulation
+
+- **Task/scenario:** The Operator explicitly authorized moving from K0 to K1
+  and asked Codex to inspect the repository, compare the documented Team
+  lifecycle and Signal-ingestion examples, and produce an implementation-ready
+  plan without implementing K1. Only this validation record could be changed.
+- **Repository state:** The checkout was on `main` at `1c8a536`, with a clean
+  worktree. The K0 branch tip `6e7ff09` is an ancestor of `main` through merge
+  commit `8d4dd59`. K0 setup files were present: `pyproject.toml`, `uv.lock`,
+  `compose.yaml`, Alembic configuration, and a pgvector-extension migration.
+  Application code consisted of `core/__init__.py`; the only test was a
+  PostgreSQL pgvector-extension check. No application entity, Task, Event,
+  repository, validation, or commit-service implementation was present.
+- **Expected behavior:** The task prompt authorized K1 planning, not
+  implementation. Repository workflow guidance requires respecting the
+  Task/Proposal/Commit boundary, attributing durable writes to Tasks, emitting
+  Events tied to Tasks, and stopping rather than inventing architecture when
+  authority or requirements are ambiguous. K1 is documented to prove
+  Proposal → Validation → Atomic commit → Event, with idempotency and rejected
+  proposals recorded by Event.
+- **Observed behavior:** Codex read the requested authority, planning,
+  workflow, architecture, invariant, task, and ADR documents; inspected the
+  current implementation and Git history; and made no implementation changes.
+  Ruff and mypy passed. Alembic history showed only the pgvector extension
+  revision. The pytest database check did not complete: it remained at the
+  PostgreSQL test and was interrupted, so no pytest result is claimed.
+  Inspection found that `Task` requires a Team and every Event requires a
+  Task, while `create_team` itself creates the Team; the documents do not
+  specify how that initial `create_team` Task is associated with a Team that
+  does not yet exist. Signal ingestion also requires an active Team and Task
+  provenance, neither of which is implemented in the current codebase.
+- **Discrepancies:** The Operator's authorization supersedes the repository's
+  default K0-only instruction for this planning task. The documented K1
+  examples do not resolve the Task/Team bootstrap and provenance relationship,
+  so the smallest self-contained candidate cannot be selected confidently
+  without an additional architectural assumption. This is an unresolved
+  implementation prerequisite, not a decision to change the Task model.
+- **Lessons:** Before implementation, resolve how the initial team-creation
+  operation receives Task provenance when Task requires a Team, and whether
+  K1 may assume an already-existing active Team for Signal ingestion. Do not
+  solve either issue by silently making `Task.team_id` nullable, bypassing
+  Task attribution, or seeding durable application state outside the commit
+  path. After that boundary is settled, compare the complete Task, Snapshot,
+  Event, and idempotency requirements of the chosen vertical slice.
+- **Resulting documentation changes:** This chronological record was appended.
+  No K1 code, tests, migrations, milestone wording, or architectural decisions
+  were changed.
+
+### 4. Second K1 candidate and bootstrap reassessment
+
+- **Task/scenario:** The Operator requested a second inspect-only simulation to
+  test the previous conclusion that K1 could not select a candidate because
+  Tasks belong to Teams while `create_team` creates the Team. The Operator
+  explicitly authorized K1 planning, not implementation; this record is the
+  only permitted change.
+- **Repository state:** The checkout remained on `main` at `1c8a536`; K0 is
+  merged into `main`. The only pre-existing worktree change was the K1
+  simulation record above in this file. Application code remained limited to
+  `core/__init__.py`, the database-extension test, and the pgvector Alembic
+  migration; no Team, Task, Snapshot, Signal, or Event application model or
+  runtime was present.
+- **Expected behavior:** Re-read the authority, K1, Task, invariant,
+  walkthrough, and dual-entry specifications; distinguish test prerequisites
+  from production bootstrap and from the commit path being tested; compare
+  `create_team`, `activate_team`, and `ingest_source`; do not implement K1 or
+  infer an architectural exception.
+- **Observed behavior:** `PLAN.md` and `docs/05-implementation-plan.md` call
+  for one Kernel commit path and explicitly name Team lifecycle and Signal
+  ingestion as examples, without requiring complete production Task-creation
+  runtime. `docs/tasks.md` names API/CLI, scheduler, Trigger, enqueue, and retry
+  as Task creation sources; it does not say that creating a Task must itself
+  be committed by a prior Task. `docs/walkthrough.md` explicitly says it is an
+  integration-test fixture specification and shows an already-active Team
+  before `ingest_source` Task TSK-201 stores a Snapshot, commits a Signal, and
+  emits `fetch_no_change` on identical-content refetch. This supports using
+  prerequisite Team, source configuration, and running Task records as test
+  setup rather than implementing their production creation flows as part of
+  this slice. No K1 code or tests were run.
+- **Reassessment and discrepancy:** The prior conclusion that no candidate
+  could be selected is **overturned** as applied to the Signal-ingestion
+  vertical slice: it conflated the separate production/bootstrap problem with
+  preconditions for exercising a single Kernel commit path. However, the
+  walkthrough says the active Team is seeded through `seed_knowledge`, while
+  the `docs/tasks.md` write-scope matrix gives `seed_knowledge` no Team write
+  and `docs/architecture.md` describes Team creation and activation through
+  `create_team` and `activate_team`. The walkthrough therefore should not be
+  treated as proof of a production Team-bootstrap flow. Its explicit fixture
+  role still supports loading precondition records in test setup; that setup
+  is not the production commit behavior under test. The `create_team`
+  bootstrap question remains separate and does not block Signal ingestion.
+- **Candidate result:** `create_team` still has the unresolved first-Task /
+  Team attribution question. `activate_team` depends on a TeamDraft, policy
+  validation, TeamPolicy, starter Threads, and Team lifecycle transition, so
+  it is broader. `ingest_source` has a dedicated Task specification and a
+  concrete walkthrough trace for Snapshot-before-Signal, hash, duplicate
+  handling, and Event behavior; triage and its follow-on behavior can remain
+  outside the selected commit slice.
+- **Lessons:** Establish already-existing Team, source configuration, and
+  Task records in disposable test fixtures when they are prerequisites to a
+  focused commit-path test; do not implement their production bootstrap
+  runtime unless the chosen acceptance criteria require it. Task creation
+  being an entry point does not, by itself, imply recursive Task creation.
+  Keep fixture setup distinct from assertions about production provenance,
+  and do not use the walkthrough's `seed_knowledge` Team setup as an
+  authoritative production flow without reconciling its scope mismatch.
+- **Resulting documentation changes:** This simulation record was appended.
+  No implementation, migration, test, project configuration, or architecture
+  document was changed; no K1 implementation or test result is claimed.
