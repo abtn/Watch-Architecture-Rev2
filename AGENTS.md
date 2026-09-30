@@ -2,11 +2,10 @@
 
 ## Current state and K0 boundary
 
-- This checkout contains design/planning documents only; no implementation, dependency manifest/lockfile, tests, migrations, or Docker Compose configuration is present.
-- **K0 is the current implementation target.** Its specified stack is Python 3.12+, PostgreSQL + pgvector via Docker Compose, Alembic, pytest, Ruff, and mypy. These are planned K0 components, not an implemented toolchain here.
-- During K0, do not implement Control-layer entities or behavior: no Objective, StateAssessment, StrategyProposal, Plan, or LLM integration.
-- Do not begin K1 unless explicitly requested. Check `PLAN.md` and `docs/05-implementation-plan.md` for the current milestone and acceptance criteria.
-- No implementation code exists to establish additional code-style conventions. Do not infer them from future architecture plans.
+- K0 tooling/setup is implemented on the `k0` branch: Python 3.12+, uv project/dependency management, PostgreSQL + pgvector via Docker Compose, Alembic, pytest, Ruff, and mypy.
+- K0 is complete. Do not begin K1 unless explicitly requested. Check `PLAN.md` and `docs/05-implementation-plan.md` for milestone definitions and acceptance criteria.
+- K0 does not implement Control-layer entities or behavior: no Objective, StateAssessment, StrategyProposal, Plan, or LLM integration. Control-layer implementation is not authorized unless explicitly requested.
+- The K0 setup contains no application behavior establishing additional code-style conventions. Do not infer them from future architecture plans.
 
 ## Source of truth
 
@@ -50,9 +49,9 @@ A workflow-validation result does not by itself authorize architectural or imple
 
 ### Commands and tooling status
 
-No environment/dependency setup command or essential development command is defined for this checkout. K0 requires a Python 3.12+ virtual environment and dependency lock, but does not specify an install command or dependency manager; do not invent one. No single-test command is established yet.
+K0 uses uv for Python project and dependency management. Synchronize the environment with `uv sync --python 3.12`; use `uv run` for commands when the environment is not activated.
 
-The following are the K0 specification's target verification commands, **not currently runnable here** because their supporting project files/configuration do not exist. Use them after K0 setup is implemented; do not report them as run or verified in this checkout:
+The following commands are the established K0 verification workflow:
 
 ```text
 docker compose up -d
