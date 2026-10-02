@@ -254,3 +254,53 @@ source establishes it.
   intentionally deferred rather than redesigned in place.
 - **Resulting documentation changes:** This workflow-validation entry was
   appended. No implementation files were modified.
+
+### 5. R0 freeze-boundary simulation
+
+- **Task/scenario:** Define the architecture that should be frozen at R0,
+  distinguish it from implementation detail and research hypothesis, and keep
+  the future control/learning work explicitly deferred rather than silently
+  expanded. The task required no implementation, no architecture rewrites, and
+  no new design work beyond classification and boundary setting.
+- **Repository state:** The repository is on the `R0` branch. The current HEAD is
+  `5701423` (`Revise "Simple Explain.md"...`). The worktree is clean before
+  this validation record is appended; after this record the workflow file is the
+  only modified document. The repo contains the K0 tooling baseline and the K1
+  ingestion commit path implemented on `main` before branching. The codebase has
+  `core/models.py`, `core/ingestion.py`, `core/snapshot_store.py`, migrations,
+  tests, and Docker/Postgres setup, but no implemented Control-layer entities
+  (`Objective`, `StateAssessment`, `StrategyProposal`, `Plan`) or LLM runtime.
+- **Expected behavior:** The simulation required reading the authority chain and
+  the implementation to distinguish: architecture commitment, implementation
+  detail, and hypothesis. It specifically forbade turning conceptual framing in
+  `Simple Explain.md` into authoritative architecture, and it required a precise
+  bound on what R0 should freeze without creating new abstractions merely to
+  satisfy future possibilities.
+- **Observed behavior:** The repository documents are internally coherent on the
+  stable kernel boundary: durable state is authoritative, Workers propose
+  changes, the Kernel validates and commits, Tasks remain the execution unit,
+  and the Control layer is additive rather than a second runtime. The current
+  implementation supports the deterministic ingestion path and the standard
+  validation/commit discipline. The architecture documents state that Objective,
+  Plan, StrategyProposal, and StateAssessment are specified but not yet
+  implemented, and that the learning- and experience-retrieval layer remains a
+  future design or research question.
+- **Discrepancies:** The main discrepancy is not a contradiction but a category
+  mistake: `Simple Explain.md` uses a strong conceptual narrative about a system
+  that develops persistent expertise, but the repo does not yet contain evidence
+  that the proposed learning loop is empirically validated. That narrative is a
+  framing document, not a source of stable architecture. The repo also shows a
+  material difference between the roadmap (`K0 → K1 → R0 → ...`) and the actual
+  code state (`K1 present`), which is not a contradiction in the architecture
+  itself but a reminder that the repo's current reality must be treated as the
+  authority over historical milestone wording.
+- **Lessons:** R0 should freeze the architectural relationship between Kernel,
+  Task execution, proposal/validation/commit, objective/plan semantics, and the
+  world-vs-team memory distinction. It should not freeze exact model-provider
+  choices, retrieval algorithms, evaluation heuristics, or learning methods.
+  The open questions are real, but they are hypotheses or future implementation
+  problems, not evidence that the architecture is wrong. The right R0 boundary
+  is to freeze the durable contract, not to encode a final theory of expertise.
+- **Resulting documentation changes:** This workflow-validation entry was
+  appended. No implementation files, architecture documents, migrations, or
+  tests were modified.
