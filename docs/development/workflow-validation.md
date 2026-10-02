@@ -304,3 +304,45 @@ source establishes it.
 - **Resulting documentation changes:** This workflow-validation entry was
   appended. No implementation files, architecture documents, migrations, or
   tests were modified.
+
+### 6. R0 Simulation 03 — Architecture Freeze Contract
+
+- **Task/scenario:** Convert the R0-01 and R0-02 observations into a formal
+  R0 Freeze Contract. The request authorized only the new contract and this
+  chronological validation record; it prohibited architecture-source,
+  implementation, migration, and test changes.
+- **Repository state:** The `R0` checkout was clean before this simulation.
+  K0 tooling and the K1 deterministic ingestion slice were present; Control
+  entities and runtime behavior remained unimplemented. `PLAN.md` presents R0
+  as the architecture-freeze phase, while `README.md` documents the existing
+  K1 implementation. The prior R0 records in this file were observations, not
+  replacement architecture authority.
+- **Expected behavior:** Read the listed authority chain and repository state;
+  preserve the Kernel/Task, dual-entry, Plan, StateAssessment, Strategy,
+  provenance, evidence, and learning boundaries; distinguish frozen
+  relationships from implementation choices and empirical hypotheses; record
+  the result without claiming causal attribution, truth, or prompt-injection
+  resistance as solved.
+- **Observed behavior:** Codex read the requested authority, architecture,
+  control, runtime, schema, plan, task, invariant, glossary, ADR, README,
+  explanation, and workflow-validation documents and checked the worktree.
+  It found no fundamental architectural contradiction. It created
+  `docs/development/r0-freeze-contract.md`, classifying the existing
+  architecture as a testable hypothesis; it preserves the explicitly required
+  limits on causal attribution, evidence, and runtime security. No
+  implementation or architecture-source document was changed.
+- **Discrepancies:** The roadmap's K0-current wording and the README/K1 code
+  state remain a status-documentation mismatch, not a conflict in the frozen
+  architecture. The request supplied only the beginning of its sixth R0
+  acceptance criterion; the contract records the supplied acceptance criteria
+  and completes the acceptance list with non-conflicting boundary checks.
+- **Lessons:** A freeze contract should bind relationships and authority, not
+  turn persistent-expertise framing into proof. Provenance must be described as
+  a record of actions and observations, not proof of causal attribution; source
+  integrity and quote checks must remain distinct from reliability and truth;
+  treating external content as data establishes a boundary but does not prove
+  runtime prompt-injection resistance.
+- **Resulting documentation changes:** Added
+  `docs/development/r0-freeze-contract.md` and appended this record. No
+  AGENTS.md, architecture-source, implementation, migration, or test file was
+  changed.
