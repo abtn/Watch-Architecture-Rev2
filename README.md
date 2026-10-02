@@ -1,169 +1,162 @@
 # Watch — Architecture Revision 2
 
-K0 tooling and the baseline are implemented; K1 has not begun. This repository contains Watch's architecture specifications and the initial project tooling.
+Watch is an evidence-oriented system for maintaining an auditable model of a
+team's world and supporting bounded, explainable work. Its Kernel owns durable
+state: workers propose changes, application code validates them, and committed
+state is recorded with Task provenance and Events.
 
-## Purpose
+## Development status
 
-This repository contains Watch's Revision 2 architecture and implementation plan.
-
-Original Watch documents remain authoritative for concepts Revision 2 has not explicitly revised. Revision 2 documents are authoritative only for concepts explicitly revised and mapped in `CHANGE_MAP.md`. Codex must not silently resolve conflicting specifications; when authority is unclear, stop and report the ambiguity.
-
-The original design already establishes a strong Kernel:
-
-- durable records instead of shared conversation
-- agents/workers propose; application code commits
-- immutable snapshots and evidence validation
-- explicit competing Hypotheses
-- controlled Team memory
-- auditable Events
-- deterministic commit-time validation
-- replaceable Workers
-
-The main architectural change proposed here is to add an explicit **Control layer** as an additive, higher-level decision layer above the existing Task system. Revision 2 defines Objective as one durable entity with an explicit lifecycle; Tasks may reference it, with no ephemeral task-scoped Objective abstraction.
-
-The central idea is:
-
-> Watch should be a persistent adaptive software system that uses LLM workers as bounded cognitive components, rather than an agent swarm whose behavior is primarily encoded in prompts and agent personalities.
-
-## The new model: dual-entry execution
-
-The revised architecture keeps the original reactive execution path and adds a deliberative Control path that converges into it.
-
-### Reactive execution path
-
-For deterministic or routine work where the response is already known:
+**K0 is complete. K1 is implemented on `main`.** K1 is the first executable
+Kernel slice; it proves deterministic source ingestion without model calls:
 
 ```text
-Signal / Trigger / Scheduler / Operator
-→ Task
-→ Worker
-→ Proposal
-→ Kernel validation
-→ Commit
+fetched bytes
+    ↓
+transient IngestionProposal
+    ↓
+deterministic validation
+    ↓
+immutable local Snapshot
+    ↓
+atomic PostgreSQL commit: Signal + Event
 ```
 
-Examples: `ingest_source`, `apply_decay`, routine triage, `record_outcome`, operator actions, deterministic maintenance.
+The K1 path validates the running `ingest_source` Task, active Team, TeamPolicy
+version and configured source, Signal write scope, content hash, and proposal
+preconditions. Duplicate content is a no-change result; a matching retry
+reuses its Task-attributed outcome Event. Invalid proposals are rejected with
+a reason-bearing Event. The PostgreSQL Signal and success Event commit
+together.
 
-This path remains valid and is not removed.
+K1 deliberately does **not** implement source fetching/connectors, production
+Team or Task bootstrap, Task scheduling or queue/runtime, Trigger execution,
+triage, embeddings, or model calls. Test fixtures supply the prerequisite
+active Team, source policy, and running Task. These are setup records, not
+production lifecycle behavior.
 
-### Deliberative control path
+The Control layer is specified but not implemented. Objective, StateAssessment,
+StrategyProposal runtime, Plan, autonomous planning, and LLM integration are
+out of scope for K1 and remain later work.
 
-For work where the Team must decide what to attempt next, starting from one durable Objective:
+## Architectural decisions
+
+### Kernel authority and Task execution
+
+- Durable writes go through application validation and commit; workers do not
+  write directly.
+- Tasks are the execution unit. Reactive work remains valid without an
+  Objective or Plan.
+- A future deliberative Control path must materialize ordinary Tasks and use
+  the same Task execution and Kernel commit path; it must not introduce a
+  second runtime or commit kernel.
+- Plans record intended execution, not execution truth. Tasks, Events, and
+  Outcomes represent actual execution.
+- StateAssessment is derived and non-authoritative.
+
+### Task write scopes: W / C / K
+
+The Task scope matrix in [`docs/tasks.md`](docs/tasks.md) distinguishes:
+
+- **W** — a worker-proposable business/domain write, checked against the
+  Task's `allowed_writes`.
+- **C** — a controlled create/write operation explicitly defined by a Task
+  specification.
+- **K** — an exact, bounded Kernel-managed side effect, performed by
+  application code and attributable to the Task.
+
+For K1 `ingest_source`, Signal is `W`; its associated immutable Snapshot and
+Task-attributed Event are `K`. K is part of scope enforcement, not an
+exception to INV-14 or permission for a worker to create arbitrary Snapshots,
+Events, or other records.
+
+### Snapshot and commit boundary
+
+K1 stores content outside PostgreSQL in a local, immutable, content-addressed
+filesystem store, using references of the form
+`snap://sha256/<64-lowercase-hex-digest>`. The object is written completely
+before publication and is never overwritten. A failed database commit may
+leave an unreferenced object; committed database records determine
+Watch-domain visibility. K1 does not implement distributed transactions or
+object garbage collection.
+
+Duplicate identity is `(origin_url, content_hash)`, protected by a database
+unique constraint. Matching Task retries use the Task's existing ingestion
+outcome Event as their idempotency evidence; no Proposal or idempotency table
+is introduced.
+
+### Source-of-truth rules
+
+Original Watch documents govern concepts that Revision 2 has not explicitly
+revised. Revision 2 documents govern only the concepts mapped in
+[`CHANGE_MAP.md`](CHANGE_MAP.md). Do not silently reconcile conflicting
+specifications; stop and report the ambiguity. The architectural invariants
+are listed in [`docs/invariants.md`](docs/invariants.md).
+
+## Technology and repository layout
+
+- Python 3.12+
+- `uv` for dependency and command management
+- PostgreSQL 16 with pgvector, via Docker Compose
+- SQLAlchemy and Alembic
+- pytest, Ruff, and mypy
 
 ```text
-Objective
-→ deterministic StateAssessment
-→ StrategyProposal
-→ Plan
-→ Task materialization
-→ existing Task execution path
+core/                       K1 models, ingestion, and Snapshot storage
+migrations/                 Alembic environment and schema revisions
+tests/                      PostgreSQL and K1 integration tests
+docs/                       Architecture, invariants, task specs, and plans
+PLAN.md                     Milestones and implementation order
+CHANGE_MAP.md               Document authority mapping
 ```
 
-The Control layer produces ordinary Tasks. Once materialized, those Tasks use the same state machine, write scopes, budgets, validation, atomic commit, Events, and idempotency as any reactive Task. Plan membership is optional provenance metadata.
+## Local setup and verification
 
-Budget ceilings are nested: TeamPolicy budget > Plan budget > Task budget. A Plan may not exceed the applicable TeamPolicy ceiling, and the allocated/remaining budgets of its materialized Tasks may not exceed the Plan envelope. Each Task's own budget remains authoritative for that Task's execution.
+From the repository root:
 
-### Layer stack
-
-```text
-┌─────────────────────────────────────────────┐
-│  LEARNING                                   │
-│  Outcomes → Evaluations → LearningChanges  │
-├─────────────────────────────────────────────┤
-│  CONTROL (deliberative path, additive)      │
-│  Objective → StateAssessment → Strategy    │
-│  → Plan → Task materialization              │
-├─────────────────────────────────────────────┤
-│  INTELLIGENCE / WORKERS                     │
-│  LLM Workers / deterministic Workers        │
-├─────────────────────────────────────────────┤
-│  STATE                                      │
-│  World Memory / Team Memory / Provenance    │
-├─────────────────────────────────────────────┤
-│  INTEGRITY KERNEL                           │
-│  validation / scope / atomic commit / audit │
-└─────────────────────────────────────────────┘
+```powershell
+uv sync --python 3.12
+docker compose up -d
+uv run alembic upgrade head
+uv run pytest tests/test_ingestion.py
+uv run ruff check .
+uv run mypy core
+uv run pytest
 ```
 
-The existing Kernel remains the foundation. The Control layer is one of two valid entry points, not a replacement.
+The tests use PostgreSQL. They accept `TEST_DATABASE_URL` or `DATABASE_URL`;
+otherwise they connect to the Compose default database at
+`postgresql+psycopg://watch:watch@localhost:5432/watch`.
 
-## Why this change
+To verify the K1 migration round trip, use a **disposable** database:
 
-The original plan is very good at:
+```powershell
+uv run alembic downgrade 0001_enable_pgvector
+uv run alembic upgrade head
+```
 
-> Given a Task, execute it safely.
+Do not run the downgrade against a database containing data that must be
+preserved. The K1 downgrade removes K1 tables but must leave the pre-existing
+pgvector extension in place.
 
-It is less explicit about:
+## Milestones and documentation
 
-> Given the current state, mission, policy, constraints, and open questions, why should the system do this Task next?
-
-Without that abstraction, Watch risks becoming a sophisticated workflow engine with LLM workers.
-
-The Control layer makes the missing distinction explicit:
-
-- **State** = what we currently know.
-- **Policy** = how this Team is allowed/preferred to operate.
-- **Strategy** = how the Team intends to approach its current situation.
-- **Plan** = the bounded execution structure chosen from that strategy.
-- **Task** = one executable unit.
-- **Worker** = the temporary performer of that Task.
-
-## Important scope rule
-
-This is a **design revision workspace**, not a replacement of the current repository documents yet.
-
-Do not edit the original Watch repository according to this folder automatically.
-
-First use the documents here to:
-
-1. agree on the revised abstraction,
-2. write ADRs for changes that are truly architectural,
-3. amend the original specifications,
-4. then start implementation.
-
-Implementation order: tooling → smallest Kernel commit path → tests → Objective → Control layer.
-
-## Source-of-truth precedence
-
-Original Watch documents remain authoritative for concepts Revision 2 has not explicitly revised. Revision 2 documents are authoritative only for concepts explicitly revised and mapped in `CHANGE_MAP.md`. Codex must never silently choose between conflicting specifications; if the map does not make authority clear, stop and report the ambiguity.
-
-## What stays unchanged
-
-The following original principles remain foundational unless a later ADR explicitly changes them:
-
-- durable records, not shared conversation
-- agents propose, code commits
-- immutable Snapshots
-- deterministic quote/hash validation
-- no unexplained ConfidenceChange
-- competing Hypotheses
-- conservative scheduled Decay
-- explicit SignalDisposition
-- projections are never authoritative
-- controlled Team memory (INV-12)
-- atomic revalidation and idempotency
-- human input passes through the same validation gates
-- Domain packs cannot bypass the Kernel
-- Triggers, scheduler, API, and task chaining remain valid Task entry points
-- existing Task state machine and write scopes remain unchanged
-
-## Documents
+K1 is complete; subsequent implementation remains gated by the milestone
+plan and architecture decisions. In particular, do not treat the architecture
+specification as authorization to implement later Control-layer behavior.
 
 | Document | Purpose |
 |---|---|
-| `docs/01-architecture-revision.md` | Revised architecture and boundaries, including dual-entry model |
-| `docs/02-control-layer.md` | Objective → assessment → strategy → plan design; validation can/cannot |
-| `docs/03-runtime-model.md` | Runtime lifecycle and execution semantics for both paths |
-| `docs/04-data-model-changes.md` | Proposed entities/fields and what should remain unchanged |
-| `docs/05-implementation-plan.md` | Revised implementation sequence; Kernel-first |
-| `docs/06-codex-vscode-workflow.md` | How to use Codex in VS Code without losing architectural control |
-| `docs/07-codex-task-templates.md` | Reusable prompts/task packets for Codex |
-| `docs/08-first-coding-session.md` | Exact starting sequence for the first coding sessions |
-| `docs/09-migration-from-original-design.md` | How to reconcile this revision with the existing docs |
-| `docs/10-test-strategy.md` | Tests that prove the architecture rather than just line coverage |
-| `docs/decisions/ADR-0023-control-layer.md` | Add an explicit Control layer |
-| `docs/decisions/ADR-0024-strategy-is-not-team-policy.md` | Boundary between Strategy and TeamPolicy |
-| `docs/decisions/ADR-0025-plan-is-derived-execution-state.md` | Why Plan should not become another memory layer |
-| `docs/decisions/ADR-0026-dual-entry-execution-model.md` | The two-path execution model |
-| `AGENTS.md` | Codex/AI working contract for this revision workspace |
-| `PLAN.md` | Entry point for implementation work |
+| [`PLAN.md`](PLAN.md) | Milestones and implementation order |
+| [`CHANGE_MAP.md`](CHANGE_MAP.md) | Source authority and revision mapping |
+| [`docs/architecture.md`](docs/architecture.md) | Original Watch architecture |
+| [`docs/01-architecture-revision.md`](docs/01-architecture-revision.md) | Revision 2 architecture |
+| [`docs/02-control-layer.md`](docs/02-control-layer.md) | Control-layer specification |
+| [`docs/03-runtime-model.md`](docs/03-runtime-model.md) | Runtime and execution semantics |
+| [`docs/04-data-model-changes.md`](docs/04-data-model-changes.md) | Data-model proposals and boundaries |
+| [`docs/05-implementation-plan.md`](docs/05-implementation-plan.md) | K1 contract and later implementation sequence |
+| [`docs/tasks.md`](docs/tasks.md) | Task behaviors, validation, budgets, and scope matrix |
+| [`docs/invariants.md`](docs/invariants.md) | Non-negotiable system invariants |
+| [`docs/10-test-strategy.md`](docs/10-test-strategy.md) | Architecture-focused test strategy |
+| [`docs/decisions/ADR-0026-dual-entry-execution-model.md`](docs/decisions/ADR-0026-dual-entry-execution-model.md) | Reactive and deliberative execution paths |
+| [`AGENTS.md`](AGENTS.md) | Repository instructions for implementation work |
