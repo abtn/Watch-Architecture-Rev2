@@ -203,3 +203,54 @@ source establishes it.
 - **Resulting documentation changes:** This simulation record was appended.
   No implementation, migration, test, project configuration, or architecture
   document was changed; no K1 implementation or test result is claimed.
+
+### 4. R0 architecture-authority and freeze preflight
+
+- **Task/scenario:** Determine the current architectural authority of Watch,
+  establish the starting point for R0, and decide whether the architecture can
+  be treated as a coherent, testable hypothesis without a fundamental redesign
+  before R0. The task explicitly forbade implementation or architecture edits.
+- **Repository state:** The checkout is on `main` and the worktree is clean. The
+  current HEAD is `5701423` (`Revise "Simple Explain.md"...`). Recent history
+  includes `213c44d` (`README` revision), `23a029e` (`K1 ingestion commit
+  path`), and the merge commit `8d4dd59` (`Merge K0 baseline`). The repo already
+  contains K0 tooling plus an implemented K1 ingestion path. `README.md` states
+  that “K0 is complete. K1 is implemented on `main`.” `PLAN.md` still names K0
+  as the current phase and R0 as a later milestone. The codebase contains
+  `core/ingestion.py`, `core/models.py`, `core/snapshot_store.py`, migrations,
+  tests, and Docker/Postgres configuration, but no Control-layer runtime
+  (`Objective`, `StateAssessment`, `StrategyProposal`, `Plan`) implementation.
+- **Expected behavior:** The repository instructions require reading
+  `AGENTS.md`, `CHANGE_MAP.md`, `PLAN.md`, and the architecture documents in
+  authority order, then distinguishing historical state from current repository
+  state. The docs also require stopping when authority is ambiguous instead of
+  silently selecting a conflict resolution. K0 guidance says Control-layer
+  implementation is out of scope; the repo's current K1 implementation is a
+  valid Kernel slice without model calls.
+- **Observed behavior:** The inspection followed the authority chain and found a
+  clear current source-of-truth pattern: `CHANGE_MAP.md` explicitly says
+  original documents govern unmapped concepts, while Revision 2 documents
+  govern only the concepts they explicitly revise. The repo currently contains
+  the K1 implementation reported in `README.md`, which is consistent with the
+  code and passing verification. The current state is therefore not a
+  documentation-only K0 repo or a pure pre-K1 state; it is a K1-era repo with
+  future Control work still deferred.
+- **Discrepancies:** The main discrepancy is milestone drift, not code
+  instability: `PLAN.md` describes the intended sequence (`K0 → K1 → R0 → ...`),
+  while the repository state already contains K1 implementation and says K1 is
+  complete on `main`. That means the plan document is a roadmap, not a literal
+  current-status mirror. The architecture documents are internally coherent
+  about the Kernel and Task boundary, but they are explicitly future-facing for
+  Control. There is no contradiction in the current code, but there is a
+  documented mismatch between the historical milestone narrative and the current
+  repository state. This is significant for R0 freeze planning because the repo
+  is not a clean “before R0” baseline; it is “K1 complete, Control deferred.”
+- **Lessons:** Treat the repository’s current code and README as the operative
+  status for implementation work; treat `PLAN.md` as the intended roadmap and
+  historical milestone narrative. For an R0 preflight, the architecture is
+  coherent enough as a bounded Kernel-plus-Task hypothesis, but it is not yet a
+  complete architectural freeze for the future Control layer. The current code
+  supports a valid, testable Kernel slice, and the remaining Control concepts are
+  intentionally deferred rather than redesigned in place.
+- **Resulting documentation changes:** This workflow-validation entry was
+  appended. No implementation files were modified.
