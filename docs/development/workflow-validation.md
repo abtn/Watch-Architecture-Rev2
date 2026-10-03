@@ -404,3 +404,132 @@ source establishes it.
 - **Resulting documentation changes:** Appended this record only. No
   architecture-source, plan, ADR, implementation, migration, test, or
   `.gitignore` file was changed.
+
+### 7. R0-04 corrected freeze contract consistency audit
+
+- **Task/scenario:** Correct the previous R0-04 documentation audit by using the
+  actual checked-out repo, the freeze contract, the current implementation, and
+  the authority-chain rules. The task boundary forbade architecture redesign,
+  implementation changes, or rewriting source documents; only this validation
+  record could be appended.
+- **Repository state:** The checkout was on the `R0` branch at
+  `096e927975940fb57b511fd618c0e89eab22e99a`. `git status --short --branch`
+  showed a clean worktree. No `.gitignore` modification was active. The
+  repository contains the K0 tooling baseline and a committed K1 ingestion
+  path: `core/models.py`, `core/ingestion.py`, `core/snapshot_store.py`, the
+  associated migrations/tests, and passing verification (`uv run pytest -q`:
+  18 passed; `uv run ruff check .` and `uv run mypy core`: pass). The repo
+  still does not contain implemented Control-layer entities or runtime
+  (`Objective`, `StateAssessment`, `StrategyProposal`, `Plan`, LLM integration,
+  scheduling, retrieval, etc.).
+- **Expected behavior:** The audit must use the captured Freeze Contract as the
+  exact source of truth for the R0 boundary, not the previous report or any
+  paraphrase. It must distinguish architecture freeze, implementation status,
+  experiment status, and documentation status. It must not treat
+  unimplemented features or unresolved empirical hypotheses as architectural
+  contradictions, and it must not rewrite source documents or invent missing
+  architecture.
+- **Observed behavior:** The audit read the actual Freeze Contract and the
+  authoritative repository documents, then checked the code and tests. The
+  repository is consistent with the Freeze Contract on the core boundary: the
+  Kernel, Task execution, proposal-validation-commit flow, immutable Snapshot,
+  Plan-as-intent semantics, StateAssessment as derived/non-authoritative,
+  Strategy as situational intent, and the divide between world memory and team
+  learning are all preserved. The architecture is not contradicted by the
+  current K1 implementation. The only material drift is documentary: some
+  milestone/status wording in `AGENTS.md`, `README.md`, `PLAN.md`, and
+  `docs/05-implementation-plan.md` still describes the project as a K0-only or
+  pre-K1 repo even though K1 and its tests are present and passing.
+- **Discrepancies:** The repository state is not a contradiction; it is a
+  documentation-status mismatch. `AGENTS.md` says K0 is complete and K1 should
+  not begin, but the repo contains and tests the K1 ingestion slice. `README.md`
+  states “K1 is implemented on `main`,” which is stale relative to the active
+  `R0` checkout and the actual Git branch state. `PLAN.md` and
+  `docs/05-implementation-plan.md` are roadmap documents, not live status
+  summaries, and must not be mistaken for the current implementation state.
+  `docs/glossary.md` and the wider design language still use capitalized
+  conceptual nouns such as `Evidence` and `EvidenceLink` inconsistently,
+  creating a terminology-cleanup issue rather than a structural failure.
+  `Simple Explain.md` is persuasive narrative framing, not authoritative
+  architecture or implementation status, and its stronger claims are limited by
+  the Freeze Contract's explicit non-proven hypotheses. No actual
+  architectural contradiction was found.
+- **Lessons:** The real source of truth for current implementation status is the
+  working tree and codebase, not milestone wording. The Freeze Contract is
+  coherent and is satisfied by the repository's current boundary: K1
+  deterministic ingestion is implemented, while Control-layer entities remain
+  future work. The correct verdict is not “R0 broken,” but “R0 coherently
+  frozen with documentation cleanup required.” The repository should be
+  documented as: K0 merged, K1 implemented, Control layer deferred, and the
+  future architecture still explicitly unproven.
+- **Resulting documentation changes:** This validation record was appended only.
+  No implementation files, architecture-source documents, ADRs, tests,
+  migrations, or `.gitignore` files were modified.
+
+### 8. R0-04c final evidence correction pass
+
+- **Task/scenario:** Correct source exactness, invariant evidence, selected
+  document classifications, and worktree/test reporting in the preceding
+  R0-04b audit. No architecture redesign or source-document cleanup was
+  authorized; this section is an append-only correction record.
+- **Repository state:** Branch `R0`, HEAD
+  `096e927975940fb57b511fd618c0e89eab22e99a`. R0-04b began with a clean
+  worktree and appended its record without committing it. At the start of this
+  pass, the only modification was that preceding append to this file; no
+  `.gitignore` or other user modification was present. The current append also
+  remains uncommitted.
+- **Freeze Contract exactness corrections:** The architectural-objective quote
+  in R0-04b was exact. H1–H7 headline labels were exact, but the section was an
+  incomplete faithful summary because it omitted each row's explanatory
+  sentence and status. The seven redesign triggers and their order were
+  faithfully paraphrased, not exact quotations. The acceptance-criteria list
+  was also not an exact extraction. In particular, criterion 8 is: “The listed
+  implementation choices and empirical hypotheses remain open; none is
+  represented as an R0 proof or mandatory implementation choice.” R0-04b
+  omitted the second clause, materially weakening that criterion. Criterion 6
+  was compressed; the actual criterion names durable state, execution
+  provenance, and the validation/commit boundary as the things that remain
+  attributable and reconstructable through the existing model.
+- **Invariant evidence correction:** `docs/invariants.md` defines INV-01
+  through INV-15 and contains a planned invariant-to-test mapping, but that
+  mapping is not proof of implementation. The current test tree contains
+  `test_database.py` and `test_ingestion.py`; the implementation contains only
+  the K1 ingestion path. Current enforcement/test status is therefore partial
+  only for INV-02, INV-03, INV-13, and INV-14, limited to K1; the other
+  invariants are not reached by the current implementation. This corrects
+  R0-04b's unsupported implications that INV-04, INV-07, or INV-09 are
+  currently enforced or tested.
+- **Documentation-status corrections:** `AGENTS.md` says K0 tooling is on the
+  `k0` branch and that K0 is complete; these statements are accurate. Its
+  K0-boundary heading and “Do not begin K1 unless explicitly requested”
+  instruction are ambiguous about present K1 status, but do not explicitly say
+  K1 is unimplemented. `README.md` says K1 is implemented on `main`; this is
+  supported by the `k1` commit being an ancestor of `origin/main`, so the
+  active `R0` checkout does not make that statement stale. `PLAN.md` explicitly
+  says “Current implementation milestone: K0”; that status is stale against
+  the R0 checkout containing K1. `docs/05-implementation-plan.md` is a K0/K1
+  implementation plan and does not assert that K1 is the current status.
+  `docs/architecture.md` is an architecture specification, not evidence that
+  its described runtime is implemented. `docs/glossary.md` defines
+  `EvidenceLink` but has no standalone `Evidence` definition despite
+  capitalized conceptual use elsewhere; classify this as terminology
+  ambiguity, not a proven competing entity. `Simple Explain.md` is
+  explanatory framing; its “designed to” wording is not a claim of validated
+  capability.
+- **Verification and worktree reconciliation:** In R0-04b, direct `pytest -q`
+  did not run because `pytest` was unavailable as a PowerShell command; this
+  was an environment/command-availability failure, not a test failure.
+  `uv run pytest -q` succeeded: 18 passed in 132.61 seconds. `uv run ruff
+  check .` and `uv run mypy core` both passed. Before this append, the worktree
+  was modified only in `docs/development/workflow-validation.md` by the
+  uncommitted R0-04b append. After this append, that remains the only modified
+  path; there is no clean-worktree claim and no commit explains the change.
+- **Corrected result:** No Freeze Contract redesign trigger is evidenced by
+  this review. The verdict remains `R0 CONSISTENT WITH DOCUMENTATION CLEANUP`,
+  based on the stale explicit K0 milestone status in `PLAN.md` and the bounded
+  terminology ambiguity around Evidence/EvidenceLink—not on test success.
+  The K1-limited implementation evidence does not establish enforcement of
+  the full invariant suite.
+- **Resulting documentation changes:** This correction record was appended to
+  this file only. No source documents, implementation, migrations, tests, or
+  `.gitignore` were changed.
