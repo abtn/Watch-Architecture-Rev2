@@ -533,3 +533,28 @@ source establishes it.
 - **Resulting documentation changes:** This correction record was appended to
   this file only. No source documents, implementation, migrations, tests, or
   `.gitignore` were changed.
+
+### 9. R0-05 documentation alignment
+
+- **Task/scenario:** Align current milestone wording and clarify the
+  Evidence/EvidenceLink vocabulary following the R0-04c correction findings.
+- **Repository state:** R0-04c and the preceding audit were committed. The
+  worktree was clean before this task. K0 is complete, K1 ingestion is
+  implemented, and R0 is the current architecture-freeze/alignment phase.
+- **Expected behavior:** Make only the supported status and terminology
+  clarifications; preserve the Freeze Contract's testable-hypothesis boundary
+  and leave architecture and implementation unchanged.
+- **Observed behavior:** Updated `PLAN.md` to identify R0 as the current phase
+  and mark K0/K1 complete; clarified in `AGENTS.md` that K1 is implemented
+  while retaining the K0 boundary and Control-layer restriction; defined
+  `Evidence` as conceptual terminology distinct from the concrete `EvidenceLink`
+  record in `docs/glossary.md`.
+- **Discrepancies:** No new architectural discrepancy was identified. This
+  cleanup does not claim that the Control layer, full invariant suite, or
+  expertise-learning hypotheses are implemented or proven.
+- **Lessons:** Keep implementation milestone status distinct from the
+  architecture-freeze phase, and distinguish a conceptual category from its
+  concrete record vocabulary.
+- **Resulting documentation changes:** Only `PLAN.md`, `AGENTS.md`,
+  `docs/glossary.md`, and this validation record were changed. The R0 Freeze
+  Contract, architecture, K1 implementation, and tests were unchanged.

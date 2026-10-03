@@ -81,6 +81,9 @@ An ongoing situation or shift a Team tracks. Holds competing Hypotheses and is t
 A competing explanation, assessment, or working belief within a Thread. Multiple Hypotheses may be active simultaneously. Removal happens only by explicit rejection or supersession, never silently. Hypotheses may originate from model workers or from an Operator's expert contribution (`operator_update`); unsubstantiated entries begin at `low`.
 *Banned synonyms:* belief, opinion, verdict, claim.
 
+### Evidence
+A conceptual category used in the architecture, not a separate durable entity. The concrete validated provenance record is an EvidenceLink.
+
 ### EvidenceLink
 A validated provenance link from a subject (a Hypothesis or an Evaluation) to an immutable source (a Signal, Outcome, Artifact, or Consultation answer), carrying a Stance and a verbatim quote verified against the source Snapshot.
 *Not the same as:* Artifact citations (assembled by code at render time). *Banned synonyms:* citation, reference, source link.

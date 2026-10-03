@@ -1,10 +1,10 @@
 # AGENTS.md — Watch workspace instructions
 
-## Current state and K0 boundary
+## Current state and implementation boundary
 
 - K0 tooling/setup is implemented on the `k0` branch: Python 3.12+, uv project/dependency management, PostgreSQL + pgvector via Docker Compose, Alembic, pytest, Ruff, and mypy.
-- K0 is complete. Do not begin K1 unless explicitly requested. Check `PLAN.md` and `docs/05-implementation-plan.md` for milestone definitions and acceptance criteria.
-- K0 does not implement Control-layer entities or behavior: no Objective, StateAssessment, StrategyProposal, Plan, or LLM integration. Control-layer implementation is not authorized unless explicitly requested.
+- K0 is complete, and the K1 ingestion path is implemented. Do not add further K1 scope unless explicitly requested. Check `PLAN.md` and `docs/05-implementation-plan.md` for milestone definitions and acceptance criteria.
+- K0 and K1 do not implement Control-layer entities or behavior: no Objective, StateAssessment, StrategyProposal, Plan, or LLM integration. Control-layer implementation is not authorized unless explicitly requested.
 - The K0 setup contains no application behavior establishing additional code-style conventions. Do not infer them from future architecture plans.
 
 ## Source of truth
@@ -15,7 +15,7 @@
 
 ## Architectural boundaries
 
-These constrain the architecture; they do not authorize implementing future components during K0.
+These constrain the architecture; they do not authorize implementing future components.
 
 - Agents/workers propose; application code validates and commits.
 - Durable state changes go through the Kernel; the Kernel is authoritative for committed state.
