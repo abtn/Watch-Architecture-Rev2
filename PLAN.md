@@ -6,8 +6,11 @@ Establish the revised architecture first, then implement the smallest executable
 
 The Control layer is introduced only after the Kernel tooling and basic Task/Proposal/Commit semantics are working.
 
-Current implementation milestone:
-K0
+Current phase:
+R0 — architecture freeze and documentation alignment
+
+Implementation status:
+K0 complete; K1 implemented
 
 Historical terminology:
 M0
