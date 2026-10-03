@@ -346,3 +346,61 @@ source establishes it.
   `docs/development/r0-freeze-contract.md` and appended this record. No
   AGENTS.md, architecture-source, implementation, migration, or test file was
   changed.
+
+### 7. R0 Simulation 04 — Freeze Contract consistency audit
+
+- **Task/scenario:** Audit the repository documentation against the R0 Freeze
+  Contract, using the established authority chain. The request required an
+  evidence-based discrepancy report and prohibited changes to architecture,
+  implementation, plans, ADRs, tests, or migrations; this validation record
+  was the only permitted edit.
+- **Repository state:** The checkout was on `R0` at
+  `038aba6a4028a5e18560bc9899f3c653ee1bc72d`. The only pre-existing worktree
+  change was `.gitignore` adding `Project2text.txt`; it was not changed. The
+  R0-03 contract and validation record were committed at HEAD, and no tracked
+  files changed after that commit before this record. K0 tooling and the K1
+  ingestion slice were present. The implemented code contained only the K1
+  Team, TeamPolicy, Task, Signal, and Event mappings plus ingestion and
+  Snapshot storage; no Objective, StateAssessment, StrategyProposal, Plan,
+  Control runtime, retrieval, learning runtime, or LLM integration was
+  present.
+- **Expected behavior:** `AGENTS.md` requires the authority chain to be read,
+  source conflicts to be reported rather than inferred away, and workflow
+  simulations to append a chronological record without implementation edits.
+  The Freeze Contract requires the Worker/Kernel, dual-entry, single-runtime,
+  Plan, StateAssessment, Strategy, memory, learning, provenance, evidence,
+  and external-content boundaries to remain intact without treating open
+  hypotheses as established capability.
+- **Observed behavior:** The audit read the required authority, architecture,
+  control, runtime, schema, milestone, task, invariant, glossary, ADR, README,
+  explanation, and workflow documents; inspected Git history, the worktree,
+  package/runtime configuration, migrations, models, and tests; and made no
+  source, implementation, migration, or ADR edit. The major architecture
+  documents and ADR-0023 through ADR-0026 agree on Worker proposal versus
+  Kernel commit, convergence of reactive and deliberative work into ordinary
+  Tasks, Plan-as-intent, non-authoritative StateAssessment, Strategy distinct
+  from TeamPolicy, and controlled Team-learning changes. No test command was
+  run, so this record makes no new verification-pass claim.
+- **Discrepancies:** No architectural contradiction was found. Status wording
+  in `AGENTS.md`, `PLAN.md`, and `docs/05-implementation-plan.md` still frames
+  K0 as current and K1 as unimplemented/planned despite the committed K1
+  implementation. `docs/invariants.md` says every invariant is enforced and
+  covered by a named test, while the repository currently contains only the K1
+  slice and its focused tests. `docs/architecture.md` describes the larger v1
+  LangGraph/Anthropic/Redis/FastAPI runtime in present tense although those
+  dependencies and runtime components are absent. `Simple Explain.md` states
+  desired expertise improvements and cross-model benefits more strongly than
+  the contract's explicitly unproven hypotheses. Capitalized `Evidence` is
+  used in conceptual diagrams while the glossary defines `EvidenceLink`, which
+  leaves its exact meaning unclear. These are stale documentation,
+  inconsistency, or terminology-cleanup findings, not a reason to redesign.
+- **Lessons:** Treat repository code and committed migrations as the source for
+  implementation status, while keeping the authority map for architectural
+  meaning. Keep roadmap/specification language visibly distinct from claims
+  about what is implemented or empirically demonstrated. The R0 contract can
+  leave a technology choice non-frozen without invalidating an older v1
+  implementation preference; the choice must not be mistaken for a frozen
+  architectural relationship.
+- **Resulting documentation changes:** Appended this record only. No
+  architecture-source, plan, ADR, implementation, migration, test, or
+  `.gitignore` file was changed.
