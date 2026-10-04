@@ -571,3 +571,25 @@ source establishes it.
 - **Resulting documentation changes:** Updated
   [`docs/04-data-model-changes.md`](../04-data-model-changes.md) and appended
   this record only.
+
+### 11. R1-01 implementation contract pass
+
+- **Task/scenario:** Establish the repository-backed R1 scope and first
+  implementation boundary without beginning implementation.
+- **Repository state:** Branch `R1`, HEAD `63d836e`; worktree clean at start.
+  The R0 branch and R0-05 alignment commit are ancestors of HEAD. K0 and K1
+  are present; Control-layer models and runtime are absent.
+- **Observed result:** `PLAN.md` and `docs/05-implementation-plan.md` define
+  R1 as a compatibility design pass, explicitly with no Control-layer code
+  beyond design; Objective implementation begins in R2. The committed R1-03
+  compatibility note preserves K1 write-scope semantics and Task-attributed
+  Objective/Plan changes. No implementation files were changed.
+- **Discrepancies:** `PLAN.md` still labels R0 as the current phase although
+  this branch contains an R1-03 decision commit. The task label R1-01 also
+  follows the R1-03 entry in the existing chronological record. These are
+  status/sequence documentation mismatches, not contradictions with the R0
+  Freeze Contract. Exact Plan lifecycle and some schema/runtime details remain
+  deferred or unspecified; they must not be invented in this pass.
+- **Resulting documentation changes:** Appended this record only. No
+  implementation, migration, test, architecture, ADR, milestone, or Freeze
+  Contract file was changed.
