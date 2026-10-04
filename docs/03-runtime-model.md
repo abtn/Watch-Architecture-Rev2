@@ -115,6 +115,24 @@ The Control layer may determine that:
 
 Replanning creates a new Plan; the old Plan remains history.
 
+### Objective mutation contract for R2
+
+R2 provides Task-attributed operations for Objective creation and legal
+status transitions. A Trigger initiates a Task for such a mutation; it does
+not bypass Task attribution. The Task and Objective must have the same Team,
+and the operation passes the existing scope, budget, deterministic validation,
+and Kernel commit boundary.
+
+A successful Objective mutation and its attributable Event commit atomically
+and record enough information to reconstruct the committed transition. A
+rejected mutation leaves Objective state unchanged and produces an auditable
+rejection Event with a stable reason/category. Retrying the same successful
+mutation from the same Task cannot double-commit it. Revalidate expected
+Objective state at commit; reject stale/conflicting transitions rather than
+silently overwriting them. Event names, reason-code strings, rejection
+transaction structure, rejection-Event reuse, and the database concurrency
+mechanism remain open implementation choices.
+
 ## 4. Worker isolation
 
 A Worker receives:

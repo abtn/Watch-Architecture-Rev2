@@ -593,3 +593,105 @@ source establishes it.
 - **Resulting documentation changes:** Appended this record only. No
   implementation, migration, test, architecture, ADR, milestone, or Freeze
   Contract file was changed.
+
+### 12. R1-04 compatibility design closure
+
+- **Task/scenario:** Close the compatibility decisions needed to begin R2
+  without implementing Control behavior or changing the R0-frozen model.
+- **Repository state:** Branch `R1`, HEAD `bddb7a5`; worktree clean at start.
+  R0 is in branch ancestry, and the Freeze Contract matches `origin/R0`.
+  K1 migration `0002_ingestion_kernel` and its Objective-free models remain
+  the existing implementation baseline.
+- **Decisions closed:** `PLAN.md` now identifies R0 complete, R1 current, and
+  R2 as the first Control implementation phase. Objective mutations are
+  authorized only through Task-attributed `create_objective` and
+  `transition_objective` operations, with the existing scope, Team, budget,
+  Kernel, Event, retry, and optimistic-conflict boundaries. Task Objective/
+  Plan reference rules and the R2/R5 migration split are explicit. Selected
+  Assessment basis and budget hierarchy requirements are recorded. Relevant
+  INV-01, INV-02, INV-03, INV-11, INV-12, INV-13, INV-14, and INV-15
+  obligations are mapped to future R2-R5 tests.
+- **Deliberately open:** Plan status vocabulary/transitions, dependency
+  storage, Plan mutation scope and event vocabulary, materialization retry
+  details, database constraint/index choices, and Assessment serialization,
+  storage, and hash implementation remain for the appropriate later design or
+  implementation choice. No Plan schema is added in R1.
+- **R0 boundary and implementation:** Worker proposal, Kernel validation and
+  commit authority, Task convergence, one execution runtime, non-authoritative
+  Assessment, Plan-as-intent, memory separation, provenance limits, evidence
+  limits, and the external-content boundary remain unchanged. No code,
+  migration, or test was added; no Control runtime was implemented.
+- **Resulting documentation changes:** Updated `PLAN.md`,
+  `docs/04-data-model-changes.md`, `docs/03-runtime-model.md`,
+  `docs/tasks.md`, `docs/02-control-layer.md`, and
+  `docs/05-implementation-plan.md`; appended this record. Readiness:
+  `R1 COMPATIBILITY CONTRACT CLOSED WITH EXPLICIT OPEN ITEMS`.
+
+### 13. R1-05 compatibility closure challenge audit
+
+- **Task/scenario:** Adversarially review the uncommitted R1-04 documentation
+  changes against the current authority chain; do not amend those changes.
+- **Repository state:** Branch `R1`, base commit `bddb7a5`; the seven R1-04
+  documentation paths were already modified. Their changes were preserved.
+- **Source-supported findings:** Objective lifecycle and terminal states;
+  Task attribution, same-Team ownership, scoped Kernel validation and
+  reason-bearing rejection; atomic revalidation and rejection of conflicting
+  commits; optional Task references; reconstructable selected Assessment
+  provenance; Plan-as-intent, stop conditions, dependencies with cycle
+  validation, non-silent replanning, and the TeamPolicy > Plan > Task budget
+  hierarchy are supported by the mapped architecture, invariants, and
+  milestones.
+- **Over-specification:** Exact Objective Task names, success/rejection Event
+  names, stable reason strings, rejection transaction separation, replay
+  comparison fields and reuse of rejection outcomes, Objective deduplication
+  policy, `W` scope classification, and restriction to no model/tool usage
+  are not fixed by the authorities. They should remain implementation choices
+  or be stated only as semantic requirements. The optimistic expected-state
+  revalidation guarantee itself is supported by INV-13; no particular new
+  lock/version mechanism is mandated.
+- **Contradiction:** R1-04 declares Plan-only Tasks invalid and requires
+  `objective_id` whenever `plan_id` is present. `CHANGE_MAP.md` says Tasks may
+  optionally reference an Objective “and/or” a Plan; the pre-existing data
+  model requires parent consistency only when both references are present.
+  The new prohibition therefore narrows the authorized relationship and
+  conflicts with the mapped source. Plan ownership by its Objective does not
+  require duplicating that Objective reference on every Task.
+- **Assessment:** R1-04 is `R1-04 REQUIRES REWORK`. The R1-04 patch was not
+  changed or discarded. Minimal correction is to remove the Plan-only
+  prohibition, retain same-Team and parent consistency where both references
+  exist, and relax literal identifiers, reason names, rejection persistence,
+  retry, scope-category, and no-tool/model choices to their source-supported
+  semantics. Plan cycles/stop conditions and Assessment basis hash/timestamp
+  requirements are source-supported; their storage and serialization details
+  remain open.
+- **Resulting documentation changes:** Appended this audit record only. No
+  R1-04 source document, code, migration, test, ADR, or Freeze Contract was
+  modified. No commit was made.
+
+### 14. R1-06 rework of R1-04 compatibility contract
+
+- **Task/scenario:** Surgically rework the uncommitted R1-04 compatibility
+  changes following the R1-05 challenge audit; preserve the R0 architecture
+  and make no implementation changes.
+- **Repository state:** Branch `R1`, base commit `bddb7a5`; the seven
+  uncommitted R1-04 documentation paths and the R1-05 audit entry were
+  preserved.
+- **Corrections:** R1-05 identified the genuine Task-reference contradiction.
+  The contract now permits neither reference, Objective only, Plan only, or
+  both, with parent consistency when both are present and consistent Team
+  ownership. Objective mutation, success Event, and rejection requirements
+  are semantic; literal Task/Event names and reason codes are open. Unsupported
+  rejection transaction/replay details, Objective text-field immutability,
+  cross-Task deduplication, W scope classification, and no-model/tool limits
+  were removed. INV-13's atomic revalidation and no-silent-conflict guarantee
+  remains without prescribing a database mechanism. Plan dependency validity,
+  cycle prevention, stop conditions, historical intent, Assessment
+  reconstructability, and the budget hierarchy remain semantic requirements;
+  physical representation and implementation details remain open.
+- **R0 boundary and implementation:** The R0 Freeze Contract is unchanged.
+  R1 remains design-only; R2 is Objective implementation and R5 is Plan
+  materialization. No code, migration, test, or Control runtime was added.
+- **Resulting documentation changes:** Corrected the existing R1-04 wording
+  in `docs/04-data-model-changes.md`, `docs/03-runtime-model.md`,
+  `docs/tasks.md`, `docs/02-control-layer.md`, and
+  `docs/05-implementation-plan.md`; appended this record. No commit was made.

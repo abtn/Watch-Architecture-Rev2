@@ -170,6 +170,21 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Writes:** Consultation status `open → answered` (+ answer Snapshot + hash, optional structured `verdict` per team policy), Event with operator identity; optional enqueue of a follow-up update/evaluate Task so the answer enters the loop.
 - **Validation:** Consultation is `open`; answer Snapshot stored before commit; the answer becomes citable as `source_kind="consultation"` evidence (INV-04 applies to any later quote of it).
 
+### Objective creation operation — R2 contract
+- **Purpose:** create one durable Objective in `draft` for the Task's Team.
+- **Writes:** Objective, Event.
+- **Validation:** Objective fields are schema-valid; the creating Task is running and authorized for Objective writes; Objective Team matches Task Team. Record Task attribution.
+- **Commit:** Creation begins in `draft`. Commit the Objective and a durable, attributable Event atomically. This operation creates the Objective; status changes use the lifecycle-transition operation below.
+- **Retry/rejection:** a same-Task retry must not double-commit the same successful creation. Rejection leaves Objective state unchanged and is recorded in an auditable Event with a stable reason/category. Literal Task/Event names and rejection retry behavior remain open.
+
+### Objective lifecycle-transition operation — R2 contract
+- **Purpose:** perform one legal Objective status transition.
+- **Writes:** Objective status, Event.
+- **Validation:** Objective belongs to the Task's Team; expected current status matches; target transition is in the Objective lifecycle; Task write scope and budget permit the operation.
+- **Commit:** Revalidate expected state and atomically commit the transition with an attributable Event sufficient to reconstruct it. Rejected operations leave Objective unchanged and produce an auditable rejection Event with a stable reason/category.
+- **Concurrency:** stale/conflicting transitions reject under INV-13 rather than silently overwrite. A same-Task retry cannot double-commit a matching successful transition. The database mechanism, exact retry identity, and reuse of rejection Events remain open.
+- **Boundary:** R2 implements the Objective operations in its milestone; additional Objective mutation semantics remain subject to later design. Triggers initiate mutations through ordinary Tasks, not a parallel write path.
+
 ### `create_team` — Operator via API/CLI
 - **Purpose:** create a Shell team for a new subject (F7).
 - **Writes:** Team (`status="configuring"`), subject-brief Snapshot (+hash, referenced from the Event payload and by the subsequent TeamDraft), Event.
@@ -244,6 +259,23 @@ enqueue only `request_consultation` when the documented delivery gate applies.
 follow-up update/evaluation work after recording the consultation answer.
 ²³ In addition to its own lifecycle, enqueue only `update_thread` for the
 documented deferred/matched triage cases.
+
+#### R2 Objective scope extension
+
+The following semantic operations require the Task's authorized Objective
+write scope and use the existing Task lifecycle and Event scope. They describe
+the R2 contract, not current runtime capabilities; concrete Task and Event
+names remain implementation choices.
+
+| Objective operation | Permitted mutation |
+|---|---|
+| Creation | Create one `draft` Objective for the Task's Team |
+| Lifecycle transition | Perform one legal status transition on a same-Team Objective |
+
+No other Task type may mutate an Objective. `check_triggers` may enqueue one
+of these operation Tasks only after deterministic Trigger validation; it may
+not write Objective state itself. R2 Objective Tasks use the common
+active-Team, running-Task, write-scope, and budget checks.
 
 For each task type, Event (K) permits only Task-attributed Events generated
 by application code for its normal transition and commit outcomes, including

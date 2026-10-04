@@ -313,6 +313,13 @@ Deliver:
 
 Implement one durable Objective entity with its explicit lifecycle; Tasks may reference it, but no second ephemeral Objective abstraction exists.
 
+Add a new migration after the immutable K1 migration `0002_ingestion_kernel`;
+do not alter K1 schema or behavior. Add the nullable `tasks.objective_id`
+reference in this slice. Objective creation and status transitions are
+Task-attributed operations using the compatibility contract in
+`docs/04-data-model-changes.md` and `docs/tasks.md`; all mutations remain
+Kernel-validated. Concrete Task and Event names remain implementation choices.
+
 Implement:
 
 - Objective model
@@ -332,6 +339,11 @@ unspecified transitions fail
 completed and cancelled are terminal
 every transition emits Event
 ```
+
+Tests cover lifecycle success/rejection, same-Task replay, scope and
+same-Team ownership rejection, atomic Objective/Event persistence, and
+conflicting concurrent transitions. These tests establish R2 behavior only;
+they do not imply that the full invariant suite is implemented.
 
 ## Slice R3 — Read-only StateAssessment
 
@@ -370,6 +382,15 @@ Acceptance:
 - policy bypass rejected
 
 ## Slice R5 — Plan materialization
+
+Add the Plan schema and nullable `tasks.plan_id` in a migration after the R2
+Objective migration; do not backfill ordinary reactive Tasks into Plans. A
+Plan requires its parent Objective. Task Objective and Plan references remain
+independently optional; when both are present, they must be Team-consistent
+and the Task Objective must match the Plan's parent Objective. Before
+implementation, settle the intentionally deferred Plan status transitions,
+dependency representation, mutation scope, and materialization replay behavior
+in accordance with `docs/04-data-model-changes.md`.
 
 Implement:
 
