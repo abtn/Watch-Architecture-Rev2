@@ -96,6 +96,13 @@ completed, cancelled → (terminal)
 
 Every transition is validated and audited. No other transitions are legal.
 
+For R2, Objective creation and status transitions are Task-attributed
+operations through the existing Task scope, budget, validation, Kernel
+commit, and Event path. A Trigger initiates a Task for such a mutation rather
+than bypassing Task attribution. Literal Task and Event names are not fixed
+by this compatibility contract. Retry, rejection, and concurrency semantics
+are defined in `docs/04-data-model-changes.md`.
+
 An Objective should have:
 
 - durable identity
@@ -233,6 +240,17 @@ A Plan is not:
 - authoritative execution truth
 
 Actual execution is represented by Tasks, Events, and Outcomes. A Plan may become partially completed, abandoned, invalidated, or superseded without corrupting the execution record.
+
+The R1 compatibility boundary requires one parent Objective and Team, Task
+attribution, valid dependencies that do not create cycles, selected
+Strategy/Assessment provenance, stop conditions, and a budget envelope.
+Substantial replanning must not silently rewrite historical intent; the
+architecture describes creating a new Plan, while the exact replacement or
+supersession mechanism remains open. Task references to Objective and Plan
+remain independently optional; when both are present they must be
+parent-consistent and same-Team. The Plan status vocabulary and transition
+graph, dependency storage shape, and exact Task scope operation remain for R5
+design; R1 adds no Plan schema or runtime.
 
 ### 3.9 Task convergence
 
