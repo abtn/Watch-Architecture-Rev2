@@ -558,3 +558,16 @@ source establishes it.
 - **Resulting documentation changes:** Only `PLAN.md`, `AGENTS.md`,
   `docs/glossary.md`, and this validation record were changed. The R0 Freeze
   Contract, architecture, K1 implementation, and tests were unchanged.
+
+### 10. R1-03 compatibility decision recording
+
+- **Task/scenario:** R1-02 resolved the write-scope/provenance conflict; R1-03
+  recorded that decision in the Revision-2 data-model authority.
+- **Observed result:** Existing K1 scope semantics remain unchanged; future
+  Control authorization is additive; Objective and Plan mutations remain
+  Task-attributed; the original baseline and R0 Freeze Contract were unchanged.
+- **Boundaries:** No Control runtime, schema, migration, tests, or other durable
+  implementation was added. The complete Plan lifecycle table remains deferred.
+- **Resulting documentation changes:** Updated
+  [`docs/04-data-model-changes.md`](../04-data-model-changes.md) and appended
+  this record only.

@@ -12,6 +12,8 @@ If not, keep it derived.
 
 The Control layer must be additive. The existing Task state machine and write-scope matrix must not change merely to introduce Control.
 
+Compatibility rule for the R1 design pass: existing K1 Task write-scope semantics remain unchanged and authoritative. Durable Objective and Plan mutations must be Task-attributed and pass through the same Task write-scope authorization and Kernel validation path; Trigger-driven deliberation must materialize a Task before such a mutation. Future Control-layer authorization may be added within this model, but must not rewrite K1 semantics or create a parallel mechanism. Plan remains durable execution intent, not execution truth; Tasks, Events, and Outcomes remain execution truth. A complete Plan lifecycle table is deferred to a later R1 task.
+
 ## 2. Candidates
 
 ### Objective
