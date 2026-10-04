@@ -695,3 +695,31 @@ source establishes it.
   in `docs/04-data-model-changes.md`, `docs/03-runtime-model.md`,
   `docs/tasks.md`, `docs/02-control-layer.md`, and
   `docs/05-implementation-plan.md`; appended this record. No commit was made.
+
+### 15. R1-07 final closure audit
+
+- **Task/scenario:** Verify the completed R1 compatibility work against the
+  final authority chain, check for remaining contradictions, and establish
+  the documentation commit boundary without implementing R2.
+- **Repository state:** Branch `R1`, HEAD `b3b21d6`. The worktree was clean at
+  audit start. HEAD already contains the seven authorized R1 documentation
+  files; this audit did not create or amend that commit.
+- **Observed result:** The contract permits Tasks with neither Objective nor
+  Plan, either reference alone, or both; parent consistency applies when both
+  are present, and referenced records must match the Task's Team. Objective
+  lifecycle, Task attribution, Kernel authority, INV-13 semantics, Plan intent
+  and stop conditions, Assessment provenance, and budget hierarchy agree with
+  the mapped sources. Remaining names, storage, locking, replay representation,
+  Plan lifecycle/scope, and serialization details remain deferred.
+- **Contradiction scan:** No operative contradiction remains. Superseded
+  identifiers and the former Plan-only prohibition occur only in preserved
+  chronological R1-04/R1-05 audit text; K1 rejection vocabulary remains
+  specific to K1.
+- **Boundaries:** The R0 Freeze Contract is unchanged. No R0 redesign trigger
+  appeared. No implementation, migration, test, or Control runtime was added.
+- **Commit boundary:** The R1 documentation change is already committed at
+  `b3b21d6` and contains exactly `PLAN.md`, `docs/04-data-model-changes.md`,
+  `docs/03-runtime-model.md`, `docs/tasks.md`, `docs/02-control-layer.md`,
+  `docs/05-implementation-plan.md`, and
+  `docs/development/workflow-validation.md`. No further commit was made.
+- **Final status:** `R1 COMPLETE WITH EXPLICIT LATER-MILESTONE OPEN ITEMS`.
