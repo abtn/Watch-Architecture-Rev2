@@ -44,6 +44,27 @@ class TeamPolicy(Base):
     rules: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
 
+class Objective(Base):
+    __tablename__ = "objectives"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'active', 'paused', 'blocked', "
+            "'completed', 'cancelled')",
+            name="ck_objectives_status",
+        ),
+        UniqueConstraint("id", "team_id", name="uq_objectives_id_team"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False
+    )
+    statement: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String, nullable=False, default="draft", server_default="draft"
+    )
+
+
 class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
@@ -51,6 +72,11 @@ class Task(Base):
             ["team_id", "policy_version"],
             ["team_policies.team_id", "team_policies.version"],
             name="fk_tasks_team_policy_version",
+        ),
+        ForeignKeyConstraint(
+            ["objective_id", "team_id"],
+            ["objectives.id", "objectives.team_id"],
+            name="fk_tasks_objective_team",
         ),
     )
 
@@ -61,6 +87,7 @@ class Task(Base):
     task_type: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
     policy_version: Mapped[int] = mapped_column(nullable=False)
+    objective_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     allowed_writes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     budget: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
