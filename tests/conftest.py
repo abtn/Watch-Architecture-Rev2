@@ -12,7 +12,7 @@ from sqlalchemy import Engine, create_engine, delete
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.ingestion import IngestionProposal
-from core.models import Event, Signal, Task, Team, TeamPolicy
+from core.models import Event, Objective, Signal, Task, Team, TeamPolicy
 from core.snapshot_store import SnapshotStore
 
 
@@ -23,6 +23,17 @@ class IngestionPrerequisites:
     task_id: UUID
     origin_url: str
     source_type: str
+
+
+@dataclass(frozen=True)
+class ObjectivePrerequisites:
+    team_id: UUID
+    policy_id: UUID
+    create_task_id: UUID
+    transition_task_id: UUID
+    conflict_task_id: UUID
+    other_team_id: UUID
+    other_policy_id: UUID
 
 
 @pytest.fixture
@@ -114,6 +125,83 @@ def prerequisites(
             session.execute(delete(Task).where(Task.id == task_id))
             session.execute(delete(TeamPolicy).where(TeamPolicy.id == policy_id))
             session.execute(delete(Team).where(Team.id == team_id))
+
+
+@pytest.fixture
+def objective_prerequisites(
+    session_factory: sessionmaker[Session],
+) -> Iterator[ObjectivePrerequisites]:
+    (
+        team_id,
+        policy_id,
+        create_task_id,
+        transition_task_id,
+        conflict_task_id,
+        other_team_id,
+        other_policy_id,
+    ) = (uuid4() for _ in range(7))
+    prerequisites = ObjectivePrerequisites(
+        team_id,
+        policy_id,
+        create_task_id,
+        transition_task_id,
+        conflict_task_id,
+        other_team_id,
+        other_policy_id,
+    )
+    with session_factory.begin() as session:
+        session.add_all(
+            [
+                Team(id=team_id, domain="objective_test", status="active"),
+                Team(id=other_team_id, domain="objective_other", status="active"),
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                TeamPolicy(id=policy_id, team_id=team_id, version=1, rules={}),
+                TeamPolicy(
+                    id=other_policy_id, team_id=other_team_id, version=1, rules={}
+                ),
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                Task(
+                    id=task_id,
+                    team_id=team_id,
+                    task_type=task_type,
+                    status="running",
+                    policy_version=1,
+                    allowed_writes=["Objective"],
+                    budget={
+                        "max_tool_calls": 0,
+                        "max_cost_usd": 0.0,
+                        "deadline_seconds": 60,
+                    },
+                )
+                for task_id, task_type in (
+                    (create_task_id, "create_objective"),
+                    (transition_task_id, "transition_objective"),
+                    (conflict_task_id, "transition_objective"),
+                )
+            ]
+        )
+    try:
+        yield prerequisites
+    finally:
+        with session_factory.begin() as session:
+            task_ids = [create_task_id, transition_task_id, conflict_task_id]
+            session.execute(delete(Event).where(Event.task_id.in_(task_ids)))
+            session.execute(delete(Task).where(Task.id.in_(task_ids)))
+            session.execute(delete(Objective).where(Objective.team_id == team_id))
+            session.execute(
+                delete(TeamPolicy).where(
+                    TeamPolicy.id.in_([policy_id, other_policy_id])
+                )
+            )
+            session.execute(delete(Team).where(Team.id.in_([team_id, other_team_id])))
 
 
 def make_proposal(
