@@ -723,3 +723,53 @@ source establishes it.
   `docs/05-implementation-plan.md`, and
   `docs/development/workflow-validation.md`. No further commit was made.
 - **Final status:** `R1 COMPLETE WITH EXPLICIT LATER-MILESTONE OPEN ITEMS`.
+
+### 16. R3-00 StateAssessment preflight and design gate
+
+- **Task/scenario:** Audit the repository exactly as an R3 preflight and
+  design gate, with implementation forbidden and only this workflow record
+  allowed to change. The task explicitly required no architecture change,
+  no migration/test/core edits, and no commit.
+- **Repository state:** Branch `R3`; `git status --short --branch` is clean.
+  `git rev-parse HEAD` resolves to `eafb01799bf096e50691c41c4e0be0cbd36d30ef`.
+  `git log --oneline -15` shows `HEAD -> R3, origin/R3` on the R3 branch,
+  `main` contains the R2 merge commit `385ff1f`, and `git merge-base
+  --is-ancestor R2 main` succeeds. The worktree has no uncommitted
+  modifications at the start of this gate. The repository currently contains
+  the K1 ingestion implementation and the R2 Objective model, but no
+  durable Control-layer StateAssessment, StrategyProposal, Plan, Team-memory,
+  or world-memory implementation.
+- **Expected behavior:** Use the authority chain in order, preserve the
+  source-of-truth rules from `AGENTS.md` and `CHANGE_MAP.md`, preserve the
+  R0/R1/R2 boundaries, and decide whether any honest bounded R3 scope
+  exists without inventing future infrastructure. The simulation also
+  required checking for any earlier malformed or partial R3-00 record and
+  repairing only the chronology, not discarding prior entries.
+- **Observed behavior:** The repository check and authority review found a
+  clean R3 branch with R2 already merged into `main`. No earlier R3-00
+  workflow record was present in the file, so no repair was required to an
+  existing record. The current repo is internally consistent with the
+  architecture on the boundary that matters here: StateAssessment is derived
+  and non-authoritative; Plan and Strategy are future concepts; tasks and
+  events remain the durable execution truth; the K1 ingestion path and the
+  R2 Objective model are implemented while full Control-layer runtime remains
+  absent.
+- **Discrepancies:** There is no substantive repository conflict. The real
+  discrepancy is scope: the full conceptual R3 described in the architecture
+  requires inputs and durable records that do not exist in the current
+  repository. The implemented state includes Team, TeamPolicy, Task,
+  Objective, Signal, and Event, but it does not yet contain the missing
+  StrategyProposal/Plan/assessment infrastructure, Team memory, world memory,
+  or the later selection semantics that the architecture describes for the
+  full Control loop.
+- **Lessons:** The correct R3 gate is not “full conceptual assessment is
+  implementable now.” A bounded R3 slice is possible, but only if it starts
+  from the durable records that actually exist and remains read-only,
+  derived, and reconstructable. The assessment must not become a second
+  source of truth, must not invent missing world-memory infrastructure, and
+  must not imply that unimplemented Strategy or Plan entities already exist.
+- **Resulting documentation changes:** Appended this record only. No
+  implementation files, migrations, tests, architecture documents, or prior
+  workflow entries were modified or rewritten. The repository remains a
+  clean R3 design gate with no code changes.
+- **Decision gate:** `R3 READY WITH EXPLICIT BOUNDED SCOPE`.
