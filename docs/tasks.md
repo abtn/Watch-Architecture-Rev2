@@ -260,6 +260,43 @@ follow-up update/evaluation work after recording the consultation answer.
 ²³ In addition to its own lifecycle, enqueue only `update_thread` for the
 documented deferred/matched triage cases.
 
+#### R4 `propose_strategy` scope extension
+
+This ordinary Task validates one transient StrategyProposal against its
+same-Team active Objective and exact derived R3 assessment. It requires a
+running Task, active Team, valid zero-usage Task budget, and policy version.
+Its worker `allowed_writes` is empty and it has no tool capability. No generic
+Event scope or existing K1/R2 Task permission is broadened.
+
+| Task type | Business writes | Task (K) | Snapshot (K) | Event (K) |
+|---|---|---|---|---|
+| `propose_strategy` | — | Current Task lifecycle only | — | Only attributed strategy disposition/rejection |
+
+The producer returns only candidate data. Application code accepts or rejects
+it; it cannot write Objective, TeamPolicy, memory, Plan, or enqueue Tasks.
+The first capability is one configured `ingest_source` candidate, zero cost,
+no tools, and `configured_source_ingested` as its stop condition. Extra fields
+(including entity writes, review bypasses, and Event requests) are rejected.
+A candidate is not an executed action or a selected Strategy.
+
+`strategy_proposal_accepted` and `strategy_proposal_rejected` preserve Task,
+Team, Objective, canonical proposal/hash, and assessment payload with basis
+references/hash/timestamp. Rejection reasons are stable categories. Event
+payload is audit, not Strategy memory; it reconstructs the exact accepted
+candidate without a transcript. Historical acceptance does not authorize R5
+execution. No Snapshot or new table is needed because the audit embeds the
+exact projection payload.
+
+INV-13 applies: the first disposition fixes the Task's candidate identity;
+a matching retry reuses its Event after scope/budget/Team revalidation.
+Conflicting attempts are rejected without overwriting history. New acceptance
+revalidates the exact R3 context in a serializable transaction; stale context
+is rejected. Serialization/deadlock conflicts are recorded as
+`concurrent_state_conflict`, unless a matching committed disposition can be
+replayed. A new attempt after a disposition uses ordinary Task semantics,
+not a planner-specific retry protocol. Task lifecycle remains runtime-owned;
+this service adds no Task state machine or execution runtime.
+
 #### R2 Objective scope extension
 
 The following semantic operations require the Task's authorized Objective

@@ -213,7 +213,16 @@ StateAssessment remains a derived, deterministic, non-authoritative reconstructi
 
 ### StrategyProposal
 
-A structured proposal describing how an Objective should be pursued. It is validated deterministically and either accepted into a Plan or rejected with an Event.
+A transient structured candidate describing how an Objective should be pursued.
+At R4, deterministic validation accepts it as a legal candidate for later
+planning or rejects it. Acceptance does not select a Strategy or create a
+Plan; selection and Plan creation belong to R5. Both dispositions are
+Task-attributed Events controlled by application/Kernel code. Accepted audit
+preserves the canonical proposal and its hash so the exact candidate can be
+recovered without a transcript or regeneration. Events are audit/provenance,
+not Strategy memory. R4 also retains the derived assessment basis references,
+hash, timestamp, and exact projection payload in the audit; this is not an
+authoritative StateAssessment entity or R5 selection provenance.
 
 ### Plan
 

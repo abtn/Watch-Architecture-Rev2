@@ -53,7 +53,15 @@ Preserve basis references, basis hash, and creation timestamp with the selected 
 
 Do not make Strategy a permanent “memory” table initially.
 
-Represent the accepted Strategy through the Plan plus its provenance. A StrategyProposal is a validated proposal object; once accepted, it becomes part of the Plan record.
+StrategyProposal remains transient. R4 acceptance means only a legal candidate
+for later planning, not Strategy selection or Plan creation. A Task-attributed
+Event preserves the exact canonical candidate, proposal hash, and derived
+assessment context (basis references, hash, creation timestamp, and payload).
+The payload retains historical mutable-record values without introducing a
+StateAssessment table or requiring a separate Snapshot. This audit is not
+Strategy memory. R5 later selects a candidate and links it and the assessment
+basis to Plan provenance; it must revalidate current constraints rather than
+mistake historical acceptance for execution authorization.
 
 If later experiments prove that Strategy needs independent lifecycle/history, create an explicit entity then.
 
