@@ -187,6 +187,23 @@ The LLM may not:
 
 StrategyProposal is not Team memory and is not TeamPolicy.
 
+At R4, accepted means a deterministically legal candidate for later planning,
+not a selected Strategy. R5 selects a candidate and creates a Plan. An ordinary
+`propose_strategy` Task attributes the R4 operation; the producer receives
+immutable bounded context, never repositories or an Event-writing capability.
+Application/Kernel code validates and records acceptance or rejection. The
+accepted Event retains the canonical proposal, hash, and exact derived R3
+assessment context so it survives process termination without a transcript.
+Assessment provenance is audit context here, not authority or Plan selection.
+
+The first slice is deliberately limited to one configured `ingest_source`
+candidate, no tools, zero cost, and the representable stop condition
+`configured_source_ingested`. It validates source configuration under the
+Task's policy version and cannot weaken policy review gates. It neither polls
+sources nor creates an ingestion Task. Other documented future Task types,
+entity/tool requests, policy changes, and larger budgets are rejected. No
+full planning language, ordering graph, Strategy table, or Plan exists.
+
 ### 3.7 Strategy validation
 
 Deterministic validation checks:

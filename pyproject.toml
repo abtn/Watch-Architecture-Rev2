@@ -6,6 +6,7 @@ dependencies = [
     "SQLAlchemy>=2,<3",
     "alembic>=1",
     "psycopg[binary]>=3",
+    "pydantic>=2,<3",
 ]
 
 [dependency-groups]

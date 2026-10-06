@@ -114,193 +114,200 @@ class StateAssessmentBuilder:
     def build(
         self, objective_id: UUID, *, created_at: datetime | None = None
     ) -> StateAssessment:
-        assessment_time = _timestamp(created_at or datetime.now(timezone.utc))
         with self._session_factory() as session:
             with session.begin():
                 session.connection().exec_driver_sql(
                     "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
                 )
-                objective = session.scalar(
-                    select(Objective).where(Objective.id == objective_id)
-                )
-                if objective is None:
-                    raise ObjectiveNotFound()
-
-                team = session.scalar(
-                    select(Team).where(
-                        Team.id == objective.team_id,
-                    )
-                )
-                if team is None:
-                    raise RuntimeError("objective_team_missing")
-
-                lifecycle_events = list(
-                    session.scalars(
-                        select(Event)
-                        .join(Task, Task.id == Event.task_id)
-                        .where(
-                            Task.team_id == objective.team_id,
-                            Event.type.in_(_OBJECTIVE_EVENT_TYPES),
-                            Event.payload["objective_id"].as_string()
-                            == str(objective.id),
-                        )
-                    )
-                )
-                linked_tasks = list(
-                    session.scalars(
-                        select(Task).where(
-                            Task.team_id == objective.team_id,
-                            Task.objective_id == objective.id,
-                        )
-                    )
-                )
-                linked_tasks.sort(key=lambda task: str(task.id))
-                task_ids = {task.id for task in linked_tasks}
-                direct_task_ids = task_ids
-                lifecycle_event_ids = {event.id for event in lifecycle_events}
-
-                related_events = (
-                    list(
-                        session.scalars(
-                            select(Event)
-                            .join(Task, Task.id == Event.task_id)
-                            .where(
-                                Task.team_id == objective.team_id,
-                                or_(
-                                    Event.task_id.in_(task_ids),
-                                    Event.id.in_(lifecycle_event_ids),
-                                ),
-                            )
-                        )
-                    )
-                    if task_ids or lifecycle_event_ids
-                    else []
-                )
-                related_events = [
-                    event
-                    for event in related_events
-                    if (
-                        event.type in _OBJECTIVE_EVENT_TYPES
-                        and event.payload.get("objective_id") == str(objective.id)
-                    )
-                    or (
-                        event.type not in _OBJECTIVE_EVENT_TYPES
-                        and (
-                            "objective_id" not in event.payload
-                            or event.payload.get("objective_id") == str(objective.id)
-                        )
-                    )
-                ]
-                related_events.sort(key=lambda event: str(event.id))
-
-                signal_ids = _signal_ids(related_events, direct_task_ids)
-                signal_rows = (
-                    list(
-                        session.scalars(
-                            select(Signal).where(Signal.id.in_(signal_ids))
-                        )
-                    )
-                    if signal_ids
-                    else []
-                )
-                signal_rows.sort(key=lambda signal: str(signal.id))
-
-                policy_versions = {task.policy_version for task in linked_tasks}
-                policy_rows = (
-                    list(
-                        session.scalars(
-                            select(TeamPolicy).where(
-                                TeamPolicy.team_id == objective.team_id,
-                                TeamPolicy.version.in_(policy_versions),
-                            )
-                        )
-                    )
-                    if policy_versions
-                    else []
-                )
-                policy_rows.sort(key=lambda policy: (policy.version, str(policy.id)))
-
-                objective_data = AssessmentObjective(
-                    id=objective.id,
-                    team_id=objective.team_id,
-                    statement=objective.statement,
-                    status=objective.status,
-                )
-                team_data = AssessmentTeam(
-                    id=team.id,
-                    domain=team.domain,
-                    status=team.status,
-                )
-                policies = tuple(
-                    AssessmentPolicy(
-                        id=policy.id,
-                        team_id=policy.team_id,
-                        version=policy.version,
-                        rules_json=_canonical_json(policy.rules),
-                    )
-                    for policy in policy_rows
-                )
-                tasks = tuple(
-                    AssessmentTask(
-                        id=task.id,
-                        task_type=task.task_type,
-                        status=task.status,
-                        policy_version=task.policy_version,
-                    )
-                    for task in linked_tasks
-                )
-                events = tuple(
-                    AssessmentEvent(
-                        id=event.id,
-                        task_id=event.task_id,
-                        event_type=event.type,
-                        created_at=_timestamp(event.created_at),
-                        signal_id=_event_signal_id(event, direct_task_ids),
-                    )
-                    for event in related_events
-                )
-                signals = tuple(
-                    AssessmentSignal(
-                        id=signal.id,
-                        source_type=signal.source_type,
-                        origin_url=signal.origin_url,
-                        fetched_at=_timestamp(signal.fetched_at),
-                        content_hash=signal.content_hash,
-                        snapshot_ref=signal.snapshot_ref,
-                    )
-                    for signal in signal_rows
+                return self.build_in_session(
+                    session, objective_id, created_at=created_at
                 )
 
-                basis_payload = _basis_payload(
-                    objective_data,
-                    team_data,
-                    policies,
-                    tasks,
-                    events,
-                    signals,
+    def build_in_session(
+        self,
+        session: Session,
+        objective_id: UUID,
+        *,
+        created_at: datetime | None = None,
+    ) -> StateAssessment:
+        """Build the assessment projection in an existing transaction."""
+        assessment_time = _timestamp(created_at or datetime.now(timezone.utc))
+        objective = session.scalar(
+            select(Objective).where(Objective.id == objective_id)
+        )
+        if objective is None:
+            raise ObjectiveNotFound()
+
+        team = session.scalar(
+            select(Team).where(
+                Team.id == objective.team_id,
+            )
+        )
+        if team is None:
+            raise RuntimeError("objective_team_missing")
+
+        lifecycle_events = list(
+            session.scalars(
+                select(Event)
+                .join(Task, Task.id == Event.task_id)
+                .where(
+                    Task.team_id == objective.team_id,
+                    Event.type.in_(_OBJECTIVE_EVENT_TYPES),
+                    Event.payload["objective_id"].as_string() == str(objective.id),
                 )
-                basis_hash = hashlib.sha256(
-                    _canonical_json(basis_payload).encode("utf-8")
-                ).hexdigest()
-                basis = AssessmentBasis(
-                    objective_id=objective.id,
-                    team_id=team.id,
-                    policy_ids=tuple(policy.id for policy in policies),
-                    task_ids=tuple(task.id for task in tasks),
-                    event_ids=tuple(event.id for event in events),
-                    signal_ids=tuple(signal.id for signal in signals),
-                    sha256=basis_hash,
+            )
+        )
+        linked_tasks = list(
+            session.scalars(
+                select(Task).where(
+                    Task.team_id == objective.team_id,
+                    Task.objective_id == objective.id,
                 )
-                return StateAssessment(
-                    objective=objective_data,
-                    team=team_data,
-                    policies=policies,
-                    tasks=tasks,
-                    events=events,
-                    signals=signals,
-                    basis=basis,
-                    created_at=assessment_time,
+            )
+        )
+        linked_tasks.sort(key=lambda task: str(task.id))
+        task_ids = {task.id for task in linked_tasks}
+        direct_task_ids = task_ids
+        lifecycle_event_ids = {event.id for event in lifecycle_events}
+
+        related_events = (
+            list(
+                session.scalars(
+                    select(Event)
+                    .join(Task, Task.id == Event.task_id)
+                    .where(
+                        Task.team_id == objective.team_id,
+                        or_(
+                            Event.task_id.in_(task_ids),
+                            Event.id.in_(lifecycle_event_ids),
+                        ),
+                    )
                 )
+            )
+            if task_ids or lifecycle_event_ids
+            else []
+        )
+        related_events = [
+            event
+            for event in related_events
+            if (
+                event.type in _OBJECTIVE_EVENT_TYPES
+                and event.payload.get("objective_id") == str(objective.id)
+            )
+            or (
+                event.type not in _OBJECTIVE_EVENT_TYPES
+                and (
+                    "objective_id" not in event.payload
+                    or event.payload.get("objective_id") == str(objective.id)
+                )
+            )
+        ]
+        related_events.sort(key=lambda event: str(event.id))
+
+        signal_ids = _signal_ids(related_events, direct_task_ids)
+        signal_rows = (
+            list(session.scalars(select(Signal).where(Signal.id.in_(signal_ids))))
+            if signal_ids
+            else []
+        )
+        signal_rows.sort(key=lambda signal: str(signal.id))
+
+        policy_versions = {task.policy_version for task in linked_tasks}
+        policy_rows = (
+            list(
+                session.scalars(
+                    select(TeamPolicy).where(
+                        TeamPolicy.team_id == objective.team_id,
+                        TeamPolicy.version.in_(policy_versions),
+                    )
+                )
+            )
+            if policy_versions
+            else []
+        )
+        policy_rows.sort(key=lambda policy: (policy.version, str(policy.id)))
+
+        objective_data = AssessmentObjective(
+            id=objective.id,
+            team_id=objective.team_id,
+            statement=objective.statement,
+            status=objective.status,
+        )
+        team_data = AssessmentTeam(
+            id=team.id,
+            domain=team.domain,
+            status=team.status,
+        )
+        policies = tuple(
+            AssessmentPolicy(
+                id=policy.id,
+                team_id=policy.team_id,
+                version=policy.version,
+                rules_json=_canonical_json(policy.rules),
+            )
+            for policy in policy_rows
+        )
+        tasks = tuple(
+            AssessmentTask(
+                id=task.id,
+                task_type=task.task_type,
+                status=task.status,
+                policy_version=task.policy_version,
+            )
+            for task in linked_tasks
+        )
+        events = tuple(
+            AssessmentEvent(
+                id=event.id,
+                task_id=event.task_id,
+                event_type=event.type,
+                created_at=_timestamp(event.created_at),
+                signal_id=_event_signal_id(event, direct_task_ids),
+            )
+            for event in related_events
+        )
+        signals = tuple(
+            AssessmentSignal(
+                id=signal.id,
+                source_type=signal.source_type,
+                origin_url=signal.origin_url,
+                fetched_at=_timestamp(signal.fetched_at),
+                content_hash=signal.content_hash,
+                snapshot_ref=signal.snapshot_ref,
+            )
+            for signal in signal_rows
+        )
+
+        basis_payload = _basis_payload(
+            objective_data,
+            team_data,
+            policies,
+            tasks,
+            events,
+            signals,
+        )
+        basis_hash = hashlib.sha256(
+            _canonical_json(basis_payload).encode("utf-8")
+        ).hexdigest()
+        basis = AssessmentBasis(
+            objective_id=objective.id,
+            team_id=team.id,
+            policy_ids=tuple(policy.id for policy in policies),
+            task_ids=tuple(task.id for task in tasks),
+            event_ids=tuple(event.id for event in events),
+            signal_ids=tuple(signal.id for signal in signals),
+            sha256=basis_hash,
+        )
+        return StateAssessment(
+            objective=objective_data,
+            team=team_data,
+            policies=policies,
+            tasks=tasks,
+            events=events,
+            signals=signals,
+            basis=basis,
+            created_at=assessment_time,
+        )
 
 
 def _signal_ids(events: list[Event], direct_task_ids: set[UUID]) -> set[UUID]:

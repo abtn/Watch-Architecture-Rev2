@@ -200,6 +200,15 @@ Exit:
 - deterministic validation
 - rejection tests
 - persisted audit trail for accepted/rejected proposals
+- accepted means a legal candidate, not Strategy selection or Plan creation
+- exact accepted candidate is recoverable from canonical Event provenance
+  without a transcript, process memory, or regeneration
+- ordinary Task attribution; application/Kernel-only disposition Events
+- preserve derived R3 basis references, hash, timestamp, and exact audit context
+
+The first R4 slice is bounded to one configured `ingest_source` candidate,
+no tools and zero cost. Other capabilities remain rejected rather than
+implicitly implemented. R5 selects a candidate and creates a Plan later.
 
 ## Phase R5 — Bounded Plan generation
 
