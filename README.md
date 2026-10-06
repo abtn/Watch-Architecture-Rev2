@@ -7,8 +7,56 @@ state is recorded with Task provenance and Events.
 
 ## Development status
 
-**K0 is complete. K1 is implemented on `main`.** K1 is the first executable
-Kernel slice; it proves deterministic source ingestion without model calls:
+**R0 is complete. R1 is complete. R2 is implemented, audited, and merged into
+`main`. R3 is the current phase: Deterministic StateAssessment.**
+
+R2 introduced the first durable Control-layer entity while preserving the
+existing Kernel and K1 execution boundaries:
+
+```text
+Objective
+  ↓
+Task-attributed mutation
+  ↓
+deterministic validation
+  ↓
+atomic Objective + Event commit
+```
+
+R2 delivered:
+
+- one durable Objective with Team ownership and an explicit lifecycle;
+- nullable `Task.objective_id` with same-Team database enforcement;
+- Task-attributed Objective creation and lifecycle transitions;
+- deterministic validation, rejection audit, same-Task replay, and concurrent
+  transition protection;
+- migration `0003_objectives`;
+- focused Objective integration tests.
+
+R2 was then subjected to an adversarial implementation audit. One genuine
+contract gap was found and corrected: Operator identity is now carried in
+Objective Events when supplied. Final verification reported 49 Objective tests,
+17 K1 ingestion tests, 67 total tests, passing Ruff and mypy, and a successful
+migration downgrade/upgrade round-trip.
+
+R3 is now the next Control-layer slice:
+
+```text
+Objective
+   ↓
+deterministic StateAssessment
+```
+
+R3 is a read-only, derived, reproducible assessment service. Its preflight/design
+gate must first establish the smallest coherent executable assessment surface
+from authoritative state that actually exists in the repository. It must not
+invent missing domain infrastructure.
+
+The first R3 version contains no LLM, StrategyProposal, Plan, autonomous Control
+loop, Trigger runtime, scheduler changes, or second execution/commit system.
+
+K1 remains the first executable Kernel slice and proves deterministic source
+ingestion without model calls:
 
 ```text
 fetched bytes
@@ -35,10 +83,6 @@ triage, embeddings, or model calls. Test fixtures supply the prerequisite
 active Team, source policy, and running Task. These are setup records, not
 production lifecycle behavior.
 
-The Control layer is specified but not implemented. Objective, StateAssessment,
-StrategyProposal runtime, Plan, autonomous planning, and LLM integration are
-out of scope for K1 and remain later work.
-
 ## Architectural decisions
 
 ### Kernel authority and Task execution
@@ -54,9 +98,18 @@ out of scope for K1 and remain later work.
   Outcomes represent actual execution.
 - StateAssessment is derived and non-authoritative.
 
-### Task write scopes: W / C / K
+### Objective authority and lifecycle
 
-The Task scope matrix in [`docs/tasks.md`](docs/tasks.md) distinguishes:
+Objective is a durable Control-layer entity. Its lifecycle is explicit and
+deterministically validated. Objective mutations are Task-attributed and pass
+through application validation and the existing Kernel authority boundary.
+Objective state and its corresponding successful Event commit atomically.
+
+Objective is not TeamPolicy, Thread, Strategy, Plan, or Team memory. Its R2
+schema is intentionally minimal; richer Objective semantics remain open unless
+later milestones require them.
+
+### Task write scopes: W / C / K
 
 - **W** — a worker-proposable business/domain write, checked against the
   Task's `allowed_writes`.
@@ -66,9 +119,19 @@ The Task scope matrix in [`docs/tasks.md`](docs/tasks.md) distinguishes:
   application code and attributable to the Task.
 
 For K1 `ingest_source`, Signal is `W`; its associated immutable Snapshot and
-Task-attributed Event are `K`. K is part of scope enforcement, not an
-exception to INV-14 or permission for a worker to create arbitrary Snapshots,
-Events, or other records.
+Task-attributed Event are `K`. For R2 Objective operations, Objective mutation
+is explicitly authorized by the designated Task operation and Objective scope;
+Objective state and success Events remain application-managed and
+Kernel-validated.
+
+### StateAssessment
+
+StateAssessment is derived and non-authoritative. R3 must distinguish the
+current assessment from the historical decision basis that future Strategy/Plan
+selection may need to preserve. Assessment provenance is expected to use
+reconstructable references, a basis hash, and a creation timestamp; an
+immutable Snapshot is used only when references and hash are insufficient to
+reproduce the exact historical assessment payload.
 
 ### Snapshot and commit boundary
 
@@ -102,9 +165,9 @@ are listed in [`docs/invariants.md`](docs/invariants.md).
 - pytest, Ruff, and mypy
 
 ```text
-core/                       K1 models, ingestion, and Snapshot storage
+core/                       K1 ingestion + R2 Objective implementation
 migrations/                 Alembic environment and schema revisions
-tests/                      PostgreSQL and K1 integration tests
+tests/                      K1 and R2 PostgreSQL integration tests
 docs/                       Architecture, invariants, task specs, and plans
 PLAN.md                     Milestones and implementation order
 CHANGE_MAP.md               Document authority mapping
@@ -118,6 +181,7 @@ From the repository root:
 uv sync --python 3.12
 docker compose up -d
 uv run alembic upgrade head
+uv run pytest tests/test_objectives.py
 uv run pytest tests/test_ingestion.py
 uv run ruff check .
 uv run mypy core
@@ -128,22 +192,41 @@ The tests use PostgreSQL. They accept `TEST_DATABASE_URL` or `DATABASE_URL`;
 otherwise they connect to the Compose default database at
 `postgresql+psycopg://watch:watch@localhost:5432/watch`.
 
-To verify the K1 migration round trip, use a **disposable** database:
+To verify the R2 migration round trip, use a **disposable** database:
 
 ```powershell
-uv run alembic downgrade 0001_enable_pgvector
+uv run alembic downgrade 0002_ingestion_kernel
 uv run alembic upgrade head
 ```
 
 Do not run the downgrade against a database containing data that must be
-preserved. The K1 downgrade removes K1 tables but must leave the pre-existing
-pgvector extension in place.
+preserved. This round-trip removes the R2 Objective schema and recreates it
+without altering the earlier K1 migrations.
 
 ## Milestones and documentation
 
-K1 is complete; subsequent implementation remains gated by the milestone
-plan and architecture decisions. In particular, do not treat the architecture
-specification as authorization to implement later Control-layer behavior.
+R2 is complete and merged into `main`. R3 is the current implementation phase.
+Each Control-layer milestone remains gated by its preflight/design work and
+must preserve the previous milestone's contracts.
+
+| Phase | Status | Purpose |
+|---|---|---|
+| K0 | Complete | Repository tooling and deterministic test harness |
+| K1 | Complete | Smallest executable Kernel ingestion path |
+| R0 | Complete | Revision 2 architecture freeze |
+| R1 | Complete | Control-layer compatibility contract |
+| R2 | Complete | Durable Objective model and lifecycle |
+| R3 | Current | Deterministic, read-only StateAssessment |
+| R4 | Later | StrategyProposal boundary |
+| R5 | Later | Bounded Plan generation/materialization |
+| R6 | Later | First intelligent Control loop |
+| R7 | Later | Evaluation and learning integration |
+| R8 | Later | Multi-domain pressure test |
+| R9 | Later | Real model integration / production workflow |
+| R10 | Later | Domain pressure testing |
+
+In particular, the architecture specification is not, by itself, authorization
+to implement later Control-layer behavior.
 
 | Document | Purpose |
 |---|---|
@@ -158,5 +241,7 @@ specification as authorization to implement later Control-layer behavior.
 | [`docs/tasks.md`](docs/tasks.md) | Task behaviors, validation, budgets, and scope matrix |
 | [`docs/invariants.md`](docs/invariants.md) | Non-negotiable system invariants |
 | [`docs/10-test-strategy.md`](docs/10-test-strategy.md) | Architecture-focused test strategy |
+| [`docs/decisions/ADR-0023-control-layer.md`](docs/decisions/ADR-0023-control-layer.md) | Control-layer boundary |
 | [`docs/decisions/ADR-0026-dual-entry-execution-model.md`](docs/decisions/ADR-0026-dual-entry-execution-model.md) | Reactive and deliberative execution paths |
 | [`AGENTS.md`](AGENTS.md) | Repository instructions for implementation work |
+
