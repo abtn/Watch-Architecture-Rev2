@@ -7,8 +7,30 @@ state is recorded with Task provenance and Events.
 
 ## Development status
 
-**R0 is complete. R1 is complete. R2 is implemented, audited, and merged into
-`main`. R3 is the current phase: Deterministic StateAssessment.**
+**K0–R4 are complete. R4 is implemented, audited, committed, pushed, and merged
+into `main`. R5 is now the active phase: Bounded Plan generation design.**
+
+Current repository position:
+
+```text
+R3
+ ↓
+Deterministic StateAssessment
+ ↓
+R4
+ ↓
+StrategyProposal → deterministic validation → durable audit
+ ↓
+main
+ ↓
+R5
+ ↓
+Plan boundary design gate
+```
+
+The next milestone is intentionally still in the design/reality stage. R5 will
+turn a selected, validated strategy candidate into durable execution intent,
+while keeping Plan state distinct from actual Task/Event/Outcome history.
 
 R2 introduced the first durable Control-layer entity while preserving the
 existing Kernel and K1 execution boundaries:
@@ -33,11 +55,63 @@ R2 delivered:
 - migration `0003_objectives`;
 - focused Objective integration tests.
 
-R2 was then subjected to an adversarial implementation audit. One genuine
-contract gap was found and corrected: Operator identity is now carried in
-Objective Events when supplied. Final verification reported 49 Objective tests,
-17 K1 ingestion tests, 67 total tests, passing Ruff and mypy, and a successful
-migration downgrade/upgrade round-trip.
+R2 was subjected to an adversarial implementation audit. The final R2
+verification preserved the Kernel and K1 boundaries and established Objective
+as the first durable Control-layer entity.
+
+R3 then added a deterministic, read-only StateAssessment over authoritative
+records that actually exist in the repository.
+
+R3 delivered:
+
+- Objective-scoped operational state reconstruction;
+- deterministic basis references and SHA-256 basis hashing;
+- explicit separation between Task scope and Event provenance;
+- read-only, repeatable assessment construction;
+- focused tests for scope isolation, determinism, provenance, and
+  non-authoritative behavior.
+
+R3 introduced no Strategy, Plan, memory, or LLM runtime.
+
+R4 then added the first model-facing Control boundary without turning Strategy
+into durable memory:
+
+```text
+Objective
+   ↓
+StateAssessment
+   ↓
+transient StrategyProposal
+   ↓
+deterministic validation
+   ↓
+accepted / rejected disposition
+   ↓
+durable Task-attributed audit
+```
+
+R4 delivered:
+
+- a transient typed `StrategyProposal`;
+- a deterministic fake producer;
+- deterministic proposal validation;
+- a narrowly scoped proposal Task operation;
+- Task-attributed accepted/rejected audit Events;
+- canonical proposal persistence and SHA-256 integrity verification;
+- exact accepted-proposal reconstruction without the original model transcript;
+- assessment-basis provenance preservation;
+- idempotent replay and conflict/stale-authority protection;
+- no Strategy or Plan durable entity;
+- no Plan materialization or second execution runtime.
+
+For the first executable R4 slice, the supported candidate capability is
+deliberately narrow: `ingest_source`, with no requested tools and zero added
+cost. This is a current implementation boundary, not a permanent architectural
+limit.
+
+R4 was adversarially audited and verified with 111 tests on a fresh migrated
+PostgreSQL database, plus focused R3/R4 verification. Ruff, mypy, and
+`git diff --check` passed. R4 was then merged into `main`.
 
 R3 is now the next Control-layer slice:
 
@@ -85,6 +159,25 @@ production lifecycle behavior.
 
 ## Architectural decisions
 
+### Current Control-layer position
+
+Watch currently stops at the boundary between **validated strategy candidates**
+and **durable Plans**.
+
+```text
+R4
+StrategyProposal
+= valid candidate
+
+R5
+Plan
+= durable execution intent
+```
+
+R4 does not select or execute a Strategy. R5 is responsible for representing
+the selected candidate as a bounded Plan and later materializing ordinary Tasks
+without changing the Task execution runtime.
+
 ### Kernel authority and Task execution
 
 - Durable writes go through application validation and commit; workers do not
@@ -124,14 +217,17 @@ is explicitly authorized by the designated Task operation and Objective scope;
 Objective state and success Events remain application-managed and
 Kernel-validated.
 
-### StateAssessment
+### StateAssessment and decision provenance
 
-StateAssessment is derived and non-authoritative. R3 must distinguish the
-current assessment from the historical decision basis that future Strategy/Plan
-selection may need to preserve. Assessment provenance is expected to use
-reconstructable references, a basis hash, and a creation timestamp; an
-immutable Snapshot is used only when references and hash are insufficient to
-reproduce the exact historical assessment payload.
+StateAssessment is derived and non-authoritative. R3 distinguishes the current
+assessment from historical decision provenance.
+
+R4 preserves the assessment context used by a proposal through reconstructable
+references, a basis hash, and a creation timestamp, with an immutable Snapshot
+only when references and hash are insufficient to reproduce the exact payload.
+
+An accepted R4 proposal means **valid candidate**, not selected Strategy.
+Selection and durable Plan provenance belong to R5.
 
 ### Snapshot and commit boundary
 
@@ -165,9 +261,9 @@ are listed in [`docs/invariants.md`](docs/invariants.md).
 - pytest, Ruff, and mypy
 
 ```text
-core/                       K1 ingestion + R2 Objective implementation
+core/                       K1 ingestion + R2 Objective + R3/R4 Control slices
 migrations/                 Alembic environment and schema revisions
-tests/                      K1 and R2 PostgreSQL integration tests
+tests/                      K1, R2, R3, and R4 PostgreSQL integration tests
 docs/                       Architecture, invariants, task specs, and plans
 PLAN.md                     Milestones and implementation order
 CHANGE_MAP.md               Document authority mapping
@@ -205,9 +301,9 @@ without altering the earlier K1 migrations.
 
 ## Milestones and documentation
 
-R2 is complete and merged into `main`. R3 is the current implementation phase.
-Each Control-layer milestone remains gated by its preflight/design work and
-must preserve the previous milestone's contracts.
+R4 is complete and merged into `main`. R5 is the current phase and is beginning
+with a design/reality gate. Each Control-layer milestone remains gated by its
+preflight/design work and must preserve the previous milestone's contracts.
 
 | Phase | Status | Purpose |
 |---|---|---|
@@ -216,14 +312,13 @@ must preserve the previous milestone's contracts.
 | R0 | Complete | Revision 2 architecture freeze |
 | R1 | Complete | Control-layer compatibility contract |
 | R2 | Complete | Durable Objective model and lifecycle |
-| R3 | Current | Deterministic, read-only StateAssessment |
-| R4 | Later | StrategyProposal boundary |
-| R5 | Later | Bounded Plan generation/materialization |
+| R3 | Complete | Deterministic, read-only StateAssessment |
+| R4 | Complete | StrategyProposal boundary, validation, and durable audit |
+| R5 | Current | Bounded Plan generation/materialization design |
 | R6 | Later | First intelligent Control loop |
 | R7 | Later | Evaluation and learning integration |
 | R8 | Later | Multi-domain pressure test |
-| R9 | Later | Real model integration / production workflow |
-| R10 | Later | Domain pressure testing |
+| R9 | Later | Codex-assisted production workflow |
 
 In particular, the architecture specification is not, by itself, authorization
 to implement later Control-layer behavior.
