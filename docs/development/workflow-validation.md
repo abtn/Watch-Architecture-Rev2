@@ -773,3 +773,49 @@ source establishes it.
   workflow entries were modified or rewritten. The repository remains a
   clean R3 design gate with no code changes.
 - **Decision gate:** `R3 READY WITH EXPLICIT BOUNDED SCOPE`.
+
+
+### 17. R5 workflow-instruction enforcement review
+
+- **Task/scenario:** Review the repository's agent instructions after repeated
+  milestone work exposed a workflow failure: Codex can read `AGENTS.md` yet
+  omit the required append to `docs/development/workflow-validation.md`.
+  The requested correction was to make `AGENTS.md` operationally useful to
+  models and make workflow-reporting omissions harder to repeat.
+- **Repository state:** The active development branch is `R5`. R4 is already
+  merged into `main`; R5 was created from that merged state. The existing
+  `AGENTS.md` still contained historical K0/K1 status language and treated
+  workflow validation as conditional on the task being explicitly designated
+  as such. `PLAN.md` also contains historical milestone-status wording that
+  does not reliably identify the actual current branch state.
+- **Expected behavior:** Agent instructions should direct Codex to determine
+  current state from Git and current milestone documents rather than trusting
+  stale status copied into `AGENTS.md`. When a task tests or evaluates the
+  development workflow, the agent should read the workflow-validation record,
+  append a chronological observation, and verify that the append actually
+  exists. A no-implementation simulation should prohibit source changes while
+  still allowing the designated workflow record to change.
+- **Observed behavior:** The previous `AGENTS.md` already described the
+  required contents of a workflow-validation record, but the trigger was too
+  narrow: it said “When a task is explicitly designated” and therefore allowed
+  an agent to interpret workflow/audit tasks as ordinary implementation work.
+  The file also embedded obsolete milestone state. This made it possible for a
+  model to read the file, follow the broad development rules, and still omit
+  the workflow report.
+- **Discrepancies:** The principal discrepancy is between documented intent
+  and operational model behavior: the repository wanted chronological
+  workflow evidence, but the instruction did not reliably identify when that
+  obligation applied. A second discrepancy was that `AGENTS.md` itself could
+  become stale as branches advanced, undermining its value as a current-state
+  guide.
+- **Lessons:** Workflow requirements must be triggered by the semantics of the
+  task, not by a magic phrase in the user's prompt. Repository instructions
+  should also avoid embedding current milestone claims that become stale after
+  branch transitions. Completion checklists should include verification that a
+  required documentation artifact was actually changed.
+- **Resulting documentation changes:** Replaced `AGENTS.md` with an
+  operational repository contract. It now requires Git/milestone preflight,
+  explicit authority handling, design/reality gates, semantic workflow-
+  validation triggers, chronological append-only reporting, and verification
+  that the workflow record was actually updated. This record documents that
+  change; no implementation behavior or architecture was changed.
