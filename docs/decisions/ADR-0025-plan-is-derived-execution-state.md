@@ -24,6 +24,20 @@ Budget hierarchy is `TeamPolicy ceiling > Plan envelope > Task budget`: the Plan
 
 When circumstances change substantially, create a new Plan rather than silently rewriting the old one. Plan materialization simply creates ordinary Tasks that then use the existing reactive execution path (ADR-0026).
 
+### R5 semantic closure (subsequent decision)
+
+A Plan belongs to exactly one Objective and is durable bounded intent, not execution history, Strategy memory, StateAssessment, a workflow engine, or a second runtime. Its selected proposal and assessment provenance, intended action definitions/identities, dependencies, budget envelope, completion/stop conditions are immutable after creation. Replanning creates a new Plan; supersession references and stops the old Plan without rewriting its intent.
+
+Plan creation, all initial ordinary Tasks, and the attributable creation Event commit atomically. Each immutable action maps to at most one Task and, once materialized, exactly one. Nullable `Task.plan_id` and `Task.plan_action_id` provide this mapping; action identity is stable and unique within the Plan. No PlanAction entity is required.
+
+The creating Task's existing `policy_version` records which policy was considered at creation; there is no separate Plan policy pin. Later operations use their applicable policy version. Policy changes do not rewrite Plan intent or existing Task policy semantics.
+
+Dependencies are explicit acyclic prerequisites between actions in the same Plan. The existing Task admission/claim path prevents a dependent Task from starting before prerequisite Tasks are `done`; failed prerequisites keep dependents ineligible until the Plan is stopped or replanned. This adds no Task state, separate scheduler, or runtime.
+
+Lifecycle is `active → completed | stopped`; terminal Plans cannot reopen. `stopped_reason` is `abandoned`, `invalidated`, or `superseded`. Progress is derived from Tasks. Completion requires each intended action to have exactly one linked Task in `done` status and the declared completion condition to be satisfied by durable records. Lifecycle transitions are explicit and application-controlled.
+
+The narrow `create_plan` operation follows worker proposal → application validation → Kernel/application commit. It verifies the accepted proposal Event/hash, Objective/Team ownership, supported actions, dependencies, applicable policy constraints, budgets, and idempotency. It may create only the Plan, its initial ordinary Tasks, and explicitly scoped audit Events; it cannot change TeamPolicy or memory or create Strategy/StateAssessment entities.
+
 ## Consequence
 
 Adaptation becomes visible:

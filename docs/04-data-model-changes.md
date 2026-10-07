@@ -12,7 +12,7 @@ If not, keep it derived.
 
 The Control layer must be additive. The existing Task state machine and write-scope matrix must not change merely to introduce Control.
 
-Compatibility rule for the R1 design pass: existing K1 Task write-scope semantics remain unchanged and authoritative. Durable Objective and Plan mutations must be Task-attributed and pass through the same Task write-scope authorization and Kernel validation path; Trigger-driven deliberation must materialize a Task before such a mutation. Future Control-layer authorization may be added within this model, but must not rewrite K1 semantics or create a parallel mechanism. Plan remains durable execution intent, not execution truth; Tasks, Events, and Outcomes remain execution truth. Plan schema and its complete lifecycle remain deferred to R5; see Section 6.
+The R1 compatibility rule was that existing K1 Task write-scope semantics remain unchanged and authoritative. Durable Objective and Plan mutations must be Task-attributed and pass through the same Task write-scope authorization and Kernel validation path; Trigger-driven deliberation must materialize a Task before such a mutation. Future Control-layer authorization may be added within this model, but must not rewrite K1 semantics or create a parallel mechanism. Plan remains durable execution intent, not execution truth; Tasks, Events, and Outcomes remain execution truth. Plan schema and lifecycle were deferred at R1 and are closed for R5 in Section 6.
 
 ## 2. Candidates
 
@@ -95,15 +95,10 @@ No change to the Task entity's core state machine or write-scope matrix.
 Optional additions:
 
 - `objective_id` (nullable FK)
-- `plan_id` (nullable FK)
+- `plan_id` (nullable Plan provenance)
+- `plan_action_id` (nullable stable intended-action identity)
 
-Plan membership is optional provenance metadata. If both references are present, the Objective must match the Plan's parent Objective. Neither reference changes Task execution semantics.
-
-Both references are independently optional: a Task may have neither, either
-one, or both. When both are present, `objective_id` must equal the parent
-Objective of the referenced Plan. Every referenced Objective or Plan must
-belong to the Task's Team. The existing Kernel validation path checks these
-relationships; they do not change the Task state machine.
+Plan membership is optional provenance. When both Plan/action references are present, the action must belong to that Plan; a `(plan_id, plan_action_id)` pair maps to at most one Task. Once materialized, each intended action maps to exactly one Task. Objective and Team ownership must remain consistent; if both Objective and Plan are present, the Objective must equal the Plan's parent Objective. These references do not otherwise change the Task state machine or ordinary Task semantics.
 
 ### OpenQuestion
 
@@ -119,13 +114,15 @@ Across the Control implementation, the intended additive schema is:
 
 ```text
 Objective
-Plan
-Task (with optional Objective/Plan FKs)
+Plan (durable bounded intent and immutable action definitions)
+Task (nullable Objective, Plan, and Plan-action provenance)
 ```
 
+Plan identity, action identity, provenance, budget, completion conditions, and lifecycle must be durably represented. The action-definition storage shape is an implementation choice; do not add a separate PlanAction entity.
+
 This is not one migration. R2 adds Objective and nullable `Task.objective_id`
-after the existing K1 migration. Plan and nullable `Task.plan_id` belong to
-R5. The K1 migration is immutable; later migrations must preserve K1 behavior.
+after the existing K1 migration. R5 adds Plan and nullable `Task.plan_id` and
+`Task.plan_action_id`. Keep the K1 migration immutable and preserve K1 behavior.
 
 and avoid:
 
@@ -183,8 +180,9 @@ These are provenance/execution artifacts, not Team memory or authoritative world
 This section closes the R1 design decisions needed before R2. It does not add
 Control schema or runtime. K1 migration `0002_ingestion_kernel` and its
 write-scope behavior remain unchanged. Objective schema belongs in a new
-migration after K1; Plan schema and `Task.plan_id` remain deferred to R5. No
-table is required for a concept merely because it appears in the architecture.
+migration after K1. Plan schema and Task Plan-provenance fields were deferred
+to R5 and are closed by the subsequent semantic contract below. No table is
+required for a concept merely because it appears in the architecture.
 
 ### Objective mutation and scope
 
@@ -242,26 +240,19 @@ present, the Task's Objective must equal the Plan's parent Objective. Each
 referenced record must match the Task's Team. Neither reference changes Task
 state, scope, budget, or commit semantics.
 
-### Plan compatibility boundary
+### Plan compatibility boundary — R1 record and subsequent R5 closure
 
-Plan ownership is the Objective's Team, and each Plan has one parent
-Objective. A Plan is created by a Task, preserves selected Strategy and
-StateAssessment decision provenance, and records intended dependencies,
-budget envelope, and stop conditions. Dependencies must be explicit and
-valid, and must not create cycles. Tasks may reference an Objective and/or a
-Plan, subject to the parent-consistency rule above; they remain authoritative
-for execution. Events and Outcomes record what happened. A Plan may be
-partially completed, abandoned, invalidated, or superseded. Substantial
-replanning must not silently rewrite prior intent/history; the architecture
-describes creating a new Plan, while the exact replacement/supersession
-mechanism remains open.
+A Plan is durable bounded execution intent for exactly one Objective and its Team. It is not execution history, Team/Strategy memory, StateAssessment, a workflow engine, or a second runtime. Its immutable intent includes the accepted proposal Event identity/hash, reconstructable assessment basis, stable intended action definitions, dependencies, budget envelope, and completion/stop conditions. Current assessments never overwrite the historical basis. No Strategy, StateAssessment, or PlanAction entity is required.
 
-The following remain deliberately open for R5: Plan status vocabulary and
-transition graph; whether/how an existing Plan's status and task membership
-may change while preserving its original intent; physical dependency
-representation; the Task type and exact write-scope row that creates or
-updates a Plan; and Plan materialization retry/idempotency details. R1 does
-not create a Plan table or prescribe these implementation details.
+The Plan and all initial ordinary Tasks plus the attributable creation Event commit atomically. There is no partial-materialization lifecycle. Each action has a stable identity and maps to zero or one Task before materialization, exactly one afterward. Nullable `Task.plan_id` and `Task.plan_action_id` identify this mapping; an action must belong to the referenced Plan, Team/Objective ownership must match, and each Plan/action pair is unique.
+
+The creating `create_plan` Task's existing `policy_version` records the policy considered at creation; there is no separate Plan policy pin. Policy changes do not rewrite Plan intent or existing Task semantics. Later operations use their applicable policy version. The Plan envelope is bounded by applicable TeamPolicy; Task allocations fit within the envelope, and Task budgets remain authoritative for individual execution.
+
+Dependencies are same-Plan prerequisite references between distinct actions. Missing targets, cross-Plan references, self-dependencies, and cycles are invalid. The existing Task admission/claim path enforces that a dependent Task cannot start until its prerequisite Task is `done`; a failed prerequisite keeps it ineligible until stop or replan. No Task state, separate scheduler, or workflow engine is introduced.
+
+Lifecycle is `active → completed | stopped`; completed and stopped are terminal. `stopped_reason` distinguishes `abandoned`, `invalidated`, and `superseded`. Progress is derived from Tasks. Completion requires every intended action to have exactly one linked Task in `done` and the declared completion condition to be satisfied by durable records. Completion and stopping are explicit application-controlled transitions with attributable Events. Supersession atomically creates a new Plan referring to the old one and stops the old Plan as superseded. Intent fields never change; substantial replanning creates a new Plan.
+
+The narrow `create_plan` operation validates an accepted R4 proposal Event and hash, Objective/Team ownership, supported actions, dependency validity, applicable policy constraints, budgets, and idempotency. It may create only the Plan, initial ordinary Tasks, and explicitly scoped audit Events; it cannot change TeamPolicy or memory or create Strategy/StateAssessment entities.
 
 ### Assessment and budget compatibility
 
@@ -281,10 +272,16 @@ TeamPolicy ceiling > Plan envelope > Task budget
 
 A Plan cannot exceed the applicable TeamPolicy ceiling; allocated plus
 remaining Task budgets cannot exceed the Plan envelope; each Task's own
-budget governs its execution. R2 has no Plan envelope and adds no budget
-runtime. Enforcement of the Plan and aggregate Task limits belongs to R5.
+budget governs its execution. The creating Task's existing `policy_version`
+records the policy considered at creation; there is no Plan policy pin. Later
+operations use their applicable policy version, and policy changes do not
+rewrite Plan intent or existing Task semantics. R2 has no Plan envelope and
+adds no budget runtime. Enforcement of the Plan and aggregate Task limits
+belongs to R5.
 
 ### Invariant compatibility
+
+R5 adds cross-cutting INV-16 for Plan dependency admission; see `docs/invariants.md`. The existing Task admission/claim path, not the Plan, enforces prerequisite readiness.
 
 | Invariant | Compatibility requirement | Later enforcement/test | R1 status |
 |---|---|---|---|

@@ -161,9 +161,7 @@ Do not create a second execution runtime or commit kernel.
 
 ### Planning
 
-A Plan records intended execution structure.
-
-It is not execution history.
+A Plan records immutable intended execution structure for one Objective; it is not execution history, Strategy memory, StateAssessment, a workflow engine, or a second runtime. Plan-linked Tasks carry nullable action provenance and the existing Task admission path enforces their same-Plan prerequisites before execution.
 
 Tasks, Events, and Outcomes describe what actually happened.
 

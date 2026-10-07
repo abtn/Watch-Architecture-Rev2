@@ -28,6 +28,7 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 4. Snapshots referenced by quotes exist and hashes match (INV-03, INV-04).
 5. All state transitions are legal per the architecture §4 tables.
 6. The Task's Team is `active`, except for the team-setup task types.
+7. Before a Plan-linked Task transitions from `pending` to `running`, the existing Task admission/claim path verifies that every prerequisite action's linked Task is `done` (INV-16). Otherwise it remains ineligible; a failed prerequisite does not release dependents. No new Task state or separate dependency scheduler is introduced.
 
 ## 3. Task types
 
@@ -296,6 +297,18 @@ is rejected. Serialization/deadlock conflicts are recorded as
 replayed. A new attempt after a disposition uses ordinary Task semantics,
 not a planner-specific retry protocol. Task lifecycle remains runtime-owned;
 this service adds no Task state machine or execution runtime.
+
+#### R5 `create_plan` operation
+
+`create_plan` is a narrowly scoped Task operation. The worker supplies a
+proposal only; application code validates it and the accepted R4 Event/hash,
+Objective/Team ownership, action identity, supported action, policy and budget
+constraints, and retry identity. Kernel/application code atomically creates
+the Plan, its initial ordinary Task(s), and attributable creation Event(s).
+The operation cannot write TeamPolicy, memory, Strategy, StateAssessment, or
+arbitrary Tasks/Events. The creating Task's existing `policy_version` is
+policy provenance, not a Plan policy pin. Plan/action prerequisites are
+checked by the existing Task admission path under INV-16.
 
 #### R2 Objective scope extension
 

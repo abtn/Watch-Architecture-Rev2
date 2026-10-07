@@ -59,7 +59,7 @@ One durable Objective becomes active
 → re-assessment / replan / stop
 ```
 
-After Task materialization, both paths are identical.
+After Task materialization, both paths use ordinary Task execution. The existing Task admission/claim path enforces Plan-action prerequisites; it does not create a second execution runtime.
 
 ## 3. Detailed Control lifecycle
 
@@ -69,7 +69,7 @@ An Objective enters an executable status.
 
 ### Step 2 — Assessment
 
-The Control service loads authoritative state and produces a deterministic StateAssessment. StateAssessment is read-only and derived. When selecting a Strategy/Plan, persist reconstructable decision provenance (basis references, hash, creation timestamp, and, where necessary, an immutable Snapshot of the assessment payload). This historical basis does not become authoritative state and must not be overwritten when a new assessment is built from current records.
+The Control service loads authoritative state and produces a deterministic StateAssessment. StateAssessment is read-only and derived. When selecting a Strategy/Plan, persist reconstructable decision provenance (basis references, hash, creation timestamp, and, where necessary, an immutable Snapshot of the assessment payload). This historical basis does not become authoritative state and must not be overwritten when a new assessment is built from current records. A Plan references the accepted proposal Event and proposal hash; it does not duplicate the proposal payload unless needed for exact reconstruction. R4's Event also preserves the historical assessment basis references, hash, timestamp, and projection payload, so current assessments cannot replace the basis used for this decision.
 
 ### Step 3 — StrategyProposal
 
@@ -79,13 +79,13 @@ A model worker (or deterministic generator in early slices) produces a StrategyP
 
 Application code validates the StrategyProposal deterministically.
 
-### Step 5 — Plan materialization
+### Step 5 — Plan creation and initial Task materialization
 
-A validated StrategyProposal becomes a bounded Plan.
+A validated, accepted StrategyProposal becomes a bounded Plan through a narrowly scoped `create_plan` Task. Application code validates the proposal Event/hash, Objective and Team ownership, action support, dependencies, applicable TeamPolicy constraints, and budget envelope. The Plan, all initial ordinary Tasks, and attributable creation Event commit atomically. The creating Task's existing `policy_version` records the policy considered; no separate Plan policy pin is introduced. Later operations use their applicable policy version, without rewriting existing Plan intent or Task policy semantics. Replacing a Plan creates the new Plan and stops the old active Plan as `superseded` in the same transaction.
 
-### Step 6 — Task materialization
+### Step 6 — Task execution admission
 
-Plan nodes create ordinary Tasks. Those Tasks may reference the Plan and Objective as provenance, but Plan membership does not change the Task state machine. Enforce the budget hierarchy `TeamPolicy ceiling > Plan envelope > Task budget`: a Plan cannot exceed TeamPolicy, and the aggregate allocated/remaining Task budgets cannot exceed the Plan envelope. Each Task budget remains authoritative for its own execution.
+Each immutable Plan action has a stable identity; its Task carries nullable `plan_id` and `plan_action_id` provenance. The existing Task admission/claim path must not start a dependent Task until all prerequisite action Tasks are `done`. A failed prerequisite keeps dependent work ineligible until the Plan is stopped or replanned. This adds no Task state or separate scheduler. Once admitted, the ordinary Task execution path is unchanged. Enforce `TeamPolicy ceiling > Plan envelope > Task budget`; Plan allocations, including remaining unallocated budget, stay within the envelope, and each Task's own budget governs execution.
 
 ### Step 7 — Worker execution
 
@@ -103,7 +103,7 @@ Kernel validates and atomically commits valid proposals.
 
 Where the task has an observable external result, record an Outcome.
 
-### Step 11 — Re-assessment
+### Step 11 — Re-assessment and Plan lifecycle
 
 The Control layer may determine that:
 
@@ -113,7 +113,7 @@ The Control layer may determine that:
 - the Plan should stop,
 - a new Plan should be created.
 
-Replanning creates a new Plan; the old Plan remains history.
+Plan lifecycle is `active → completed | stopped`; terminal Plans cannot reopen. Stopping records `abandoned`, `invalidated`, or `superseded`. Progress is derived from Tasks. Completion is an explicit application-controlled transition and requires every intended action's one linked Task to be `done` and the declared completion condition to be satisfied by durable records. Replanning creates a new Plan; supersession atomically creates the replacement and stops the prior Plan without changing its intent.
 
 ### Objective mutation contract for R2
 
@@ -255,7 +255,7 @@ A crashed runtime should recover by reading:
 
 It should not require a model transcript to understand where it was.
 
-Because the Control layer converges into ordinary Tasks, recovery starts from Task/Plan/Events, not from a planner-specific checkpoint.
+Because the Control layer converges into ordinary Tasks, recovery starts from Task/Plan/Events, not from a planner-specific checkpoint. Plan creation and all initial Tasks commit atomically, so durable state contains either no Plan from that attempt or the complete initial Plan, Tasks, and creation Event. For each action, stable identity and the unique Plan/action Task mapping let recovery distinguish intended work from existing execution without transcripts or regeneration. Policy version on the creating Task records the version considered at Plan creation; later operations use their applicable policy version, and no policy change rewrites Plan intent or existing Task semantics.
 
 ## 10. Trigger integration
 

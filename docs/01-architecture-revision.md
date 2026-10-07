@@ -62,7 +62,7 @@ Objective
 → existing Task execution path
 ```
 
-The Control layer is an additive, higher-level decision layer above the existing Task system. It produces ordinary Tasks. Once materialized, those Tasks follow the same state machine, write scopes, budgets, validation, atomic commit, Events, and idempotency as any reactive Task. It starts from a durable Objective with an explicit lifecycle; no task-scoped ephemeral Objective exists.
+The Control layer is an additive, higher-level decision layer above the existing Task system. It produces ordinary Tasks. Once materialized, those Tasks follow the same state machine, write scopes, budgets, validation, atomic commit, Events, and idempotency as any reactive Task. Plan-linked Tasks additionally obey the Plan dependency admission invariant in `docs/invariants.md`; this does not add a Task state or runtime. The Control path starts from a durable Objective with an explicit lifecycle; no task-scoped ephemeral Objective exists.
 
 A Task may be:
 
@@ -226,9 +226,11 @@ authoritative StateAssessment entity or R5 selection provenance.
 
 ### Plan
 
-A durable record of intended orchestration for an Objective/Strategy. It contains Tasks, dependencies, conditions, and budget envelopes.
+A Plan is durable bounded execution intent for exactly one Objective and its Team. It preserves accepted StrategyProposal provenance, reconstructable historical assessment basis, immutable intended actions with stable identities, dependencies, a fixed budget envelope, and completion/stop conditions. It is not execution history, Strategy memory, StateAssessment, a workflow engine, or a second execution runtime. Partial progress is derived from Tasks, not represented as a Plan status.
 
-A Plan is execution intent, not execution truth. Tasks, Events, and Outcomes remain authoritative for what actually happened. A Plan may be partially completed, abandoned, invalidated, or superseded without corrupting the execution record.
+Plan creation, all initial ordinary Tasks, and the attributable creation Event commit atomically. Each intended action maps to at most one Task; after materialization it maps to exactly one. Nullable `Task.plan_id` and `Task.plan_action_id` identify that mapping and do not change ordinary Task behavior except for dependency admission: the existing Task admission path must not start a dependent Task before its prerequisites' Tasks are `done`.
+
+The Plan's intent is immutable after creation. Lifecycle is `active → completed | stopped` with terminal states; stop reasons are abandoned, invalidated, or superseded. Progress is derived from Tasks. Completion requires every intended action to have a `done` Task and the declared completion condition to be satisfied by durable records. Substantial replanning creates a new Plan; supersession references and stops the prior Plan without rewriting it. Tasks, Events, and Outcomes remain the authority for what actually happened.
 
 ### Task
 

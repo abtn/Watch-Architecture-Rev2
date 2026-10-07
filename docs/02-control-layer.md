@@ -52,7 +52,7 @@ Objective
 → existing Task execution path
 ```
 
-The Control layer does not create a second execution runtime. It creates ordinary Tasks that then follow the existing Task state machine, write scopes, budgets, validation, atomic commit, Events, and idempotency rules.
+The Control layer does not create a second execution runtime. It creates ordinary Tasks that then follow the existing Task state machine, write scopes, budgets, validation, atomic commit, Events, and idempotency rules. For Plan-linked Tasks, the existing Task admission path enforces Plan-action prerequisites before a Task starts. This is the only Plan-specific constraint on admission; the Task state machine itself is unchanged.
 
 ## 3. Concepts
 
@@ -223,7 +223,7 @@ Validation CANNOT establish that the Strategy is semantically wise. Strategic qu
 
 ### 3.8 Plan
 
-A Plan is a durable record of intended orchestration for an Objective/Strategy.
+A Plan is durable bounded execution intent for exactly one Objective and its Team. It is not execution history, Strategy memory, StateAssessment, a workflow engine, or a second execution runtime. The creating Task's policy version records the policy considered, without adding a Plan policy pin; later operations use the policy version applicable to those operations.
 
 Minimal shape:
 
@@ -246,7 +246,7 @@ Budget hierarchy is:
 TeamPolicy budget > Plan budget > Task budget
 ```
 
-A Plan may never exceed the applicable TeamPolicy ceiling. The sum/remaining allocation of materialized Task budgets may not exceed the Plan envelope. Existing Task budgets remain authoritative for individual execution.
+A Plan may never exceed the applicable TeamPolicy ceiling. The sum/remaining allocation of materialized Task budgets may not exceed the Plan envelope. Existing Task budgets remain authoritative for individual execution. The creating Task's existing `policy_version` records the policy considered at creation, not a separate Plan pin; later operations use their applicable version, and policy changes do not rewrite historical Plan intent or existing Task semantics.
 
 A Plan is not:
 
@@ -256,31 +256,23 @@ A Plan is not:
 - a permanent strategy manual
 - authoritative execution truth
 
-Actual execution is represented by Tasks, Events, and Outcomes. A Plan may become partially completed, abandoned, invalidated, or superseded without corrupting the execution record.
+Actual execution is represented by Tasks, Events, and Outcomes. A Plan may show partial progress derived from its Tasks, or be stopped as abandoned, invalidated, or superseded, without corrupting the execution record; partial progress is not a Plan status.
 
-The R1 compatibility boundary requires one parent Objective and Team, Task
-attribution, valid dependencies that do not create cycles, selected
-Strategy/Assessment provenance, stop conditions, and a budget envelope.
-Substantial replanning must not silently rewrite historical intent; the
-architecture describes creating a new Plan, while the exact replacement or
-supersession mechanism remains open. Task references to Objective and Plan
-remain independently optional; when both are present they must be
-parent-consistent and same-Team. The Plan status vocabulary and transition
-graph, dependency storage shape, and exact Task scope operation remain for R5
-design; R1 adds no Plan schema or runtime.
+R5 closure: a Plan is durable bounded intent for exactly one Objective and its Team, not execution history, Strategy memory, StateAssessment, a workflow engine, or a second runtime. It preserves identity of the accepted R4 proposal and its hash plus reconstructable historical assessment provenance (basis references, hash, timestamp, and exact projection payload only as needed). Later assessments never overwrite the historical basis.
+
+Initial intended actions are immutable and have stable identities. Each action maps to zero or one Task before materialization and exactly one afterward. `Task.plan_id` and `Task.plan_action_id` are nullable provenance references; the action must belong to that Plan, Team and Objective ownership must match, and `(plan_id, plan_action_id)` is unique. No PlanAction entity is introduced.
+
+Plan creation, all initial ordinary Tasks, and the creation audit Event commit in one transaction. A committed Plan therefore has no partial-materialization lifecycle. The creating `create_plan` Task's `policy_version` records the policy considered at creation; this is provenance, not a Plan policy pin. Policy changes do not rewrite intent or alter existing Task semantics; later operations use their applicable policy version.
+
+Dependencies are explicit prerequisites between actions in the same Plan. Targets must exist; self-dependency and cycles are invalid. Dependencies express intent, not history. The existing Task admission/claim path enforces them: a Plan-linked Task cannot start until its prerequisites' Tasks are `done`; a failed prerequisite leaves dependent work ineligible until the Plan is stopped or replanned. No new Task state, dependency scheduler, or workflow engine is introduced.
+
+Plan lifecycle is `active → completed | stopped`; terminal Plans do not reopen. `stopped_reason` is `abandoned`, `invalidated`, or `superseded`. Progress is derived from Tasks. Completion requires every intended action to have exactly one linked Task in `done` and the declared completion condition to be satisfied by durable records. Lifecycle changes are explicit application operations with attributable Events. Supersession atomically creates a replacement Plan referring to the old Plan and stops the old one as `superseded`. All intent fields remain immutable; substantial replanning creates a new Plan.
+
+The narrow `create_plan` operation follows worker proposal → application validation → Kernel/application commit. It verifies the accepted proposal Event and hash, Objective/Team ownership, supported actions, acyclic dependencies, applicable policy constraints, aggregate budgets, and idempotency. It may create only the Plan, its initial ordinary Tasks, and explicitly scoped audit Events. It cannot change TeamPolicy or memory or create Strategy/StateAssessment entities.
 
 ### 3.9 Task convergence
 
-Plan materialization creates ordinary Tasks. Those Tasks:
-
-- use the existing state machine,
-- carry their own budgets and write scopes,
-- are validated by the Kernel,
-- emit Events,
-- are idempotent under retry,
-- may optionally reference their Objective and Plan.
-
-A Task does not need a Plan to be valid.
+Plan materialization creates ordinary Tasks that use the existing Task lifecycle and execution path; nullable Objective/Plan/action references are provenance. Dependency admission follows INV-16, and reactive Tasks remain valid without a Plan.
 
 ## 4. Trigger roles
 

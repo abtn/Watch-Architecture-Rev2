@@ -212,27 +212,26 @@ implicitly implemented. R5 selects a candidate and creates a Plan later.
 
 ## Phase R5 — Bounded Plan generation
 
-Convert a validated StrategyProposal into a Plan.
+Convert an accepted R4 StrategyProposal into a durable Plan: bounded execution intent for exactly one Objective, not execution history, Strategy memory, StateAssessment, a workflow engine, or a second runtime.
 
-A Plan:
+Each immutable intended action has a stable identity and maps to zero or one Task before materialization, then exactly one ordinary Task. `Task.plan_id` and `Task.plan_action_id` are nullable provenance; when set they identify an action in that Plan, obey Team/Objective ownership, and are unique per Plan/action pair. Plan creation, all initial Tasks, and the creation Event commit atomically. No partial-materialization state is defined.
 
-- names a parent Objective
-- contains bounded Tasks
-- contains dependencies
-- records rationale/reference IDs
-- carries budget constraints
-- has explicit completion/stop conditions
+Preserve accepted proposal and assessment provenance; immutable action definitions and identities; dependencies; budget envelope; and completion/stop conditions. The creating `create_plan` Task's existing `policy_version` records the policy used for validation; no separate Plan policy pin is added. Later operations use their applicable policy version; policy changes do not rewrite Plan intent or alter existing Task semantics.
 
-Important:
+Dependencies are same-Plan prerequisites between actions. Validate targets, reject self-dependencies and cycles, and enforce admission in the existing Task claim path: a Plan-linked Task cannot start until each prerequisite Task is `done`. Failed prerequisites keep dependents ineligible until stop or replan; no Task state or separate scheduler is added.
 
-Plan is execution intent, not execution truth. Plan materialization creates ordinary Tasks that use the existing Task execution path. The existing Task state machine is unchanged.
+Plan lifecycle is `active → completed | stopped`; terminal states cannot reopen. `stopped_reason` is `abandoned`, `invalidated`, or `superseded`. Progress is derived from Tasks. Completion requires every intended action to have exactly one linked Task in `done` and the declared completion condition to be satisfied by durable records. Completion/stopping is an explicit application-controlled transition. Supersession atomically creates a new Plan referring to the old and stops the old Plan as superseded. Substantial replanning never edits prior intent.
+
+Plan creation uses a narrowly scoped `create_plan` operation: worker proposal → application validation → Kernel/application commit. It validates accepted proposal Event/hash, Objective/Team ownership, supported actions, acyclic dependencies, policy constraints, budget limits, and retry/idempotency; it may create only the Plan, initial ordinary Tasks, and scoped audit Event(s). No TeamPolicy, memory, Strategy, or StateAssessment writes.
 
 Exit:
 
-- one small plan can run end to end
-- failed Task does not silently rewrite Plan history
-- Plan can be resumed from durable state
-- Plan may become partially completed, abandoned, or superseded without corrupting the execution record
+- one bounded Plan and its initial ordinary Tasks commit atomically and run through the existing Task runtime
+- accepted proposal and historical assessment basis are reconstructable
+- action identity, uniqueness, retry, and concurrent creation behavior are tested
+- prerequisite admission is enforced without changing Task states
+- completion, stopping, and supersession preserve immutable intent
+- restart reconstruction requires only durable Plan/Task/Event state
 
 ## Phase R6 — First intelligent control loop
 
