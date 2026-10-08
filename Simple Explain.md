@@ -1,1582 +1,1111 @@
-# Watch — How an AI Becomes an Expert
+# Watch — Simple Explain
 
 ## 1. The basic idea
 
-A general-purpose AI can know something about almost everything.
+Watch is a system for helping a general-purpose AI become experienced in a domain.
 
-It can write Python, explain a scientific paper, analyze a political event, investigate a technical problem, or summarize a large amount of information.
+A normal LLM can already know a lot and perform many kinds of work. It can write Python, read documentation, analyze a scientific paper, investigate a news event, or compare different technical approaches.
 
-But knowing many things is not the same as being an expert.
+But a model call is temporary.
 
-An expert does more than store information.
+The important problem is:
 
-An expert accumulates experience.
+> **How can the experience produced by many temporary AI workers become persistent, structured, reviewable, and useful to future workers?**
 
-They learn which information matters, which sources deserve attention, which explanations are plausible, which methods work, which methods fail, what mistakes they have already made, and what they should do differently next time.
+Watch is designed around that problem.
 
-They also develop judgment.
+The central principle is:
 
-When faced with a new problem, an experienced person does not start from zero. They begin with everything they have learned from previous problems.
+> **Model-call intelligence is temporary. Team experience is persistent.**
 
-**Watch is a system designed to give AI this persistent experience.**
-
-The central idea is:
-
-> **Use a general-purpose AI as the thinking worker, while Watch provides the persistent environment in which the AI can observe, reason, act, learn from outcomes, and accumulate validated domain experience.**
-
-The underlying model does not have to become a completely different model for every domain.
-
-Instead:
-
-```text
-                General-purpose AI
-                       │
-                       │ temporary worker
-                       ▼
-               ┌───────────────┐
-               │     WATCH     │
-               │               │
-               │ Observe       │
-               │ Remember      │
-               │ Reason        │
-               │ Act           │
-               │ Evaluate      │
-               │ Learn         │
-               │ Improve       │
-               └───────┬───────┘
-                       │
-                       ▼
-              Persistent expertise
-                 in a domain
-```
-
-A Watch Team can therefore specialize in almost any domain while the underlying learning architecture remains largely the same.
-
-A Python-development team, a scientific-research team, a newsroom, a geopolitical-analysis team, and a financial-research team may look very different on the surface.
-
-Underneath, they can use the same basic mechanism:
-
-```text
-Observe
-   ↓
-Understand
-   ↓
-Form explanations
-   ↓
-Investigate / act
-   ↓
-Observe the result
-   ↓
-Evaluate
-   ↓
-Learn
-   ↓
-Use the learning in future work
-   ↺
-```
-
-That loop is the heart of Watch.
-
----
-
-## 2. General intelligence is not the same thing as expertise
-
-It helps to separate two ideas.
-
-### General intelligence
-
-A general-purpose LLM has broad capabilities.
-
-It may already know:
-
-* programming concepts,
-* scientific concepts,
-* history,
-* mathematics,
-* languages,
-* common reasoning patterns,
-* and many facts about the world.
-
-It can perform many different tasks without being specially trained for each one.
-
-This makes a general model extremely useful.
-
-But broad capability has a limitation:
-
-**the model does not automatically accumulate reliable, structured experience from everything it does.**
-
-A conversation may contain an excellent solution today and be effectively irrelevant to the next session.
-
-A mistake may happen repeatedly without becoming a permanent lesson.
-
-A successful strategy may be remembered only as vague text.
-
-A belief may remain in memory long after the world has changed.
-
-And a piece of advice may become "knowledge" simply because a model generated it confidently.
-
-Expertise requires more structure.
-
-### Domain expertise
-
-A domain expert has accumulated a history of interactions with a particular kind of world.
-
-For example, an experienced Python developer may know much more than the Python language reference.
-
-They may have learned:
-
-> This kind of bug usually comes from this class of mistake.
-
-> Check the data boundary before changing the algorithm.
-
-> This apparently elegant abstraction becomes difficult to maintain under these constraints.
-
-> This documentation is authoritative for this particular behavior.
-
-> A previous solution failed because the original assumption was wrong.
-
-Those lessons are not just facts.
-
-They are **experience about how to work in the domain**.
-
-That is the problem Watch is designed to address.
-
----
-
-## 3. Watch treats expertise as something that develops over time
-
-Watch starts with a general-purpose worker.
-
-That worker may be capable, but it does not begin with the full accumulated experience of the team.
-
-Instead, the team already has a persistent state.
-
-The worker enters that state, performs work, and leaves behind durable consequences.
-
-The next worker can then use what previous workers learned.
-
-This creates something closer to organizational experience:
-
-```text
-Worker 1
-   ↓
-observation + reasoning + action
-   ↓
-outcome
-   ↓
-evaluation
-   ↓
-learning
-   ↓
-persistent team knowledge
-   ↓
-Worker 2
-   ↓
-better starting point
-```
-
-The workers may be temporary.
-
-The experience is not.
-
-This is one of the most important ideas in Watch:
-
-> **The intelligence of a particular model call is temporary. The experience of the Team is persistent.**
-
-The Team can therefore become more experienced even though its individual workers are replaced constantly.
-
-This is similar to how an organization can become more competent even though its employees change.
-
----
-
-## 4. What exactly does Watch remember?
-
-"Memory" is too vague.
-
-Watch separates different kinds of persistent information because different things should be changed in different ways.
-
-There are two especially important categories.
-
-### World knowledge
-
-This is the Team's current understanding of the thing it is watching.
-
-Examples:
-
-* What happened?
-* What evidence exists?
-* Which explanations are plausible?
-* Which explanation currently has more support?
-* What remains uncertain?
-* What has been contradicted?
-* What has become stale?
-
-Watch represents this through things such as:
-
-```text
-Signals
-Snapshots
-Threads
-Hypotheses
-Evidence
-Confidence changes
-Outcomes
-```
-
-This knowledge is intentionally revisable.
-
-The world changes.
-
-New evidence appears.
-
-Old evidence becomes less useful.
-
-A hypothesis that once seemed plausible can become weak.
-
-Therefore the world model must be allowed to change.
-
-### Team knowledge
-
-This is different.
-
-It concerns what the Team has learned about **how to work effectively in the domain**.
-
-Examples:
-
-> When investigating this kind of problem, inspect these variables first.
-
-> Do not treat this kind of evidence as sufficient by itself.
-
-> This source type is useful for discovery but weak for confirmation.
-
-> This method tends to fail under these conditions.
-
-> Use this procedure when evaluating this class of result.
-
-This is much closer to what we normally call skill, practice, method, pattern, or expertise.
-
-Watch represents this through:
-
-```text
-Outcomes
-   ↓
-Evaluations
-   ↓
-LearningChanges
-   ↓
-KnowledgeItems / TeamPolicy
-```
-
-The distinction is fundamental.
-
-> **World knowledge describes the domain. Team knowledge describes how the Team has learned to operate within that domain.**
-
----
-
-## 5. Knowledge and experience are not the same thing
-
-A Watch Team should not turn every statement it encounters into "knowledge."
-
-Consider a Python team.
-
-A worker says:
-
-> "This architecture is better."
-
-That is not yet a learned skill.
-
-It is a claim.
-
-For Watch to turn experience into durable team knowledge, there should be something behind it.
-
-Perhaps the Team used the architecture.
-
-An outcome was observed.
-
-The result was evaluated.
-
-The evaluation showed what worked and what did not.
-
-Only then might the Team propose a learning change.
+A worker may disappear after completing a task. The Team keeps the durable records, evidence, outcomes, evaluations, lessons, and decisions that were accepted.
 
 Conceptually:
 
-```text
-Statement
-   ↓
-Was it actually tested?
-   ↓
-What happened?
-   ↓
-What evidence do we have?
-   ↓
-Did the method succeed?
-   ↓
-Why?
-   ↓
-Should this change future behavior?
-   ↓
-Validated learning
-```
+~~~
+temporary AI worker
+       ↓
+observe / reason / act
+       ↓
+proposal
+       ↓
+validation
+       ↓
+durable state
+       ↓
+future worker
+~~~
 
-This is important because **experience is not automatically wisdom**.
+Watch therefore is not simply a smarter prompt, a memory database, or an agent framework.
 
-A single lucky result should not silently become a permanent rule.
-
-A failure should not automatically invalidate an entire method.
-
-A persuasive model response should not become organizational doctrine simply because it sounds correct.
-
-Watch therefore treats learning as a separate process.
+It is an architecture for turning repeated work and its consequences into persistent experience.
 
 ---
 
-## 6. The scientific method is an important example — but not the boundary
+## 2. The goal is not just memory
 
-The scientific method gives us an extremely useful pattern:
+Imagine telling Watch:
 
-```text
-Observe
-→ form hypotheses
-→ test
-→ observe results
-→ revise
-```
+> **Become an expert Python developer.**
 
-Watch adopts many of the same principles:
+A simple memory system might collect Python documents and previous conversations.
 
-* observation,
-* explicit hypotheses,
-* evidence,
-* competing explanations,
-* testing,
-* outcomes,
-* evaluation,
-* revision.
+Watch asks a larger question:
 
-But Watch is not intended to be a scientific-research-only system.
+> **What would an experienced Python development organization need to understand, investigate, test, remember, evaluate, and improve over time?**
 
-The same general pattern can apply to many activities.
+That produces two connected problems.
 
-A programmer can investigate a bug.
+### Understanding the world
 
-A newsroom can investigate an event.
+Watch needs to know things such as:
 
-A business can test a strategy.
+- what changed in Python;
+- what the official documentation says;
+- what practitioners are doing;
+- which claims are supported;
+- which ideas are disputed;
+- what remains unknown;
+- and what has become outdated.
 
-A researcher can investigate a hypothesis.
+### Learning how to work
 
-An engineer can compare designs.
+Watch also needs to learn things such as:
 
-A research team can monitor a changing system.
+- which sources are useful for which questions;
+- which investigation methods work;
+- which approaches repeatedly fail;
+- which experiments are worth performing;
+- how different perspectives complement each other;
+- and what should receive attention next.
 
-A person can even use the same architecture for a broad personal knowledge domain.
+So:
 
-The common structure is not "science."
-
-The common structure is:
-
-> **Observe reality, maintain explicit knowledge about it, act or investigate, observe consequences, evaluate what happened, and let experience improve future work.**
-
-So Watch should be understood as a **general architecture for disciplined inquiry, feedback, and accumulation of expertise**.
-
-It borrows ideas from the scientific method, forecasting, engineering, knowledge management, version control, and organizational learning, but is not identical to any one of them.
-
-It is broader than a single scientific workflow because the goal is not only to discover scientific truth.
-
-The goal is to help a persistent AI Team become more experienced at whatever domain it has been created to work in.
+> **World knowledge describes the domain. Team experience describes how the Team has learned to operate in that domain.**
 
 ---
 
-## 7. Why evidence is central
+## 3. The most important new idea: one Objective can have many perspectives
 
-Learning from experience only works when the system can distinguish what actually happened from what someone merely said happened.
-
-Suppose a worker says:
-
-> "The previous investigation proved that method X works."
-
-That sentence is not enough.
-
-What investigation?
-
-What was actually observed?
-
-What source supports it?
-
-Can the source still be inspected?
-
-Did the result actually correspond to the method?
-
-Could the result have happened for another reason?
-
-Watch therefore treats evidence as a first-class part of the system.
-
-When external information enters the system, Watch can preserve an immutable Snapshot of the observed material.
-
-Later, a worker can propose:
-
-> "This evidence supports Hypothesis A."
-
-The application does not simply trust the worker.
-
-It checks the proposal.
+An Objective is the thing Watch is trying to accomplish.
 
 For example:
 
-```text
-Worker proposes:
-"Quote X supports Hypothesis A."
+~~~
+Objective:
+Become an expert Python developer
+~~~
 
-             ↓
+Watch should not assume there is only one correct way to approach that Objective.
 
-Watch checks:
+Instead, it can form several **Visions**.
 
-Does the source exist?
-Does the snapshot exist?
-Does the quote actually occur?
-Are the offsets correct?
-Is this Task allowed to make this change?
-Is the target still valid?
-Are the preconditions still true?
-
-             ↓
-
-Accept
-or
-Reject
-```
-
-This gives the system an important property:
-
-> **A worker can propose knowledge, but the worker cannot directly declare its proposal to be durable truth.**
-
----
-
-## 8. Watch is deliberately skeptical
-
-A major purpose of the architecture is to resist premature certainty.
-
-Real domains contain:
-
-* incomplete information,
-* contradictory evidence,
-* misleading signals,
-* outdated information,
-* ambiguous events,
-* mistaken interpretations,
-* and successful-looking outcomes that were actually caused by something else.
-
-Watch therefore does not need one permanent answer to every question.
-
-It can maintain competing hypotheses.
+A Vision is a bounded way of understanding part of the Objective.
 
 For example:
 
-```text
-Thread:
-"Why did the system fail?"
-
-Hypothesis A:
-Database connection exhaustion
-
-Hypothesis B:
-Application-level retry storm
-
-Hypothesis C:
-External service degradation
-```
-
-New evidence can support one hypothesis and challenge another.
-
-The alternatives do not need to disappear simply because one currently looks stronger.
-
-This is important because expertise is not the ability to be certain all the time.
-
-An expert is often better described as someone who knows:
-
-> "Here is what we currently believe, here is why, here is what contradicts it, and here is what would change our mind."
-
-Watch tries to preserve exactly that structure.
-
----
-
-## 9. Beliefs can become stale
-
-The system also distinguishes between **knowledge that should remain stable until reviewed** and **beliefs about a changing world**.
-
-Suppose a financial Team has the belief:
-
-> "Current market conditions support a particular hypothesis."
-
-That belief should not remain equally strong forever just because nobody bothered to change it.
-
-The world may have changed.
-
-Watch therefore allows certain world beliefs to decay conservatively over time.
-
-Conceptually:
-
-```text
-evidence supports belief
-        ↓
-confidence increases
-        ↓
-no new relevant evidence
-        ↓
-time passes
-        ↓
-confidence may decay
-```
-
-But a learned Team practice is different.
-
-Suppose the Team learned:
-
-> "When investigating this class of failure, inspect the queue before changing the worker."
-
-That lesson should not disappear merely because the Team went a month without encountering the failure.
-
-It should be reviewed, revised, or retired because of evidence and experience, not because the clock happened to advance.
-
-This produces an important distinction:
-
-```text
-World belief
-    → can decay with time
-
-Team skill / method
-    → changes through learning and review
-```
-
-The difference prevents the Team from either forgetting everything or keeping every old belief forever.
-
----
-
-## 10. The Team is the persistent entity
-
-The LLM is not the Team.
-
-A model call is a Worker.
-
-The Team is the durable entity that remembers.
-
-The Team has:
-
-* a domain,
-* a mission,
-* policy,
-* world knowledge,
-* accumulated experience,
-* tasks,
-* outcomes,
-* and a history of learning.
-
-A simple analogy is a professional organization.
-
-```text
-Human analogy                 Watch
-────────────────────────────────────────────
-Organization                  Team
-Employees                     Workers
-Company records               Durable state
-Research archive              Signals / Snapshots
-Current understanding         Threads / Hypotheses
-Experience                    Outcomes
-Postmortems                   Evaluations
-Lessons learned               KnowledgeItems
-Operating rules               TeamPolicy
-Work assignment               Task
-Managerial deliberation       Control layer
-Quality / governance          Kernel
-```
-
-The analogy is not meant to claim that Watch literally reproduces a human organization.
-
-It is useful because it explains where persistence belongs.
-
-Workers come and go.
-
-The organization remembers.
-
----
-
-## 11. What is the role of the LLM?
-
-The LLM is the system's general cognitive worker.
-
-It can:
-
-* read,
-* reason,
-* summarize,
-* compare,
-* propose hypotheses,
-* investigate,
-* generate strategies,
-* write,
-* interpret evidence,
-* and perform other forms of domain work.
-
-But the LLM does not own the durable state.
-
-A worker receives a bounded context.
-
-It performs a task.
-
-It proposes changes.
-
-The application validates those changes.
-
-The Kernel commits accepted changes.
-
-This gives the system a deliberately asymmetric relationship:
-
-```text
-LLM:
-"Here is what I think we should change."
-
-Watch:
-"Let me check whether that change is allowed,
-supported, attributable, and still valid."
-
-Watch:
-"Accepted."
-
-or
-
-Watch:
-"Rejected, and here is why."
-```
-
-That boundary is one of the foundations of the architecture.
-
-The model supplies intelligence.
-
-The system supplies persistence, rules, provenance, and controlled change.
-
----
-
-## 12. This is different from ordinary AI memory
-
-A conventional AI memory system often tries to answer:
-
-> "What should I remember from previous conversations?"
-
-Watch asks a more demanding question:
-
-> **"What should this Team learn from its experience, and what should that learning change?"**
-
-Those are not the same problem.
-
-Saving a conversation transcript is not the same as learning.
-
-Saving summaries is not the same as learning.
-
-Adding more documents to a vector database is not the same as learning.
-
-Even storing successful answers is not necessarily learning.
-
-Learning requires a causal loop:
-
-```text
-Experience
-   ↓
-Outcome
-   ↓
-Evaluation
-   ↓
-Learning decision
-   ↓
-Changed future behavior
-```
-
-That final step matters.
-
-The purpose of memory is not merely to preserve the past.
-
-It is to improve the future.
-
----
-
-## 13. Watch therefore has a learning loop
-
-The complete conceptual loop looks like this:
-
-```text
-                 ┌─────────────────────┐
-                 │      DOMAIN         │
-                 │       WORLD         │
-                 └──────────┬──────────┘
-                            │
-                         Observe
-                            │
-                            ▼
-                   Signals / Snapshots
-                            │
-                            ▼
-                Threads / Hypotheses
-                            │
-                       Evidence
-                            │
-                            ▼
-                    Current belief
-                            │
-                            ▼
-                    Decide what next
-                            │
-                            ▼
-                     Task + Worker
-                            │
-                            ▼
-                       Action
-                  / investigation
-                            │
-                            ▼
-                        Outcome
-                            │
-                            ▼
-                       Evaluation
-                            │
-                            ▼
-                        Learning
-                            │
-                            ▼
-                  Team knowledge
-                            │
-                            │
-                            ▼
-                  Future task behavior
-                            │
-                            └───────────────↺
-```
-
-There are really two feedback loops here.
-
-### World loop
-
-The Team continuously updates its model of the domain.
-
-```text
-Observe
-→ interpret
-→ test
-→ update belief
-→ observe again
-```
-
-### Experience loop
-
-The Team learns how to work better.
-
-```text
-Work
-→ outcome
-→ evaluation
-→ lesson
-→ changed future behavior
-```
-
-The combination of these two loops is what produces something resembling accumulated expertise.
-
----
-
-## 14. The Control layer: expertise also requires deciding what to do next
-
-Knowing more is not enough.
-
-An expert must also decide what deserves attention.
-
-This is why Watch has a higher-level Control layer.
-
-The basic question is:
-
-> **Given the Team's current understanding, mission, policy, constraints, and unanswered questions, what should the Team do next?**
-
-The Control model is:
-
-```text
+~~~
 Objective
-    ↓
-StateAssessment
-    ↓
+"Become an expert Python developer"
+
+        ↓
+
+Strategy
+
+        ├── Vision A: Python ecosystem
+        ├── Vision B: Python engineering
+        ├── Vision C: Computer science
+        └── Vision D: Practical experimentation
+~~~
+
+These are not four different Objectives.
+
+They are four perspectives on the same Objective.
+
+### Why Vision matters
+
+A Vision is more than a category or label.
+
+It defines a scope and boundary.
+
+For example:
+
+**Python ecosystem Vision**
+
+> Understand Python releases, official developments, important packages, community practices, and ecosystem changes.
+
+**Python engineering Vision**
+
+> Understand how to build reliable, maintainable, secure, and performant software with Python.
+
+**Computer science Vision**
+
+> Understand the deeper concepts behind Python programming, such as abstraction, type systems, concurrency, language design, and programming paradigms.
+
+**Experimentation Vision**
+
+> Test important ideas through practical implementation instead of relying only on explanations.
+
+This lets Watch look at one domain from several meaningful directions without collapsing everything into one giant undifferentiated task list.
+
+---
+
+## 4. A Strategy is therefore a structured set of Visions
+
+The old R4 model was effectively:
+
+~~~
 StrategyProposal
-    ↓
-Plan
-    ↓
-Tasks
-    ↓
-existing execution system
-```
+└── one action
+~~~
 
-Each part has a distinct role.
+That is now understood to be too restrictive for the intended Watch architecture.
 
-### Objective
+A more useful model is:
 
-What are we trying to accomplish?
+~~~
+StrategyProposal
+│
+├── Vision A
+│   └── work
+│
+├── Vision B
+│   └── work
+│
+├── Vision C
+│   └── work
+│
+└── Vision D
+    └── work
+~~~
 
-### StateAssessment
+The Strategy answers:
 
-What do we currently know?
+> **Given the Objective and what we currently understand, what different perspectives should Watch pursue?**
 
-What is uncertain?
+The accepted Strategy can therefore contain multiple meaningful lines of work.
 
-What is contradictory?
+This is why R4 needs to be redesigned before R5 continues.
 
-What is stale?
+R5 should not invent additional actions that were never authorized by the accepted Strategy.
 
-What remains unresolved?
+---
 
-### StrategyProposal
+## 5. Visions contain Workstreams
 
-Given that state, what approaches could make sense?
+A Vision can still contain too much detail to think about as one unit.
 
-### Plan
+We therefore need another abstraction.
 
-Which bounded approach should become actual work?
+The current proposed name is:
 
-### Task
+> **Workstream**
 
-What concrete unit of work should be performed?
+A Workstream is a coherent body of related work inside a Vision.
 
-### Worker
+It hides the internal complexity of several related actions.
 
-Who or what performs it?
+For example:
 
-This is important because Watch should not merely become a better storage system.
+~~~
+Vision:
+Python ecosystem
 
-A genuine expert also knows how to allocate attention.
+    Workstream:
+    "Monitor changes in Python"
 
-The system therefore needs both:
+        ├── collect official changes
+        ├── collect ecosystem reports
+        ├── compare findings
+        └── evaluate significance
+~~~
 
-```text
-memory of what happened
-```
+A human does not need to think about four unrelated little tasks.
+
+They can think:
+
+> "The Python ecosystem monitoring Workstream is running."
+
+The Workstream provides a useful abstraction boundary.
+
+It groups actions that belong together and may depend on one another.
+
+---
+
+## 6. What is an Action?
+
+The simplest useful definition is:
+
+> **An Action is a purposeful unit of work required by a Workstream to achieve its purpose.**
+
+For example:
+
+~~~
+Workstream:
+"Understand Python typing"
+
+Actions:
+
+1. Read official typing documentation
+2. Study current typing proposals
+3. Compare major approaches
+4. Test examples
+5. Evaluate the findings
+~~~
+
+An Action describes intended work.
+
+A Task is the executable runtime unit created from that intended work.
+
+So:
+
+~~~
+Action
+  ↓
+Task
+~~~
+
+The distinction matters.
+
+An Action answers:
+
+> What purposeful work should happen?
+
+A Task answers:
+
+> What executable unit should the runtime perform?
+
+The first R4/R5 implementation can keep the relationship simple, but the architecture should not permanently assume that every strategic Action is identical to one runtime Task.
+
+---
+
+## 7. Dependency belongs inside the Workstream abstraction
+
+Not every Action needs another Action.
+
+Many can happen independently.
+
+For example:
+
+~~~
+Research Python typing
+Research Python async
+Monitor Python releases
+Run Python experiments
+~~~
+
+These can all be active at the same time.
+
+But some work naturally forms a sequence.
+
+For example:
+
+~~~
+collect sources
+      ↓
+compare sources
+      ↓
+evaluate findings
+~~~
+
+Instead of making the entire Plan look like one complicated dependency graph, Watch should group this sequence into a Workstream.
+
+The simple mental model is:
+
+~~~
+Vision
+  ↓
+Workstream
+  ↓
+internal Actions
+  ↓
+internal dependencies
+~~~
+
+This gives us a useful rule:
+
+> **Visions provide parallel perspectives. Workstreams hide and organize the dependent work inside each perspective.**
+
+This is deliberately an abstraction.
+
+The system should expose the meaningful object to humans instead of forcing them to reason about every low-level dependency.
+
+---
+
+## 8. Multiple Visions should be able to work simultaneously
+
+This is an important part of Watch.
+
+Suppose the Python Team has four Visions:
+
+~~~
+Ecosystem
+Engineering
+Computer Science
+Experimentation
+~~~
+
+Watch should be able to pursue all four at the same time.
+
+Conceptually:
+
+~~~
+                    Objective
+                       ↓
+                    Strategy
+                       ↓
+       ┌───────────────┼────────────────┐
+       ↓               ↓                ↓
+    Vision A        Vision B         Vision C
+       ↓               ↓                ↓
+ Workstreams       Workstreams      Workstreams
+       ↓               ↓                ↓
+   Actions           Actions          Actions
+~~~
+
+One Vision does not need to finish before another starts.
+
+Inside a Vision, a Workstream may have pending work that waits for earlier work to finish.
+
+So Watch gets both:
+
+**parallelism between perspectives**
 
 and
 
-```text
-reasoning about what should happen next
-```
+**ordered work inside a perspective.**
+
+The runtime is still responsible for actual Task execution. The Strategy/Plan layers describe what is intended and which work is eligible.
 
 ---
 
-## 15. Not every action needs deliberation
+## 9. What does the Plan do?
 
-Watch has two valid ways to begin work.
+A Plan is the durable execution intent derived from an accepted Strategy.
 
-Sometimes the correct response is already known.
+It does not decide what the Strategy should have been.
+
+It does not invent missing strategic Actions.
+
+It preserves the accepted decision and turns it into durable executable structure.
+
+Conceptually:
+
+~~~
+Objective
+    ↓
+StateAssessment
+    ↓
+StrategyProposal
+    ↓
+validation
+    ↓
+accepted Strategy
+    ↓
+Plan
+    ↓
+Tasks
+~~~
+
+A Plan can contain the selected Vision structure and its Workstreams/Actions.
 
 For example:
 
-```text
-A scheduled source fetch is due
+~~~
+Plan:
+"Improve Python expertise"
+
+├── Vision: Ecosystem
+│   └── Workstream: Python releases
+│       ├── Action A
+│       └── Action B
+│
+├── Vision: Engineering
+│   └── Workstream: Testing practices
+│       ├── Action C
+│       └── Action D
+│
+└── Vision: Computer Science
+    └── Workstream: Type systems
+        └── Action E
+~~~
+
+The Plan is durable intent.
+
+Actual execution is represented by Tasks, Events, and Outcomes.
+
+---
+
+## 10. Strategy decides direction; the runtime executes
+
+Watch needs a strong separation between decision-making and execution.
+
+### Strategy
+
+> What approaches should we pursue?
+
+### Vision
+
+> From which bounded perspective should we pursue it?
+
+### Workstream
+
+> What coherent body of work belongs inside that perspective?
+
+### Action
+
+> What purposeful work is required?
+
+### Plan
+
+> What accepted intent should become durable execution structure?
+
+### Task
+
+> What executable unit should run?
+
+### Worker
+
+> Who or what performs the Task?
+
+This gives Watch a clean chain:
+
+~~~
+Objective
+   ↓
+StateAssessment
+   ↓
+Strategy
+   ↓
+Vision
+   ↓
+Workstream
+   ↓
+Action
+   ↓
+Plan
+   ↓
+Task
+   ↓
+Worker
+   ↓
+Outcome
+~~~
+
+The exact persistence boundaries can evolve, but the conceptual separation is important.
+
+---
+
+## 11. The Team may eventually change itself — but not silently
+
+The Python example also creates another problem.
+
+Watch may discover:
+
+> "Our current Team does not have enough security expertise."
+
+It might therefore propose:
+
+> "Create a Python Security Researcher capability."
+
+That is not ordinary work.
+
+It changes the structure of Watch itself.
+
+Watch should therefore be able to propose structural changes, but a human should remain able to review, edit, approve, or reject what the system creates.
+
+Conceptually:
+
+~~~
+Watch discovers a capability gap
         ↓
-create Task
+capability / Team-change proposal
         ↓
-execute
-```
+human review
+        ↓
+approve / edit / reject
+        ↓
+Team changes
+~~~
 
-There is no reason to invoke a large deliberative planning process for every routine operation.
+The broader principle is:
 
-This is the **reactive path**:
+> **Watch may become increasingly capable of designing its own organization, but durable structural changes remain controllable by humans.**
 
-```text
-Signal / Trigger / Scheduler / Operator
-                ↓
-               Task
-                ↓
-             Worker
-                ↓
-             Proposal
-                ↓
-      Kernel validation
-                ↓
-              Commit
-```
+This should be a separate architectural concern from ordinary Plan execution.
 
-Other times, the Team genuinely needs to decide what to investigate next.
+---
 
-Then the **deliberative path** can be used:
+## 12. Provenance must survive all these abstractions
 
-```text
+The more layers we introduce, the more important provenance becomes.
+
+Suppose six months later Watch has executed:
+
+~~~
+Task:
+"Research Python async programming"
+~~~
+
+We should be able to trace why it existed.
+
+Conceptually:
+
+~~~
 Objective
    ↓
 StateAssessment
    ↓
 StrategyProposal
    ↓
+Vision
+   ↓
+Workstream
+   ↓
+Action
+   ↓
 Plan
    ↓
-Tasks
-   ↓
-existing Task execution
-```
-
-The two paths eventually converge.
-
-The Control layer does not create a second execution system.
-
-It decides.
-
-The existing Task system executes.
-
-The Kernel commits.
-
-That separation keeps the architecture coherent.
-
----
-
-## 16. The Kernel: protecting the learning process
-
-The Kernel is the part of Watch that enforces the rules around durable change.
-
-Its purpose is not to make all decisions itself.
-
-Its purpose is to make sure that durable changes obey the Team's rules.
-
-For example:
-
-```text
-Worker proposes a change
-          ↓
-Validate schema
-          ↓
-Validate ownership
-          ↓
-Validate write scope
-          ↓
-Validate evidence
-          ↓
-Validate current state
-          ↓
-Validate concurrency
-          ↓
-Commit atomically
-          ↓
-Record Event
-```
-
-This matters because learning changes the future.
-
-A bad memory entry can cause one bad answer.
-
-A bad learned rule can cause thousands of future bad answers.
-
-Therefore the threshold for turning experience into durable Team knowledge must be higher than the threshold for merely generating a piece of text.
-
-This is one reason Watch separates:
-
-```text
-proposal
-```
-
-from
-
-```text
-committed state
-```
-
-The model can think freely.
-
-The durable system changes carefully.
-
----
-
-## 17. Versioning is part of learning
-
-A Team should not merely know its current rules.
-
-It should be possible to understand how those rules changed.
-
-Suppose a development Team learns:
-
-> Version 1:
-> "Use approach A for this class of problem."
-
-Later, experience reveals problems.
-
-The Team may revise it:
-
-> Version 2:
-> "Use approach B unless constraint C is present."
-
-The old version should not simply disappear.
-
-The history matters.
-
-This is similar to version control.
-
-```text
-Old knowledge
-     ↓
-new experience
-     ↓
-proposed revision
-     ↓
-validation
-     ↓
-new version
-     ↓
-old version remains auditable
-```
-
-This allows the Team to answer:
-
-> Why do we work this way now?
-
-> What caused the change?
-
-> What did we believe before?
-
-> What happened that caused the revision?
-
-In other words:
-
-> **Watch treats organizational learning as a versioned process, not an invisible edit to a memory file.**
-
----
-
-## 18. Humans can participate too
-
-Watch is not intended to make human experts unnecessary.
-
-Humans can be workers.
-
-Humans can provide evidence.
-
-Humans can answer consultations.
-
-Humans can evaluate outcomes.
-
-Humans can approve certain learning changes.
-
-The important architectural principle is that human input should not become an untraceable escape hatch.
-
-A human contribution enters through the same durable validation model.
-
-That means an expert can say:
-
-> "I believe Hypothesis A is wrong."
-
-But the system still records:
-
-* who made the contribution,
-* what Task produced it,
-* what evidence was supplied,
-* what changed,
-* and why the change was accepted or rejected.
-
-Human expertise and machine expertise can therefore participate in the same persistent learning environment.
-
----
-
-## 19. Domain packs: change the subject, not the learning machinery
-
-Watch should work across domains without rewriting the Kernel every time.
-
-The general system provides the common machinery.
-
-A **Domain Pack** describes how that machinery is applied to a particular subject.
-
-For example:
-
-```text
-                 WATCH KERNEL
-        ─────────────────────────────
-        persistence
-        validation
-        provenance
-        tasks
-        evidence
-        outcomes
-        learning
-        control
-        concurrency
-        budgets
-        audit
-        ─────────────────────────────
-
-          Domain Pack
-               │
-       ┌───────┼────────┐
-       │       │        │
-    sources vocabulary templates
-    heuristics   decay   workflows
-```
-
-A Python development Team might care about:
-
-* Python releases,
-* documentation,
-* issues,
-* repositories,
-* benchmarks,
-* design patterns,
-* postmortems.
-
-A scientific Team might care about:
-
-* papers,
-* experiments,
-* datasets,
-* replications,
-* measurements.
-
-A newsroom might care about:
-
-* reporting,
-* primary sources,
-* statements,
-* events,
-* competing narratives.
-
-The Kernel should not need to understand every domain-specific concept.
-
-That is the purpose of the separation.
-
-The underlying mechanism can remain general while the knowledge and behavior are specialized.
-
----
-
-## 20. The long-term effect
-
-Imagine creating a new Watch Team for Python development.
-
-On day one:
-
-```text
-General-purpose LLM
-+
-Python domain knowledge
-+
-empty Team experience
-```
-
-It starts working.
-
-It investigates bugs.
-
-It reads documentation.
-
-It builds software.
-
-It encounters failures.
-
-It observes what happened.
-
-It records outcomes.
-
-It evaluates its methods.
-
-Some experiences produce useful learning.
-
-Months later:
-
-```text
-General-purpose LLM
-+
-Python knowledge
-+
-accumulated Team experience
-+
-validated methods
-+
-historical outcomes
-+
-domain-specific patterns
-```
-
-The model underneath might not have changed at all.
-
-But the system surrounding it has.
-
-It now approaches new problems with:
-
-* better context,
-* better questions,
-* better investigation strategies,
-* better source selection,
-* better awareness of previous failures,
-* better domain-specific methods,
-* and a history of what happened before.
-
-That is the sense in which Watch creates an "expert AI."
-
-More precisely:
-
-> **Watch creates a persistent expert system around a general-purpose AI by accumulating validated domain experience and using that experience to influence future work.**
-
----
-
-## 21. What happens when the underlying AI gets better?
-
-This is an important part of the design.
-
-General-purpose AI models will continue to improve.
-
-New models may become:
-
-* better at reasoning,
-* better at coding,
-* better at multimodal work,
-* cheaper,
-* faster,
-* more reliable,
-* or specialized for particular tasks.
-
-Watch does not need to become obsolete whenever the underlying model changes.
-
-The model is replaceable.
-
-The experience is persistent.
-
-Conceptually:
-
-```text
-Watch Team experience
-        │
-        ├── Model A
-        ├── Model B
-        ├── Model C
-        └── future models
-```
-
-A better model can enter an existing Team and use the accumulated experience.
-
-A weaker or different model can still benefit from the same history.
-
-This creates a useful separation:
-
-> **Models provide changing general capability. Watch provides persistent domain experience.**
-
-That means the system does not have to rebuild its expertise from zero whenever the underlying model changes.
-
----
-
-## 22. What Watch is not
-
-Watch is not simply:
-
-### An LLM
-
-The LLM performs cognitive work, but Watch is the persistent system around it.
-
-### An agent framework
-
-Agent frameworks are primarily concerned with how an agent executes work using tools.
-
-Watch can use an agent framework.
-
-Its central concern is different:
-
-> What should become durable knowledge, what evidence supports it, what was learned from experience, and how should that learning affect future work?
-
-### A vector database
-
-Embeddings and retrieval may be useful implementation mechanisms.
-
-But retrieving documents is not the same as learning.
-
-### A workflow engine
-
-Tasks and execution are necessary, but workflow alone does not create expertise.
-
-### A knowledge base
-
-A static knowledge base stores information.
-
-Watch also stores:
-
-* hypotheses,
-* uncertainty,
-* outcomes,
-* evaluations,
-* failures,
-* methods,
-* revisions,
-* and the reasons behind changes.
-
-### Automatic self-learning
-
-Watch does not mean:
-
-> "Let the AI rewrite its own memory whenever it wants."
-
-The whole architecture is designed to avoid that.
-
-Workers propose.
-
-The system validates.
-
-Experience is evaluated.
-
-Learning changes are controlled.
-
----
-
-## 23. The central problem Watch is solving
-
-The problem can now be stated very simply.
-
-Today's general AI can often perform an impressive task.
-
-The harder problem is:
-
-> **How do we make the system around that AI become systematically better because of everything it has experienced?**
-
-Without such a mechanism:
-
-```text
-good work
-   ↓
-disappears
-
-mistake
-   ↓
-may happen again
-
-successful method
-   ↓
-may not become reusable
-
-new evidence
-   ↓
-may not revise old assumptions
-
-new model
-   ↓
-may start from almost the same place
-```
-
-With Watch:
-
-```text
-good work
+Task
    ↓
 Outcome
    ↓
 Evaluation
    ↓
 Learning
-   ↓
-future behavior improves
-```
+~~~
 
-And:
+This lets Watch answer:
 
-```text
-mistake
+> Why did we do this?
+
+> Which perspective produced it?
+
+> Which strategic decision authorized it?
+
+> What happened?
+
+> What did we learn?
+
+This is one of the reasons durable IDs and explicit provenance are important.
+
+---
+
+## 13. Every Vision should have its own experience
+
+Multiple Visions create another important opportunity.
+
+Suppose Watch has:
+
+~~~
+Vision A: Ecosystem
+Vision B: Engineering
+Vision C: Computer Science
+Vision D: Experimentation
+~~~
+
+Over time, each Vision will produce its own experience.
+
+For example:
+
+~~~
+Vision: Experimentation
+│
+├── Actions
+├── Outcomes
+├── Evaluations
+├── useful discoveries
+├── failed approaches
+└── lessons
+~~~
+
+This gives Watch a history of how each perspective has performed.
+
+But performance should not automatically become a simplistic score.
+
+One successful experiment does not prove that a Vision is better.
+
+One failed investigation does not prove that a Vision is useless.
+
+Instead, each Vision accumulates evidence about its usefulness.
+
+Then R4 can use that evidence when forming future Strategies.
+
+Conceptually:
+
+~~~
+Vision
    ↓
-Outcome
+Work
+   ↓
+Outcomes
    ↓
 Evaluation
    ↓
-lesson
+evidence about usefulness
    ↓
-future behavior changes
-```
+future Strategy
+~~~
 
-And:
-
-```text
-new evidence
-   ↓
-Hypothesis challenged
-   ↓
-belief changes
-   ↓
-current understanding changes
-```
-
-And:
-
-```text
-better AI model
-   ↓
-joins existing Team
-   ↓
-uses accumulated experience
-```
-
-The system is therefore designed around a simple principle:
-
-> **Work should leave behind useful experience, and useful experience should influence future work.**
+This is an important future design problem in its own right.
 
 ---
 
-## 24. Expertise is a process, not a file
+## 14. Watch should learn from outcomes, not from model confidence
 
-One temptation is to imagine that an AI becomes an expert when we finally produce a giant "expert knowledge base."
+Suppose a Worker says:
 
-That is probably the wrong mental model.
+> "This is the best architecture."
 
-Expertise is not a document.
+That statement should not automatically become Team knowledge.
 
-It is a process.
+Instead:
 
-A real expert continuously:
+~~~
+Worker proposal
+      ↓
+actual work
+      ↓
+Outcome
+      ↓
+Evaluation
+      ↓
+possible LearningChange
+~~~
 
-* encounters new information,
-* tests assumptions,
-* updates beliefs,
-* learns from mistakes,
-* discovers patterns,
-* revises methods,
-* and decides what deserves attention next.
+The same principle applies to Vision evaluation.
 
-The knowledge is important, but the **learning loop** is more important.
+The system should not say:
 
-Therefore the ultimate product of Watch is not a huge database.
+> "The model sounded confident, therefore Vision B is excellent."
 
-It is a continuously operating learning system.
+It should accumulate actual experience.
+
+This is how Watch can gradually learn:
+
+> "This perspective is consistently useful for this kind of Objective."
+
+rather than merely storing opinions.
 
 ---
 
-## 25. A compact model of Watch
+## 15. The human and the AI have different roles
 
-The entire architecture can be reduced to a small conceptual model.
+The AI worker provides temporary intelligence.
 
-### The world
+The durable Watch system provides:
 
-```text
-Signals
-→ Evidence
-→ Hypotheses
-→ Beliefs
-```
+- persistence;
+- validation;
+- provenance;
+- evidence;
+- execution structure;
+- evaluation;
+- controlled learning;
+- and governance.
 
-### The work
+The basic authority chain remains:
 
-```text
-Objectives
-→ Strategies
-→ Plans
-→ Tasks
-→ Workers
-```
+~~~
+Worker
+  ↓
+proposal
+  ↓
+application validation
+  ↓
+Kernel/application commit
+  ↓
+durable state
+~~~
 
-### The experience
+Workers do not directly write durable truth.
 
-```text
+Plans are execution intent, not execution history. Tasks, Events, and Outcomes remain authoritative for what actually happened.
+
+StateAssessment remains derived and non-authoritative.
+
+---
+
+## 16. Reactive work still exists
+
+Not everything needs a new Strategy.
+
+Suppose Watch already knows:
+
+> "Every morning, check the Python release feed."
+
+That can remain a normal reactive Task.
+
+Conceptually:
+
+~~~
+Trigger / Scheduler / Operator
+            ↓
+           Task
+            ↓
+          Worker
+            ↓
+         proposal
+            ↓
+        validation
+            ↓
+          commit
+~~~
+
+When Watch genuinely needs to decide what to pursue, the deliberative path can be used:
+
+~~~
+Objective
+   ↓
+StateAssessment
+   ↓
+Strategy
+   ↓
+Visions
+   ↓
+Workstreams
+   ↓
+Actions
+   ↓
+Plan
+   ↓
 Tasks
-→ Outcomes
-→ Evaluations
-→ Learning
-→ Knowledge
-```
+~~~
 
-### The governance
+Both paths eventually use the same ordinary Task execution system.
 
-```text
-Proposals
-→ Validation
-→ Commit
-→ Events
-```
-
-### The future
-
-```text
-Knowledge
-+
-current world state
-+
-new observations
-        ↓
-better decisions
-        ↓
-new experience
-        ↺
-```
-
-Put together:
-
-```text
-                         WATCH
-                           │
-           ┌───────────────┼────────────────┐
-           │               │                │
-         WORLD            WORK          EXPERIENCE
-           │               │                │
-       Observe          Decide             Learn
-           │               │                │
-      Hypotheses        Tasks            Outcomes
-           │               │                │
-        Evidence        Workers          Evaluation
-           │               │                │
-        Beliefs          Actions        Knowledge
-           │               │                │
-           └───────────────┼────────────────┘
-                           │
-                      Future behavior
-                           │
-                           └──────────↺
-```
-
-The Kernel sits underneath these processes and protects the boundary between **what a worker proposes** and **what the Team accepts as durable state**.
+There should not be a second scheduler hidden inside the planning layer.
 
 ---
 
-## 26. The simplest explanation
+## 17. Evidence and durable experience remain central
 
-Watch is a system for helping a general-purpose AI become experienced in a domain.
+Watch is not trying to make every model statement permanent.
 
-A general LLM can think and perform many kinds of work, but a single model call does not provide the persistent experience of an expert.
+When external information enters the system, it can be preserved as evidence.
 
-Watch provides that persistence.
+When a Worker proposes an interpretation, the system can check it.
 
-It gives the AI a Team with a memory of the world, a memory of its own experience, explicit hypotheses, evidence, outcomes, evaluations, learned methods, and a history of how those things changed.
+When a Task produces a result, the result can be evaluated.
 
-The AI workers observe and investigate the world, propose changes, perform tasks, and produce outcomes.
+When a lesson is worth keeping, the system can record a LearningChange.
 
-Watch records what happened.
+So the larger loop is:
 
-It evaluates the results.
+~~~
+World
+ ↓
+Observation
+ ↓
+Evidence
+ ↓
+Understanding
+ ↓
+Strategy
+ ↓
+Visions
+ ↓
+Work
+ ↓
+Outcomes
+ ↓
+Evaluation
+ ↓
+Learning
+ ↓
+better future Strategy
+ ↺
+~~~
 
-It turns appropriate experience into reusable knowledge.
+That is what makes Watch different from a static knowledge base.
 
-And future workers begin with what the Team has already learned.
+---
 
-The process is:
+## 18. The full Python example
 
-```text
-Observe
+Now we can describe the original example using the new abstractions.
+
+A human gives Watch:
+
+> **Become an expert Python developer.**
+
+Watch creates the Objective.
+
+It assesses its current state and realizes that Python expertise has many dimensions.
+
+It forms a Strategy containing several Visions.
+
+~~~
+Objective:
+Become an expert Python developer
+
+Strategy
+│
+├── Vision: Python ecosystem
+│   │
+│   ├── Workstream: Monitor Python releases
+│   │   ├── collect official changes
+│   │   ├── compare changes
+│   │   └── evaluate significance
+│   │
+│   └── Workstream: Monitor ecosystem
+│       ├── research important packages
+│       └── track important community developments
+│
+├── Vision: Python engineering
+│   │
+│   ├── Workstream: Modern engineering practices
+│   │   ├── research architecture patterns
+│   │   └── evaluate maintainability
+│   │
+│   └── Workstream: Testing
+│       ├── research testing practices
+│       └── run practical experiments
+│
+├── Vision: Computer science
+│   │
+│   ├── Workstream: Type systems
+│   │   ├── study concepts
+│   │   └── compare approaches
+│   │
+│   └── Workstream: Concurrency
+│       ├── research concepts
+│       └── test implementations
+│
+└── Vision: Critical analysis
+    │
+    └── Workstream: Compare competing claims
+        ├── collect arguments
+        ├── identify disagreements
+        └── evaluate evidence
+~~~
+
+The Visions can operate simultaneously.
+
+Within each Workstream, Actions can wait for prerequisites.
+
+The accepted Strategy becomes durable execution intent through Plan materialization.
+
+The Plan produces ordinary Tasks.
+
+Workers execute those Tasks.
+
+Outcomes are recorded.
+
+Each Vision accumulates its own experience.
+
+Evaluations produce learning.
+
+Future Strategy can then change.
+
+Perhaps later Watch realizes:
+
+> "Security is becoming an important gap."
+
+It can propose a new Vision:
+
+~~~
+Vision: Python security
+~~~
+
+Perhaps it also realizes:
+
+> "We lack sufficient security expertise."
+
+It can propose a Team capability change, which a human can approve, edit, or reject.
+
+This means the system does not stay permanently fixed.
+
+It can learn both:
+
+> **what is true about the domain**
+
+and
+
+> **how the Team should organize its attention and capabilities.**
+
+---
+
+## 19. The deeper architecture
+
+The emerging model is therefore:
+
+~~~
+                    OBJECTIVE
+                 "What do we want?"
+                        │
+                        ▼
+                STATE ASSESSMENT
+               "Where are we now?"
+                        │
+                        ▼
+                    STRATEGY
+            "How should we approach it?"
+                        │
+          ┌─────────────┼─────────────┐
+          ▼             ▼             ▼
+       VISION A       VISION B       VISION C
+       "scope"        "scope"        "scope"
+          │             │             │
+          ▼             ▼             ▼
+     WORKSTREAMS   WORKSTREAMS   WORKSTREAMS
+          │             │             │
+          ▼             ▼             ▼
+       ACTIONS        ACTIONS       ACTIONS
+          │             │             │
+          └─────────────┼─────────────┘
+                        ▼
+                      PLAN
+             durable execution intent
+                        │
+                        ▼
+                      TASKS
+                        │
+                        ▼
+                     WORKERS
+                        │
+                        ▼
+                    OUTCOMES
+                        │
+                        ▼
+                   EVALUATIONS
+                        │
+                        ▼
+                     LEARNING
+                        │
+                        └──────────────→ future Strategy
+~~~
+
+And alongside it:
+
+~~~
+Capability / Team proposal
+           ↓
+      Human review
+           ↓
+    Team modification
+~~~
+
+The architecture therefore has two different kinds of adaptation:
+
+**Knowledge adaptation**
+
+> "Our understanding of the world changed."
+
+**Organizational adaptation**
+
+> "The way Watch approaches the domain should change."
+
+Both can eventually happen without giving a model direct control of durable state.
+
+---
+
+## 20. What has changed in our understanding of R4
+
+The current R4 implementation proved an important first concept:
+
+~~~
+Objective
    ↓
-Understand
+StateAssessment
    ↓
-Hypothesize
+StrategyProposal
    ↓
-Investigate / Act
+validation
    ↓
-Observe the result
+audit
+~~~
+
+But it constrained the StrategyProposal to one candidate action.
+
+That constraint is now recognized as too narrow for the intended architecture.
+
+The problem is not that R4 was badly implemented.
+
+The problem is that the first R4 slice was a small experiment that exposed the wrong abstraction boundary.
+
+The redesigned R4 should therefore support:
+
+~~~
+one Objective
+      ↓
+one Strategy
+      ↓
+many Visions
+      ↓
+many Workstreams
+      ↓
+many Actions
+~~~
+
+The actions can be pursued concurrently.
+
+Dependent work is organized within Workstreams.
+
+R5 then materializes the accepted strategic structure instead of inventing missing work.
+
+This is the reason R5 should pause while the R4 Strategy model is redesigned.
+
+---
+
+## 21. What Watch ultimately becomes
+
+The long-term vision is not:
+
+> "Build an AI that knows Python."
+
+It is:
+
+> **Build a persistent system that can continuously improve how it understands, investigates, and works within Python.**
+
+The same architecture can then be applied to another domain.
+
+For example:
+
+~~~
+Objective:
+Become an expert scientific research team
+~~~
+
+or:
+
+~~~
+Objective:
+Monitor and understand global energy markets
+~~~
+
+or:
+
+~~~
+Objective:
+Become an expert geopolitical analysis team
+~~~
+
+The domain changes.
+
+The fundamental process remains:
+
+~~~
+Objective
    ↓
-Evaluate
+understand current state
    ↓
-Learn
+form multiple bounded perspectives
    ↓
-Use the learning
+organize coherent work
+   ↓
+act
+   ↓
+observe results
+   ↓
+evaluate
+   ↓
+learn
+   ↓
+change future behavior
    ↺
-```
+~~~
 
-The model can change.
+That is the central idea of Watch.
 
-The workers can change.
-
-The tasks can change.
-
-The domain can change.
-
-The Team's accumulated experience persists.
-
-That is the central idea of Watch:
-
-> **General AI provides the intelligence to do the work. Watch provides the persistent process through which that intelligence can accumulate experience and develop domain expertise over time.**
-
-Or even more simply:
-
-> **The models do the thinking. Watch remembers the experience, tests the lessons, and uses what was learned to make future thinking better.**
-
-That is why Watch is not just an agent system, a memory system, or a workflow engine.
-
-It is an architecture for **persistent AI learning through disciplined experience**.
+> **The model provides temporary intelligence. Watch provides the persistent structure through which many temporary intelligences can accumulate experience, pursue multiple perspectives, learn from results, and gradually become a more capable expert Team.**
