@@ -150,59 +150,77 @@ StateAssessment is never authoritative and never directly commits state. When a 
 
 ### 3.6 StrategyProposal
 
-A temporary proposal describing how an Objective should be pursued.
+One transient structured proposal representing a coordinated strategic decision
+for one Objective and a particular historical StateAssessment basis. It may
+contain multiple Visions, Workstreams, Actions, and explicit Action-to-Action
+prerequisites. One Objective initially has one active accepted Strategy; its
+Visions may proceed concurrently. Acceptance means deterministic legality and
+authorization for later Plan materialization, not strategic wisdom or
+success.
 
-The LLM may produce:
+A **Vision** is a bounded strategic perspective with meaningful scope and
+boundaries. Visions are neither labels alone nor schedulers, execution
+history, or TeamPolicy. They need stable identity for provenance but do not
+require standalone durable entities.
 
-```json
-{
-  "objective_id": "...",
-  "approach": "independent_verification",
-  "reason": "...",
-  "candidate_actions": [
-    {
-      "task_type": "search_source",
-      "purpose": "find independent primary evidence"
-    }
-  ],
-  "constraints": {
-    "max_tasks": 3,
-    "max_cost_usd": 0.30
-  },
-  "stop_conditions": [
-    "verified_evidence_found"
-  ]
-}
+A **Workstream** is a coherent grouping of related Actions within a Vision,
+principally for human comprehension and derived progress summaries. It is not
+a scheduler, workflow engine, Task lifecycle, or dependency-enforcement
+boundary. Action prerequisites may cross Workstreams and Visions.
+
+An **Action** is purposeful intended work required by a Workstream. It is
+strategic intent, not conceptually a Task. A first materializer may map an
+Action to one Task, but that implementation rule does not define Action.
+
+A proposal may describe (illustrative structure only):
+
+```text
+Strategy
+├── Vision: Python ecosystem
+│   └── Workstream: Monitor changes
+│       ├── Action A: collect official changes
+│       ├── Action B: collect ecosystem reports
+│       ├── Action C: compare findings (depends on A, B)
+│       └── Action D: evaluate significance (depends on C)
+└── Vision: Python engineering (may proceed concurrently)
 ```
 
-The LLM may not:
+The worker proposes only bounded structured data. It may not invent unsupported
+capabilities, raise budgets, grant tools, change TeamPolicy or Team structure,
+create arbitrary records, or commit state. Application/Kernel code validates
+and records Task-attributed accepted/rejected dispositions. The accepted Event
+preserves the canonical proposal, SHA-256, Objective/Team, and exact historical
+assessment context/provenance, enabling transcript-free reconstruction. This
+is audit/provenance, not Strategy memory; standalone Strategy, Vision,
+Workstream, and Action entities are not implied.
 
-- invent Task types
-- raise its own budget
-- grant itself tools
-- change TeamPolicy
-- create arbitrary entity types
-- skip required review
-- directly commit state
+Acceptance authorizes the complete validated structure for R5. R5 derives one
+Plan for the Objective from the one active accepted Strategy and must not
+invent, omit, partition, or reinterpret Visions, Workstreams, Actions, or
+prerequisites without explicit authority. R4 validates structure, identity,
+ownership, supported capabilities, policy/budget constraints, and acyclic
+same-Strategy Action prerequisites. Legality is not evidence of strategic
+quality; quality remains subject to Outcomes, Evaluation, and Learning.
 
-StrategyProposal is not Team memory and is not TeamPolicy.
+The first implementation remains bounded to configured `ingest_source`
+Actions, no tools, zero cost, and `configured_source_ingested`. This is a
+capability limit, not the StrategyProposal semantic contract. Proposal
+`max_tasks` is an upper bound on Actions; a Strategy may specify fewer. The
+one-Action shape remains a valid subset when represented by one Vision, one
+Workstream, and one Action.
 
-At R4, accepted means a deterministically legal candidate for later planning,
-not a selected Strategy. R5 selects a candidate and creates a Plan. An ordinary
-`propose_strategy` Task attributes the R4 operation; the producer receives
-immutable bounded context, never repositories or an Event-writing capability.
-Application/Kernel code validates and records acceptance or rejection. The
-accepted Event retains the canonical proposal, hash, and exact derived R3
-assessment context so it survives process termination without a transcript.
-Assessment provenance is audit context here, not authority or Plan selection.
+Current nested accepted Events support exact canonical Strategy reconstruction.
+Prior flat R4 Events remain immutable hash-verifiable history and are read
+through a distinct legacy reader. Missing Vision/Workstream definitions and
+incomplete assessment payload are not inferred. A normalized nested view is
+derived compatibility only, never historical fact; legacy Events without the
+full current assessment provenance cannot authorize `create_plan`.
 
-The first slice is deliberately limited to one configured `ingest_source`
-candidate, no tools, zero cost, and the representable stop condition
-`configured_source_ingested`. It validates source configuration under the
-Task's policy version and cannot weaken policy review gates. It neither polls
-sources nor creates an ingestion Task. Other documented future Task types,
-entity/tool requests, policy changes, and larger budgets are rejected. No
-full planning language, ordering graph, Strategy table, or Plan exists.
+A Strategy may reveal a Team/capability gap, but any structural Team change is
+a separate proposal subject to human review and explicit approval/edit/reject;
+R4 cannot directly mutate Team structure.
+
+Vision, Workstream, and Action identities are scoped to the accepted Strategy decision. A new Strategy for the same Objective receives distinct identities even when it proposes similar work; identity is not a claim that a concept persists globally across Strategy histories.
 
 ### 3.7 Strategy validation
 

@@ -45,8 +45,10 @@ This is the existing path. It does not require an Objective, StateAssessment, or
 ```text
 One durable Objective becomes active
 → StateAssessment build (deterministic, read-only)
-→ StrategyProposal generation
-→ Strategy validation
+→ one StrategyProposal for the Objective and historical assessment basis
+→ deterministic validation and Task-attributed acceptance/rejection
+→ accepted Strategy with concurrent Visions, grouped Workstreams, intended Actions, and explicit Action prerequisites
+→ one Plan derived from the complete accepted Strategy
 → Plan materialization
 → Task creation (ordinary Tasks)
 → existing Task execution path
@@ -73,7 +75,15 @@ The Control service loads authoritative state and produces a deterministic State
 
 ### Step 3 — StrategyProposal
 
-A model worker (or deterministic generator in early slices) produces a StrategyProposal.
+A model worker (or deterministic generator in early slices) proposes one
+coordinated StrategyProposal for this Objective and a particular assessment
+basis. The structure may contain multiple concurrent Visions, Workstreams,
+Actions, and cross-Workstream/Vision prerequisites. Strategy acceptance
+authorizes the complete validated structure for one later Plan; it does not
+prove strategic wisdom or effectiveness. Accepted canonical content, hash,
+Task attribution, and historical assessment context remain reconstructable
+from durable audit without a transcript. Team/capability changes are separate
+human-reviewed proposals, not Strategy writes.
 
 ### Step 4 — Validation
 
@@ -81,11 +91,11 @@ Application code validates the StrategyProposal deterministically.
 
 ### Step 5 — Plan creation and initial Task materialization
 
-A validated, accepted StrategyProposal becomes a bounded Plan through a narrowly scoped `create_plan` Task. Application code validates the proposal Event/hash, Objective and Team ownership, action support, dependencies, applicable TeamPolicy constraints, and budget envelope. The Plan, all initial ordinary Tasks, and attributable creation Event commit atomically. The creating Task's existing `policy_version` records the policy considered; no separate Plan policy pin is introduced. Later operations use their applicable policy version, without rewriting existing Plan intent or Task policy semantics. Replacing a Plan creates the new Plan and stops the old active Plan as `superseded` in the same transaction.
+One accepted StrategyProposal becomes one bounded Plan for its Objective through a narrowly scoped `create_plan` Task. The Plan preserves the complete accepted Vision/Workstream/Action structure and prerequisite relationships as immutable intent. Application code validates the accepted proposal Event/hash, Objective and Team ownership, action support, dependencies (which may cross Workstreams and Visions), applicable TeamPolicy constraints, and budget envelope. R5 does not invent, omit, partition, or reinterpret accepted strategy structure without explicit authority. The Plan, all initial ordinary Tasks, and attributable creation Event commit atomically. The creating Task's existing `policy_version` records the policy considered; no separate Plan policy pin is introduced. Later operations use their applicable policy version, without rewriting existing Plan intent or Task policy semantics. Replacing a Plan creates the new Plan and stops the old active Plan as `superseded` in the same transaction.
 
 ### Step 6 — Task execution admission
 
-Each immutable Plan action has a stable identity; its Task carries nullable `plan_id` and `plan_action_id` provenance. The existing Task admission/claim path must not start a dependent Task until all prerequisite action Tasks are `done`. A failed prerequisite keeps dependent work ineligible until the Plan is stopped or replanned. This adds no Task state or separate scheduler. Once admitted, the ordinary Task execution path is unchanged. Enforce `TeamPolicy ceiling > Plan envelope > Task budget`; Plan allocations, including remaining unallocated budget, stay within the envelope, and each Task's own budget governs execution.
+Each immutable Plan action has a stable identity and Vision/Workstream provenance; its Task carries nullable `plan_id` and `plan_action_id` provenance. The existing Task admission/claim path must not start a dependent Task until all prerequisite action Tasks are `done`. A failed prerequisite keeps dependent work ineligible until the Plan is stopped or replanned. This adds no Task state or separate scheduler. Once admitted, the ordinary Task execution path is unchanged. Enforce `TeamPolicy ceiling > Plan envelope > Task budget`; Plan allocations, including remaining unallocated budget, stay within the envelope, and each Task's own budget governs execution.
 
 ### Step 7 — Worker execution
 

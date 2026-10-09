@@ -16,7 +16,7 @@ The original Watch design has multiple valid Task entry points:
 The architecture revision introduces a Control layer:
 
 ```text
-Objective → StateAssessment → StrategyProposal → Plan → Tasks
+Objective → StateAssessment → accepted multi-perspective Strategy → Plan → ordinary Tasks
 ```
 
 These two models must not become competing execution systems. The Control layer must not replace the existing reactive Task system, and the existing Task system must not silently prevent deliberate, state-aware planning.
@@ -55,7 +55,9 @@ Objective
 → existing Task execution path
 ```
 
-The Control layer converges into the existing Task system. Plan materialization simply creates ordinary Tasks. Once created, those Tasks follow the same state machine, write scopes, budgets, validation, atomic commit, Events, and idempotency rules as any other Task. Objective is one durable entity with an explicit lifecycle; Tasks may reference it, but there is no task-scoped ephemeral Objective abstraction.
+Under the subsequent R4 semantic closure, one Objective initially has one active accepted Strategy for a particular historical StateAssessment basis. That coordinated Strategy may contain multiple concurrent Visions, Workstreams, Actions, and explicit Action-to-Action prerequisites, including prerequisites across Workstreams or Visions. R5 initially derives one Plan from that accepted Strategy and must not invent, omit, partition, or reinterpret its structure without explicit authority. Acceptance means deterministic legality and authorization for materialization, not strategic effectiveness. Stable identities and provenance are preserved without requiring standalone Strategy/Vision/Workstream/Action entities. The R4 one-action implementation is a current code limitation, not this model.
+
+The Control layer converges into the existing Task system. Plan materialization creates ordinary Tasks; an initial implementation may map one Action to one Task without making that the conceptual definition of Action. Once created, Tasks follow the same state machine, write scopes, budgets, validation, atomic commit, Events, and idempotency as any other Task. Objective is one durable entity with an explicit lifecycle; Tasks may reference it, but there is no task-scoped ephemeral Objective abstraction.
 
 ## Consequences
 

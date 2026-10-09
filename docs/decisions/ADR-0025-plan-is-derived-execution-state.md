@@ -38,6 +38,14 @@ Lifecycle is `active → completed | stopped`; terminal Plans cannot reopen. `st
 
 The narrow `create_plan` operation follows worker proposal → application validation → Kernel/application commit. It verifies the accepted proposal Event/hash, Objective/Team ownership, supported actions, dependencies, applicable policy constraints, budgets, and idempotency. It may create only the Plan, its initial ordinary Tasks, and explicitly scoped audit Events; it cannot change TeamPolicy or memory or create Strategy/StateAssessment entities.
 
+### Subsequent R4 semantic closure — accepted Strategy source
+
+R4 was reopened after the initial R4 implementation. The approved semantic closure establishes that one accepted StrategyProposal contains the complete coordinated strategic decision for one Objective and a historical StateAssessment basis. It may include multiple concurrent Visions, Workstreams, Actions, and explicit Action-to-Action prerequisites, including cross-Workstream/Vision prerequisites. The existing one-action R4 code is an implementation limitation, not this semantic contract.
+
+Initially one Objective has one active accepted Strategy and one accepted Strategy produces one Plan. Plan intent preserves the accepted structure; R5 must not invent, omit, partition, or reinterpret it without explicit authority. A Vision is a bounded perspective; a Workstream groups coherent Actions for human comprehension but is not a dependency or execution boundary; an Action is purposeful intent, not conceptually a Task. Stable identities/provenance are required, but separate Strategy/Vision/Workstream/Action entities are not implied.
+
+The accepted canonical proposal and hash, Task attribution, and exact historical assessment provenance remain recoverable without a transcript. Future Vision-level Evaluation may gather contextual evidence about usefulness; it must not equate correlation with causation or compute unsupported automatic scores. Team/capability changes remain separate proposals requiring human review before durable change.
+
 ## Consequence
 
 Adaptation becomes visible:

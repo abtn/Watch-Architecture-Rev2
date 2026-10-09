@@ -56,9 +56,10 @@ For work where the Team must decide what to attempt next given current state, un
 ```text
 Objective
 → StateAssessment
-→ StrategyProposal
-→ Plan
-→ Task materialization
+→ one accepted Strategy (multiple concurrent Visions)
+→ Workstreams / Actions / explicit Action prerequisites
+→ one Plan
+→ ordinary Task materialization
 → existing Task execution path
 ```
 
@@ -127,8 +128,16 @@ It produces:
 
 - Objective
 - StateAssessment
-- StrategyProposal
-- Plan
+- one accepted StrategyProposal for an Objective and historical assessment basis, containing multiple Visions, Workstreams, Actions, and explicit prerequisites
+- one Plan derived from the accepted Strategy
+
+One Strategy may contain multiple concurrent Visions. Each Vision is a bounded strategic perspective with meaningful scope and boundaries. A Vision may contain Workstreams: coherent groupings of related Actions that improve human comprehension and may summarize derived progress. Workstreams are not schedulers, workflow engines, dependency boundaries, or lifecycle authorities. An Action is purposeful intended work, not a Task. Explicit Action prerequisites may cross Workstreams and Visions; R5 validates and materializes this accepted structure, and the existing Task admission path enforces prerequisite readiness.
+
+Initially an Objective has one active accepted Strategy, and one accepted Strategy produces one Plan for that Objective. Acceptance means deterministic legality and authority for later materialization, not strategic wisdom or effectiveness. The canonical accepted proposal and its provenance remain reconstructable without a transcript. Vision, Workstream, and Action identities belong in that structure; none requires a standalone durable entity by definition.
+
+A Strategy may expose a capability gap, but organizational changes use a separate proposal path and require human review before durable Team change. They are not direct Strategy writes.
+
+Vision, Workstream, and Action identity is local to one Strategy decision. Similar names or purposes in a later Strategy do not imply persistent identity across decisions.
 
 Task materialization feeds into the existing Task system.
 
@@ -195,34 +204,49 @@ One durable entity representing a bounded operational goal that the Team is curr
 
 ### Strategy
 
-A temporary approach for making progress toward an Objective under the current StateAssessment and TeamPolicy.
+One coordinated strategic decision for an Objective and a particular historical StateAssessment basis, constrained by TeamPolicy. It identifies the perspectives and purposeful work authorized for pursuit. One Objective initially has one active accepted Strategy; that Strategy may contain multiple concurrent Visions. Acceptance is deterministic legality and authority for later Plan materialization, not proof that the Strategy is wise or effective. Strategic quality is evaluated later through Outcomes, Evaluation, and Learning.
 
-Examples:
+Strategy is contextual, not TeamPolicy or Team memory. The accepted canonical StrategyProposal and its hash are preserved in a Task-attributed audit Event; no standalone Strategy entity is required by this semantic contract.
 
-- investigate contradiction before rendering
-- seek an independent source
-- ask a human expert
-- compare two competing explanations
-- delay publication until evidence threshold is met
+### Vision
 
-Strategy is temporary and context-sensitive. It is represented by a StrategyProposal and, if accepted, recorded as part of a Plan's provenance. It is not a durable memory entity.
+A bounded strategic perspective through which part of an Objective is understood and pursued. A Vision has meaningful scope and boundaries; it is not a category label, scheduler, execution history, or TeamPolicy. Multiple Visions in one accepted Strategy may proceed concurrently. A Vision identity is local to its Strategy decision; do not infer that matching scope/name makes Visions in different Strategies the same entity. Preserve identity and definition in the accepted Strategy and derived Plan provenance; a standalone durable entity or cross-Strategy Vision lifecycle is not implied.
+
+A Vision may accumulate evidence about its usefulness under particular conditions through later Work, Outcomes, and Evaluation. This is cautious evidence, not an automatic score or causal claim: success does not prove the Vision caused success, and failure does not by itself invalidate the Vision.
+
+### Workstream
+
+A coherent grouping of related Actions inside a Vision, primarily to make intended work and derived progress comprehensible to people. A Workstream is not a scheduler, workflow engine, Task lifecycle, dependency-enforcement authority, or execution boundary. It does not prohibit prerequisites between Actions in different Workstreams or Visions. A Workstream identity is local to its Vision within a Strategy decision; matching names across decisions do not imply one durable entity. Preserve its identity and meaning as part of accepted intent; no standalone Workstream entity or runtime is implied.
+
+### Action
+
+A purposeful unit of intended work required by a Workstream. An Action expresses strategic intent; a Task is the executable runtime unit. Action identity is local to one Strategy decision; equal work descriptions in another Strategy are not thereby the same Action. Stable Action identity and its parent Vision/Workstream provenance must survive acceptance and later materialization. The initial materializer may map one Action to one Task, but that implementation contract does not define Action as merely a future Task.
 
 ### StateAssessment provenance
 
-StateAssessment remains a derived, deterministic, non-authoritative reconstruction; it is not a second source of truth. When a StrategyProposal is selected and a Plan is created, preserve enough immutable decision provenance to reconstruct the exact assessment basis: source references, basis hash, creation timestamp, and, where needed, an immutable Snapshot of the assessment payload using the existing Snapshot mechanism. Current world state and historical decision context are distinct: rebuilding an assessment from current state must not overwrite or be mistaken for the historical basis used to select the Plan. This basis provenance is linked to the durable Plan/Strategy selection, not a separate authoritative StateAssessment entity.
+StateAssessment remains a derived, deterministic, non-authoritative reconstruction; it is not a second source of truth. When a Strategy is accepted and a Plan is later materialized, preserve enough immutable decision provenance to reconstruct the exact assessment basis: source references, basis hash, creation timestamp, and, where needed, an immutable Snapshot of the assessment payload using the existing Snapshot mechanism. Current world state and historical decision context are distinct: rebuilding an assessment from current state must not overwrite or be mistaken for the historical basis used for the accepted Strategy. This basis provenance is linked to the accepted strategic decision and its derived Plan, not a separate authoritative StateAssessment entity.
 
 ### StrategyProposal
 
-A transient structured candidate describing how an Objective should be pursued.
-At R4, deterministic validation accepts it as a legal candidate for later
-planning or rejects it. Acceptance does not select a Strategy or create a
-Plan; selection and Plan creation belong to R5. Both dispositions are
-Task-attributed Events controlled by application/Kernel code. Accepted audit
-preserves the canonical proposal and its hash so the exact candidate can be
-recovered without a transcript or regeneration. Events are audit/provenance,
-not Strategy memory. R4 also retains the derived assessment basis references,
-hash, timestamp, and exact projection payload in the audit; this is not an
-authoritative StateAssessment entity or R5 selection provenance.
+A transient structured proposal for one coordinated strategic decision. It may
+contain multiple Visions, Workstreams, Actions, and explicit Action-to-Action
+prerequisites, including valid cross-Workstream or cross-Vision prerequisites.
+R4 deterministically validates the complete structure and records acceptance
+or rejection through a Task-attributed Event. An accepted proposal is the
+authorized strategic structure for later Plan materialization; R5 must not
+invent, omit, partition, or reinterpret its contents without explicit
+authority. Acceptance does not prove strategic wisdom or effectiveness.
+
+Current nested R4 Events preserve canonical proposal content and SHA-256,
+Objective/Team, and historical assessment context/provenance for exact
+transcript-free reconstruction. Earlier flat R4 Events remain immutable
+historical records: readers may verify their original stored payload/hash, but
+may not infer omitted Vision/Workstream structure or missing assessment detail.
+Any normalized nested view is explicitly derived compatibility data, not the
+original Strategy. Legacy records lacking complete assessment provenance
+cannot authorize new Plan materialization. Proposal data remains transient
+apart from these audit records; Vision, Workstream, Action, or Strategy entities
+are not implied.
 
 ### Plan
 

@@ -49,31 +49,62 @@ StateAssessment is derived and non-authoritative. It may be rebuilt from current
 
 Preserve basis references, basis hash, and creation timestamp with the selected Strategy/Plan provenance. If these references cannot reproduce the exact assessment payload, retain an immutable Snapshot of that payload using the existing Snapshot mechanism. This is immutable decision provenance, not another authoritative state store. A new assessment built from current world state must not overwrite the historical basis.
 
-### Strategy
+### Strategy, Vision, Workstream, and Action — subsequent R4 closure
 
-Do not make Strategy a permanent “memory” table initially.
+One Objective initially has one active accepted Strategy: one coordinated
+strategic decision based on a particular historical StateAssessment basis.
+Acceptance means the complete proposal is deterministically legal and
+authorized for later Plan materialization; it does not establish strategic
+wisdom or effectiveness. Multiple Visions within that Strategy may proceed
+concurrently.
 
-StrategyProposal remains transient. R4 acceptance means only a legal candidate
-for later planning, not Strategy selection or Plan creation. A Task-attributed
-Event preserves the exact canonical candidate, proposal hash, and derived
-assessment context (basis references, hash, creation timestamp, and payload).
-The payload retains historical mutable-record values without introducing a
-StateAssessment table or requiring a separate Snapshot. This audit is not
-Strategy memory. R5 later selects a candidate and links it and the assessment
-basis to Plan provenance; it must revalidate current constraints rather than
-mistake historical acceptance for execution authorization.
+A Vision is a bounded perspective with meaningful scope and boundaries. A
+Workstream is a coherent grouping of related Actions for human comprehension
+and derived progress; it is not a scheduler, workflow engine, lifecycle, or
+dependency boundary. An Action is purposeful intended work, not a Task.
+Stable identities and definitions for these concepts belong in the accepted
+Strategy structure and later Plan provenance. They do not require separate
+entity tables by definition.
 
-If later experiments prove that Strategy needs independent lifecycle/history, create an explicit entity then.
+Dependencies are explicit Action-to-Action prerequisites validated as part of
+the accepted Strategy structure. They may cross Workstreams or Visions; reject
+missing targets, self-dependencies, and cycles. Workstream grouping does not
+restrict their scope. Runtime admission enforcement remains the existing Task
+path under INV-16.
+
+Keep Strategy temporary, not Team memory or TeamPolicy. Current nested R4
+Task-attributed Events preserve the canonical accepted/rejected proposal, hash,
+and historical assessment context so exact proposals can be reconstructed
+without transcript. Earlier flat R4 Events remain immutable, hash-verifiable
+historical records. Readers may expose the stored legacy record and optionally
+a clearly marked derived nested compatibility view, but missing Vision/
+Workstream semantics and missing assessment payload are not reconstructed or
+inferred. Such legacy records cannot authorize new Plan materialization. R5 derives one Plan for the Objective from its one active accepted
+Strategy and may not invent, omit, partition, or reinterpret strategic
+structure without explicit authority. No Strategy, Vision, Workstream,
+Action, or StateAssessment entity is introduced by this contract.
+
+A Strategy may reveal a capability gap. Any Team/capability structural change
+is a separate proposal path requiring human review; R4 does not mutate Team
+structure.
+
+Vision, Workstream, and Action identity is proposal/Strategy-local. Reusing a label or purpose in a later Strategy does not assert shared persistent identity. The deterministic early producer scopes generated identities to its proposal Task and assessment basis so same-request retries reconstruct consistently while later decisions remain distinct.
 
 ### Plan
 
-A durable execution-intent entity.
+A durable execution-intent entity derived from the one active accepted
+Strategy for its Objective. It preserves the accepted Strategy's Vision,
+Workstream, Action, and prerequisite structure as immutable intent and
+provenance, plus the exact historical StateAssessment basis. Initially one
+accepted Strategy produces one Plan. R5 must not invent, omit, partition, or
+reinterpret that structure without explicit authority. A Plan is not execution
+truth; Tasks, Events, and Outcomes describe what actually happened.
 
 Suggested relationships:
 
 ```text
 Plan → Objective
-Plan → Strategy proposal/provenance (including exact StateAssessment basis)
+Plan → accepted Strategy proposal/provenance (including exact StateAssessment basis)
 Plan → Tasks
 Plan → Events
 ```
@@ -114,11 +145,11 @@ Across the Control implementation, the intended additive schema is:
 
 ```text
 Objective
-Plan (durable bounded intent and immutable action definitions)
+Plan (durable bounded intent and preserved accepted Strategy structure)
 Task (nullable Objective, Plan, and Plan-action provenance)
 ```
 
-Plan identity, action identity, provenance, budget, completion conditions, and lifecycle must be durably represented. The action-definition storage shape is an implementation choice; do not add a separate PlanAction entity.
+Plan identity, stable Action identity, accepted Strategy and assessment provenance, budget, completion conditions, and lifecycle must be durably represented. Preserve Vision/Workstream identity where required for provenance. The representation is an implementation choice; this closure does not require Strategy, Vision, Workstream, or PlanAction entities.
 
 This is not one migration. R2 adds Objective and nullable `Task.objective_id`
 after the existing K1 migration. R5 adds Plan and nullable `Task.plan_id` and

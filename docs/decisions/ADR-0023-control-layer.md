@@ -23,10 +23,20 @@ Introduce an explicit Control layer as a deliberative path that converges into t
 ```text
 Objective (one durable entity)
 → StateAssessment
-→ StrategyProposal
+→ accepted StrategyProposal
 → Plan
-→ Tasks
+→ ordinary Tasks
 ```
+
+### Subsequent R4 semantic closure — multi-perspective Strategy
+
+The initial R4 implementation was deliberately narrower than the Control concept. Its single-action restriction is an implementation limitation, not the StrategyProposal architecture. One accepted StrategyProposal is one coordinated strategic decision for one Objective and a particular historical StateAssessment basis. It may contain multiple concurrent Visions, Workstreams, purposeful Actions, and explicit Action prerequisites.
+
+A Vision is a bounded perspective with meaningful scope and boundaries. A Workstream groups coherent Actions for human comprehension and may summarize derived progress; it is not a scheduler, workflow engine, lifecycle, or dependency boundary. An Action is intended work, not a Task. Dependencies are Action-to-Action and may cross Workstreams or Visions. Stable identities and provenance are preserved in the accepted canonical proposal and later Plan; no standalone Strategy, Vision, Workstream, or Action entity is implied.
+
+An Objective initially has one active accepted Strategy, and one such Strategy produces one Plan. Acceptance means deterministic legality and authorization for later Plan materialization, not strategic wisdom or effectiveness. R5 must not invent, omit, partition, or reinterpret the accepted structure without explicit authority. The accepted Event remains Task-attributed and preserves canonical content/hash and historical assessment provenance for transcript-free reconstruction. Vision usefulness may later be assessed from Outcomes and Evaluation as contextual evidence, not automatic scores or causal conclusions.
+
+A Strategy may identify capability gaps, but Team/capability changes are separate proposals requiring human review before durable structural change; R4 does not mutate Team structure.
 
 Objective has an explicit lifecycle; Tasks may reference it, but there is no task-scoped ephemeral Objective abstraction. StateAssessment remains derived and non-authoritative, while its exact basis is retained as reconstructable Plan/Strategy decision provenance.
 
@@ -39,6 +49,7 @@ A Task produced by Plan materialization is an ordinary Task. Plan membership is 
 Positive:
 
 - distinguishes strategy from execution
+- permits one accepted strategic decision to preserve concurrent perspectives and their authorized work
 - makes “why this task?” reconstructable
 - supports replanning
 - makes LLM planning bounded

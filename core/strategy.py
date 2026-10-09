@@ -19,7 +19,11 @@ from core.state_assessment import (
     StateAssessmentBuilder,
     _canonical_json,
 )
-from core.strategy_proposal import StrategyProposal
+from core.strategy_proposal import (
+    HistoricalStrategyRead,
+    LegacyStrategyRecord,
+    StrategyProposal,
+)
 
 
 @dataclass(frozen=True)
@@ -59,14 +63,14 @@ class StrategyService:
         conflict_reason: str | None = None,
     ) -> StrategyResult:
         try:
-            raw = (
-                proposal.model_dump(mode="json")
-                if isinstance(proposal, StrategyProposal)
-                else proposal
-            )
+            if isinstance(proposal, StrategyProposal):
+                raw = proposal.canonical_dump()
+            else:
+                proposal = StrategyProposal.model_validate(proposal)
+                raw = proposal.canonical_dump()
             canonical = _canonical_json(raw)
             raw = json.loads(canonical)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, ValidationError):
             raw, canonical = None, "null"
         assessment_payload = json.loads(json.dumps(asdict(assessment), default=str))
         identity = {
@@ -206,12 +210,13 @@ class StrategyService:
         )
         if policy is None:
             return "team_policy_missing"
-        if any(
-            action.task_type != "ingest_source"
-            for action in candidate.candidate_actions
-        ):
+        structure_reason = self._validate_structure(candidate)
+        if structure_reason is not None:
+            return structure_reason
+        actions = candidate.candidate_actions
+        if any(action.task_type != "ingest_source" for action in actions):
             return "unsupported_task_type"
-        if any(action.tools for action in candidate.candidate_actions):
+        if any(action.tools for action in actions):
             return "unauthorized_tool"
         sources = policy.rules.get("sources", [])
         if not isinstance(sources, list):
@@ -223,13 +228,10 @@ class StrategyService:
                 and source.get("source_type") == action.source_type
                 for source in sources
             )
-            for action in candidate.candidate_actions
+            for action in actions
         ):
             return "source_not_configured"
-        if (
-            candidate.constraints.max_tasks != 1
-            or len(candidate.candidate_actions) > candidate.constraints.max_tasks
-        ):
+        if len(actions) > candidate.constraints.max_tasks:
             return "task_limit_exceeded"
         # The deterministic ingestion capability incurs no model or tool cost.
         if candidate.constraints.max_cost_usd != 0:
@@ -273,15 +275,112 @@ class StrategyService:
             return "stale_assessment"
         return None
 
+    @staticmethod
+    def _validate_structure(proposal: StrategyProposal) -> str | None:
+        visions = proposal.visions
+        if not visions:
+            return "strategy_requires_vision"
+        vision_ids = [vision.id for vision in visions]
+        if len(set(vision_ids)) != len(vision_ids):
+            return "duplicate_vision_id"
+        workstreams = [
+            workstream for vision in visions for workstream in vision.workstreams
+        ]
+        workstream_ids = [workstream.id for workstream in workstreams]
+        if len(set(workstream_ids)) != len(workstream_ids):
+            return "duplicate_workstream_id"
+        actions = [
+            action for workstream in workstreams for action in workstream.actions
+        ]
+        action_ids = [action.id for action in actions]
+        if len(set(action_ids)) != len(action_ids):
+            return "duplicate_action_id"
+        known = set(action_ids)
+        graph: dict[UUID, tuple[UUID, ...]] = {}
+        for action in actions:
+            if len(set(action.prerequisites)) != len(action.prerequisites):
+                return "duplicate_dependency"
+            if action.id in action.prerequisites:
+                return "self_dependency"
+            if any(target not in known for target in action.prerequisites):
+                return "dependency_target_not_found"
+            graph[action.id] = action.prerequisites
+        visiting: set[UUID] = set()
+        visited: set[UUID] = set()
+
+        def visit(action_id: UUID) -> bool:
+            if action_id in visiting:
+                return False
+            if action_id in visited:
+                return True
+            visiting.add(action_id)
+            if not all(visit(target) for target in graph[action_id]):
+                return False
+            visiting.remove(action_id)
+            visited.add(action_id)
+            return True
+
+        return (
+            None if all(visit(action_id) for action_id in graph) else "dependency_cycle"
+        )
+
     def reconstruct(self, event_id: UUID) -> StrategyProposal:
         with self._session_factory() as session:
-            event = session.get(Event, event_id)
-            if event is None or event.type != "strategy_proposal_accepted":
-                raise ValueError("accepted_proposal_not_found")
-            canonical = event.payload["proposal_json"]
-            if (
-                hashlib.sha256(canonical.encode()).hexdigest()
-                != event.payload["proposal_hash"]
+            return self.reconstruct_in_session(session, event_id)
+
+    @staticmethod
+    def reconstruct_in_session(session: Session, event_id: UUID) -> StrategyProposal:
+        event = session.get(Event, event_id)
+        if event is None or event.type != "strategy_proposal_accepted":
+            raise ValueError("accepted_proposal_not_found")
+        payload = event.payload
+        canonical = payload.get("proposal_json")
+        if isinstance(payload.get("proposal_json"), str):
+            canonical = payload["proposal_json"]
+            if hashlib.sha256(canonical.encode()).hexdigest() != payload.get(
+                "proposal_hash"
             ):
                 raise ValueError("proposal_hash_mismatch")
-            return StrategyProposal.model_validate_json(canonical)
+            try:
+                proposal = StrategyProposal.model_validate_json(canonical)
+                if _canonical_json(proposal.canonical_dump()) != canonical:
+                    raise ValueError("noncanonical_proposal_json")
+                if payload.get("objective_id") != proposal.objective_id:
+                    raise ValueError("proposal_scope_mismatch")
+                if StrategyService._validate_structure(proposal) is not None:
+                    raise ValueError("invalid_proposal_structure")
+                return proposal
+            except (ValidationError, ValueError) as error:
+                raise ValueError("invalid_proposal_provenance") from error
+        raise ValueError("canonical_proposal_not_found")
+
+    def reconstruct_historical(self, event_id: UUID) -> HistoricalStrategyRead:
+        with self._session_factory() as session:
+            return self.reconstruct_historical_in_session(session, event_id)
+
+    @staticmethod
+    def reconstruct_historical_in_session(
+        session: Session, event_id: UUID
+    ) -> HistoricalStrategyRead:
+        event = session.get(Event, event_id)
+        if event is None or event.type != "strategy_proposal_accepted":
+            raise ValueError("accepted_proposal_not_found")
+        payload = event.payload
+        legacy = payload.get("proposal")
+        if not isinstance(legacy, dict) or "candidate_actions" not in legacy:
+            raise ValueError("historical_flat_proposal_not_found")
+        digest = hashlib.sha256(_canonical_json(legacy).encode()).hexdigest()
+        stored_hash = payload.get("proposal_hash")
+        if stored_hash != f"sha256:{digest}":
+            raise ValueError("proposal_hash_mismatch")
+        try:
+            return HistoricalStrategyRead(
+                record=LegacyStrategyRecord.model_validate(legacy),
+                event_id=event.id,
+                event_task_id=event.task_id,
+                event_objective_id=str(payload.get("objective_id", "")),
+                event_team_id=str(payload.get("team_id", "")),
+                event_proposal_hash=stored_hash,
+            )
+        except (KeyError, TypeError, ValueError, ValidationError) as error:
+            raise ValueError("invalid_proposal_provenance") from error
