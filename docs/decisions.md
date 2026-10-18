@@ -1,0 +1,19 @@
+# Decisions — Index
+
+This is a navigation index, not a replacement for the full ADRs. Open the linked ADR before changing behavior governed by it. An ADR marked **Proposed** is not accepted authority.
+
+| ADR | Decision | Practical consequence |
+|---|---|---|
+| [0001–0019 history](decisions/architecture%20decision%20records%20(ADR-0001%20-%20ADR-0019%29.md) | Original Watch decisions: Team, memory, learning, policy, evidence, commit, Tasks, projections, domain packs, and agent-facing documentation. | Consult the full history only when the task touches an original decision not superseded by Revision 2. |
+| [0020](decisions/ADR-0020-consultations-waiting-happens-between-tasks.md) | Consultations wait between Tasks. | Do not create a blocking in-Task consultation path. |
+| [0021](decisions/ADR-0021-operator-update-path-human-as-first-class-worker.md) | Operator update path. | Human updates use explicit Task/validation boundaries. |
+| [0022](decisions/ADR-0022-generalist-pack-and-setup-advisor.md) | Generalist pack and setup advisor. | Generalist support remains within the pack/kernel boundary. |
+| [0023](decisions/ADR-0023-control-layer.md) | Explicit Control layer. | Strategy intent is separate from Task execution. |
+| [0024](decisions/ADR-0024-strategy-is-not-team-policy.md) | Strategy is not TeamPolicy. | Contextual strategic intent cannot rewrite general policy. |
+| [0025](decisions/ADR-0025-plan-is-derived-execution-state.md) | Plan is derived execution state. | Plan stores intended work; Tasks/Events describe actual execution. |
+| [0026](decisions/ADR-0026-dual-entry-execution-model.md) | Dual-entry execution model. | Reactive and deliberative entry paths converge on the same Task runtime. |
+| [0027](decisions/ADR-0027-team-policy-daily-task-quota.md) | TeamPolicy daily Task-start quota. **Status: Proposed in this snapshot.** | Semantics are documented, but do not treat the proposal as accepted or as releasing the R5 gate. Resolve the authority issue described in `PLAN.md` and `CHANGE_MAP.md` first. |
+
+## Reading rule
+
+Start with the row relevant to the task. Read the complete ADR when changing its behavior, reviewing a rejected alternative, changing durable schema/semantics, or resolving an authority question. Do not load all ADRs for every task.

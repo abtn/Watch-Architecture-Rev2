@@ -2,9 +2,9 @@
 
 # Invariants
 
-These are the non-negotiable rules of Watch. Every one is enforced by application code and covered by a named test; none may be bypassed by a domain pack, a graph, or an operator shortcut.
+These are the normative, non-negotiable rules of Watch. They define what the system must preserve; they do not imply that every later-phase capability is already implemented in the current checkout. Use `PLAN.md`, the current code/migrations, and executed tests to determine implementation status. None of the invariants may be bypassed by a domain pack, a graph, or an operator shortcut.
 
-Each invariant states the rule, why it exists, how it is enforced, and what a violation looks like. When writing or reviewing code, treat this list as a checklist.
+Each invariant states the rule, why it exists, intended enforcement, and what a violation looks like. When writing or reviewing code, treat this list as a checklist and verify the enforcement evidence rather than inferring it from this document alone.
 
 **Change process:** invariants are edited here first, mirrored to `AGENTS.md` second, reflected in tests third. A PR that changes behavior without updating invariants first is rejected.
 

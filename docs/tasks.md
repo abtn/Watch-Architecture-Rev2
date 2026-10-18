@@ -38,6 +38,8 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 
 ### TeamPolicy daily Task-start quota
 
+> **Authority status:** The semantics below are documented as an intended contract, but ADR-0027 is marked `Proposed` in this snapshot and `PLAN.md` keeps R5 paused. This section does not, by itself, accept the ADR or authorize implementation. Resolve the decision and milestone gate before treating this behavior as approved.
+
 When a TeamPolicy configures `rules["budgets"]["max_tasks_per_day"]`, the
 application must enforce it as an aggregate limit on successful Task starts
 for that Team during each UTC calendar day.

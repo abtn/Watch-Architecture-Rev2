@@ -1,75 +1,29 @@
-# AGENTS.md — Watch repository operating contract
+# AGENTS.md — Repository Operating Contract
 
 ## 1. Purpose
 
-Watch is an architecture-sensitive project developed in small, auditable milestones.
+Make the smallest justified change that satisfies the requested slice and its acceptance criteria. Watch is architecture-sensitive: preserve authority boundaries, durable provenance, Task write scopes, transaction semantics, and milestone gates. Do not implement speculative future architecture.
 
-These instructions are for coding agents working in the repository.
+## 2. Read the authority chain
 
-The primary rule is:
+At task start, read `PLAN.md`, `CHANGE_MAP.md`, this file, and only the relevant canonical specs/ADRs/tests. `CONTEXT.md` is an orientation page, not a replacement for the authorities below.
 
-> **Understand the current repository and architecture first; make the smallest justified change second.**
+- **Current milestone, gate, next step:** `PLAN.md` only.
+- **Which document governs a concept:** `CHANGE_MAP.md`.
+- **Repository behavior and safe workflow:** this file.
+- **General/original architecture:** `docs/architecture.md` for concepts not replaced by Revision 2.
+- **Revision 2 Control contract:** `docs/control-model.md` and linked ADRs.
+- **Hard constraints:** `docs/invariants.md`.
+- **Task types, write scopes, budgets:** `docs/tasks.md`.
+- **Implementation truth:** current code, migrations, tests, and verified Git state.
 
-Do not treat every request as a generic coding task.
+If sources conflict, stop and report the source paths and the smallest decision needed. Do not silently choose an interpretation or turn a proposed ADR into an accepted rule.
 
-The project values:
+## 3. Preflight before changing files
 
-- small changes;
-- explicit ownership;
-- deterministic validation;
-- durable, reconstructable state;
-- strong tests;
-- clear milestone boundaries;
-- documented workflow observations.
+Run and preserve the output of:
 
-Avoid speculative infrastructure and premature abstractions.
-
----
-
-## 2. Determine current state from the repository
-
-Do not trust a hard-coded milestone statement in this file.
-
-At the start of an architecture-sensitive session, determine the real state from:
-
-1. Git branch and commit;
-2. worktree status;
-3. `PLAN.md`;
-4. `CHANGE_MAP.md`;
-5. relevant implementation and tests;
-6. relevant workflow/audit records.
-
-The current phase is the repository's current phase, not a historical value copied into `AGENTS.md`.
-
-For milestone transitions, the normal sequence is:
-
-```
-completed phase
-    ↓
-merge into main
-    ↓
-create next phase branch from main
-    ↓
-design/reality gate
-    ↓
-implementation
-    ↓
-adversarial audit
-    ↓
-commit
-    ↓
-merge into main
-```
-
-Do not skip the branch boundary merely because implementation is small.
-
----
-
-## 3. Mandatory preflight
-
-Before changing code or architecture, inspect:
-
-```text
+```bash
 git branch --show-current
 git rev-parse HEAD
 git status --short --branch
@@ -77,412 +31,66 @@ git log --oneline -12
 git diff --check
 ```
 
-For milestone transitions, also inspect the relevant local/remote branches and ancestry.
+Inspect the relevant diff before editing. Preserve all pre-existing changes. Never use `reset --hard`, destructive checkout/restore, stash, volume deletion, or cleanup commands to make the worktree look clean. Do not stage, commit, or push unless explicitly requested.
 
-Never:
+A supplied ZIP or text export is not Git evidence: it cannot prove branch, HEAD, merge status, or uncommitted work.
 
-- reset user work;
-- discard changes;
-- stash without explicit instruction;
-- rebase merely for convenience;
-- force-push;
-- rewrite completed milestone history.
+## 4. Milestone and design gates
 
-If repository state differs from the expected task state, report the discrepancy before making architectural decisions.
+- Code presence does not authorize a milestone or prove formal closure.
+- A recorded test result proves only the named command, environment, and snapshot; it does not prove unrun checks or satisfy a separate phase-boundary gate by itself.
+- Do not start a later phase while `PLAN.md` says its entry gate is blocked or paused.
+- For an architecture-sensitive change, establish meaning, ownership, authority, persistence, invariants, atomicity/recovery behavior, and the next-milestone boundary before implementation.
+- If resolving the request would change architecture, schema, security, externally visible behavior, or a milestone boundary without authority, stop and request a decision.
 
-Repository state is more authoritative than assumptions from prior conversations.
+## 5. Non-negotiable design boundaries
 
----
+- Worker/model output is a proposal, never authority for a durable write.
+- Application code validates schema, ownership, scope, policy, transitions, provenance, and concurrency before commit.
+- Durable writes use the existing Kernel/application commit path and emit the required Task-attributed Events.
+- `StateAssessment` is deterministic derived state; it does not mutate world/team memory.
+- Plan expresses immutable intended work. Tasks, Events, and Outcomes express execution history.
+- Reactive and deliberative entry paths converge on ordinary Tasks; do not create a second runtime.
+- Tasks may exist without an Objective or Plan unless the relevant contract explicitly requires one.
+- Do not invent entities, write scopes, tools, defaults, or quota semantics.
+- Domain packs add domain knowledge/configuration, not Kernel powers.
 
-## 4. Authority and conflict handling
+## 6. Implementation discipline
 
-Use `CHANGE_MAP.md` to determine which documents govern which concepts.
+1. State the requested behavior and narrow file scope.
+2. Add or update tests for the invariant/behavior before or with the implementation.
+3. Implement the smallest complete change; avoid unrelated renames/refactors.
+4. Add a migration only when the actual schema change requires one. Do not guess migration numbering from an old plan.
+5. Update the authoritative spec/ADR and `CHANGE_MAP.md` when behavior or authority changes.
+6. Keep rejected operations atomic: no partial state transitions, attempt updates, or success Events.
 
-General rule:
+## 7. Verification
 
-- mapped Revision 2 documents govern the concepts they explicitly revise;
-- original Watch documents remain authoritative for unmapped concepts;
-- `docs/invariants.md` remains authoritative for invariants unless a mapped Revision 2 source explicitly revises one;
-- ADRs record architectural decisions and must be consulted for their named concepts.
-
-Never resolve contradictory documents by intuition.
-
-When authority is genuinely ambiguous:
-
-> **STOP and report the ambiguity.**
-
-Do not silently invent a schema, lifecycle, authority path, or exception.
-
-Do not modify a historical decision merely to make current implementation convenient.
-
----
-
-## 5. Core architectural rules
-
-These are boundaries, not permission to implement future components early.
-
-### Authority
-
-```
-model / worker proposes
-        ↓
-application validates
-        ↓
-Kernel/application commits
-        ↓
-database preserves authoritative state
-```
-
-The model is never the authority for durable state.
-
-### Persistent experience
-
-Model reasoning is temporary.
-
-Durable records are the persistent experience of Watch.
-
-Do not make transcripts the primary memory mechanism.
-
-### Derived state
-
-A computed projection, assessment, or view is not authoritative merely because it exists.
-
-In particular:
-
-> `StateAssessment` is derived, read-only, deterministic, and non-authoritative.
-
-### Execution
-
-Tasks are the execution unit.
-
-Reactive and deliberative entry paths converge on the existing Task runtime.
-
-Do not create a second execution runtime or commit kernel.
-
-### Planning
-
-A Plan records immutable intended execution structure for one Objective; it is not execution history, Strategy memory, StateAssessment, a workflow engine, or a second runtime. Plan-linked Tasks carry nullable action provenance and the existing Task admission path enforces their same-Plan prerequisites before execution.
-
-Tasks, Events, and Outcomes describe what actually happened.
-
-### Provenance
-
-A reference between records does not automatically establish causality.
-
-Preserve provenance without making unsupported causal claims.
-
-### Future entities
-
-Do not simulate unimplemented domain entities with arbitrary fields or repurposed records.
-
-If an entity such as Strategy, Plan, Outcome, Evaluation, Hypothesis, EvidenceLink, or Memory is not implemented by the current milestone, do not quietly invent it early.
-
----
-
-## 6. Milestone discipline
-
-For every new milestone, reason in this order:
-
-1. What capability is being added?
-2. Why is it needed?
-3. What does it mean?
-4. What existing durable state supports it?
-5. What is the smallest useful implementation?
-6. What explicitly waits for a later milestone?
-
-Do not begin by choosing tables/classes/files.
-
-Do not implement a later milestone merely because its concepts are already mentioned in architecture documents.
-
-A milestone is complete only when its documented exit criteria and verification are actually satisfied.
-
----
-
-## 7. Design/reality gates
-
-Architecture-sensitive milestones require a design/reality gate before implementation.
-
-A gate should establish:
-
-- semantic meaning;
-- ownership;
-- authority;
-- persistence requirements;
-- invariants;
-- recovery/retry implications;
-- exact boundary with the next milestone;
-- smallest implementation slice.
-
-A gate may conclude:
-
-```
-READY
-```
-
-or:
-
-```
-NOT READY — unresolved issue
-```
-
-Do not force a READY conclusion.
-
-If implementation exposes a genuine architecture conflict, stop rather than silently changing the architecture.
-
----
-
-## 8. Workflow validation is mandatory when workflow is being tested
-
-Workflow validation is not optional when the task is testing, simulating, auditing, or evaluating the development process.
-
-A task is a workflow-validation task whenever it asks the agent to do any of the following:
-
-- simulate a development session;
-- perform a workflow simulation;
-- run a design/reality gate whose purpose includes testing agent behavior;
-- audit the Codex/VS Code process;
-- test repository instructions;
-- verify whether the agent followed the intended development workflow;
-- report discrepancies between expected and observed agent behavior;
-- perform a milestone preflight/readiness exercise whose result is intended to improve repository instructions.
-
-The user does **not** need to repeat the words "update workflow-validation.md" for this requirement to apply.
-
-### Required workflow-validation procedure
-
-When the task is workflow validation:
-
-1. Read `docs/development/workflow-validation.md` before starting.
-2. Determine the next chronological entry number from the file itself.
-3. Treat the workflow record as part of the task, not optional reporting.
-4. During the task, distinguish documented expectations from actual observations.
-5. At completion, append exactly one chronological record unless the task explicitly requires multiple records.
-6. Include:
-   - task/scenario;
-   - relevant repository state;
-   - expected behavior, supported by repository instructions;
-   - observed behavior;
-   - discrepancies or absence of discrepancy;
-   - lessons/workflow rules;
-   - resulting documentation or `AGENTS.md` changes.
-7. Never rewrite old observations merely to make them cleaner.
-8. Do not fabricate expected behavior after observing what the agent did.
-9. Verify the workflow-validation file was actually changed before final reporting.
-
-### No-edit simulations
-
-If a workflow-validation task says "no implementation edits", that does **not** mean "no file may change".
-
-The permitted documentation change is normally:
-
-```
-docs/development/workflow-validation.md
-```
-
-unless the task explicitly names another file.
-
-Do not edit source code during a no-edit simulation.
-
-### Implementation tasks that reveal workflow failures
-
-If an implementation task is explicitly also evaluating the workflow/process, record the workflow finding as required above while respecting the implementation boundary.
-
-Do not use workflow validation as an excuse to alter architecture.
-
----
-
-## 9. Reporting requirements
-
-Reports must be grounded in evidence.
-
-Never claim:
-
-- tests passed when they were not run;
-- a branch was merged when it was not;
-- a file was changed when it was not;
-- an architecture decision is authoritative when it is only a proposal.
-
-For verification, report exact results and distinguish:
-
-- clean isolated database verification;
-- existing/shared database verification;
-- skipped checks;
-- environment/tooling limitations;
-- unrelated pre-existing failures.
-
-When a workflow-validation task completes, the final response must identify the appended workflow-validation entry.
-
----
-
-## 10. Development changes
-
-Make the smallest justified change.
-
-Keep unrelated files untouched.
-
-Before editing, identify the expected file set.
-
-Prefer:
-
-```
-small implementation
-+
-focused tests
-+
-minimal documentation
-```
-
-over speculative flexibility.
-
-Do not introduce infrastructure merely because it may be useful later.
-
-Do not combine architecture redesign with implementation unless an explicit authority change has been approved.
-
----
-
-## 11. Tests and verification
-
-Use the repository's configured environment.
-
-For Python, prefer:
+Run the smallest relevant tests first, then applicable project checks:
 
 ```bash
-uv sync --python 3.12
-uv run pytest
-uv run ruff check .
+uv run pytest <focused-test-file>
+uv run ruff check <changed-paths>
 uv run mypy core
 git diff --check
 ```
 
-Do not assume globally installed tools are available.
+Run the full suite when the scope or milestone requires it. Report skipped checks and the reasons. Do not say a command passed unless it was run and passed.
 
-For database tests, distinguish test-environment setup from production behavior.
+Database tests must use the repository's configured disposable/test database. Never modify the persistent `watch` database to make tests pass. Never use `docker compose down -v` as generic cleanup.
 
-Prefer isolated reproducible verification when shared database state can contaminate global-count or fixture assumptions.
+## 8. Workflow-validation record
 
-Do not modify or delete an existing database merely to make tests pass.
+Only when the task explicitly simulates, audits, or tests the human–agent development workflow, append exactly one chronological evidence-based entry to `docs/development/workflow-validation.md`. Preserve older entries. Verify the appended entry exists before reporting. Ordinary code tasks do not require an entry.
 
----
+## 9. Reporting
 
-## 12. Invariant changes
+Always report:
 
-When an existing invariant must change:
+- files changed;
+- checks actually run and their results;
+- assumptions and decisions made within existing authority;
+- unresolved conflicts, blocked gates, and unrun checks;
+- final branch/HEAD/worktree state when Git operations were part of the task.
 
-1. identify the exact conflict;
-2. stop implementation;
-3. update the authoritative architecture/invariant documentation according to the repository's change process;
-4. update affected tests;
-5. only then implement the revised behavior.
-
-Do not weaken an invariant silently.
-
----
-
-## 13. Documentation changes
-
-Documentation should describe the current architecture accurately.
-
-When adding milestone guidance:
-
-- distinguish current behavior from future design;
-- distinguish semantic requirements from implementation choices;
-- preserve historical records;
-- append chronological workflow observations;
-- avoid duplicate competing definitions.
-
-`PLAN.md` defines milestone scope.
-
-`CHANGE_MAP.md` defines authority mapping.
-
-`docs/development/workflow-validation.md` records observed development-process behavior.
-
----
-
-## 14. Current milestone information
-
-Do not maintain a manually edited "current milestone" claim in this file.
-
-Use:
-
-```
-git branch
-+
-PLAN.md
-+
-recent milestone commits
-```
-
-to determine the current phase.
-
-This prevents `AGENTS.md` from becoming stale after a branch transition.
-
----
-
-## 15. Documentation lookup
-
-| Topic | Primary source |
-|---|---|
-| Authority mapping | `CHANGE_MAP.md` |
-| Milestone scope | `PLAN.md` |
-| Architecture | `docs/01-architecture-revision.md` |
-| Control layer | `docs/02-control-layer.md` |
-| Runtime | `docs/03-runtime-model.md` |
-| Data model | `docs/04-data-model-changes.md` |
-| Tasks | `docs/tasks.md` |
-| Invariants | `docs/invariants.md` |
-| Workflow validation | `docs/development/workflow-validation.md` |
-| Implementation planning | `docs/05-implementation-plan.md` |
-| VS Code/Codex workflow | `docs/06-codex-vscode-workflow.md` |
-| Vocabulary | `docs/glossary.md` |
-| Architecture decisions | `docs/decisions/` |
-
-For Task, Plan, Objective, Trigger, scheduler, or Control changes, read ADR-0026 and the mapped authorities before implementation.
-
----
-
-## 16. Final pre-completion checklist
-
-Before declaring a milestone step complete, ask:
-
-```text
-[ ] Did I verify the real Git state?
-[ ] Did I read the current authority chain?
-[ ] Did I identify the smallest capability being added?
-[ ] Did I preserve earlier invariants?
-[ ] Did I keep later milestones out of scope?
-[ ] Did I run the relevant verification?
-[ ] Did I report deviations honestly?
-[ ] If this was workflow validation, did I append workflow-validation.md?
-[ ] Did I verify that append actually exists?
-[ ] Is the worktree state reported accurately?
-```
-
-The last two questions are mandatory for workflow-validation tasks.
-
----
-
-## 17. Operating principle
-
-The goal is not maximum implementation speed.
-
-The goal is:
-
-```
-small semantic step
-+
-strong invariant
-+
-durable evidence
-+
-reproducible verification
-=
-safe architectural progress
-```
-
-When uncertain:
-
-> **Prefer the smallest reversible decision that preserves future options.**
-
-When the repository cannot answer the question:
-
-> **Stop and report the ambiguity instead of guessing.**
+Use `DONE`, `BLOCKED`, or `FAILED` accurately. Do not claim a proposed decision is accepted, a milestone is closed, or a test is green without evidence.
