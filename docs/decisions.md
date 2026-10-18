@@ -4,7 +4,7 @@ This is a navigation index, not a replacement for the full ADRs. Open the linked
 
 | ADR | Decision | Practical consequence |
 |---|---|---|
-| [0001–0019 history](decisions/architecture%20decision%20records%20(ADR-0001%20-%20ADR-0019%29.md) | Original Watch decisions: Team, memory, learning, policy, evidence, commit, Tasks, projections, domain packs, and agent-facing documentation. | Consult the full history only when the task touches an original decision not superseded by Revision 2. |
+| [0001–0019 history](decisions/architecture%20decision%20records%20(ADR-0001%20-%20ADR-0019).md) | Original Watch decisions: Team, memory, learning, policy, evidence, commit, Tasks, projections, domain packs, and agent-facing documentation. | Consult the full history only when the task touches an original decision not superseded by Revision 2. |
 | [0020](decisions/ADR-0020-consultations-waiting-happens-between-tasks.md) | Consultations wait between Tasks. | Do not create a blocking in-Task consultation path. |
 | [0021](decisions/ADR-0021-operator-update-path-human-as-first-class-worker.md) | Operator update path. | Human updates use explicit Task/validation boundaries. |
 | [0022](decisions/ADR-0022-generalist-pack-and-setup-advisor.md) | Generalist pack and setup advisor. | Generalist support remains within the pack/kernel boundary. |
