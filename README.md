@@ -10,11 +10,9 @@ A general-purpose AI worker can reason, investigate, write, compare, and propose
 
 ## Current design direction
 
-The current architecture review exposed an important limitation in the first R4 implementation: StrategyProposal is currently restricted to one candidate action.
+The approved R4 redesign supersedes the first implementation's one-action limit as the semantic definition. Its redesigned implementation is present and focused exit verification is recorded; R4 remains formally open pending the required phase-boundary merge. R5 remains paused and is not released.
 
-That was useful as a narrow first slice, but it is too restrictive for the intended Watch system.
-
-A single Objective must be able to produce a Strategy containing multiple concurrent perspectives and lines of work.
+A single Objective has one active accepted Strategy containing multiple concurrent perspectives and lines of work.
 
 The emerging control model is:
 
@@ -192,15 +190,9 @@ A successful result does not automatically prove that a Vision caused the succes
 
 K0–R3 remain the completed foundation.
 
-R4 was implemented as a narrow first StrategyProposal slice and is now **reopened for architectural redesign** because the one-action restriction does not match the intended multi-vision Strategy model.
+R4's redesigned nested Strategy implementation is present in commit `50e288a`. Its focused exit verification passed on the current R5 worktree: 44 Strategy tests, targeted Ruff, `mypy core`, `git diff --check`, and migrations to `0006_immutable_plan_actions` on a disposable PostgreSQL database. The full suite and R5 tests were not run.
 
-R5 Plan work is **paused at this boundary**. R5 must not invent additional Actions that were not authorized by an accepted Strategy.
-
-The next architectural task is therefore:
-
-> **Redesign the R4 StrategyProposal contract so one Objective can produce multiple Visions, Workstreams, and Actions while preserving deterministic validation, provenance, replay, audit, and the existing authority boundary.**
-
-Only after that redesign is explicitly settled should R5 continue.
+R4 is not formally closed: the implementation commit is on R5 and has not crossed the documented phase-boundary merge into `main`. R5 Plan work remains **paused and not released** pending formal R4 closure and the R5 entry gate. R5 must preserve the accepted Strategy and may not invent or reinterpret its structure.
 
 ## Milestones
 
@@ -212,7 +204,7 @@ Only after that redesign is explicitly settled should R5 continue.
 | R1 | Complete | Control-layer compatibility contract |
 | R2 | Complete | Durable Objective model and lifecycle |
 | R3 | Complete | Deterministic, read-only StateAssessment |
-| R4 | Reopened | Redesign Strategy around multiple Visions, Workstreams, and Actions |
+| R4 | Implemented; focused exit verification passed; formal closure pending | Redesigned Strategy around multiple Visions, Workstreams, and Actions |
 | R5 | Paused | Durable Plan materialization after the R4 redesign |
 | R6 | Later | First intelligent Control loop |
 | R7 | Later | Evaluation and learning integration |

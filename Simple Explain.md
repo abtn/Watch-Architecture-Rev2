@@ -185,9 +185,9 @@ The Strategy answers:
 
 The accepted Strategy can therefore contain multiple meaningful lines of work.
 
-This is why R4 needs to be redesigned before R5 continues.
+The conceptual redesign is approved and now recorded in the formal R4 authorities. The current one-action implementation remains pending redesign and verification before R5 continues.
 
-R5 should not invent additional actions that were never authorized by the accepted Strategy.
+R5 must not invent additional actions that were never authorized by the accepted Strategy.
 
 ---
 

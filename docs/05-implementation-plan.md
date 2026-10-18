@@ -364,7 +364,28 @@ Acceptance:
 - does not write world/team memory or become an authoritative state store
 - projections are not required for correctness
 
-## Slice R4 — Strategy proposal boundary
+## Slice R4 — Strategy proposal boundary (redesigned implementation; formal closure pending)
+
+Formal R4 authorities now define one coordinated accepted Strategy for one
+Objective and assessment basis. It may contain multiple concurrent Visions,
+Workstreams, purposeful Actions, and explicit Action prerequisites across
+Workstreams/Visions. Acceptance authorizes the complete validated structure
+for one later Plan; it does not establish strategic quality. R5 must not
+invent, omit, partition, or reinterpret that structure. Strategy/Vision/
+Workstream/Action do not require separate entities; preserve stable identity
+and provenance in the canonical proposal and derived Plan. Team/capability
+changes are separate human-reviewed proposals.
+
+The first implementation remains bounded to the existing configured
+`ingest_source`, no-tools, zero-cost capability. The number of authorized
+Actions is bounded above by the proposal's `max_tasks`; it need not equal that
+limit. The one-Action case is a valid subset, not an exact-cardinality rule.
+
+Current canonical nested R4 Events support exact reconstruction. Historical flat
+Events remain unchanged; their stored proposal/hash can be verified and read,
+but absent Vision/Workstream semantics or complete assessment data must not be
+fabricated. A derived legacy view is not canonical Strategy and cannot
+authorize Plan materialization.
 
 Implement:
 
@@ -381,25 +402,33 @@ Acceptance:
 - forbidden tool rejected
 - policy bypass rejected
 
-## Slice R5 — Plan materialization
+**Recorded exit verification:** On the current R5 worktree, `uv run pytest tests/test_strategy.py` passed (44 tests); targeted Ruff, `uv run mypy core`, and `git diff --check` passed. Alembic reached `0006_immutable_plan_actions` on a disposable PostgreSQL database. The full suite and R5-specific tests were not run. This records technical verification only; it does not formally close R4 or release R5. R4's implementation commit remains on R5 pending the phase-boundary merge prescribed by `AGENTS.md`.
+
+## Slice R5 — Plan materialization (paused pending formal R4 closure and R5 authorization)
+
+The accepted Strategy is the sole authority for strategic structure. Initially
+one accepted Strategy for one Objective produces one Plan, preserving all
+accepted Visions, Workstreams, Actions, and Action prerequisites as immutable
+intent. R5 may not invent, omit, partition, or reinterpret them without
+explicit authority. The R5 semantic closure defines Plan behavior, but R5
+implementation remains paused until R4 is formally closed and R5 is explicitly
+authorized at its entry gate. The focused R4 exit verification recorded above
+does not itself close the milestone or release R5.
 
 Add the Plan schema and nullable `tasks.plan_id` in a migration after the R2
 Objective migration; do not backfill ordinary reactive Tasks into Plans. A
 Plan requires its parent Objective. Task Objective and Plan references remain
 independently optional; when both are present, they must be Team-consistent
-and the Task Objective must match the Plan's parent Objective. Before
-implementation, settle the intentionally deferred Plan status transitions,
-dependency representation, mutation scope, and materialization replay behavior
-in accordance with `docs/04-data-model-changes.md`.
+and the Task Objective must match the Plan's parent Objective.
 
 Implement:
 
 ```text
-StrategyProposal
+accepted Strategy
     ↓
-Plan
+Plan preserving Visions / Workstreams / Actions / prerequisites
     ↓
-Task[]
+ordinary Task[]
 ```
 
 Plan materialization simply creates ordinary Tasks. Those Tasks then use the existing Task execution path.

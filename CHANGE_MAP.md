@@ -15,6 +15,7 @@ This map identifies the concepts explicitly revised by Revision 2 and the author
 | Trigger behavior | `docs/decisions/ADR-0026-dual-entry-execution-model.md`, `docs/01-architecture-revision.md`, `docs/02-control-layer.md`, `docs/03-runtime-model.md` | Trigger may create a Task directly for deterministic responses, or create/activate an Objective when deliberation is needed. Not every Trigger passes through Control. |
 | Control budget hierarchy | `docs/01-architecture-revision.md`, `docs/02-control-layer.md`, `docs/04-data-model-changes.md`, `docs/decisions/ADR-0025-plan-is-derived-execution-state.md`, `docs/decisions/ADR-0026-dual-entry-execution-model.md` | TeamPolicy ceiling > Plan envelope > Task budget. Plan may not exceed TeamPolicy; materialized Task allocations may not exceed Plan envelope; each Task budget governs its individual execution. |
 | Implementation order | `PLAN.md`, `docs/05-implementation-plan.md`, `docs/08-first-coding-session.md` | Tooling and smallest Kernel commit path are proven before any Control implementation. |
+| TeamPolicy daily Task quota | `docs/decisions/ADR-0027-team-policy-daily-task-quota.md` | `docs/tasks.md`; `core/task_runtime.py` |
 
 ## Original documents still authoritative outside mapped revisions
 

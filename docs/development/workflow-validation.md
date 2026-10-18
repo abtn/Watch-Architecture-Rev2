@@ -819,3 +819,39 @@ source establishes it.
   validation triggers, chronological append-only reporting, and verification
   that the workflow record was actually updated. This record documents that
   change; no implementation behavior or architecture was changed.
+
+### 18. R4 exit verification and R5 pause reconciliation
+
+- **Task/scenario:** Verify the redesigned R4 exit criteria using a fresh,
+  disposable PostgreSQL database, then reconcile the milestone record without
+  treating verification as formal closure or automatic R5 authorization.
+- **Repository state:** Branch `R5` at `50e288a`; redesigned nested R4 code is
+  committed in that branch. Existing R5 implementation and verification work
+  remains uncommitted. R4 commit is not an ancestor of `main`; `main` remains at
+  `5be1ce9`.
+- **Expected behavior:** `PLAN.md` R4 exit criteria govern technical evidence;
+  `AGENTS.md` defines the phase-boundary sequence. A successful focused check
+  establishes only its recorded scope and does not itself merge or close a
+  milestone.
+- **Observed behavior:** A separate PostgreSQL 16 container/database/volume was
+  bound to `127.0.0.1:55445`; both database environment overrides targeted only
+  that disposable instance. Alembic reached
+  `0006_immutable_plan_actions`. `uv run pytest tests/test_strategy.py` passed
+  (44 tests); targeted R4 Ruff, `uv run mypy core`, and `git diff --check`
+  passed. The full suite and R5-specific tests were not run. The disposable
+  container and volume were removed; the persistent `watch` instance remained
+  running and untouched.
+- **Discrepancies:** The repository contained R4 implementation-pending status
+  despite the implementation commit and successful focused exit verification.
+  R5 remains gated because the R4 change is still on the R5 branch and has not
+  passed the documented phase-boundary merge into `main`. No authority grants
+  this verification run the power to formally close R4 or release R5.
+- **Lessons:** Keep implementation presence, scoped verification, formal
+  milestone closure, R5 authorization, and R5 verification as distinct status
+  facts. Record a verification result with its exact scope; do not use it to
+  imply unrun checks or waive a branch-boundary gate.
+- **Resulting documentation changes:** `PLAN.md`, `README.md`, and
+  `docs/05-implementation-plan.md` now record the verified R4 implementation/
+  check scope and preserve R5's pause. No code,
+  tests, migrations, or configuration were changed; no R5 authorization was
+  declared.

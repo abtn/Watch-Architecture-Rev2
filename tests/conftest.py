@@ -42,7 +42,7 @@ def database_engine() -> Iterator[Engine]:
         "TEST_DATABASE_URL",
         os.environ.get(
             "DATABASE_URL",
-            "postgresql+psycopg://watch:watch@localhost:5432/watch",
+            "postgresql+psycopg://watch:watch@127.0.0.1:5432/watch",
         ),
     )
     engine = create_engine(database_url)
