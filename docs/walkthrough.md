@@ -1,5 +1,6 @@
 # docs/walkthrough.md
 # Walkthrough
+
 Three concrete traces of the operating loop, using only v1 entities, glossary terms, and the flows defined in `docs/architecture.md` §5. Every record shown is legal per the state machines in §4, and the invariant that guards each step is cited inline as `INV-NN`.
 This document doubles as the spec for integration test fixtures: `tests/fixtures/` may reproduce these exact records.
 **Conventions:** IDs are shortened for readability (`S-1041`, `TH-101`); production IDs are UUIDs. Timestamps are ISO-8601, abridged to the fields relevant at each step. Snapshot hashes are abridged (`sha256:9f21c…`). Quotes shown are illustrative; in tests, fixture snapshots contain the exact quoted substrings at the recorded offsets.
