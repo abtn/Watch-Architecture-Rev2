@@ -5,6 +5,7 @@ This file identifies the active source for each concern. It is an index, not a s
 | Concern | Authoritative source | Boundary |
 |---|---|---|
 | Current milestone, phase gate, next action | [`PLAN.md`](PLAN.md) | The only source of current status. Code presence or a test result does not close a phase. |
+| R5-A materialization/recovery and R5-B lifecycle sequencing | [`PLAN.md`](PLAN.md), `docs/tasks.md`, `docs/testing.md` | R5-A passing does not close R5; both slices must satisfy the overall R5 exit criteria. Replanning remains later work. |
 | Agent workflow, preflight, stop/report rules | [`AGENTS.md`](AGENTS.md) | Process only; it does not independently authorize architecture changes. |
 | Unchanged/original domain architecture | [`docs/architecture.md`](docs/architecture.md) | Applies where the Revision 2 map below has not superseded it. |
 | Revision 2 Control layer and dual-entry model | [`docs/control-model.md`](docs/control-model.md), ADR-0023–ADR-0026 | Reactive and deliberative work converge on ordinary Tasks. |
@@ -29,9 +30,13 @@ This file identifies the active source for each concern. It is an index, not a s
 - **Execution:** reactive Tasks remain valid without an Objective/Plan; deliberative Tasks use the same Task runtime, state machine, and commit gates.
 - **Budget hierarchy:** TeamPolicy ceiling → Plan envelope → individual Task budget.
 
-## Known authority issue — do not silently resolve
+## R5 scope and quota decision authority
 
-`docs/tasks.md` contains a normative-looking **TeamPolicy daily Task-start quota** contract, but ADR-0027 is marked **Proposed**. `PLAN.md` records R5 as in progress under explicit operator authorization (2026-10-20) with its entry gate recorded `READY` after R4 closure (2026-10-20); neither fact accepts the quota semantics or authorizes its implementation. Before implementing or declaring the quota accepted, obtain an explicit decision. Do not interpret this status change or documentation refactor as authorization to proceed with R6.
+`PLAN.md` owns the R5-A / R5-B boundaries, current status, and exit criteria. `docs/tasks.md` owns the Task and daily quota behavior; `docs/testing.md` owns the required verification evidence.
+
+ADR-0027 remains `Proposed`. The operator's R5-A instructions dated 2026-10-21 explicitly direct verification and correction of the existing daily Task-start quota path against the documented semantics, including durable `task_started` Event accounting, concurrency, retries, UTC day boundaries, configuration validation, and failed-operation consistency. This task direction does not silently accept ADR-0027 or change its status. Keep Task-count accounting separate from monetary/token-cost accounting.
+
+R5 remains in progress until both R5-A and R5-B satisfy the overall acceptance criteria in `PLAN.md`. Passing R5-A does not authorize R6.
 
 ## Conflict rule
 
