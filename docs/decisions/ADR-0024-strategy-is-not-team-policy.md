@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted — explicit operator decision, 2026-10-20, as part of the R4 phase closure (see `PLAN.md`).
 
 ## Context
 

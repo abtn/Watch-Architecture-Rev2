@@ -14,7 +14,7 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 - Most task types require an `active` Team; `create_team`, `configure_team`, and `activate_team` operate on shell/configuring teams and are the exceptions.
 - **No path bypasses validation for being human** (INV-15): operator task types use the same commit kernel, and operator identity is recorded in Event payloads.
 ### TeamPolicy daily Task-start quota
-> **Authority status:** The semantics below are documented as an intended contract, but ADR-0027 is marked `Proposed` in this snapshot and `PLAN.md` keeps R5 paused. This section does not, by itself, accept the ADR or authorize implementation. Resolve the decision and milestone gate before treating this behavior as approved.
+> **Authority status:** The semantics below are documented as an intended contract, but ADR-0027 is marked `Proposed` in this snapshot. This section does not, by itself, accept the ADR or authorize implementation. Resolve the explicit decision before treating this behavior as approved.
 When a TeamPolicy configures `rules["budgets"]["max_tasks_per_day"]`, the
 application must enforce it as an aggregate limit on successful Task starts
 for that Team during each UTC calendar day.

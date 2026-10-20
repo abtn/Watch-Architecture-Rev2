@@ -31,7 +31,7 @@ This file identifies the active source for each concern. It is an index, not a s
 
 ## Known authority issue — do not silently resolve
 
-`docs/tasks.md` contains a normative-looking **TeamPolicy daily Task-start quota** contract, but ADR-0027 is marked **Proposed** and `PLAN.md` records R5 as paused pending its phase gate. The intended quota semantics are documented, but their acceptance/implementation authorization is not established by those facts alone. Before implementing or declaring the quota accepted, obtain an explicit decision and satisfy the milestone gate. Do not interpret this documentation refactor as authorization to proceed with R5 or R6.
+`docs/tasks.md` contains a normative-looking **TeamPolicy daily Task-start quota** contract, but ADR-0027 is marked **Proposed**. `PLAN.md` records R5 as in progress under explicit operator authorization (2026-10-20) with its entry gate recorded `READY` after R4 closure (2026-10-20); neither fact accepts the quota semantics or authorizes its implementation. Before implementing or declaring the quota accepted, obtain an explicit decision. Do not interpret this status change or documentation refactor as authorization to proceed with R6.
 
 ## Conflict rule
 

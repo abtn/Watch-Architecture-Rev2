@@ -5,21 +5,20 @@ This file is the **single source of current milestone status**. Other documents 
 ## Current recorded state
 
 - **K0, K1, R0, R1, R2, R3:** recorded complete.
-- **R4:** redesigned multi-perspective Strategy implementation is recorded as present, with focused verification recorded; formal closure is pending the documented phase-boundary gate.
-- **R5:** paused pending formal R4 closure and an explicit R5 entry gate.
+- **R4:** **closed 2026-10-20.** The redesigned multi-perspective Strategy implementation was verified freshly on the live repository (44 focused Strategy tests + full 185-test suite passing, Ruff, `mypy core`, disposable-DB migrations to `0006_immutable_plan_actions`); ADR-0023/ADR-0024 were accepted by explicit operator decision; the phase-boundary merge to `main` was performed. See the R4 closure record below.
+- **R5:** in progress — explicitly authorized by the operator on 2026-10-20; entry gate recorded `READY` after R4 closure (see R5 section). ADR-0027 remains `Proposed` and is not accepted by this status.
 - **R6+:** future work; not authorized by the existence of code or proposed documents.
 
 The supplied project ZIP has no Git metadata. Before taking repository action, verify branch, HEAD, merge status, and worktree on the actual checkout using `AGENTS.md`.
 
 ## Next actionable step
 
-Complete the R4 formal-closure gate against the live repository state. Do not begin further R5 implementation or R6 work until the gate is satisfied and R5 is explicitly authorized.
+Execute R5 (Plan materialization) against its exit criteria below. R4 is closed (2026-10-20) and the R5 entry gate is recorded `READY`.
 
-1. Verify the actual branch, HEAD, worktree, and commit history.
-2. Reconcile the existing R4 implementation and recorded checks with the phase-boundary merge/closure requirements in `AGENTS.md` and the applicable ADRs.
-3. Record only evidence that was actually verified; distinguish source-recorded evidence from freshly rerun commands.
-4. Close R4 only through the prescribed phase-boundary process.
-5. Run the R5 entry gate and record a clear `READY` or `NOT READY` result before starting R5.
+1. Verify branch, HEAD, worktree, and commit history before repository action (`AGENTS.md` preflight).
+2. Implement the R5 exit criteria with tests; record every check actually run and its result.
+3. Obtain an explicit decision on ADR-0027 before implementing or enforcing the daily Task-start quota; it remains `Proposed`.
+4. Record the R5 exit gate honestly; do not start R6.
 
 ## Milestone overview
 
@@ -31,8 +30,8 @@ Complete the R4 formal-closure gate against the live repository state. Do not be
 | R1 | Complete | Verify compatibility with the existing Kernel and Task/write-scope model. |
 | R2 | Complete | Durable Objective model and lifecycle. |
 | R3 | Complete | Deterministic, read-only StateAssessment with provenance. |
-| R4 | Implementation present; formal closure pending | StrategyProposal boundary, multi-Vision/Workstream/Action semantics, deterministic validation and reconstruction. |
-| R5 | **Paused** | Materialize one accepted Strategy as one durable Plan and ordinary Tasks. Requires R4 closure plus explicit R5 authorization. |
+| R4 | **Complete** (closed 2026-10-20) | StrategyProposal boundary, multi-Vision/Workstream/Action semantics, deterministic validation and reconstruction. |
+| R5 | **In progress** (operator-authorized 2026-10-20; entry gate READY) | Materialize one accepted Strategy as one durable Plan and ordinary Tasks. |
 | R6 | Future | First end-to-end intelligent Control loop. |
 | R7 | Future | Evaluation and learning integration. |
 | R8 | Future | Multi-domain pressure test. |
@@ -55,7 +54,7 @@ Proves proposal → deterministic application validation → atomic persistence 
 
 See the relevant code/tests and the source-control history for the evidence of each completed phase.
 
-## R4 — StrategyProposal boundary (implementation present; formal closure pending)
+## R4 — StrategyProposal boundary (complete — closed 2026-10-20)
 
 ### Semantic contract
 
@@ -71,15 +70,31 @@ One accepted StrategyProposal is one coordinated strategic decision for one Obje
 
 ### Recorded implementation and verification evidence
 
-The source PLAN records the redesigned implementation at commit `50e288a` on the R5 worktree, `44` Strategy tests passing, targeted Ruff, `mypy core`, and `git diff --check` passing, and disposable PostgreSQL migrations reaching `0006_immutable_plan_actions`. It also records that the full suite and R5-specific tests were not run. These are **source-recorded results**, not fresh verification from this ZIP; verify actual Git state and rerun checks as required by the formal gate.
+The source PLAN records the redesigned implementation at commit `50e288a` on the R5 worktree, `44` Strategy tests passing, targeted Ruff, `mypy core`, and `git diff --check` passing, and disposable PostgreSQL migrations reaching `0006_immutable_plan_actions`. It also records that the full suite and R5-specific tests were not run. These are **source-recorded results**; the fresh closure verification below supersedes them where it repeats them.
 
-### R4 closure gate
+### Closure record — 2026-10-20
 
-Focused verification does not itself close R4. Follow the phase-boundary merge/closure procedure in `AGENTS.md`. If the actual repository differs from the recorded state, reconcile that difference before marking the phase complete.
+- **Live Git state (verified by preflight):** branch `docs/refactor` at `cee2bbf`; the redesigned implementation commit `50e288a` is an ancestor of HEAD; `main` is an ancestor of `docs/refactor` (no divergence).
+- **Fresh verification — commands actually run on this state**, against a disposable PostgreSQL database (`watch_r4_gate`; the persistent `watch` database was never used):
+  - `uv run pytest tests/test_strategy.py` → `44 passed`.
+  - `uv run pytest` (full suite) → `185 passed`. The full suite had not been run for R4 previously; this closes that evidence gap.
+  - `uv run ruff check .` → passed.
+  - `uv run mypy core` → passed (10 source files).
+  - `uv run alembic upgrade head` (disposable DB) → reached `0006_immutable_plan_actions`.
+  - `git diff --check` → clean.
+- **Operator-reported evidence (recorded distinctly):** on 2026-10-20 the operator stated that all code is correct and the tests passed and that they had checked them personally. This is operator-reported, not agent-rerun.
+- **Authority resolution:** ADR-0023 (Control layer) and ADR-0024 (Strategy is not TeamPolicy) moved from `Proposed` to `Accepted` by explicit operator decision dated 2026-10-20, recorded in the ADRs. ADR-0025, ADR-0026, and ADR-0027 remain `Proposed` (R5 scope; not required for R4 closure).
+- **Phase boundary:** `docs/refactor` merged into `main` with a merge commit per operator decision, following the repository's `Merge branch '...'` convention. No push was performed.
 
-## R5 — Plan materialization (**paused**)
+## R5 — Plan materialization (**in progress**)
 
-Do not start until R4 is formally closed and the R5 entry gate explicitly authorizes work.
+The operator explicitly authorized R5 work on 2026-10-20. R4 was closed 2026-10-20 (see the R4 closure record above).
+
+### Entry gate — recorded 2026-10-20: READY
+
+- R4 formally closed with fresh, agent-run verification evidence. ✓
+- Explicit operator R5 authorization recorded 2026-10-20. ✓
+- ADR-0027 remains `Proposed`: the daily Task-start quota feature is excluded from R5 work until an explicit decision is recorded; the READY result does not accept it.
 
 ### Intended contract
 
@@ -95,11 +110,11 @@ Do not start until R4 is formally closed and the R5 entry gate explicitly author
 
 ### Existing implementation artifacts are not phase authorization
 
-This ZIP already contains `core/plans.py`, Task runtime prerequisite checks, and migrations `0004_plans.py` through `0006_immutable_plan_actions.py`. Their presence does not release the R5 pause. Do not assume an old proposal for a `0007_plans.py` migration is still applicable; derive any schema change from the actual model and current migration head.
+This ZIP already contains `core/plans.py`, Task runtime prerequisite checks, and migrations `0004_plans.py` through `0006_immutable_plan_actions.py`. Their presence did not authorize R5; the operator's explicit 2026-10-20 authorization did. Do not assume an old proposal for a `0007_plans.py` migration is still applicable; derive any schema change from the actual model and current migration head.
 
 ### Open quota-authority issue
 
-`docs/tasks.md` describes `TeamPolicy.rules["budgets"]["max_tasks_per_day"]` as a Task-start quota, while ADR-0027 is marked `Proposed` and the R5 gate remains paused. Before implementation or enforcement is treated as authorized, obtain the explicit decision and gate result. Do not infer acceptance from the quota paragraph or its tests. The intended semantics, if accepted, distinguish daily Team-wide Task starts from `StrategyProposal.constraints.max_tasks`, which is an Action bound for one Strategy. A daily task-count quota is not a daily cost quota.
+`docs/tasks.md` describes `TeamPolicy.rules["budgets"]["max_tasks_per_day"]` as a Task-start quota, while ADR-0027 is marked `Proposed`. R5's in-progress status (2026-10-20) does not accept ADR-0027. Before implementation or enforcement is treated as authorized, obtain the explicit decision. Do not infer acceptance from the quota paragraph or its tests. The intended semantics, if accepted, distinguish daily Team-wide Task starts from `StrategyProposal.constraints.max_tasks`, which is an Action bound for one Strategy. A daily task-count quota is not a daily cost quota.
 
 ### R5 exit criteria
 
