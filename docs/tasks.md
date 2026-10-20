@@ -14,7 +14,7 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 - Most task types require an `active` Team; `create_team`, `configure_team`, and `activate_team` operate on shell/configuring teams and are the exceptions.
 - **No path bypasses validation for being human** (INV-15): operator task types use the same commit kernel, and operator identity is recorded in Event payloads.
 ### TeamPolicy daily Task-start quota
-> **Authority status:** The semantics below are documented as an intended contract, but ADR-0027 is marked `Proposed` in this snapshot. This section does not, by itself, accept the ADR or authorize implementation. Resolve the explicit decision before treating this behavior as approved.
+> **Authority status:** ADR-0027 remains `Proposed`; this paragraph does not change that formal status. For R5-A, the operator has explicitly directed verification and correction of the existing configured quota path against the behavior below. Keep the implementation auditable and report any conflict that cannot be resolved from these requirements. Do not imply that this Task-count quota enforces monetary or token spend.
 When a TeamPolicy configures `rules["budgets"]["max_tasks_per_day"]`, the
 application must enforce it as an aggregate limit on successful Task starts
 for that Team during each UTC calendar day.
@@ -317,9 +317,18 @@ commit atomically. Same-Task replay reconstructs all Action-to-Task mappings;
 conflicting reuse rejects. Legacy flat proposals cannot authorize creation.
 The child Tasks use the supported ingestion capability with
 `allowed_writes=["Signal"]` and the existing zero-tool/zero-cost 60-second
-budget. Task admission prerequisite enforcement (INV-16), lifecycle transitions,
-completion evaluation, supersession, and replanning remain later work. Plan
-and Action immutability continue to be enforced in the database.
+budget. Prerequisite validation and enforcement at Task admission are part of
+R5-A; keep them in the existing runtime under INV-16. Missing or contradictory
+records must be detected during reconstruction rather than fabricated or
+silently repaired. Plan/Action immutability continues to be enforced in the
+database.
+
+Plan lifecycle transitions, completion evaluation, terminal-state protection,
+and stopping/supersession behavior are assigned to **R5-B**. Replanning—the
+decision and materialization of a replacement Plan—remains in a later dedicated
+milestone. This split does not remove lifecycle behavior from overall R5 exit
+criteria.
+
 #### R2 Objective scope extension
 The following semantic operations require the Task's authorized Objective
 write scope and use the existing Task lifecycle and Event scope. They describe
