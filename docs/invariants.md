@@ -2,9 +2,9 @@
 
 # Invariants
 
-These are the non-negotiable rules of Watch. Every one is enforced by application code and covered by a named test; none may be bypassed by a domain pack, a graph, or an operator shortcut.
+These are the normative, non-negotiable rules of Watch. They define what the system must preserve; they do not imply that every later-phase capability is already implemented in the current checkout. Use `PLAN.md`, the current code/migrations, and executed tests to determine implementation status. None of the invariants may be bypassed by a domain pack, a graph, or an operator shortcut.
 
-Each invariant states the rule, why it exists, how it is enforced, and what a violation looks like. When writing or reviewing code, treat this list as a checklist.
+Each invariant states the rule, why it exists, intended enforcement, and what a violation looks like. When writing or reviewing code, treat this list as a checklist and verify the enforcement evidence rather than inferring it from this document alone.
 
 **Change process:** invariants are edited here first, mirrored to `AGENTS.md` second, reflected in tests third. A PR that changes behavior without updating invariants first is rejected.
 
@@ -100,6 +100,12 @@ No durable write bypasses validation because a human performed it. Operator cont
 **Enforcement:** manual task types route through the same core commit services; INV-04 quote checks apply to operator EvidenceLinks; snapshots required for consultation answers, subject briefs, and draft configurations.
 **Violation:** an operator's EvidenceLink commits with a quote that does not match the snapshot "because the operator insisted".
 
+### INV-16 — Plan dependencies gate Task admission
+A Plan-linked Task must not start execution while any prerequisite Plan-action Task is not `done`. A failed prerequisite leaves dependent Tasks ineligible until the Plan is stopped or replanned; it does not imply success or rewrite Plan intent.
+**Why:** Plan dependencies express intended prerequisites and must hold when ordinary Tasks execute.
+**Enforcement:** the existing Task admission/claim path checks linked action prerequisites atomically before transitioning a Task to `running`; no separate scheduler or Task state is introduced.
+**Violation:** a dependent Task starts while its prerequisite Task is pending, running, or failed.
+
 ---
 
 ## Invariant → test mapping
@@ -123,3 +129,4 @@ Planned for M0; each row is a named test module under `tests/invariants/`. Tests
 | INV-13 | concurrent conflicting commits: one succeeds, one rejects and re-proposes; retry does not double-commit |
 | INV-14 | out-of-scope write rejected and recorded |
 | INV-15 | operator quote mismatch rejected; consultation answer requires snapshot; operator identity present in Event payload |
+| INV-16 | Plan-linked Task cannot start before prerequisite action Tasks are done; failed prerequisites keep dependents ineligible |

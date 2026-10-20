@@ -1,77 +1,96 @@
-# AGENTS.md — Watch workspace instructions
+# AGENTS.md — Repository Operating Contract
 
-## Current state and implementation boundary
+## 1. Purpose
 
-- K0 tooling/setup is implemented on the `k0` branch: Python 3.12+, uv project/dependency management, PostgreSQL + pgvector via Docker Compose, Alembic, pytest, Ruff, and mypy.
-- K0 is complete, and the K1 ingestion path is implemented. Do not add further K1 scope unless explicitly requested. Check `PLAN.md` and `docs/05-implementation-plan.md` for milestone definitions and acceptance criteria.
-- K0 and K1 do not implement Control-layer entities or behavior: no Objective, StateAssessment, StrategyProposal, Plan, or LLM integration. Control-layer implementation is not authorized unless explicitly requested.
-- The K0 setup contains no application behavior establishing additional code-style conventions. Do not infer them from future architecture plans.
+Make the smallest justified change that satisfies the requested slice and its acceptance criteria. Watch is architecture-sensitive: preserve authority boundaries, durable provenance, Task write scopes, transaction semantics, and milestone gates. Do not implement speculative future architecture.
 
-## Source of truth
+## 2. Read the authority chain
 
-- Use `CHANGE_MAP.md`: original Watch documents govern unmapped concepts; mapped Revision 2 documents govern only the concepts they explicitly revise.
-- Do not resolve document conflicts by inference. If `CHANGE_MAP.md` does not establish authority, stop and report the ambiguity.
-- Do not change original baseline documents merely to resolve a Revision 2 conflict. See `docs/09-migration-from-original-design.md` for reconciliation guidance.
+At task start, read `PLAN.md`, `CHANGE_MAP.md`, this file, and only the relevant canonical specs/ADRs/tests. `CONTEXT.md` is an orientation page, not a replacement for the authorities below.
 
-## Architectural boundaries
+- **Current milestone, gate, next step:** `PLAN.md` only.
+- **Which document governs a concept:** `CHANGE_MAP.md`.
+- **Repository behavior and safe workflow:** this file.
+- **General/original architecture:** `docs/architecture.md` for concepts not replaced by Revision 2.
+- **Revision 2 Control contract:** `docs/control-model.md` and linked ADRs.
+- **Hard constraints:** `docs/invariants.md`.
+- **Task types, write scopes, budgets:** `docs/tasks.md`.
+- **Implementation truth:** current code, migrations, tests, and verified Git state.
 
-These constrain the architecture; they do not authorize implementing future components.
+If sources conflict, stop and report the source paths and the smallest decision needed. Do not silently choose an interpretation or turn a proposed ADR into an accepted rule.
 
-- Agents/workers propose; application code validates and commits.
-- Durable state changes go through the Kernel; the Kernel is authoritative for committed state.
-- Tasks are the execution unit. Reactive and deliberative entry paths converge on ordinary Task execution.
-- Control must not create a second commit kernel or execution runtime.
-- A Plan records execution intent, not execution truth; Tasks and Events record execution.
-- StateAssessment is derived and non-authoritative.
-- Never bypass Kernel validation for durable state changes or silently change an architectural decision. Stop on a design conflict; consult the relevant ADR.
+## 3. Preflight before changing files
 
-## Development and verification
+Run and preserve the output of:
 
-1. Read this file, `CHANGE_MAP.md`, the relevant task in `PLAN.md`, and only the detailed documents needed for that task.
-2. Make the smallest requested change; keep unrelated files untouched and do not combine architectural redesign with implementation.
-3. Run the verification that is executable for the current milestone; report skipped checks, deviations, and unresolved ambiguity.
-4. When changing a documented invariant, update `docs/invariants.md` first, then this file, then the related tests, as required by the invariant change process.
-
-### Workflow validation
-When a task is explicitly designated as a workflow simulation, workflow validation, or Codex-process test, do not modify implementation files unless the task explicitly requests implementation.
-After completing the simulation, update docs/development/workflow-validation.md with the observed result.
-Each entry should record:
-the simulation objective/scenario;
-the repository state relevant to the simulation;
-the observed Codex behavior;
-expected behavior versus actual behavior;
-discrepancies, ambiguities, or failures discovered;
-lessons or workflow rules derived from the result;
-any resulting documentation or AGENTS.md changes.
-Do not fabricate expected results after the fact. Clearly distinguish documented expectations from observations.
-Keep the validation record chronological and append new results rather than rewriting historical observations.
-A workflow-validation result does not by itself authorize architectural or implementation changes. Apply changes only when explicitly requested or when the repository's documented change process requires them.
-
-### Commands and tooling status
-
-K0 uses uv for Python project and dependency management. Synchronize the environment with `uv sync --python 3.12`; use `uv run` for commands when the environment is not activated.
-
-The following commands are the established K0 verification workflow:
-
-```text
-docker compose up -d
-alembic upgrade head
-pytest
-ruff check .
-mypy core
+```bash
+git branch --show-current
+git rev-parse HEAD
+git status --short --branch
+git log --oneline -12
+git diff --check
 ```
 
-## Documentation lookup
+Inspect the relevant diff before editing. Preserve all pre-existing changes. Never use `reset --hard`, destructive checkout/restore, stash, volume deletion, or cleanup commands to make the worktree look clean. Do not stage, commit, or push unless explicitly requested.
 
-| Topic | Source |
-|---|---|
-| Authority mapping | `CHANGE_MAP.md` |
-| Architecture | `docs/01-architecture-revision.md` |
-| Control layer | `docs/02-control-layer.md` |
-| Runtime | `docs/03-runtime-model.md` |
-| Schema | `docs/04-data-model-changes.md` |
-| Milestones | `PLAN.md`, `docs/05-implementation-plan.md` |
-| VS Code workflow | `docs/06-codex-vscode-workflow.md` |
-| Vocabulary | `docs/glossary.md` |
-| Invariants | `docs/invariants.md` |
-| Architecture decisions | `docs/decisions/`; read ADR-0026 before Task, Plan, Objective, Trigger, or scheduler changes |
+A supplied ZIP or text export is not Git evidence: it cannot prove branch, HEAD, merge status, or uncommitted work.
+
+## 4. Milestone and design gates
+
+- Code presence does not authorize a milestone or prove formal closure.
+- A recorded test result proves only the named command, environment, and snapshot; it does not prove unrun checks or satisfy a separate phase-boundary gate by itself.
+- Do not start a later phase while `PLAN.md` says its entry gate is blocked or paused.
+- For an architecture-sensitive change, establish meaning, ownership, authority, persistence, invariants, atomicity/recovery behavior, and the next-milestone boundary before implementation.
+- If resolving the request would change architecture, schema, security, externally visible behavior, or a milestone boundary without authority, stop and request a decision.
+
+## 5. Non-negotiable design boundaries
+
+- Worker/model output is a proposal, never authority for a durable write.
+- Application code validates schema, ownership, scope, policy, transitions, provenance, and concurrency before commit.
+- Durable writes use the existing Kernel/application commit path and emit the required Task-attributed Events.
+- `StateAssessment` is deterministic derived state; it does not mutate world/team memory.
+- Plan expresses immutable intended work. Tasks, Events, and Outcomes express execution history.
+- Reactive and deliberative entry paths converge on ordinary Tasks; do not create a second runtime.
+- Tasks may exist without an Objective or Plan unless the relevant contract explicitly requires one.
+- Do not invent entities, write scopes, tools, defaults, or quota semantics.
+- Domain packs add domain knowledge/configuration, not Kernel powers.
+
+## 6. Implementation discipline
+
+1. State the requested behavior and narrow file scope.
+2. Add or update tests for the invariant/behavior before or with the implementation.
+3. Implement the smallest complete change; avoid unrelated renames/refactors.
+4. Add a migration only when the actual schema change requires one. Do not guess migration numbering from an old plan.
+5. Update the authoritative spec/ADR and `CHANGE_MAP.md` when behavior or authority changes.
+6. Keep rejected operations atomic: no partial state transitions, attempt updates, or success Events.
+
+## 7. Verification
+
+Run the smallest relevant tests first, then applicable project checks:
+
+```bash
+uv run pytest <focused-test-file>
+uv run ruff check <changed-paths>
+uv run mypy core
+git diff --check
+```
+
+Run the full suite when the scope or milestone requires it. Report skipped checks and the reasons. Do not say a command passed unless it was run and passed.
+
+Database tests must use the repository's configured disposable/test database. Never modify the persistent `watch` database to make tests pass. Never use `docker compose down -v` as generic cleanup.
+
+## 8. Workflow-validation record
+
+Only when the task explicitly simulates, audits, or tests the human–agent development workflow, append exactly one chronological evidence-based entry to `docs/development/workflow-validation.md`. Preserve older entries. Verify the appended entry exists before reporting. Ordinary code tasks do not require an entry.
+
+## 9. Reporting
+
+Always report:
+
+- files changed;
+- checks actually run and their results;
+- assumptions and decisions made within existing authority;
+- unresolved conflicts, blocked gates, and unrun checks;
+- final branch/HEAD/worktree state when Git operations were part of the task.
+
+Use `DONE`, `BLOCKED`, or `FAILED` accurately. Do not claim a proposed decision is accepted, a milestone is closed, or a test is green without evidence.

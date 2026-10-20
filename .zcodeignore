@@ -35,3 +35,11 @@ pip-wheel-metadata/
 wheels/
 # ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
 # 自定义规则写在下方（本行提示可删除）
+
+# Generated full-project text exports are not project sources.
+a.txt
+Project2text.txt
+
+# Large append-only history: open explicitly only when the task needs it.
+docs/development/workflow-validation.md
+docs/decisions/architecture decision records (ADR-0001 - ADR-0019).md

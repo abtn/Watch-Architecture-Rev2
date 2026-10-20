@@ -1,311 +1,146 @@
-# PLAN.md — Watch Architecture Revision
+# PLAN.md — Milestones and Current Gate
 
-## Objective
+This file is the **single source of current milestone status**. Other documents link here rather than copying status tables. A phase is complete only when its exit criteria and formal gate are satisfied; implementation presence alone is not completion.
 
-Establish the revised architecture first, then implement the smallest executable slice that proves the new Control layer without destabilizing the existing Kernel principles.
+## Current recorded state
 
-The Control layer is introduced only after the Kernel tooling and basic Task/Proposal/Commit semantics are working.
+- **K0, K1, R0, R1, R2, R3:** recorded complete.
+- **R4:** **closed 2026-10-20.** The redesigned multi-perspective Strategy implementation was verified freshly on the live repository (44 focused Strategy tests + full 185-test suite passing, Ruff, `mypy core`, disposable-DB migrations to `0006_immutable_plan_actions`); ADR-0023/ADR-0024 were accepted by explicit operator decision; the phase-boundary merge to `main` was performed. See the R4 closure record below.
+- **R5:** in progress — explicitly authorized by the operator on 2026-10-20; entry gate recorded `READY` after R4 closure (see R5 section). ADR-0027 remains `Proposed` and is not accepted by this status.
+- **R6+:** future work; not authorized by the existence of code or proposed documents.
 
-R0 status:
-Complete
+The supplied project ZIP has no Git metadata. Before taking repository action, verify branch, HEAD, merge status, and worktree on the actual checkout using `AGENTS.md`.
 
-Current phase:
-R1 — Control-layer compatibility design
+## Next actionable step
 
-First Control-layer implementation phase:
-R2 — Objective model
+Execute R5 (Plan materialization) against its exit criteria below. R4 is closed (2026-10-20) and the R5 entry gate is recorded `READY`.
 
-Implementation status:
-K0 complete; K1 implemented
+1. Verify branch, HEAD, worktree, and commit history before repository action (`AGENTS.md` preflight).
+2. Implement the R5 exit criteria with tests; record every check actually run and its result.
+3. Obtain an explicit decision on ADR-0027 before implementing or enforcing the daily Task-start quota; it remains `Proposed`.
+4. Record the R5 exit gate honestly; do not start R6.
 
-Historical terminology:
-M0
+## Milestone overview
 
-## Phase K0 — Kernel baseline (tooling)
+| Phase | Recorded status | Purpose |
+|---|---|---|
+| K0 | Complete | Python/uv, PostgreSQL + pgvector, Alembic, tests, Ruff, mypy. |
+| K1 | Complete | Smallest proposal → validation → atomic Kernel commit → Event path (`ingest_source`). |
+| R0 | Complete | Freeze Revision 2 architecture semantics and boundaries. |
+| R1 | Complete | Verify compatibility with the existing Kernel and Task/write-scope model. |
+| R2 | Complete | Durable Objective model and lifecycle. |
+| R3 | Complete | Deterministic, read-only StateAssessment with provenance. |
+| R4 | **Complete** (closed 2026-10-20) | StrategyProposal boundary, multi-Vision/Workstream/Action semantics, deterministic validation and reconstruction. |
+| R5 | **In progress** (operator-authorized 2026-10-20; entry gate READY) | Materialize one accepted Strategy as one durable Plan and ordinary Tasks. |
+| R6 | Future | First end-to-end intelligent Control loop. |
+| R7 | Future | Evaluation and learning integration. |
+| R8 | Future | Multi-domain pressure test. |
+| R9 | Future | Codified agent-assisted production workflow. |
 
-Before any Control-layer code, establish the project skeleton and deterministic test harness.
+## K0 — Tooling baseline (complete)
 
-Deliver:
+Expected baseline: Python 3.12+, `uv`, PostgreSQL + pgvector, Alembic, pytest, Ruff, and mypy. The executable versions/configuration are in `pyproject.toml`, `uv.lock`, `compose.yaml`, and the migrations.
 
-- Python 3.12+ virtual environment
-- dependency lock file
-- Postgres + pgvector via Docker Compose
-- Alembic migration runner
-- pytest baseline
-- ruff and mypy baseline
-- project layout (`core/`, `migrations/`, `tests/`)
+## K1 — Smallest Kernel commit path (complete)
 
-Exit verification:
+Proves proposal → deterministic application validation → atomic persistence → Task-attributed Event. The bounded initial path is `ingest_source`; it must preserve immutable content-addressed Snapshots, hash validation, idempotency, and write-scope enforcement. Do not expand the K1 task types while doing later Control work unless an authorized milestone explicitly requires it.
 
-```text
-docker compose up -d
-alembic upgrade head
-pytest
-ruff check .
-mypy core
-```
+## R0–R3 — Control foundations (recorded complete)
 
-No Control-layer entities in this phase.
+- **R0:** Revision 2 semantics and non-goals established.
+- **R1:** preserve existing Task, Kernel, policy, and commit boundaries.
+- **R2:** Objective is durable, team-owned, and follows its explicit lifecycle.
+- **R3:** StateAssessment is deterministic derived state. Its basis/hash/timestamp and any required immutable payload are preserved when a historical assessment informs a decision. It never mutates world/team memory and is not authoritative.
 
-## Phase K1 — Smallest Kernel commit path
+See the relevant code/tests and the source-control history for the evidence of each completed phase.
 
-Implement the smallest entity/commit path that proves:
+## R4 — StrategyProposal boundary (complete — closed 2026-10-20)
 
-```text
-Proposal → Validation → Atomic commit → Event
-```
+### Semantic contract
 
-No model calls.
+One accepted StrategyProposal is one coordinated strategic decision for one Objective and one historical StateAssessment basis. It may contain multiple concurrent **Visions → Workstreams → Actions**, with explicit Action-to-Action prerequisites. Prerequisites may cross Vision/Workstream boundaries; reject invalid targets, self-dependencies, and cycles.
 
-Choose one existing Kernel concept (for example, a single Team lifecycle transition or a Signal ingestion with Snapshot storage). Implement:
+- A Vision is a bounded strategic perspective.
+- A Workstream groups related Actions for human comprehension; it is not a dependency or execution boundary.
+- An Action is intended work, not a Task.
+- Acceptance establishes deterministic legality and authorization for later Plan materialization; it does not prove wisdom or effectiveness.
+- The exact accepted structure and provenance must be reconstructable from durable Task-attributed Event data without the model transcript.
+- Strategy/Vision/Workstream/Action are not thereby required to be separate durable entities.
+- Model output cannot mutate TeamPolicy/Team structure, create arbitrary rows, self-authorize tools, bypass Task scope, raise its budget, or commit durable state.
 
-- model/entities
-- repository
-- deterministic validation
-- commit service
-- Event emission
-- invariant tests
+### Recorded implementation and verification evidence
 
-Exit:
+The source PLAN records the redesigned implementation at commit `50e288a` on the R5 worktree, `44` Strategy tests passing, targeted Ruff, `mypy core`, and `git diff --check` passing, and disposable PostgreSQL migrations reaching `0006_immutable_plan_actions`. It also records that the full suite and R5-specific tests were not run. These are **source-recorded results**; the fresh closure verification below supersedes them where it repeats them.
 
-- one green end-to-end commit path
-- tests for idempotency and invalid proposals
-- existing invariants preserved
+### Closure record — 2026-10-20
 
-## Phase R0 — Architecture freeze for the revision
+- **Live Git state (verified by preflight):** branch `docs/refactor` at `cee2bbf`; the redesigned implementation commit `50e288a` is an ancestor of HEAD; `main` is an ancestor of `docs/refactor` (no divergence).
+- **Fresh verification — commands actually run on this state**, against a disposable PostgreSQL database (`watch_r4_gate`; the persistent `watch` database was never used):
+  - `uv run pytest tests/test_strategy.py` → `44 passed`.
+  - `uv run pytest` (full suite) → `185 passed`. The full suite had not been run for R4 previously; this closes that evidence gap.
+  - `uv run ruff check .` → passed.
+  - `uv run mypy core` → passed (10 source files).
+  - `uv run alembic upgrade head` (disposable DB) → reached `0006_immutable_plan_actions`.
+  - `git diff --check` → clean.
+- **Operator-reported evidence (recorded distinctly):** on 2026-10-20 the operator stated that all code is correct and the tests passed and that they had checked them personally. This is operator-reported, not agent-rerun.
+- **Authority resolution:** ADR-0023 (Control layer) and ADR-0024 (Strategy is not TeamPolicy) moved from `Proposed` to `Accepted` by explicit operator decision dated 2026-10-20, recorded in the ADRs. ADR-0025, ADR-0026, and ADR-0027 remain `Proposed` (R5 scope; not required for R4 closure).
+- **Phase boundary:** `docs/refactor` merged into `main` with a merge commit per operator decision, following the repository's `Merge branch '...'` convention. No push was performed.
 
-Deliver:
+## R5 — Plan materialization (**in progress**)
 
-- `docs/01-architecture-revision.md`
-- `docs/02-control-layer.md`
-- `docs/03-runtime-model.md`
-- `docs/04-data-model-changes.md`
-- ADR-0023..0026
-- migration notes
-- test strategy
+The operator explicitly authorized R5 work on 2026-10-20. R4 was closed 2026-10-20 (see the R4 closure record above).
 
-Exit:
+### Entry gate — recorded 2026-10-20: READY
 
-- no unresolved contradiction between State, TeamPolicy, Strategy, Plan, Task, and Worker
-- new vocabulary is stable
-- explicit non-goals exist
-- dual-entry execution model documented
+- R4 formally closed with fresh, agent-run verification evidence. ✓
+- Explicit operator R5 authorization recorded 2026-10-20. ✓
+- ADR-0027 remains `Proposed`: the daily Task-start quota feature is excluded from R5 work until an explicit decision is recorded; the READY result does not accept it.
 
-## Phase R1 — Control-layer compatibility pass
+### Intended contract
 
-Before adding new Control-layer runtime behavior, inspect the original entity/state model and design the additive Objective/Plan integration.
+- One accepted Strategy for one Objective produces one Plan.
+- Preserve the accepted Vision/Workstream/Action structure, stable identities, prerequisites, proposal/assessment provenance, budget envelope, and completion/stop conditions as immutable intent.
+- Plan creation, its initial ordinary Tasks, and the creation Event commit atomically; partial materialization is not a valid durable state.
+- Every intended Action maps to exactly one ordinary Task after materialization. Task may otherwise remain reactive and need no Plan.
+- Plan-linked Task prerequisites are enforced in the existing Task admission path; no second runtime or separate scheduler is introduced.
+- Plan lifecycle is `active → completed | stopped`; terminal states do not reopen. Stop reasons are `abandoned`, `invalidated`, and `superseded`.
+- Progress is derived from durable Task state. Replanning creates a new Plan rather than mutating historical intent.
+- Budget hierarchy: TeamPolicy ceiling → Plan envelope → individual Task budget.
+- The creating `create_plan` Task's `policy_version` records the version used to validate creation; do not add a separate Plan policy pin without explicit authority.
 
-Deliver:
+### Existing implementation artifacts are not phase authorization
 
-- written migration decision
-- one durable Objective schema and explicit lifecycle (no ephemeral task-scoped Objective)
-- Plan schema design
-- Task integration design (optional Objective/Plan references, no state-machine change)
-- StateAssessment provenance design (references, hash, timestamp, immutable Snapshot only when needed)
-- budget validation design: TeamPolicy ceiling > Plan envelope > Task budget
-- Trigger integration design (Trigger may create Task directly or create/activate Objective)
-- tests for any new invariants
-
-Exit:
-
-- written compatibility decision
-- tests for new invariants
-- no Control-layer code yet beyond design
-
-## Phase R2 — Objective model
+This ZIP already contains `core/plans.py`, Task runtime prerequisite checks, and migrations `0004_plans.py` through `0006_immutable_plan_actions.py`. Their presence did not authorize R5; the operator's explicit 2026-10-20 authorization did. Do not assume an old proposal for a `0007_plans.py` migration is still applicable; derive any schema change from the actual model and current migration head.
 
-Implement the first Control-layer durable entity.
+### Open quota-authority issue
 
-Deliver:
+`docs/tasks.md` describes `TeamPolicy.rules["budgets"]["max_tasks_per_day"]` as a Task-start quota, while ADR-0027 is marked `Proposed`. R5's in-progress status (2026-10-20) does not accept ADR-0027. Before implementation or enforcement is treated as authorized, obtain the explicit decision. Do not infer acceptance from the quota paragraph or its tests. The intended semantics, if accepted, distinguish daily Team-wide Task starts from `StrategyProposal.constraints.max_tasks`, which is an Action bound for one Strategy. A daily task-count quota is not a daily cost quota.
 
-- one durable Objective model
-- repository
-- explicit state machine (`draft → active/cancelled`; `active → paused/blocked/completed/cancelled`; `paused → active/cancelled`; `blocked → active/cancelled`; completed/cancelled terminal)
-- validation
-- Events
-- migration
-- invariant tests
+### R5 exit criteria
 
-Exit:
+- One bounded Plan and its initial ordinary Tasks commit atomically.
+- Accepted Strategy and historical assessment provenance are reconstructable.
+- Action identity, uniqueness, retry, concurrent creation, and prerequisite admission are tested.
+- Task dependencies do not create a new scheduler or mutate Task states behind the runtime.
+- Completion/stopping/supersession preserve immutable intent and are reconstructed from durable Plan/Task/Event state after restart.
+- All checks and the phase exit gate are recorded honestly.
 
-```text
-Objective is one durable entity
-all specified lifecycle transitions work
-unspecified transitions fail
-completed and cancelled are terminal
-every transition emits Event
-```
+## R6 — First intelligent Control loop (future)
 
-## Phase R3 — Deterministic StateAssessment
+Objective → StateAssessment → StrategyProposal → accepted Plan → ordinary Tasks → existing Task execution/Kernel commit → Outcome → new StateAssessment. The system must explain why Tasks exist and resume from durable records after worker/runtime failure.
 
-Build a read-only StateAssessment service.
+## R7 — Evaluation and learning integration (future)
 
-Input:
+Classify world, strategy, execution, evidence, and policy failures. Failure classification must not silently rewrite world memory or TeamPolicy.
 
-- Team
-- Objective
-- authoritative world memory
-- Team memory
-- TeamPolicy
-- outstanding Tasks/Plans
-- relevant Events
+## R8 — Multi-domain pressure test (future)
 
-Output:
-
-- current state summary
-- unresolved questions
-- contradictions
-- stale areas
-- blocked work
-- candidate opportunities
-- basis refs and basis hash
-
-Important:
-
-The first version should be deterministic and code-assembled wherever practical. LLM assistance can be added later.
-
-Exit:
-
-- identical authoritative state produces reproducible assessment data
-- when a Strategy/Plan is selected, exact assessment basis references, hash, and timestamp are preserved; immutable Snapshot is used only if required to reconstruct the exact payload
-- historical decision basis remains distinct from any later assessment of current state
-- no projection is treated as authoritative
-- no writes to world/team memory
+Exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge remains outside the Kernel.
 
-## Phase R4 — Strategy proposal boundary
+## R9 — Agent-assisted production workflow (future)
 
-Introduce a model-facing strategy proposal interface.
-
-The model may propose:
+Codify bounded task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.
 
-- objective decomposition
-- investigation strategy
-- information-gathering needs
-- suggested Task types
-- ordering constraints
-- stop conditions
+## Change rule
 
-The model may not:
-
-- mutate TeamPolicy
-- directly create arbitrary database rows
-- bypass Task scope
-- invent unsupported entity types
-- self-authorize tools
-- raise its own budget
-
-Exit:
-
-- StrategyProposal schema
-- deterministic validation
-- rejection tests
-- persisted audit trail for accepted/rejected proposals
-- accepted means a legal candidate, not Strategy selection or Plan creation
-- exact accepted candidate is recoverable from canonical Event provenance
-  without a transcript, process memory, or regeneration
-- ordinary Task attribution; application/Kernel-only disposition Events
-- preserve derived R3 basis references, hash, timestamp, and exact audit context
-
-The first R4 slice is bounded to one configured `ingest_source` candidate,
-no tools and zero cost. Other capabilities remain rejected rather than
-implicitly implemented. R5 selects a candidate and creates a Plan later.
-
-## Phase R5 — Bounded Plan generation
-
-Convert a validated StrategyProposal into a Plan.
-
-A Plan:
-
-- names a parent Objective
-- contains bounded Tasks
-- contains dependencies
-- records rationale/reference IDs
-- carries budget constraints
-- has explicit completion/stop conditions
-
-Important:
-
-Plan is execution intent, not execution truth. Plan materialization creates ordinary Tasks that use the existing Task execution path. The existing Task state machine is unchanged.
-
-Exit:
-
-- one small plan can run end to end
-- failed Task does not silently rewrite Plan history
-- Plan can be resumed from durable state
-- Plan may become partially completed, abandoned, or superseded without corrupting the execution record
-
-## Phase R6 — First intelligent control loop
-
-End-to-end:
-
-```text
-Objective
-  ↓
-StateAssessment
-  ↓
-StrategyProposal
-  ↓
-validated Plan
-  ↓
-Task materialization
-  ↓
-Task execution
-  ↓
-Kernel commit
-  ↓
-Outcome
-  ↓
-new StateAssessment / replan or stop
-```
-
-Use one domain and one real but bounded scenario.
-
-Exit:
-
-- system can explain why a Task exists
-- system can resume after worker death
-- no shared transcript is required
-- both reactive and deliberative paths are demonstrated
-
-## Phase R7 — Evaluation and learning integration
-
-Extend the existing Outcome → Evaluation → LearningChange path so that evaluation can distinguish:
-
-- world-model failure
-- strategy failure
-- execution failure
-- evidence failure
-- policy/constraint failure
-
-A learning change should be able to target the correct layer.
-
-Exit:
-
-- a real failure can revise a method without silently modifying world memory
-- Strategy remains distinguishable from TeamPolicy
-- learning changes do not mutate policy automatically
-
-## Phase R8 — Multi-domain pressure test
-
-Use:
-
-- newsroom
-- devteam
-
-and a lightweight generalist configuration.
-
-The question is not “does it run?”
-
-The question is:
-
-> Does the same Control model work while domain-specific data and heuristics stay outside the Kernel?
-
-## Phase R9 — Codex-assisted production workflow
-
-Once R3-R6 are stable:
-
-- codify implementation task packets
-- add architecture-aware repository instructions
-- use Codex for bounded vertical slices
-- require test-first changes
-- keep design decisions in ADRs
+Update this file whenever milestone status or its gate changes. Other documents should link here instead of duplicating a separate current-status table. Changes to the architecture contract require the applicable spec/ADR and `CHANGE_MAP.md` updates as well.

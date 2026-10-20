@@ -386,6 +386,7 @@ Task
     allowed_writes: str[]       # validated against the per-type scope matrix
     policy_version: int
     status: str                 # "pending" | "running" | "done" | "failed"
+    attempt_count: int
     budget: { "max_tool_calls": int, "max_cost_usd": float, "deadline_seconds": int }
     created_at: datetime
     completed_at: datetime | null

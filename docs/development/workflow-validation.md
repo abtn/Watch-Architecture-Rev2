@@ -1,25 +1,18 @@
 # Workflow validation
-
 Development-workflow simulations are a formal way to check whether a human
 Operator and Codex can carry out important work safely and efficiently before
 the implementation itself begins.
-
 ## When to simulate
-
 Use a simulation before important implementation work, or when the workflow,
 repository instructions, or task protocol changes. Simulations can expose
 ambiguous terminology, missing instructions, inefficient inspection steps,
 unclear ownership, and unsafe assumptions without requiring implementation.
-
 A simulation may be inspect-only or may ask Codex to produce a proposed plan.
 Respect the scenario's explicit boundary: a no-edit simulation must not modify
 implementation files.
-
 ## Standard simulation record
-
 Record each simulation chronologically, distinguishing expectations supported
 by repository instructions from observed behavior. Include:
-
 1. **Task/scenario** — the request being simulated and its intended boundary.
 2. **Repository state** — relevant files, milestone, and pre-existing changes.
 3. **Expected behavior** — cite documented expectations where available; mark
@@ -33,15 +26,11 @@ by repository instructions from observed behavior. Include:
 7. **Resulting documentation changes** — files updated because of the
    simulation, or state that none were made. A simulation does not authorize
    architecture or implementation changes.
-
 Append new records; do not rewrite historical observations. Do not describe a
 workflow finding as an architectural fact unless an authoritative architecture
 source establishes it.
-
 ## Recorded simulations
-
 ### 1. M0/K0 inspect-only request
-
 - **Task/scenario:** The Operator requested an implementation-free inspection
   and a concrete account of how to implement “M0,” including files, assumptions,
   commands, required information, and expected final state.
@@ -69,9 +58,7 @@ source establishes it.
   instead of assuming equivalence.
 - **Resulting documentation changes:** This record captures the observed
   finding. It does not change milestone definitions or architecture.
-
 ### 2. K0 implementation-plan simulation
-
 - **Task/scenario:** The Operator clarified that K0 was intended and requested
   a concrete implementation plan without file changes, including file-by-file
   justification, constraints, verification, failure modes, and human decisions.
@@ -94,9 +81,7 @@ source establishes it.
   Report verification as planned, not passed.
 - **Resulting documentation changes:** This record captures the observed
   workflow. No K0 implementation was performed.
-
 ### 3. Beginning-of-K1 implementation-planning simulation
-
 - **Task/scenario:** The Operator explicitly authorized moving from K0 to K1
   and asked Codex to inspect the repository, compare the documented Team
   lifecycle and Signal-ingestion examples, and produce an implementation-ready
@@ -142,9 +127,7 @@ source establishes it.
 - **Resulting documentation changes:** This chronological record was appended.
   No K1 code, tests, migrations, milestone wording, or architectural decisions
   were changed.
-
 ### 4. Second K1 candidate and bootstrap reassessment
-
 - **Task/scenario:** The Operator requested a second inspect-only simulation to
   test the previous conclusion that K1 could not select a candidate because
   Tasks belong to Teams while `create_team` creates the Team. The Operator
@@ -203,9 +186,7 @@ source establishes it.
 - **Resulting documentation changes:** This simulation record was appended.
   No implementation, migration, test, project configuration, or architecture
   document was changed; no K1 implementation or test result is claimed.
-
 ### 4. R0 architecture-authority and freeze preflight
-
 - **Task/scenario:** Determine the current architectural authority of Watch,
   establish the starting point for R0, and decide whether the architecture can
   be treated as a coherent, testable hypothesis without a fundamental redesign
@@ -254,9 +235,7 @@ source establishes it.
   intentionally deferred rather than redesigned in place.
 - **Resulting documentation changes:** This workflow-validation entry was
   appended. No implementation files were modified.
-
 ### 5. R0 freeze-boundary simulation
-
 - **Task/scenario:** Define the architecture that should be frozen at R0,
   distinguish it from implementation detail and research hypothesis, and keep
   the future control/learning work explicitly deferred rather than silently
@@ -304,9 +283,7 @@ source establishes it.
 - **Resulting documentation changes:** This workflow-validation entry was
   appended. No implementation files, architecture documents, migrations, or
   tests were modified.
-
 ### 6. R0 Simulation 03 — Architecture Freeze Contract
-
 - **Task/scenario:** Convert the R0-01 and R0-02 observations into a formal
   R0 Freeze Contract. The request authorized only the new contract and this
   chronological validation record; it prohibited architecture-source,
@@ -346,9 +323,7 @@ source establishes it.
   `docs/development/r0-freeze-contract.md` and appended this record. No
   AGENTS.md, architecture-source, implementation, migration, or test file was
   changed.
-
 ### 7. R0 Simulation 04 — Freeze Contract consistency audit
-
 - **Task/scenario:** Audit the repository documentation against the R0 Freeze
   Contract, using the established authority chain. The request required an
   evidence-based discrepancy report and prohibited changes to architecture,
@@ -404,9 +379,7 @@ source establishes it.
 - **Resulting documentation changes:** Appended this record only. No
   architecture-source, plan, ADR, implementation, migration, test, or
   `.gitignore` file was changed.
-
 ### 7. R0-04 corrected freeze contract consistency audit
-
 - **Task/scenario:** Correct the previous R0-04 documentation audit by using the
   actual checked-out repo, the freeze contract, the current implementation, and
   the authority-chain rules. The task boundary forbade architecture redesign,
@@ -465,9 +438,7 @@ source establishes it.
 - **Resulting documentation changes:** This validation record was appended only.
   No implementation files, architecture-source documents, ADRs, tests,
   migrations, or `.gitignore` files were modified.
-
 ### 8. R0-04c final evidence correction pass
-
 - **Task/scenario:** Correct source exactness, invariant evidence, selected
   document classifications, and worktree/test reporting in the preceding
   R0-04b audit. No architecture redesign or source-document cleanup was
@@ -533,9 +504,7 @@ source establishes it.
 - **Resulting documentation changes:** This correction record was appended to
   this file only. No source documents, implementation, migrations, tests, or
   `.gitignore` were changed.
-
 ### 9. R0-05 documentation alignment
-
 - **Task/scenario:** Align current milestone wording and clarify the
   Evidence/EvidenceLink vocabulary following the R0-04c correction findings.
 - **Repository state:** R0-04c and the preceding audit were committed. The
@@ -558,9 +527,7 @@ source establishes it.
 - **Resulting documentation changes:** Only `PLAN.md`, `AGENTS.md`,
   `docs/glossary.md`, and this validation record were changed. The R0 Freeze
   Contract, architecture, K1 implementation, and tests were unchanged.
-
 ### 10. R1-03 compatibility decision recording
-
 - **Task/scenario:** R1-02 resolved the write-scope/provenance conflict; R1-03
   recorded that decision in the Revision-2 data-model authority.
 - **Observed result:** Existing K1 scope semantics remain unchanged; future
@@ -571,9 +538,7 @@ source establishes it.
 - **Resulting documentation changes:** Updated
   [`docs/04-data-model-changes.md`](../04-data-model-changes.md) and appended
   this record only.
-
 ### 11. R1-01 implementation contract pass
-
 - **Task/scenario:** Establish the repository-backed R1 scope and first
   implementation boundary without beginning implementation.
 - **Repository state:** Branch `R1`, HEAD `63d836e`; worktree clean at start.
@@ -593,9 +558,7 @@ source establishes it.
 - **Resulting documentation changes:** Appended this record only. No
   implementation, migration, test, architecture, ADR, milestone, or Freeze
   Contract file was changed.
-
 ### 12. R1-04 compatibility design closure
-
 - **Task/scenario:** Close the compatibility decisions needed to begin R2
   without implementing Control behavior or changing the R0-frozen model.
 - **Repository state:** Branch `R1`, HEAD `bddb7a5`; worktree clean at start.
@@ -626,9 +589,7 @@ source establishes it.
   `docs/tasks.md`, `docs/02-control-layer.md`, and
   `docs/05-implementation-plan.md`; appended this record. Readiness:
   `R1 COMPATIBILITY CONTRACT CLOSED WITH EXPLICIT OPEN ITEMS`.
-
 ### 13. R1-05 compatibility closure challenge audit
-
 - **Task/scenario:** Adversarially review the uncommitted R1-04 documentation
   changes against the current authority chain; do not amend those changes.
 - **Repository state:** Branch `R1`, base commit `bddb7a5`; the seven R1-04
@@ -667,9 +628,7 @@ source establishes it.
 - **Resulting documentation changes:** Appended this audit record only. No
   R1-04 source document, code, migration, test, ADR, or Freeze Contract was
   modified. No commit was made.
-
 ### 14. R1-06 rework of R1-04 compatibility contract
-
 - **Task/scenario:** Surgically rework the uncommitted R1-04 compatibility
   changes following the R1-05 challenge audit; preserve the R0 architecture
   and make no implementation changes.
@@ -695,9 +654,7 @@ source establishes it.
   in `docs/04-data-model-changes.md`, `docs/03-runtime-model.md`,
   `docs/tasks.md`, `docs/02-control-layer.md`, and
   `docs/05-implementation-plan.md`; appended this record. No commit was made.
-
 ### 15. R1-07 final closure audit
-
 - **Task/scenario:** Verify the completed R1 compatibility work against the
   final authority chain, check for remaining contradictions, and establish
   the documentation commit boundary without implementing R2.
@@ -723,9 +680,7 @@ source establishes it.
   `docs/05-implementation-plan.md`, and
   `docs/development/workflow-validation.md`. No further commit was made.
 - **Final status:** `R1 COMPLETE WITH EXPLICIT LATER-MILESTONE OPEN ITEMS`.
-
 ### 16. R3-00 StateAssessment preflight and design gate
-
 - **Task/scenario:** Audit the repository exactly as an R3 preflight and
   design gate, with implementation forbidden and only this workflow record
   allowed to change. The task explicitly required no architecture change,
@@ -773,3 +728,80 @@ source establishes it.
   workflow entries were modified or rewritten. The repository remains a
   clean R3 design gate with no code changes.
 - **Decision gate:** `R3 READY WITH EXPLICIT BOUNDED SCOPE`.
+### 17. R5 workflow-instruction enforcement review
+- **Task/scenario:** Review the repository's agent instructions after repeated
+  milestone work exposed a workflow failure: Codex can read `AGENTS.md` yet
+  omit the required append to `docs/development/workflow-validation.md`.
+  The requested correction was to make `AGENTS.md` operationally useful to
+  models and make workflow-reporting omissions harder to repeat.
+- **Repository state:** The active development branch is `R5`. R4 is already
+  merged into `main`; R5 was created from that merged state. The existing
+  `AGENTS.md` still contained historical K0/K1 status language and treated
+  workflow validation as conditional on the task being explicitly designated
+  as such. `PLAN.md` also contains historical milestone-status wording that
+  does not reliably identify the actual current branch state.
+- **Expected behavior:** Agent instructions should direct Codex to determine
+  current state from Git and current milestone documents rather than trusting
+  stale status copied into `AGENTS.md`. When a task tests or evaluates the
+  development workflow, the agent should read the workflow-validation record,
+  append a chronological observation, and verify that the append actually
+  exists. A no-implementation simulation should prohibit source changes while
+  still allowing the designated workflow record to change.
+- **Observed behavior:** The previous `AGENTS.md` already described the
+  required contents of a workflow-validation record, but the trigger was too
+  narrow: it said “When a task is explicitly designated” and therefore allowed
+  an agent to interpret workflow/audit tasks as ordinary implementation work.
+  The file also embedded obsolete milestone state. This made it possible for a
+  model to read the file, follow the broad development rules, and still omit
+  the workflow report.
+- **Discrepancies:** The principal discrepancy is between documented intent
+  and operational model behavior: the repository wanted chronological
+  workflow evidence, but the instruction did not reliably identify when that
+  obligation applied. A second discrepancy was that `AGENTS.md` itself could
+  become stale as branches advanced, undermining its value as a current-state
+  guide.
+- **Lessons:** Workflow requirements must be triggered by the semantics of the
+  task, not by a magic phrase in the user's prompt. Repository instructions
+  should also avoid embedding current milestone claims that become stale after
+  branch transitions. Completion checklists should include verification that a
+  required documentation artifact was actually changed.
+- **Resulting documentation changes:** Replaced `AGENTS.md` with an
+  operational repository contract. It now requires Git/milestone preflight,
+  explicit authority handling, design/reality gates, semantic workflow-
+  validation triggers, chronological append-only reporting, and verification
+  that the workflow record was actually updated. This record documents that
+  change; no implementation behavior or architecture was changed.
+### 18. R4 exit verification and R5 pause reconciliation
+- **Task/scenario:** Verify the redesigned R4 exit criteria using a fresh,
+  disposable PostgreSQL database, then reconcile the milestone record without
+  treating verification as formal closure or automatic R5 authorization.
+- **Repository state:** Branch `R5` at `50e288a`; redesigned nested R4 code is
+  committed in that branch. Existing R5 implementation and verification work
+  remains uncommitted. R4 commit is not an ancestor of `main`; `main` remains at
+  `5be1ce9`.
+- **Expected behavior:** `PLAN.md` R4 exit criteria govern technical evidence;
+  `AGENTS.md` defines the phase-boundary sequence. A successful focused check
+  establishes only its recorded scope and does not itself merge or close a
+  milestone.
+- **Observed behavior:** A separate PostgreSQL 16 container/database/volume was
+  bound to `127.0.0.1:55445`; both database environment overrides targeted only
+  that disposable instance. Alembic reached
+  `0006_immutable_plan_actions`. `uv run pytest tests/test_strategy.py` passed
+  (44 tests); targeted R4 Ruff, `uv run mypy core`, and `git diff --check`
+  passed. The full suite and R5-specific tests were not run. The disposable
+  container and volume were removed; the persistent `watch` instance remained
+  running and untouched.
+- **Discrepancies:** The repository contained R4 implementation-pending status
+  despite the implementation commit and successful focused exit verification.
+  R5 remains gated because the R4 change is still on the R5 branch and has not
+  passed the documented phase-boundary merge into `main`. No authority grants
+  this verification run the power to formally close R4 or release R5.
+- **Lessons:** Keep implementation presence, scoped verification, formal
+  milestone closure, R5 authorization, and R5 verification as distinct status
+  facts. Record a verification result with its exact scope; do not use it to
+  imply unrun checks or waive a branch-boundary gate.
+- **Resulting documentation changes:** `PLAN.md`, `README.md`, and
+  `docs/05-implementation-plan.md` now record the verified R4 implementation/
+  check scope and preserve R5's pause. No code,
+  tests, migrations, or configuration were changed; no R5 authorization was
+  declared.

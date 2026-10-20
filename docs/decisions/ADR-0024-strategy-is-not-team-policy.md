@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted — explicit operator decision, 2026-10-20, as part of the R4 phase closure (see `PLAN.md`).
 
 ## Context
 
@@ -26,7 +26,9 @@ Strategy:
 
 A Strategy may be constrained by Policy but cannot silently modify Policy.
 
-Strategy is contextual and temporary. It may be represented in a StrategyProposal and, if accepted, recorded as part of a Plan's provenance. It is not a durable entity and is not Team memory.
+Strategy is contextual and temporary. Under the subsequent R4 semantic closure, one accepted StrategyProposal is one coordinated decision for one Objective and assessment basis; it may contain multiple concurrent Visions, Workstreams, Actions, and explicit Action dependencies. Acceptance validates legality and authorizes later Plan materialization; it does not establish wisdom or effectiveness. The canonical accepted proposal and hash remain Task-attributed audit provenance, not a Strategy entity or Team memory. R5 derives one Plan from the one active accepted Strategy and may not invent or reinterpret its strategic structure.
+
+A Vision is a bounded strategic perspective; a Workstream groups related Actions for human comprehension; an Action is purposeful intent, not a Task. These concepts require stable provenance identity but do not by themselves imply standalone entities. Any Team/capability change is separate from strategy for ordinary work and requires a human-reviewed proposal path before durable structural change.
 
 ## Consequence
 

@@ -7,3 +7,5 @@ __pycache__/
 .ruff_cache/
 .vscode/settings.json
 Project2text.txt
+# Generated full-project text exports; do not commit them.
+a.txt
