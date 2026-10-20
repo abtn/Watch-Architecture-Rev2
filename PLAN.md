@@ -13,12 +13,13 @@ The supplied project ZIP has no Git metadata. Before taking repository action, v
 
 ## Next actionable step
 
-Execute R5 (Plan materialization) against its exit criteria below. R4 is closed (2026-10-20) and the R5 entry gate is recorded `READY`.
+Execute **R5-A — Reliable Plan Materialization and Recovery** first. R5 remains in progress until R5-A and R5-B both satisfy their acceptance criteria. Passing R5-A does not close R5 and does not authorize R6.
 
-1. Verify branch, HEAD, worktree, and commit history before repository action (`AGENTS.md` preflight).
-2. Implement the R5 exit criteria with tests; record every check actually run and its result.
-3. Obtain an explicit decision on ADR-0027 before implementing or enforcing the daily Task-start quota; it remains `Proposed`.
-4. Record the R5 exit gate honestly; do not start R6.
+1. Verify branch, HEAD, worktree, and repository state using the preflight rules in `AGENTS.md`.
+2. Complete the R5-A checklist, fix confirmed defects, and add failure-oriented regression tests.
+3. Verify daily Task-start quota behavior under the current R5-A requirements, using durable `task_started` Events as the accounting basis. Keep ADR-0027's status unchanged unless its formal decision status is separately authorized and recorded.
+4. Once R5-A passes, implement R5-B Plan lifecycle behavior against the full lifecycle contract below.
+5. Close R5 only when both slices and all overall R5 exit criteria pass. Do not start R6 before formal R5 closure.
 
 ## Milestone overview
 
@@ -86,44 +87,82 @@ The source PLAN records the redesigned implementation at commit `50e288a` on the
 - **Authority resolution:** ADR-0023 (Control layer) and ADR-0024 (Strategy is not TeamPolicy) moved from `Proposed` to `Accepted` by explicit operator decision dated 2026-10-20, recorded in the ADRs. ADR-0025, ADR-0026, and ADR-0027 remain `Proposed` (R5 scope; not required for R4 closure).
 - **Phase boundary:** `docs/refactor` merged into `main` with a merge commit per operator decision, following the repository's `Merge branch '...'` convention. No push was performed.
 
-## R5 — Plan materialization (**in progress**)
+## R5 — Plan materialization and lifecycle (**in progress**)
 
-The operator explicitly authorized R5 work on 2026-10-20. R4 was closed 2026-10-20 (see the R4 closure record above).
+R5 is deliberately divided into two implementation slices. This split changes the delivery sequence, not the overall R5 contract or exit criteria. **R5 is not complete until both R5-A and R5-B are implemented and verified.**
 
 ### Entry gate — recorded 2026-10-20: READY
 
 - R4 formally closed with fresh, agent-run verification evidence. ✓
 - Explicit operator R5 authorization recorded 2026-10-20. ✓
-- ADR-0027 remains `Proposed`: the daily Task-start quota feature is excluded from R5 work until an explicit decision is recorded; the READY result does not accept it.
+- ADR-0027 remains `Proposed`. The operator's R5-A instructions on 2026-10-21 authorize verification and correction of the existing daily Task-start quota behavior against the semantics stated below and in `docs/tasks.md`; this implementation scope does not silently change ADR-0027's formal status.
 
-### Intended contract
+### Overall R5 contract
 
 - One accepted Strategy for one Objective produces one Plan.
-- Preserve the accepted Vision/Workstream/Action structure, stable identities, prerequisites, proposal/assessment provenance, budget envelope, and completion/stop conditions as immutable intent.
+- Preserve the complete accepted Vision/Workstream/Action structure, stable identities, prerequisites, proposal/assessment provenance, budget envelope, and completion/stop conditions as immutable intent.
 - Plan creation, its initial ordinary Tasks, and the creation Event commit atomically; partial materialization is not a valid durable state.
-- Every intended Action maps to exactly one ordinary Task after materialization. Task may otherwise remain reactive and need no Plan.
+- Every intended Action maps to exactly one initial ordinary Task after materialization. A Task may otherwise remain reactive and need no Plan.
 - Plan-linked Task prerequisites are enforced in the existing Task admission path; no second runtime or separate scheduler is introduced.
 - Plan lifecycle is `active → completed | stopped`; terminal states do not reopen. Stop reasons are `abandoned`, `invalidated`, and `superseded`.
-- Progress is derived from durable Task state. Replanning creates a new Plan rather than mutating historical intent.
+- Progress is derived from durable Task state. Completion requires every intended Action to have exactly one linked Task in `done` status and the declared completion condition to be satisfied by durable records.
+- Replanning creates a new Plan rather than silently mutating historical intent. The separate replanning capability remains outside R5-A and R5-B.
 - Budget hierarchy: TeamPolicy ceiling → Plan envelope → individual Task budget.
 - The creating `create_plan` Task's `policy_version` records the version used to validate creation; do not add a separate Plan policy pin without explicit authority.
 
-### Existing implementation artifacts are not phase authorization
+### Existing implementation artifacts are not proof of completion
 
-This ZIP already contains `core/plans.py`, Task runtime prerequisite checks, and migrations `0004_plans.py` through `0006_immutable_plan_actions.py`. Their presence did not authorize R5; the operator's explicit 2026-10-20 authorization did. Do not assume an old proposal for a `0007_plans.py` migration is still applicable; derive any schema change from the actual model and current migration head.
+The repository contains `core/plans.py`, Task runtime prerequisite checks, tests, and migrations `0004_plans.py` through `0006_immutable_plan_actions.py`. Their presence alone does not prove every R5 acceptance criterion is satisfied. Derive any schema change from the actual model and current migration head; do not assume an old proposal for a `0007_plans.py` migration still applies.
 
-### Open quota-authority issue
+### R5-A — Reliable Plan Materialization and Recovery (**current slice**)
 
-`docs/tasks.md` describes `TeamPolicy.rules["budgets"]["max_tasks_per_day"]` as a Task-start quota, while ADR-0027 is marked `Proposed`. R5's in-progress status (2026-10-20) does not accept ADR-0027. Before implementation or enforcement is treated as authorized, obtain the explicit decision. Do not infer acceptance from the quota paragraph or its tests. The intended semantics, if accepted, distinguish daily Team-wide Task starts from `StrategyProposal.constraints.max_tasks`, which is an Action bound for one Strategy. A daily task-count quota is not a daily cost quota.
+R5-A validates and makes reliable the accepted-Strategy → Plan → initial ordinary Tasks transition. It does not implement the remaining Plan lifecycle transitions.
 
-### R5 exit criteria
+Acceptance criteria:
 
-- One bounded Plan and its initial ordinary Tasks commit atomically.
-- Accepted Strategy and historical assessment provenance are reconstructable.
-- Action identity, uniqueness, retry, concurrent creation, and prerequisite admission are tested.
+- Materialization preserves the complete accepted Strategy structure, canonical Action definitions and identities, prerequisites, accepted proposal Event/hash, Objective/Team ownership, historical assessment basis/timestamp, budget, and completion condition.
+- The Plan, Action mappings, initial Tasks, and required attributable creation Event commit atomically.
+- Every accepted Action has exactly one Plan Action mapping and exactly one initial ordinary Task; invalid, missing, duplicate, or contradictory mappings are rejected.
+- Same-operation replay is idempotent; conflicting reuse is rejected; concurrent operations cannot produce duplicate or partial materialization.
+- Reconstruction after restart reproduces the accepted intent from durable records. Missing, corrupt, incomplete, or inconsistent required records fail clearly; reconstruction must not fabricate, silently repair, or accept invalid authoritative state.
+- Plan/Action immutability, provenance, action identity/uniqueness, and rollback behavior are tested.
+- Prerequisites are validated against the accepted Strategy and enforced at the existing Task admission boundary without a second scheduler or runtime.
+- Daily Team quota accounting, when configured, uses durable `task_started` Events for the Team and UTC calendar-day boundaries. Test retries, the final available unit under concurrency, rejection without partial changes, absent quota, zero quota, invalid configuration, and validation consistency between PlanService and TaskRuntime. A pending Task created during materialization is not a Task start.
+- A Task-count quota is not monetary/token-spend accounting; do not claim that daily cost limits are enforced.
+
+Failure-path behavior is a first-class acceptance criterion. In addition to successful cases, tests must check rollback and durable-state integrity when validation, reconstruction, admission, persistence, or a concurrent operation fails.
+
+**R5-A passing does not close R5.**
+
+### R5-B — Plan Lifecycle Behavior (**required after R5-A**)
+
+R5-B implements and verifies the lifecycle contract already required by the overall R5 milestone and the relevant Plan specification/ADR.
+
+Acceptance criteria:
+
+- Legal application-controlled transitions from `active` to `completed` or `stopped` are persisted with the required attributable Events; illegal transitions reject without partial state changes.
+- Terminal Plans cannot reopen.
+- `stopped_reason` is constrained to `abandoned`, `invalidated`, or `superseded`.
+- Completion is allowed only when every intended Action has exactly one linked Task in `done` status and the declared completion condition is satisfied by durable records.
+- Plan progress and completion decisions derive from durable Task/Event state rather than model assertions or transient in-memory state.
+- Lifecycle state and transition provenance remain consistent and reconstructable after restart; concurrent/conflicting transitions are rejected safely.
+- Supersession can stop the old Plan without rewriting its immutable intent. Choosing and materializing a replacement Plan through replanning remains in the later dedicated milestone.
+
+Define tests for each legal transition, illegal transition, terminal-state protection, completion preconditions, stop reasons, stale/concurrent transition, rollback, and restart reconstruction. Do not mark lifecycle behavior complete from model-only or service-only tests that bypass persistence contracts.
+
+### Daily quota semantics and authority
+
+The quota setting is `TeamPolicy.rules["budgets"]["max_tasks_per_day"]`. It is distinct from `StrategyProposal.constraints.max_tasks`, which bounds Actions within a Strategy. When configured, the daily quota counts successful starts from durable `task_started` Events associated with the Team, including successful retries, over the UTC calendar day. Rejected starts count zero; absence preserves unlimited behavior; zero permits no starts that UTC day; configured values must be non-negative integers, with booleans and non-integer types rejected. Quota check, Task transition, attempt increment, and Event must be transactionally consistent and concurrency-safe.
+
+ADR-0027 remains `Proposed` in the decision index. The R5-A implementation/test task must not change that status implicitly, claim that the ADR has been formally accepted, or broaden task-count accounting into spend accounting.
+
+### Overall R5 exit criteria
+
+- R5-A materialization, reconstruction, integrity, prerequisite admission, quota, atomicity, idempotency, concurrency, immutability, and provenance criteria pass.
+- R5-B lifecycle transitions, completion/stopping/supersession rules, and durable reconstruction criteria pass.
 - Task dependencies do not create a new scheduler or mutate Task states behind the runtime.
-- Completion/stopping/supersession preserve immutable intent and are reconstructed from durable Plan/Task/Event state after restart.
-- All checks and the phase exit gate are recorded honestly.
+- Required focused and full verification is freshly run; migration/integration evidence uses a disposable PostgreSQL database.
+- All checks and the formal phase exit gate are recorded honestly.
 
 ## R6 — First intelligent Control loop (future)
 
@@ -140,6 +179,16 @@ Exercise the same Control layer across newsroom, development-team, and generalis
 ## R9 — Agent-assisted production workflow (future)
 
 Codify bounded task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.
+
+## Deferred cross-cutting work (not part of R5-A or R5-B)
+
+### Execution security and complete spend accounting
+
+Before expanding beyond tightly bounded workers, define and enforce each worker's allowed filesystem, network, and tool surface; keep secrets out of worker contexts; and isolate execution. Before claiming monetary or token-cost limits, account for all relevant model and tool spend, including failed calls and retries, and test the completeness of that accounting. The current bounded ingestion capability with zero tools and zero cost does not require a general cost-accounting framework or recursive harness.
+
+### Durable experience library
+
+A later dedicated milestone may add a bounded, domain-aware library of reusable experience. Retain a lesson only with an identified situation, supporting evidence, known limitations, and a reason it may transfer to another situation. Do not store arbitrary reflections as durable knowledge and do not implement recursive self-improvement inside the Kernel or Plan materialization layer.
 
 ## Change rule
 
