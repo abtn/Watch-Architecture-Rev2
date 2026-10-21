@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.models import Event, PlanAction, Task, Team, TeamPolicy
 from core.objectives import ObjectiveService, TaskNotFound
+from core.policy import InvalidPolicyError, daily_task_quota
 
 
 @dataclass(frozen=True)
@@ -84,27 +85,12 @@ class TaskRuntime:
 
             # A missing daily quota preserves the existing unlimited behavior.
             # If the quota is explicitly configured, validate it strictly.
-            if not isinstance(policy.rules, dict):
-                raise TaskNotEligible("invalid_team_policy_rules")
-
-            budgets = policy.rules.get("budgets", {})
-            if not isinstance(budgets, dict):
-                raise TaskNotEligible("invalid_team_policy_budgets")
-
-            daily_limit: int | None = None
-            if "max_tasks_per_day" in budgets:
-                configured_limit = budgets["max_tasks_per_day"]
-
-                if (
-                    isinstance(configured_limit, bool)
-                    or not isinstance(configured_limit, int)
-                    or configured_limit < 0
-                ):
-                    raise TaskNotEligible(
-                        "invalid_team_policy_daily_task_quota"
-                    )
-
-                daily_limit = configured_limit
+            # The same parser is used by the Plan boundary so that both
+            # agree on which quota configurations are valid.
+            try:
+                daily_limit = daily_task_quota(policy.rules)
+            except InvalidPolicyError as error:
+                raise TaskNotEligible(str(error)) from error
 
             admission_time: datetime | None = None
 

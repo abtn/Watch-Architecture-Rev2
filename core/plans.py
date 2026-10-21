@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.models import Event, Objective, Plan, PlanAction, Task, Team, TeamPolicy
 from core.objectives import ObjectiveService, TaskNotFound
+from core.policy import InvalidPolicyError, daily_task_quota
 from core.state_assessment import _canonical_json
 from core.strategy import StrategyService
 from core.strategy_proposal import StrategyProposal
@@ -98,7 +99,12 @@ class PlanService:
             if objective.team_id != team_id:
                 raise ValueError("objective_team_mismatch")
             accepted, proposal = self._accepted(
-                session, accepted_event_id, proposal_hash, objective_id, team_id
+                session,
+                accepted_event_id,
+                proposal_hash,
+                objective_id,
+                team_id,
+                exclusive=True,
             )
             actions = proposal.candidate_actions
             action_ids = tuple(action.id for action in actions)
@@ -121,7 +127,14 @@ class PlanService:
                     prior.payload.get(key) != value for key, value in identity.items()
                 ):
                     raise ValueError("task_outcome_conflict")
-                result = self._reconstruct(session, UUID(prior.payload["plan_id"]))
+                recorded_plan_id = prior.payload.get("plan_id")
+                if not isinstance(recorded_plan_id, str):
+                    raise ValueError("recorded_plan_creation_corrupt")
+                try:
+                    recorded_plan_uuid = UUID(recorded_plan_id)
+                except ValueError as error:
+                    raise ValueError("recorded_plan_creation_corrupt") from error
+                result = self._reconstruct(session, recorded_plan_uuid)
                 if result.event_id != prior.id:
                     raise ValueError("recorded_plan_creation_corrupt")
                 return PlanResult(
@@ -131,26 +144,37 @@ class PlanService:
                     result.event_id,
                     True,
                 )
+            # One accepted Strategy materializes as one Plan. The accepted
+            # Event is locked exclusively above, so a concurrent materialization
+            # of the same Event cannot race past this check.
+            existing = session.scalar(
+                select(Plan)
+                .where(Plan.accepted_event_id == accepted.id)
+                .with_for_update()
+            )
+            if existing is not None:
+                if existing.created_by_task_id == task.id:
+                    raise ValueError("recorded_plan_creation_corrupt")
+                raise ValueError("accepted_proposal_already_materialized")
             if objective.status != "active":
                 raise ValueError("objective_not_active")
+            # The daily Task-start quota is parsed by the shared policy rule
+            # parser so that this boundary and the Task admission boundary
+            # accept exactly the same quota configurations.
+            try:
+                daily_task_quota(policy.rules)
+            except InvalidPolicyError as error:
+                raise ValueError(str(error)) from error
             budgets = policy.rules.get("budgets", {})
-            if (
-                not isinstance(budgets, dict)
-                or any(
+            if any(
+                key != "max_tasks_per_day"
+                and (
                     isinstance(value, bool)
                     or not isinstance(value, (int, float))
                     or not math.isfinite(value)
                     or value < 0
-                    for value in budgets.values()
                 )
-                or any(
-                    budgets[key] < minimum
-                    for key, minimum in (
-                        ("max_tasks_per_day", 1),
-                        ("max_cost_usd_per_day", 0),
-                    )
-                    if key in budgets
-                )
+                for key, value in budgets.items()
             ):
                 raise ValueError("invalid_policy_budget")
             sources = policy.rules.get("sources")
@@ -266,9 +290,15 @@ class PlanService:
         proposal_hash: str,
         objective_id: UUID,
         team_id: UUID,
+        *,
+        exclusive: bool = False,
     ) -> tuple[Event, StrategyProposal]:
+        # The accepted Event is the materialization identity. Materializing
+        # locks it exclusively so that two Tasks cannot both claim it.
         event = session.scalar(
-            select(Event).where(Event.id == event_id).with_for_update(read=True)
+            select(Event)
+            .where(Event.id == event_id)
+            .with_for_update(read=not exclusive)
         )
         proposal = StrategyService.reconstruct_in_session(session, event_id)
         if event is None:

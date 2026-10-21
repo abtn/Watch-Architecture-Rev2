@@ -1,7 +1,7 @@
 """Application-controlled pending-to-running Task admission tests."""
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import Barrier
 from typing import Iterator
 from uuid import UUID, uuid4
@@ -578,3 +578,196 @@ def test_missing_daily_task_quota_preserves_unlimited_admission(
         assert task.status == "running"
         assert task.attempt_count == 1
         assert session.get(Event, result.event_id).type == "task_started"
+
+
+def test_zero_daily_task_quota_permits_no_start(
+    session_factory, pending_task
+) -> None:
+    with session_factory.begin() as session:
+        task = session.get(Task, pending_task)
+        policy = session.scalar(
+            select(TeamPolicy).where(
+                TeamPolicy.team_id == task.team_id,
+                TeamPolicy.version == task.policy_version,
+            )
+        )
+        policy.rules = {"budgets": {"max_tasks_per_day": 0}}
+
+    with pytest.raises(
+        TaskNotEligible, match="team_daily_task_quota_exhausted"
+    ):
+        TaskRuntime(session_factory).admit(pending_task)
+
+    with session_factory() as session:
+        task = session.get(Task, pending_task)
+        assert task.status == "pending"
+        assert task.attempt_count == 0
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(Event)
+                .where(Event.task_id == pending_task, Event.type == "task_started")
+            )
+            == 0
+        )
+
+
+@pytest.mark.parametrize("quota", [True, False, -1, 2.5, 2.0, "5", None])
+def test_invalid_daily_task_quota_is_rejected(
+    session_factory, pending_task, quota
+) -> None:
+    with session_factory.begin() as session:
+        task = session.get(Task, pending_task)
+        policy = session.scalar(
+            select(TeamPolicy).where(
+                TeamPolicy.team_id == task.team_id,
+                TeamPolicy.version == task.policy_version,
+            )
+        )
+        policy.rules = {"budgets": {"max_tasks_per_day": quota}}
+
+    with pytest.raises(
+        TaskNotEligible, match="invalid_team_policy_daily_task_quota"
+    ):
+        TaskRuntime(session_factory).admit(pending_task)
+
+    with session_factory() as session:
+        task = session.get(Task, pending_task)
+        assert task.status == "pending"
+        assert task.attempt_count == 0
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(Event)
+                .where(Event.task_id == pending_task, Event.type == "task_started")
+            )
+            == 0
+        )
+
+
+def test_daily_task_quota_window_is_the_current_utc_day(
+    session_factory, pending_task
+) -> None:
+    """A start before the current UTC day does not consume today's quota."""
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    with session_factory.begin() as session:
+        task = session.get(Task, pending_task)
+        policy = session.scalar(
+            select(TeamPolicy).where(
+                TeamPolicy.team_id == task.team_id,
+                TeamPolicy.version == task.policy_version,
+            )
+        )
+        policy.rules = {"budgets": {"max_tasks_per_day": 1}}
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=pending_task,
+                type="task_started",
+                payload={"from": "previous_utc_day"},
+                created_at=day_start - timedelta(microseconds=1),
+            )
+        )
+
+    result = TaskRuntime(session_factory).admit(pending_task)
+
+    with session_factory() as session:
+        task = session.get(Task, pending_task)
+        assert task.status == "running" and task.attempt_count == 1
+        assert session.get(Event, result.event_id).created_at >= day_start
+
+
+def test_daily_task_quota_counts_a_start_at_the_utc_day_boundary(
+    session_factory, pending_task
+) -> None:
+    """A start at exactly 00:00:00 UTC belongs to the current UTC day."""
+    now = datetime.now(timezone.utc)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    with session_factory.begin() as session:
+        task = session.get(Task, pending_task)
+        policy = session.scalar(
+            select(TeamPolicy).where(
+                TeamPolicy.team_id == task.team_id,
+                TeamPolicy.version == task.policy_version,
+            )
+        )
+        policy.rules = {"budgets": {"max_tasks_per_day": 1}}
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=pending_task,
+                type="task_started",
+                payload={"from": "utc_day_start"},
+                created_at=day_start,
+            )
+        )
+
+    with pytest.raises(
+        TaskNotEligible, match="team_daily_task_quota_exhausted"
+    ):
+        TaskRuntime(session_factory).admit(pending_task)
+
+    with session_factory() as session:
+        task = session.get(Task, pending_task)
+        assert task.status == "pending"
+        assert task.attempt_count == 0
+
+
+def test_daily_task_quota_counts_only_the_owning_team(
+    session_factory, pending_task
+) -> None:
+    """Another Team's starts never consume this Team's quota."""
+    other_team_id, other_policy_id, other_task_id = uuid4(), uuid4(), uuid4()
+    with session_factory.begin() as session:
+        task = session.get(Task, pending_task)
+        policy = session.scalar(
+            select(TeamPolicy).where(
+                TeamPolicy.team_id == task.team_id,
+                TeamPolicy.version == task.policy_version,
+            )
+        )
+        policy.rules = {"budgets": {"max_tasks_per_day": 1}}
+        session.add(Team(id=other_team_id, domain="other", status="active"))
+        session.flush()
+        session.add(
+            TeamPolicy(id=other_policy_id, team_id=other_team_id, version=1, rules={})
+        )
+        session.flush()
+        session.add(
+            Task(
+                id=other_task_id,
+                team_id=other_team_id,
+                task_type="ingest_source",
+                status="running",
+                policy_version=1,
+                allowed_writes=["Signal"],
+                budget={
+                    "max_tool_calls": 0,
+                    "max_cost_usd": 0.0,
+                    "deadline_seconds": 60,
+                },
+            )
+        )
+        session.flush()
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=other_task_id,
+                type="task_started",
+                payload={"from": "other_team"},
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+    try:
+        TaskRuntime(session_factory).admit(pending_task)
+    finally:
+        with session_factory.begin() as session:
+            session.execute(delete(Event).where(Event.task_id == other_task_id))
+            session.execute(delete(Task).where(Task.id == other_task_id))
+            session.execute(delete(TeamPolicy).where(TeamPolicy.id == other_policy_id))
+            session.execute(delete(Team).where(Team.id == other_team_id))
+
+    with session_factory() as session:
+        task = session.get(Task, pending_task)
+        assert task.status == "running" and task.attempt_count == 1

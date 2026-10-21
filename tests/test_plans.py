@@ -7,6 +7,7 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from threading import Barrier
 from typing import Any, Iterator
 from uuid import UUID, uuid4
 
@@ -28,11 +29,12 @@ from core.models import (
     TeamPolicy,
 )
 from core.objectives import ObjectiveService, TaskNotFound
-from core.plans import PlanService
+from core.plans import PlanResult, PlanService
 from core.snapshot_store import SnapshotStore
 from core.state_assessment import StateAssessmentBuilder, _canonical_json
 from core.strategy import StrategyService
 from core.strategy_proposal import FakeStrategyWorker, StrategyContext, StrategyProposal
+from core.task_runtime import TaskNotEligible, TaskRuntime
 
 
 @pytest.fixture
@@ -784,22 +786,128 @@ def test_new_policy_and_historical_basis(session_factory, plan_request) -> None:
 
 
 @pytest.mark.parametrize(
-    "budgets",
+    ("budgets", "reason"),
     [
-        {"max_tasks_per_day": 0},
-        {"max_cost_usd_per_day": -1},
-        {"max_tasks_per_day": True},
+        ({"max_cost_usd_per_day": -1}, "invalid_policy_budget"),
+        ({"max_tasks_per_day": True}, "invalid_team_policy_daily_task_quota"),
+        ({"max_tasks_per_day": -1}, "invalid_team_policy_daily_task_quota"),
+        ({"max_tasks_per_day": 2.5}, "invalid_team_policy_daily_task_quota"),
+        ({"max_tasks_per_day": "5"}, "invalid_team_policy_daily_task_quota"),
+        ({"max_tasks_per_day": None}, "invalid_team_policy_daily_task_quota"),
     ],
 )
-def test_policy_budget_rejection(session_factory, plan_request, budgets) -> None:
+def test_policy_budget_rejection(
+    session_factory, plan_request, budgets, reason
+) -> None:
     with session_factory.begin() as session:
         policy = session.scalar(
             select(TeamPolicy).where(TeamPolicy.team_id == plan_request["team_id"])
         )
         policy.rules = {**policy.rules, "budgets": budgets}
-    with pytest.raises(ValueError, match="invalid_policy_budget"):
+    with pytest.raises(ValueError, match=reason):
         PlanService(session_factory).create(**plan_request)
     _assert_no_materialization(session_factory, plan_request)
+
+
+def test_zero_daily_task_quota_is_a_valid_policy_configuration(
+    session_factory, plan_request
+) -> None:
+    """Zero is a valid quota: it permits no start on that UTC day."""
+    with session_factory.begin() as session:
+        policy = session.scalar(
+            select(TeamPolicy).where(TeamPolicy.team_id == plan_request["team_id"])
+        )
+        policy.rules = {**policy.rules, "budgets": {"max_tasks_per_day": 0}}
+    result = PlanService(session_factory).create(**plan_request)
+    with session_factory() as session:
+        plan = session.get(Plan, result.plan_id)
+        tasks = list(session.scalars(select(Task).where(Task.plan_id == plan.id)))
+        assert plan is not None
+        assert all(task.status == "pending" for task in tasks)
+
+
+@pytest.mark.parametrize(
+    ("quota", "valid"),
+    [
+        (0, True),
+        (1, True),
+        (5, True),
+        (True, False),
+        (False, False),
+        (-1, False),
+        (2.5, False),
+        (2.0, False),
+        ("5", False),
+        (None, False),
+    ],
+)
+def test_plan_and_admission_boundaries_agree_on_quota_configuration(
+    session_factory, plan_request, quota, valid
+) -> None:
+    """PlanService and TaskRuntime accept exactly the same quota values."""
+    with session_factory.begin() as session:
+        policy = session.scalar(
+            select(TeamPolicy).where(TeamPolicy.team_id == plan_request["team_id"])
+        )
+        policy.rules = {**policy.rules, "budgets": {"max_tasks_per_day": quota}}
+    if valid:
+        PlanService(session_factory).create(**plan_request)
+    else:
+        with pytest.raises(ValueError, match="invalid_team_policy_daily_task_quota"):
+            PlanService(session_factory).create(**plan_request)
+
+    pending_id = uuid4()
+    with session_factory.begin() as session:
+        session.add(
+            Task(
+                id=pending_id,
+                team_id=plan_request["team_id"],
+                objective_id=plan_request["objective_id"],
+                task_type="ingest_source",
+                status="pending",
+                policy_version=1,
+                allowed_writes=["Signal"],
+                budget={
+                    "max_tool_calls": 0,
+                    "max_cost_usd": 0.0,
+                    "deadline_seconds": 60,
+                },
+            )
+        )
+    reason = None
+    try:
+        TaskRuntime(session_factory).admit(pending_id)
+    except TaskNotEligible as error:
+        reason = str(error)
+    if valid:
+        assert reason in {None, "team_daily_task_quota_exhausted"}
+    else:
+        assert reason == "invalid_team_policy_daily_task_quota"
+
+
+def test_materialized_pending_tasks_are_not_task_starts(
+    session_factory, plan_request
+) -> None:
+    """Materialization creates pending Tasks; it never starts one."""
+    result = PlanService(session_factory).create(**plan_request)
+    with session_factory() as session:
+        tasks = list(
+            session.scalars(select(Task).where(Task.plan_id == result.plan_id))
+        )
+        assert tasks
+        assert all(task.status == "pending" for task in tasks)
+        assert all(task.attempt_count == 0 for task in tasks)
+        assert (
+            list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id.in_([task.id for task in tasks]),
+                        Event.type == "task_started",
+                    )
+                )
+            )
+            == []
+        )
 
 
 @pytest.mark.parametrize("target", ["plan", "action"])
@@ -814,6 +922,220 @@ def test_plan_intent_is_immutable(session_factory, plan_request, target) -> None
                     "task_type": "changed"
                 }
     assert PlanService(session_factory).reconstruct(result.plan_id) == result
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        "missing_task",
+        "detached_task",
+        "missing_action_mapping",
+        "missing_creation_event",
+        "tampered_creation_event",
+        "tampered_task_scope",
+        "tampered_task_budget",
+    ],
+)
+def test_incomplete_plan_state_is_rejected_not_repaired(
+    session_factory, plan_request, corruption
+) -> None:
+    """Incomplete or inconsistent durable state fails clearly."""
+    second_id = _add_second_action(session_factory, plan_request)
+    result = PlanService(session_factory).create(**plan_request)
+    with session_factory.begin() as session:
+        if corruption == "missing_task":
+            session.execute(delete(Task).where(Task.id == result.task_ids[0]))
+        elif corruption == "detached_task":
+            task = session.get(Task, result.task_ids[0])
+            task.plan_id = None
+            task.plan_action_id = None
+        elif corruption == "missing_action_mapping":
+            task = session.get(Task, result.task_ids[0])
+            task.plan_id = None
+            task.plan_action_id = None
+            session.flush()
+            session.execute(
+                delete(PlanAction).where(
+                    PlanAction.plan_id == result.plan_id,
+                    PlanAction.action_id == result.action_ids[0],
+                )
+            )
+        elif corruption == "missing_creation_event":
+            session.execute(
+                delete(Event).where(
+                    Event.task_id == plan_request["task_id"],
+                    Event.type == "plan_created",
+                )
+            )
+        elif corruption == "tampered_creation_event":
+            event = session.get(Event, result.event_id)
+            event.payload = {
+                **event.payload,
+                "materialized_task_ids": [str(uuid4())],
+            }
+        elif corruption == "tampered_task_scope":
+            session.get(Task, result.task_ids[0]).allowed_writes = []
+        else:
+            session.get(Task, result.task_ids[0]).budget = {"max_tool_calls": 9}
+    with pytest.raises(ValueError, match="recorded_plan_creation_corrupt"):
+        PlanService(session_factory).reconstruct(result.plan_id)
+    assert second_id in result.action_ids
+
+
+def test_tampered_accepted_provenance_is_rejected(
+    session_factory, plan_request
+) -> None:
+    result = PlanService(session_factory).create(**plan_request)
+    with session_factory.begin() as session:
+        accepted = session.get(Event, plan_request["accepted_event_id"])
+        accepted.payload = {**accepted.payload, "proposal_json": "{}"}
+    with pytest.raises(ValueError):
+        PlanService(session_factory).reconstruct(result.plan_id)
+    with session_factory() as session:
+        assert session.get(Plan, result.plan_id) is not None
+
+
+def test_retry_does_not_repair_incomplete_plan_state(
+    session_factory, plan_request
+) -> None:
+    """A retry of a corrupted materialization fails; it never re-invents rows."""
+    result = PlanService(session_factory).create(**plan_request)
+    with session_factory.begin() as session:
+        session.execute(delete(Task).where(Task.id == result.task_ids[0]))
+    with pytest.raises(ValueError, match="recorded_plan_creation_corrupt"):
+        PlanService(session_factory).create(**plan_request)
+    with session_factory() as session:
+        assert (
+            len(
+                list(
+                    session.scalars(
+                        select(Plan).where(Plan.team_id == plan_request["team_id"])
+                    )
+                )
+            )
+            == 1
+        )
+        assert (
+            len(
+                list(
+                    session.scalars(
+                        select(Task).where(Task.plan_id == result.plan_id)
+                    )
+                )
+            )
+            == 0
+        )
+
+
+def _add_second_create_plan_task(
+    session_factory: sessionmaker[Session], request: dict
+) -> UUID:
+    second_task_id = uuid4()
+    with session_factory.begin() as session:
+        task = session.get(Task, request["task_id"])
+        session.add(
+            Task(
+                id=second_task_id,
+                team_id=task.team_id,
+                objective_id=task.objective_id,
+                task_type="create_plan",
+                status="running",
+                policy_version=task.policy_version,
+                allowed_writes=["Plan"],
+                budget=dict(task.budget),
+            )
+        )
+    return second_task_id
+
+
+def test_accepted_strategy_cannot_be_materialized_by_two_tasks(
+    session_factory, plan_request
+) -> None:
+    """One accepted Strategy materializes as one Plan."""
+    service = PlanService(session_factory)
+    result = service.create(**plan_request)
+    second_task_id = _add_second_create_plan_task(session_factory, plan_request)
+    with pytest.raises(ValueError, match="accepted_proposal_already_materialized"):
+        service.create(**{**plan_request, "task_id": second_task_id})
+    with session_factory() as session:
+        assert (
+            len(
+                list(
+                    session.scalars(
+                        select(Plan).where(Plan.team_id == plan_request["team_id"])
+                    )
+                )
+            )
+            == 1
+        )
+        rejected = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == second_task_id,
+                    Event.type == "plan_creation_rejected",
+                )
+            )
+        )
+        assert len(rejected) == 1
+        assert (
+            rejected[0].payload["reason"]
+            == "accepted_proposal_already_materialized"
+        )
+    assert service.reconstruct(result.plan_id) == result
+
+
+def test_concurrent_materialization_of_one_accepted_strategy_has_one_winner(
+    session_factory, plan_request
+) -> None:
+    service = PlanService(session_factory)
+    second_task_id = _add_second_create_plan_task(session_factory, plan_request)
+    barrier = Barrier(2)
+
+    def claim(task_id: UUID) -> object:
+        barrier.wait(timeout=5)
+        try:
+            return service.create(**{**plan_request, "task_id": task_id})
+        except ValueError as error:
+            return error
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(
+            pool.map(claim, [plan_request["task_id"], second_task_id])
+        )
+
+    results = [outcome for outcome in outcomes if isinstance(outcome, PlanResult)]
+    failures = [
+        outcome for outcome in outcomes if isinstance(outcome, ValueError)
+    ]
+    assert len(results) == 1
+    assert len(failures) == 1
+    assert str(failures[0]) == "accepted_proposal_already_materialized"
+    with session_factory() as session:
+        assert (
+            len(
+                list(
+                    session.scalars(
+                        select(Plan).where(Plan.team_id == plan_request["team_id"])
+                    )
+                )
+            )
+            == 1
+        )
+        assert (
+            len(
+                list(
+                    session.scalars(
+                        select(Event).where(
+                            Event.task_id.in_(
+                                [plan_request["task_id"], second_task_id]
+                            ),
+                            Event.type == "plan_created",
+                        )
+                    )
+                )
+            )
+            == 1
+        )
 
 
 def test_materialized_task_uses_existing_ingestion(
