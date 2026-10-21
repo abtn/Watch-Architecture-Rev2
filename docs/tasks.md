@@ -329,6 +329,44 @@ decision and materialization of a replacement Plan—remains in a later dedicate
 milestone. This split does not remove lifecycle behavior from overall R5 exit
 criteria.
 
+#### R5-B `transition_plan` operation
+
+`transition_plan` is a narrowly scoped, application-controlled Task operation
+for one Plan lifecycle transition. It runs through the ordinary Task runtime
+using a running same-Team Task of type `transition_plan`, authorized
+`allowed_writes=["Plan"]`, an active Team, the matching policy version, and a
+valid zero-usage Task budget. A worker cannot directly write Plan lifecycle
+fields or Events; application code validates and commits every transition.
+
+The request identifies the Plan, expected current status, target status, and
+any stop reason or successor reference. Legal transitions are `active →
+completed` and `active → stopped`; terminal Plans cannot reopen. The expected
+status is checked under a Plan row lock so stale or concurrent conflicting
+transitions reject.
+
+Completion is deterministic. Every Plan Action must have exactly one linked
+Task in `done` status, and the declared completion condition must be proven
+by durable records. For the current supported `configured_source_ingested`
+condition, every linked ingestion Task must be `done` and have a durable
+successful outcome Event such as `signal_ingested` or `fetch_no_change`.
+Do not use model judgment to declare completion.
+
+Stopping requires `stopped_reason` = `abandoned`, `invalidated`, or
+`superseded`. An active or completed Plan has no stop reason or successor;
+a stopped Plan must have a stop reason. When the reason is `superseded`, the
+old Plan must reference an already-existing active successor Plan for the same
+Objective, distinct from itself. Other stop reasons have no successor. This
+operation does not create or select the successor; replanning remains a later
+dedicated milestone.
+
+Only lifecycle metadata (`status`, `stopped_reason`, successor reference)
+may change; accepted proposal/assessment provenance, Action definitions and
+identities, prerequisites, budget, and completion condition remain immutable.
+The lifecycle state and attributable success Event commit atomically. A
+matching same-Task retry replays the durable transition; conflicting requests
+and failed operations do not leave partial changes and emit a categorized
+rejection Event.
+
 #### R2 Objective scope extension
 The following semantic operations require the Task's authorized Objective
 write scope and use the existing Task lifecycle and Event scope. They describe

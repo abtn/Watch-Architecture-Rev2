@@ -88,7 +88,9 @@ A Plan is durable, immutable intended work derived from one accepted Strategy fo
 - Each intended Action maps to exactly one ordinary Task once materialized.
 - Task membership is optional overall: a reactive Task may have no Plan. If a Task is Plan-linked, `plan_id` and `plan_action_id` identify its Action under the specified ownership/uniqueness constraints.
 - A Plan-linked Task cannot start until each prerequisite Task is `done`; this is enforced at existing Task admission. Do not add a separate scheduler or change Task states to enforce dependencies.
-- Lifecycle: `active → completed | stopped`; terminal states do not reopen. Stop reasons: `abandoned`, `invalidated`, `superseded`.
+- Lifecycle transitions use the application-controlled `transition_plan` Task operation. Only lifecycle metadata changes; accepted proposal/assessment provenance, Action definitions, prerequisites, budget, and completion condition remain immutable.
+- Lifecycle: `active → completed | stopped`; terminal states do not reopen. Stop reasons: `abandoned`, `invalidated`, `superseded`. Completion must be supported by durable Task/Event records for the declared completion condition.
+- A stopped Plan with reason `superseded` references an already-existing active successor Plan for the same Objective. The transition does not create a replacement Plan; replanning remains later work.
 - Progress is derived from Tasks. Replanning creates new immutable intent; prior Plans remain history.
 - The creating `create_plan` Task's `policy_version` records the policy used to validate creation. Do not add an extra Plan policy pin without explicit authority.
 
