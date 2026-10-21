@@ -6,21 +6,20 @@ This file is the **single source of current milestone status**. Other documents 
 
 - **K0, K1, R0, R1, R2, R3:** recorded complete.
 - **R4:** **closed 2026-10-20.** The redesigned multi-perspective Strategy implementation was verified freshly on the live repository (44 focused Strategy tests + full 185-test suite passing, Ruff, `mypy core`, disposable-DB migrations to `0006_immutable_plan_actions`); ADR-0023/ADR-0024 were accepted by explicit operator decision; the phase-boundary merge to `main` was performed. See the R4 closure record below.
-- **R5:** in progress — explicitly authorized by the operator on 2026-10-20; entry gate recorded `READY` after R4 closure (see R5 section). ADR-0027 remains `Proposed` and is not accepted by this status.
+- **R5:** in progress; R5-A implementation and test scope reported `READY` by the agent on 2026-10-21, pending integration of its uncommitted code changes and formal gate recording. R5-B lifecycle behavior remains required. ADR-0027 remains `Proposed`; the R5-A report is not formal ADR acceptance or overall R5 closure.
 - **R6+:** future work; not authorized by the existence of code or proposed documents.
 
 The supplied project ZIP has no Git metadata. Before taking repository action, verify branch, HEAD, merge status, and worktree on the actual checkout using `AGENTS.md`.
 
 ## Next actionable step
 
-Execute **R5-A — Reliable Plan Materialization and Recovery** first. R5 remains in progress until R5-A and R5-B both satisfy their acceptance criteria. Passing R5-A does not close R5 and does not authorize R6.
+**Next: consolidate and close the R5-A implementation record, then execute R5-B.** The R5-A agent report dated 2026-10-21 says implementation and verification passed, but its code changes remain uncommitted in the local worktree. Treat the report as evidence to preserve and review, not proof that the implementation is already consolidated with the updated documentation.
 
-1. Verify branch, HEAD, worktree, and repository state using the preflight rules in `AGENTS.md`.
-2. Complete the R5-A checklist, fix confirmed defects, and add failure-oriented regression tests.
-3. Verify daily Task-start quota behavior under the current R5-A requirements, using durable `task_started` Events as the accounting basis. Keep ADR-0027's status unchanged unless its formal decision status is separately authorized and recorded.
-4. Once R5-A passes, implement R5-B Plan lifecycle behavior against the full lifecycle contract below.
+1. Preserve and review the reported R5-A code diff; ensure the new `core/policy.py` and the four modified files are present on `R5-rebased` with no unrelated changes.
+2. Integrate the R5-A/R5-B documentation updates already recorded on the remote `R5-rebased` branch without overwriting local code changes.
+3. Confirm the reported focused/full verification against the final consolidated tree, then record the R5-A gate based on that branch state.
+4. Execute R5-B Plan lifecycle behavior against the acceptance criteria below.
 5. Close R5 only when both slices and all overall R5 exit criteria pass. Do not start R6 before formal R5 closure.
-
 ## Milestone overview
 
 | Phase | Recorded status | Purpose |
@@ -132,7 +131,17 @@ Acceptance criteria:
 
 Failure-path behavior is a first-class acceptance criterion. In addition to successful cases, tests must check rollback and durable-state integrity when validation, reconstruction, admission, persistence, or a concurrent operation fails.
 
-**R5-A passing does not close R5.**
+### R5-A implementation verification report — 2026-10-21 (agent-reported)
+
+The agent reported the following results after reproducing five defects and correcting the implementation. This is a record of that report; this documentation update did not independently rerun the commands.
+
+- Shared quota parsing was added in `core/policy.py` and adopted by PlanService and TaskRuntime, resolving disagreement for zero and non-integer values and handling malformed policy structure.
+- Plan materialization now serializes use of an accepted Strategy Event, rejects already-materialized proposals with a stable category, and handles corrupt prior creation Events through a categorized failure path.
+- Regression coverage was added for incomplete/corrupt Plan state, accepted-provenance tampering, conflicting and concurrent materialization, policy rejection reasons, pending Tasks not counting as starts, zero/invalid quota values, UTC-day boundaries, and Team scoping.
+- Agent-reported checks: focused Strategy/Plan/TaskRuntime tests **147 passed**; full test suite **222 passed** on two disposable database runs; Ruff passed; mypy passed across 11 source files; migrations reached `0006_immutable_plan_actions` on a fresh disposable PostgreSQL database; `git diff --check` was clean.
+- The agent reported that code changes remain uncommitted locally (four modified files and new `core/policy.py`) and that its local HEAD remained `7af449d`. Therefore, this is **R5-A implementation-ready evidence**, not proof that implementation and documentation are already consolidated into one branch commit.
+
+**R5-A can be formally recorded READY after its code changes and the R5-A/R5-B documentation are present together on the working branch and the final diff/verification evidence is confirmed. R5-A passing does not close R5.**
 
 ### R5-B — Plan Lifecycle Behavior (**required after R5-A**)
 
