@@ -36,7 +36,7 @@ This file identifies the active source for each concern. It is an index, not a s
 
 ADR-0027 remains `Proposed`. The operator's R5-A instructions dated 2026-10-21 explicitly direct verification and correction of the existing daily Task-start quota path against the documented semantics, including durable `task_started` Event accounting, concurrency, retries, UTC day boundaries, configuration validation, and failed-operation consistency. This task direction does not silently accept ADR-0027 or change its status. Keep Task-count accounting separate from monetary/token-cost accounting.
 
-R5-A and R5-B are both recorded READY in `PLAN.md`, and the overall R5 exit criteria are satisfied by the recorded evidence. R5 is READY TO CLOSE; it is not closed by this map, and R6 is not authorized. The R5-B implementation is present in the working tree and uncommitted at the time of this record.
+R5-A and R5-B are both recorded READY in `PLAN.md`, and the overall R5 exit criteria are satisfied by the recorded evidence. R5 is READY TO CLOSE; it is not closed by this map, and R6 is not authorized.
 
 The R5-B implementation is committed as `1012aaa`; the post-fix verification record is in `PLAN.md` and `docs/testing.md` (verification-documentation commit `dcc85b4`). One dependency remains recorded and unresolved: no component in the current codebase moves a Task to `done`, so the R5-B completion precondition is exercised against prepared durable state rather than an end-to-end executable path. `PLAN.md` records the effect of that dependency on the R5 gate.
 
