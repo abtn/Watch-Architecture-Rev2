@@ -7,13 +7,14 @@ This file is the **single source of current milestone status**. Other documents 
 - **K0, K1, R0, R1, R2, R3:** recorded complete.
 - **R4:** **closed 2026-10-20.** The redesigned multi-perspective Strategy implementation was verified freshly on the live repository (44 focused Strategy tests + full 185-test suite passing, Ruff, `mypy core`, disposable-DB migrations to `0006_immutable_plan_actions`); ADR-0023/ADR-0024 were accepted by explicit operator decision; the phase-boundary merge to `main` was performed. See the R4 closure record below.
 - **R5: CLOSED 2026-10-24 by explicit operator decision.** **R5-A: READY (2026-10-21)** and **R5-B: READY (2026-10-24, programmer-reported verification)** are integrated into `main`. PR #2 merged the lifecycle-constraint correction (`95a1e8e`) and migration `0008_plan_lifecycle_state` at merge commit `435e88f`; PR #3 merged the preceding R5 status-alignment documentation at `9ba1072`. This formal closure record is added by the current documentation change. On the checkout at `c99858f` in `r5b-lifecycle-constraint-fix`, the disposable database upgraded from `0007_plan_lifecycle` to `0008_plan_lifecycle_state`; 38 lifecycle tests, 147 R5-A/Strategy regression tests, and 260 full-suite tests passed; Ruff, `mypy core` (11 source files), and `git diff --check` passed. A fresh full-chain migration through `0008` was not rerun; the subsequent `0008 → 0007 → 0008` downgrade/upgrade round trip succeeded on the same disposable database, but schema equivalence after that round trip was not separately compared. The end-to-end Task-completion path remains assigned to R6; the R5 completion-precondition requirements are unchanged. ADR-0027 remains `Proposed`; R5 closure does not itself authorize R6.
-- **R6+:** future work; not authorized by the existence of code or proposed documents.
+- **R6:** **G0 entry-gate work in progress (operator authorization 2026-10-24).** The operator authorized starting the R6 path; this authorizes G0 planning and decision work, not silent acceptance of Proposed ADRs or unresolved schema, security, provider, or lifecycle choices. The implementation slices are sequenced in [`docs/development/r6-entry-gate.md`](docs/development/r6-entry-gate.md) and must wait for the G0 decisions to be recorded.
+- **R7+:** future work; not authorized by the existence of code or proposed documents.
 
 The supplied project ZIP has no Git metadata. Before taking repository action, verify branch, HEAD, merge status, and worktree on the actual checkout using `AGENTS.md`.
 
 ## Next actionable step
 
-**R5 is formally closed as of 2026-10-24. No subsequent milestone is authorized by this closure.** Before beginning R6 implementation, obtain separate explicit operator authorization and scope the R6 entry gate. R6 owns the end-to-end worker/execution path that transitions Tasks to `done`; R5's durable Plan-completion preconditions remain mandatory. Keep ADR-0027 `Proposed` unless it is separately accepted.
+**R5 is formally closed as of 2026-10-24. The operator authorized starting R6 and its G0 entry-gate work on 2026-10-24.** G0 must resolve the decisions and acceptance contract in [`docs/development/r6-entry-gate.md`](docs/development/r6-entry-gate.md) before R6-A implementation starts. The end-to-end worker/execution path that transitions Tasks to `done` remains R6 work; R5's durable Plan-completion preconditions remain mandatory. This authorization does not implicitly accept ADR-0025, ADR-0026, or ADR-0027; record each ADR decision explicitly.
 
 
 ## Milestone overview
@@ -28,7 +29,7 @@ The supplied project ZIP has no Git metadata. Before taking repository action, v
 | R3 | Complete | Deterministic, read-only StateAssessment with provenance. |
 | R4 | **Complete** (closed 2026-10-20) | StrategyProposal boundary, multi-Vision/Workstream/Action semantics, deterministic validation and reconstruction. |
 | R5 | **Complete — closed 2026-10-24 by explicit operator decision** | Materialize one accepted Strategy as one durable Plan and ordinary Tasks; retain the Task-execution dependency for R6. |
-| R6 | Future | First end-to-end intelligent Control loop. |
+| R6 | **G0 entry gate in progress; implementation slices pending G0 exit** | First end-to-end intelligent Control loop; ordinary Task execution, durable Outcome evidence, and re-assessment. |
 | R7 | Future | Evaluation and learning integration. |
 | R8 | Future | Multi-domain pressure test. |
 | R9 | Future | Codified agent-assisted production workflow. |
@@ -235,9 +236,17 @@ ADR-0027 remains `Proposed` in the decision index. The R5-A implementation/test 
 - Required focused and full verification is freshly run; migration/integration evidence uses a disposable PostgreSQL database.
 - All checks and the formal phase exit gate are recorded honestly.
 
-## R6 — First intelligent Control loop (future)
+## R6 — First intelligent Control loop (G0 entry gate in progress)
 
-Objective → StateAssessment → StrategyProposal → accepted Plan → ordinary Tasks → existing Task execution/Kernel commit → Outcome → new StateAssessment. The system must explain why Tasks exist and resume from durable records after worker/runtime failure.
+**Authorization:** The operator authorized R6 entry-gate work on 2026-10-24. R6-G0 is in progress; code implementation must not begin by assuming unresolved architecture, schema, security, provider, or Task lifecycle decisions.
+
+**Target loop:** Objective → deterministic StateAssessment → proposed StrategyProposal → application validation/accepted Strategy → immutable Plan → ordinary Tasks → existing Task admission/execution/Kernel commit → durable execution result/Outcome → new StateAssessment. The system must explain why Tasks exist and resume from durable records after worker/runtime failure.
+
+**Current gaps:** `TaskRuntime` implements admission but not completion/failure/retry transitions or dispatch; `IngestionService` commits proposals made from already-fetched bytes but does not fetch configured sources or run Tasks; `StrategyService` validates a supplied proposal but has no model-backed proposer; the documented Outcome entity is absent from current ORM/migrations. R5's Plan materialization, lifecycle, dependency, quota, and completion-precondition checks remain the foundation and must not be bypassed.
+
+**Traversal:** G0 freezes authority and the minimum end-to-end contract. R6-A adds application-controlled Task completion/failure/retry lifecycle; R6-B adds one bounded configured-source `ingest_source` worker path; R6-C adds the explicitly approved durable Outcome representation and follow-up StateAssessment; R6-D connects a selected Strategy proposer through validation, Plan materialization, and ordinary Task execution; R6-E runs full verification and records the formal exit gate. See [`docs/development/r6-entry-gate.md`](docs/development/r6-entry-gate.md) for current findings, recommended boundaries, decision points, tests, and G0 exit checklist.
+
+**Gate:** R6-A remains pending until the G0 decisions are resolved and recorded. ADR-0027 remains Proposed unless separately accepted.
 
 ## R7 — Evaluation and learning integration (future)
 
