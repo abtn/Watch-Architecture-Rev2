@@ -38,7 +38,7 @@ ADR-0027 remains `Proposed`. The operator's R5-A instructions dated 2026-10-21 e
 
 R5-A and R5-B are both recorded READY in `PLAN.md`, and the overall R5 exit criteria are satisfied by the recorded evidence. R5 is READY TO CLOSE; it is not closed by this map, and R6 is not authorized. The R5-B implementation is present in the working tree and uncommitted at the time of this record.
 
-One dependency is recorded and unresolved: no component in the current codebase moves a Task to `done`, so the R5-B completion precondition is exercised against prepared durable state rather than an end-to-end executable path. `PLAN.md` records the effect of that dependency on the R5 gate.
+The R5-B implementation is committed as `1012aaa`; the post-fix verification record is in `PLAN.md` and `docs/testing.md` (verification-documentation commit `dcc85b4`). One dependency remains recorded and unresolved: no component in the current codebase moves a Task to `done`, so the R5-B completion precondition is exercised against prepared durable state rather than an end-to-end executable path. `PLAN.md` records the effect of that dependency on the R5 gate.
 
 ## Conflict rule
 
