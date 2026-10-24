@@ -87,8 +87,9 @@ class Plan(Base):
         ),
         CheckConstraint(
             "(status = 'stopped' AND stopped_reason IS NOT NULL AND "
-            "(stopped_reason <> 'superseded' OR "
-            "(successor_plan_id IS NOT NULL AND successor_plan_id <> id))) OR "
+            "((stopped_reason = 'superseded' AND successor_plan_id IS NOT NULL "
+            "AND successor_plan_id <> id) OR "
+            "(stopped_reason <> 'superseded' AND successor_plan_id IS NULL))) OR "
             "(status <> 'stopped' AND stopped_reason IS NULL AND "
             "successor_plan_id IS NULL)",
             name="ck_plans_lifecycle_state",

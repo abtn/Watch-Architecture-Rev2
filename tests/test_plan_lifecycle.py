@@ -732,6 +732,20 @@ def test_database_rejects_invalid_lifecycle_combinations(
                 setattr(stored, key, value)
 
 
+@pytest.mark.parametrize("reason", ["abandoned", "invalidated"])
+def test_database_rejects_successor_for_non_superseded_stop(
+    session_factory, lifecycle, reason
+) -> None:
+    """A successor is legal only when the old Plan is superseded."""
+    plan = lifecycle["plan"]
+    with pytest.raises(DBAPIError):
+        with session_factory.begin() as session:
+            stored = session.get(Plan, plan.plan_id)
+            stored.status = "stopped"
+            stored.stopped_reason = reason
+            stored.successor_plan_id = plan.plan_id
+
+
 def test_database_rejects_supersession_without_a_successor(
     session_factory, lifecycle
 ) -> None:
