@@ -6,20 +6,20 @@ This file is the **single source of current milestone status**. Other documents 
 
 - **K0, K1, R0, R1, R2, R3:** recorded complete.
 - **R4:** **closed 2026-10-20.** The redesigned multi-perspective Strategy implementation was verified freshly on the live repository (44 focused Strategy tests + full 185-test suite passing, Ruff, `mypy core`, disposable-DB migrations to `0006_immutable_plan_actions`); ADR-0023/ADR-0024 were accepted by explicit operator decision; the phase-boundary merge to `main` was performed. See the R4 closure record below.
-- **R5:** in progress. **R5-A: READY (2026-10-21)** — implementation committed locally on `R5-rebased` as `71c7b1d7488c7de5e5e40f939283ff35f8abe5d0`; post-commit focused and full-suite verification passed. R5-B lifecycle behavior remains required. ADR-0027 remains `Proposed`; R5-A readiness is not formal ADR acceptance or overall R5 closure.
+- **R5:** in progress. **R5-A: READY (2026-10-21)** — implementation committed locally on `R5-rebased` as `71c7b1d7488c7de5e5e40f939283ff35f8abe5d0`; post-commit focused and full-suite verification passed. **R5-B: READY (2026-10-21)** — lifecycle implementation and verification are present in the working tree, verified against disposable PostgreSQL; that implementation is not yet committed on the branch. All five overall R5 exit criteria are satisfied by the recorded evidence, so R5 is READY TO CLOSE once the R5-B implementation is committed and the operator records the formal gate. ADR-0027 remains `Proposed`; R5 readiness is not formal ADR acceptance.
 - **R6+:** future work; not authorized by the existence of code or proposed documents.
 
 The supplied project ZIP has no Git metadata. Before taking repository action, verify branch, HEAD, merge status, and worktree on the actual checkout using `AGENTS.md`.
 
 ## Next actionable step
 
-**Next: execute R5-B — Plan Lifecycle Behavior.** R5-A's implementation is committed on the local `R5-rebased` branch and the agent reported post-commit verification on that committed tree. R5 remains in progress.
+**Next: commit the R5-B implementation and record the R5 exit gate.** R5-A and R5-B are both implemented and verified. The R5-A implementation is committed on the local `R5-rebased` branch; the R5-B implementation is present in the working tree and is not yet committed. R5 remains in progress.
 
-1. Start R5-B from the current `R5-rebased` state and preserve the existing R5-A commit.
-2. Implement and test only the lifecycle behavior specified below: legal transitions, completion preconditions, terminal-state protection, stop reasons, supersession, concurrency, rollback, and durable reconstruction.
-3. Run the lifecycle-focused tests and then the full applicable verification suite against disposable PostgreSQL.
-4. Update the R5-B gate only from the actual implementation and test evidence.
-5. Close R5 only when both slices and all overall R5 exit criteria pass. Do not start R6 before formal R5 closure.
+1. Commit the R5-B implementation (`core/plans.py`, `core/models.py`, `migrations/versions/0007_plan_lifecycle.py`, `tests/test_plan_lifecycle.py`) on `R5-rebased` without altering the recorded R5-A commit.
+2. Re-run the focused lifecycle, focused Strategy/Plan/TaskRuntime, and full suites on disposable PostgreSQL after that commit, and record the result.
+3. Record the formal R5 exit gate; R5 stays in progress until it is recorded.
+4. Carry the recorded Task-completion dependency (see the R5-B gate record) into the milestone that delivers Task execution.
+5. Do not start R6 before formal R5 closure.
 ## Milestone overview
 
 | Phase | Recorded status | Purpose |
@@ -160,6 +160,29 @@ Acceptance criteria:
 - Supersession can stop the old Plan without rewriting its immutable intent. Choosing and materializing a replacement Plan through replanning remains in the later dedicated milestone.
 
 Define tests for each legal transition, illegal transition, terminal-state protection, completion preconditions, stop reasons, stale/concurrent transition, rollback, and restart reconstruction. Do not mark lifecycle behavior complete from model-only or service-only tests that bypass persistence contracts.
+
+### R5-B implementation and gate record — 2026-10-21
+
+The agent reported the following implementation and verification on `R5-rebased`. At the time of this record the implementation is present in the working tree and is **not yet committed**; the R5-A commit `71c7b1d7488c7de5e5e40f939283ff35f8abe5d0` is unchanged.
+
+- **Implementation.** `PlanService.transition` in `core/plans.py` implements the `transition_plan` Task operation and lifecycle reconstruction validation; `core/models.py` adds the Plan lifecycle columns and constraints; migration `migrations/versions/0007_plan_lifecycle.py` (revision `0007_plan_lifecycle`, revising `0006_immutable_plan_actions`) adds `plans.stopped_reason` and `plans.successor_plan_id`, the check constraints `ck_plans_status`, `ck_plans_stopped_reason`, and `ck_plans_lifecycle_state`, the `fk_plans_successor` self-reference, and replaces the `preserve_plan_intent` trigger with a scoped version that permits only lifecycle-column changes. Action immutability and the R5-A constraints are unchanged, and no historical migration was edited.
+- **Operation contract.** A running same-Team `transition_plan` Task with `allowed_writes=["Plan"]`, active Team, matching policy version, and a zero-usage budget; `active → completed` and `active → stopped` only; terminal Plans cannot reopen; stop reasons `abandoned`, `invalidated`, `superseded`; `superseded` requires an already-existing active successor Plan for the same Objective, distinct from itself. Success Events are `plan_completed` and `plan_stopped`; a rejection emits a categorized `plan_transition_rejected` Event. A matching same-Task retry replays the recorded transition; conflicting reuse, stale expected status, and concurrent transitions reject.
+- **Completion preconditions.** Every Action has exactly one linked Task, every linked Task is `done`, and each linked Task carries a durable successful ingestion outcome (`signal_ingested` or `fetch_no_change`), so the declared `configured_source_ingested` condition is proven by durable records rather than model assertion.
+- **Reconstruction.** `PlanService.reconstruct` validates persisted lifecycle state against its required attributable Event; missing, tampered, or contradictory lifecycle records fail clearly and are never fabricated or silently repaired.
+- **Freshly run verification on this checkout.** Focused R5-B tests **32 passed**; focused Strategy/Plan/TaskRuntime tests **147 passed**; full test suite **254 passed** on two disposable PostgreSQL databases (an existing disposable database upgraded `0006 → 0007`, and a freshly installed disposable database); Ruff passed; `mypy core` passed across 11 source files; `git diff --check` was clean.
+- **Migration evidence on disposable databases.** Fresh installation reached `0007_plan_lifecycle`; upgrade from the previous head succeeded; a `0007 → 0006 → 0007` round trip restored an identical schema; and a downgrade attempt was refused with a clear error while a non-active Plan existed.
+
+**R5-B gate: READY (2026-10-21).** This records the R5-B slice only.
+
+#### Task-completion dependency — recorded, not resolved in R5
+
+No component in the current codebase moves a Task to `done`. `docs/architecture.md` §4 assigns the `running → done` transition to the worker/execution path, and the current repository contains no worker runtime, so no Plan-linked Task can reach `done` through the system as it stands. The R5-B completion precondition is therefore verified against durable Task/Event state prepared for the test; that preparation is not itself a delivered capability.
+
+This does not change the R5 exit criteria. `PLAN.md` "Overall R5 exit criteria" require that the R5-B "completion/stopping/supersession rules" pass, and the R5-B acceptance criteria require that completion be **allowed only when** the durable preconditions hold; neither requires R5 to deliver the Task execution path that produces `done`. The end-to-end loop that exercises it is R6 ("ordinary Tasks → existing Task execution/Kernel commit"). The dependency is recorded here and carried forward to the milestone that delivers Task execution. No existing criterion is weakened, and no new requirement is invented in this record.
+
+#### R5 status after R5-B
+
+All five overall R5 exit criteria are satisfied by the recorded evidence: the R5-A criteria pass under the R5-A gate record; the R5-B criteria pass under the R5-B gate record; Task dependencies still run through the existing Task admission path with no scheduler and no Task-state mutation behind the runtime; fresh focused and full verification used disposable PostgreSQL databases; and both slice gates are recorded here. **R5 is READY TO CLOSE**, contingent only on committing the R5-B implementation and the operator recording the formal R5 exit gate. R5 is **not** closed by this record, and R6 is **not** authorized by it.
 
 ### Daily quota semantics and authority
 

@@ -5,14 +5,14 @@ This file identifies the active source for each concern. It is an index, not a s
 | Concern | Authoritative source | Boundary |
 |---|---|---|
 | Current milestone, phase gate, next action | [`PLAN.md`](PLAN.md) | The only source of current status. Code presence or a test result does not close a phase. |
-| R5-A materialization/recovery and R5-B lifecycle sequencing | [`PLAN.md`](PLAN.md), `docs/tasks.md`, `docs/testing.md` | R5-A passing does not close R5; both slices must satisfy the overall R5 exit criteria. Replanning remains later work. |
+| R5-A materialization/recovery and R5-B lifecycle sequencing | [`PLAN.md`](PLAN.md), `docs/tasks.md`, `docs/testing.md` | Both slices are recorded READY; R5 is READY TO CLOSE and is not closed here. R5 readiness is not ADR acceptance. Replanning remains later work. |
 | Agent workflow, preflight, stop/report rules | [`AGENTS.md`](AGENTS.md) | Process only; it does not independently authorize architecture changes. |
 | Unchanged/original domain architecture | [`docs/architecture.md`](docs/architecture.md) | Applies where the Revision 2 map below has not superseded it. |
 | Revision 2 Control layer and dual-entry model | [`docs/control-model.md`](docs/control-model.md), ADR-0023–ADR-0026 | Reactive and deliberative work converge on ordinary Tasks. |
 | Objective lifecycle | `docs/control-model.md`, `core/objectives.py`, tests, relevant ADRs | The spec defines behavior; code/tests establish current implementation. |
 | StateAssessment | `docs/control-model.md`, `core/state_assessment.py`, tests | Derived, read-only, deterministic, non-authoritative; preserve decision-basis provenance. |
 | StrategyProposal, Vision, Workstream, Action | `docs/control-model.md`, ADR-0023/0024, `docs/tasks.md` | Acceptance means deterministic legality, not strategic wisdom. Exact accepted structure/provenance must be reconstructable. |
-| Plan, lifecycle, and Action prerequisites | `docs/control-model.md`, ADR-0025/0026, `docs/tasks.md`, `core/plans.py`, `core/task_runtime.py`, tests | Plan intent is immutable; R5-B lifecycle changes use the scoped `transition_plan` Task operation; Events record each transition. Dependencies are enforced by existing admission. |
+| Plan, lifecycle, and Action prerequisites | `docs/control-model.md`, ADR-0025/0026, `docs/tasks.md`, `core/plans.py`, `core/task_runtime.py`, `migrations/versions/0007_plan_lifecycle.py`, tests | Plan intent is immutable; R5-B lifecycle changes use the scoped `transition_plan` Task operation; Events record each transition. Dependencies are enforced by existing admission. |
 | Task types, write scopes, commit rules, budgets | [`docs/tasks.md`](docs/tasks.md) | The Task matrix is the operative scope contract; do not infer extra scope from prose. |
 | Architectural invariants | [`docs/invariants.md`](docs/invariants.md) | Normative constraints; use PLAN, code, and tests to determine which are implemented in the current phase. |
 | Domain-pack boundary | [`docs/domains.md`](docs/domains.md), ADR-0016 | Packs cannot extend the Kernel. |
@@ -36,7 +36,9 @@ This file identifies the active source for each concern. It is an index, not a s
 
 ADR-0027 remains `Proposed`. The operator's R5-A instructions dated 2026-10-21 explicitly direct verification and correction of the existing daily Task-start quota path against the documented semantics, including durable `task_started` Event accounting, concurrency, retries, UTC day boundaries, configuration validation, and failed-operation consistency. This task direction does not silently accept ADR-0027 or change its status. Keep Task-count accounting separate from monetary/token-cost accounting.
 
-R5 remains in progress until both R5-A and R5-B satisfy the overall acceptance criteria in `PLAN.md`. Passing R5-A does not authorize R6.
+R5-A and R5-B are both recorded READY in `PLAN.md`, and the overall R5 exit criteria are satisfied by the recorded evidence. R5 is READY TO CLOSE; it is not closed by this map, and R6 is not authorized. The R5-B implementation is present in the working tree and uncommitted at the time of this record.
+
+One dependency is recorded and unresolved: no component in the current codebase moves a Task to `done`, so the R5-B completion precondition is exercised against prepared durable state rather than an end-to-end executable path. `PLAN.md` records the effect of that dependency on the R5 gate.
 
 ## Conflict rule
 

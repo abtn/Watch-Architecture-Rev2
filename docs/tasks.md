@@ -225,6 +225,7 @@ by a worker.
 | `create_team` | W¹⁴ | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | K¹⁵ | K |
 | `configure_team` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W | K | K¹⁶ | K |
 | `activate_team` | W¹⁷ | — | — | C | — | — | — | — | — | — | — | W | — | — | — | W¹⁸ | K | K¹⁹ | K |
+| `transition_plan` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | — | K²⁴ |
 ¹ Store only the immutable Snapshot for the Signal created by this ingestion
 operation. ² Create on `new_thread`; reactivate `dormant → active`.
 ³ Refine `deferred` only. ⁴ Summary projection and explicit resolution only.
@@ -249,6 +250,10 @@ enqueue only `request_consultation` when the documented delivery gate applies.
 follow-up update/evaluation work after recording the consultation answer.
 ²³ In addition to its own lifecycle, enqueue only `update_thread` for the
 documented deferred/matched triage cases.
+²⁴ Emit only this Task's own Plan lifecycle Events: `plan_completed` or
+`plan_stopped` for an accepted transition, and the categorized
+`plan_transition_rejected` Event for a rejected one. No other Event type, no
+Snapshot, and no Task other than the current one may be written.
 #### R4 `propose_strategy` scope extension
 This ordinary Task validates one transient StrategyProposal against its
 same-Team active Objective and exact derived R3 assessment. It requires a
@@ -366,6 +371,27 @@ The lifecycle state and attributable success Event commit atomically. A
 matching same-Task retry replays the durable transition; conflicting requests
 and failed operations do not leave partial changes and emit a categorized
 rejection Event.
+
+##### Implemented R5-B operation
+
+`PlanService.transition` is the application-controlled entry point. An accepted
+transition records `plan_completed` or `plan_stopped`, attributed to the
+transitioning Task; a rejected transition records `plan_transition_rejected`
+with a stable reason and leaves the Plan unchanged. Reconstruction of a Plan
+must validate its persisted lifecycle state against the required attributable
+Event: a terminal Plan without its matching Event, an Event that disagrees with
+the persisted state, or a supersession reference that is missing or points
+outside the same Objective fails clearly. Lifecycle state is never fabricated,
+silently repaired, or accepted as valid without its Event.
+
+The durable lifecycle fields (`status`, `stopped_reason`, successor Plan
+reference) are mutable state, distinct from the immutable Plan intent that the
+database trigger still protects. The database enforces the valid combinations:
+status in `active`, `completed`, `stopped`; stop reason in `abandoned`,
+`invalidated`, `superseded`; a stopped Plan carries a reason; a superseded Plan
+references a successor that is not itself; and a non-stopped Plan carries
+neither reason nor successor. The implementation and schema are recorded in
+`core/plans.py`, `core/models.py`, and migration `0007_plan_lifecycle`.
 
 #### R2 Objective scope extension
 The following semantic operations require the Task's authorized Objective

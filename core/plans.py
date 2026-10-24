@@ -9,6 +9,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.models import Event, Objective, Plan, PlanAction, Task, Team, TeamPolicy
@@ -19,6 +20,12 @@ from core.strategy import StrategyService
 from core.strategy_proposal import StrategyProposal
 
 _TASK_BUDGET = {"max_tool_calls": 0, "max_cost_usd": 0.0, "deadline_seconds": 60}
+
+# The durable ingestion outcomes that prove the declared completion condition
+# `configured_source_ingested`. A Task status alone is not completion evidence.
+_INGESTION_SUCCESS_EVENTS = ("signal_ingested", "fetch_no_change")
+_LIFECYCLE_EVENTS = ("plan_completed", "plan_stopped")
+_STOP_REASONS = ("abandoned", "invalidated", "superseded")
 
 
 @dataclass(frozen=True)
@@ -36,6 +43,16 @@ class PlanResult:
     @property
     def task_id(self) -> UUID:
         return self.task_ids[0]
+
+
+@dataclass(frozen=True)
+class PlanTransitionResult:
+    plan_id: UUID
+    status: str
+    stopped_reason: str | None
+    successor_plan_id: UUID | None
+    event_id: UUID
+    replayed: bool = False
 
 
 class PlanService:
@@ -256,9 +273,221 @@ class PlanService:
                 event.id,
             )
 
+    def transition(
+        self,
+        task_id: UUID,
+        plan_id: UUID,
+        expected_status: str,
+        target_status: str,
+        stopped_reason: str | None = None,
+        successor_plan_id: UUID | None = None,
+    ) -> PlanTransitionResult:
+        """Apply one Plan lifecycle transition for a `transition_plan` Task."""
+        try:
+            try:
+                return self._transition(
+                    task_id,
+                    plan_id,
+                    expected_status,
+                    target_status,
+                    stopped_reason,
+                    successor_plan_id,
+                )
+            except DBAPIError as error:
+                if getattr(error.orig, "sqlstate", None) not in {"40001", "40P01"}:
+                    raise
+                raise ValueError("concurrent_state_conflict") from error
+        except ValueError as error:
+            with self._session_factory.begin() as session:
+                task = ObjectiveService._lock_task(session, task_id)
+                if task is None or task.task_type != "transition_plan":
+                    raise
+                ObjectiveService._add_event(
+                    session,
+                    task.id,
+                    "plan_transition_rejected",
+                    {
+                        "operation": "transition_plan",
+                        "reason": str(error),
+                        "plan_id": str(plan_id),
+                        "expected_status": expected_status,
+                        "target_status": target_status,
+                        "stopped_reason": stopped_reason,
+                        "successor_plan_id": (
+                            str(successor_plan_id)
+                            if successor_plan_id is not None
+                            else None
+                        ),
+                    },
+                )
+            raise
+
+    def _transition(
+        self,
+        task_id: UUID,
+        plan_id: UUID,
+        expected_status: str,
+        target_status: str,
+        stopped_reason: str | None,
+        successor_plan_id: UUID | None,
+    ) -> PlanTransitionResult:
+        with self._session_factory.begin() as session:
+            task = ObjectiveService._lock_task(session, task_id)
+            if task is None:
+                raise TaskNotFound(f"Task {task_id} does not exist")
+            self._validate_task(session, task, "transition_plan")
+            plan = session.scalar(
+                select(Plan).where(Plan.id == plan_id).with_for_update()
+            )
+            if plan is None:
+                raise ValueError("plan_not_found")
+            if plan.team_id != task.team_id:
+                raise ValueError("plan_team_mismatch")
+            # Do not make another transition decision from a Plan whose durable
+            # lifecycle record is already inconsistent. This also validates the
+            # stored Event before same-Task idempotent replay.
+            self._validate_lifecycle(session, plan)
+            request = {
+                "operation": "transition_plan",
+                "plan_id": str(plan.id),
+                "expected_status": expected_status,
+                "target_status": target_status,
+                "stopped_reason": stopped_reason,
+                "successor_plan_id": (
+                    str(successor_plan_id) if successor_plan_id is not None else None
+                ),
+            }
+            prior = session.scalar(
+                select(Event)
+                .where(Event.task_id == task.id, Event.type.in_(_LIFECYCLE_EVENTS))
+                .order_by(Event.created_at, Event.id)
+                .limit(1)
+            )
+            if prior is not None:
+                if any(
+                    prior.payload.get(key) != value for key, value in request.items()
+                ):
+                    raise ValueError("task_outcome_conflict")
+                if (
+                    plan.status != target_status
+                    or plan.stopped_reason != stopped_reason
+                    or plan.successor_plan_id != successor_plan_id
+                    or prior.payload.get("from_status") != expected_status
+                ):
+                    raise ValueError("recorded_plan_transition_corrupt")
+                return PlanTransitionResult(
+                    plan.id,
+                    plan.status,
+                    plan.stopped_reason,
+                    plan.successor_plan_id,
+                    prior.id,
+                    True,
+                )
+            if expected_status not in ("active", "completed", "stopped"):
+                raise ValueError("invalid_expected_status")
+            if plan.status != expected_status:
+                raise ValueError("stale_plan_status")
+            if plan.status != "active":
+                raise ValueError("plan_not_active")
+            if target_status not in ("completed", "stopped"):
+                raise ValueError("invalid_plan_transition")
+            if target_status == "completed":
+                if stopped_reason is not None or successor_plan_id is not None:
+                    raise ValueError("invalid_plan_transition")
+                self._validate_completion(session, plan)
+            else:
+                self._validate_stop(session, plan, stopped_reason, successor_plan_id)
+            plan.status = target_status
+            plan.stopped_reason = stopped_reason
+            plan.successor_plan_id = successor_plan_id
+            event = ObjectiveService._add_event(
+                session,
+                task.id,
+                "plan_completed" if target_status == "completed" else "plan_stopped",
+                {
+                    **request,
+                    "objective_id": str(plan.objective_id),
+                    "team_id": str(plan.team_id),
+                    "from_status": "active",
+                    "to_status": target_status,
+                },
+            )
+            session.flush()
+            return PlanTransitionResult(
+                plan.id,
+                plan.status,
+                plan.stopped_reason,
+                plan.successor_plan_id,
+                event.id,
+            )
+
     @staticmethod
-    def _validate_task(session: Session, task: Task) -> TeamPolicy:
-        if task.task_type != "create_plan":
+    def _validate_completion(session: Session, plan: Plan) -> None:
+        """Completion is proven by durable Task state and ingestion outcomes."""
+        actions = {
+            row.action_id
+            for row in session.scalars(
+                select(PlanAction).where(PlanAction.plan_id == plan.id)
+            )
+        }
+        tasks = list(session.scalars(select(Task).where(Task.plan_id == plan.id)))
+        linked: dict[UUID, list[Task]] = {}
+        for task in tasks:
+            if task.plan_action_id is None:
+                raise ValueError("plan_actions_incomplete")
+            linked.setdefault(task.plan_action_id, []).append(task)
+        if set(linked) != actions or any(len(items) != 1 for items in linked.values()):
+            raise ValueError("plan_actions_incomplete")
+        if any(task.status != "done" for task in tasks):
+            raise ValueError("plan_tasks_not_done")
+        if plan.completion_condition != "configured_source_ingested":
+            raise ValueError("unsupported_completion_condition")
+        for task in tasks:
+            evidence = session.scalar(
+                select(Event.id)
+                .where(
+                    Event.task_id == task.id,
+                    Event.type.in_(_INGESTION_SUCCESS_EVENTS),
+                )
+                .limit(1)
+            )
+            if evidence is None:
+                raise ValueError("completion_evidence_missing")
+
+    @staticmethod
+    def _validate_stop(
+        session: Session,
+        plan: Plan,
+        stopped_reason: str | None,
+        successor_plan_id: UUID | None,
+    ) -> None:
+        if stopped_reason is None:
+            raise ValueError("missing_stopped_reason")
+        if stopped_reason not in _STOP_REASONS:
+            raise ValueError("invalid_stopped_reason")
+        if stopped_reason != "superseded":
+            if successor_plan_id is not None:
+                raise ValueError("successor_not_allowed")
+            return
+        if successor_plan_id is None:
+            raise ValueError("successor_required")
+        if successor_plan_id == plan.id:
+            raise ValueError("successor_is_self")
+        successor = session.scalar(
+            select(Plan).where(Plan.id == successor_plan_id).with_for_update(read=True)
+        )
+        if successor is None:
+            raise ValueError("successor_not_found")
+        if successor.objective_id != plan.objective_id:
+            raise ValueError("successor_objective_mismatch")
+        if successor.status != "active":
+            raise ValueError("successor_not_active")
+
+    @staticmethod
+    def _validate_task(
+        session: Session, task: Task, task_type: str = "create_plan"
+    ) -> TeamPolicy:
+        if task.task_type != task_type:
             raise ValueError("plan_event_scope_violation")
         if task.status != "running":
             raise ValueError("task_not_running")
@@ -491,4 +720,59 @@ class PlanService:
             )
         ):
             raise ValueError("recorded_plan_creation_corrupt")
+        PlanService._validate_lifecycle(session, plan)
         return PlanResult(plan.id, action_ids, task_ids, event.id)
+
+    @staticmethod
+    def _validate_lifecycle(session: Session, plan: Plan) -> None:
+        """Validate persisted lifecycle state against its required Event."""
+        events = [
+            event
+            for event in session.scalars(
+                select(Event).where(Event.type.in_(_LIFECYCLE_EVENTS))
+            )
+            if isinstance(event.payload, dict)
+            and event.payload.get("plan_id") == str(plan.id)
+        ]
+        if plan.status == "active":
+            if events:
+                raise ValueError("recorded_plan_lifecycle_corrupt")
+            return
+        expected_type = (
+            "plan_completed" if plan.status == "completed" else "plan_stopped"
+        )
+        if len(events) != 1:
+            raise ValueError("recorded_plan_lifecycle_corrupt")
+        event = events[0]
+        task = session.get(Task, event.task_id)
+        payload = event.payload
+        expected_payload = {
+            "operation": "transition_plan",
+            "plan_id": str(plan.id),
+            "expected_status": "active",
+            "target_status": plan.status,
+            "stopped_reason": plan.stopped_reason,
+            "successor_plan_id": (
+                str(plan.successor_plan_id) if plan.successor_plan_id else None
+            ),
+            "objective_id": str(plan.objective_id),
+            "team_id": str(plan.team_id),
+            "from_status": "active",
+            "to_status": plan.status,
+        }
+        if (
+            event.type != expected_type
+            or task is None
+            or task.task_type != "transition_plan"
+            or task.team_id != plan.team_id
+            or payload != expected_payload
+        ):
+            raise ValueError("recorded_plan_lifecycle_corrupt")
+        if plan.status == "stopped" and plan.stopped_reason == "superseded":
+            successor = session.get(Plan, plan.successor_plan_id)
+            if (
+                successor is None
+                or successor.id == plan.id
+                or successor.objective_id != plan.objective_id
+            ):
+                raise ValueError("recorded_plan_lifecycle_corrupt")

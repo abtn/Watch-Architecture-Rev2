@@ -77,7 +77,22 @@ class Plan(Base):
         UniqueConstraint("id", "objective_id", name="uq_plans_id_objective"),
         UniqueConstraint("accepted_event_id", name="uq_plans_accepted_event"),
         UniqueConstraint("created_by_task_id", name="uq_plans_created_by_task"),
-        CheckConstraint("status = 'active'", name="ck_plans_r5_04_status"),
+        CheckConstraint(
+            "status IN ('active', 'completed', 'stopped')", name="ck_plans_status"
+        ),
+        CheckConstraint(
+            "stopped_reason IS NULL OR "
+            "stopped_reason IN ('abandoned', 'invalidated', 'superseded')",
+            name="ck_plans_stopped_reason",
+        ),
+        CheckConstraint(
+            "(status = 'stopped' AND stopped_reason IS NOT NULL AND "
+            "(stopped_reason <> 'superseded' OR "
+            "(successor_plan_id IS NOT NULL AND successor_plan_id <> id))) OR "
+            "(status <> 'stopped' AND stopped_reason IS NULL AND "
+            "successor_plan_id IS NULL)",
+            name="ck_plans_lifecycle_state",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -98,6 +113,12 @@ class Plan(Base):
     completion_condition: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(
         String, nullable=False, default="active", server_default="active"
+    )
+    stopped_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    successor_plan_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("plans.id", name="fk_plans_successor"),
+        nullable=True,
     )
 
 
