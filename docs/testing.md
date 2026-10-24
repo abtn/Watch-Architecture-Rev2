@@ -89,7 +89,7 @@ Programmer-reported verification on the corrective branch at `c99858f`:
 - `uv run mypy core` — passed, 11 source files.
 - `git diff --check` — clean.
 
-Both `DATABASE_URL` and `TEST_DATABASE_URL` targeted the disposable `watch_r5b_fresh` database, not the persistent `watch` database. This follow-up verified upgrade from `0007` to `0008`; a fresh full-chain installation through `0008` and an `0008 → 0007 → 0008` round trip were not rerun. The results are programmer-reported local verification, not an independent rerun from this documentation update.
+Both `DATABASE_URL` and `TEST_DATABASE_URL` targeted the disposable `watch_r5b_fresh` database, not the persistent `watch` database. This follow-up verified upgrade from `0007` to `0008`. After synchronizing the documentation commits, the programmer also successfully downgraded to `0007_plan_lifecycle` and upgraded back to `0008_plan_lifecycle_state` on the same disposable database. A fresh full-chain installation through `0008` was not rerun, and schema equivalence after the round trip was not separately compared. The results are programmer-reported local verification, not an independent rerun from this documentation update.
 
 **Unresolved dependency, distinct from the tested behavior above.** No component in the current codebase moves a Task to `done`; `docs/architecture.md` §4 assigns the `running → done` transition to the worker/execution path, which this repository does not implement. The completion-precondition tests therefore exercise durable Task/Event state prepared for the test. Preparing that state is not a delivered capability, and these tests do not demonstrate an end-to-end executable Plan completion. `PLAN.md` records this dependency and its effect on the R5 gate.
 
