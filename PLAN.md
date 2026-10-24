@@ -6,20 +6,21 @@ This file is the **single source of current milestone status**. Other documents 
 
 - **K0, K1, R0, R1, R2, R3:** recorded complete.
 - **R4:** **closed 2026-10-20.** The redesigned multi-perspective Strategy implementation was verified freshly on the live repository (44 focused Strategy tests + full 185-test suite passing, Ruff, `mypy core`, disposable-DB migrations to `0006_immutable_plan_actions`); ADR-0023/ADR-0024 were accepted by explicit operator decision; the phase-boundary merge to `main` was performed. See the R4 closure record below.
-- **R5:** in progress. **R5-A: READY (2026-10-21)** — implementation committed locally on `R5-rebased` as `71c7b1d7488c7de5e5e40f939283ff35f8abe5d0`; post-commit focused and full-suite verification passed. **R5-B: READY** — implementation and lifecycle Event-validation follow-up are committed locally on `R5-rebased` as `1012aaa` (2026-10-24); post-fix verification reported 36 lifecycle tests, 147 R5-A/Strategy regression tests, and 258 full-suite tests passing on the disposable `watch_r5b_fresh` database. The migration paths were verified in the earlier R5-B run and the follow-up changed no schema or migration. All five overall R5 exit criteria are recorded as satisfied, so R5 is **READY TO CLOSE** pending the operator's formal gate decision. R5 is not yet closed. ADR-0027 remains `Proposed`; R5 readiness is not formal ADR acceptance.
+- **R5:** in progress. **R5-A: READY (2026-10-21)** — implementation and verification are recorded at commit `71c7b1d`. **R5-B: verification follow-up required (2026-10-24)** — the implementation at `1012aaa` passed its recorded tests, but a code review found that migration `0007` does not prohibit a successor reference for `abandoned`/`invalidated` stops. A correction is committed on branch `r5b-lifecycle-constraint-fix` at `95a1e8e`: model constraint, migration `0008`, regression tests, and authority-map status correction. Those follow-up changes have not yet been tested locally. Keep R5 open until the follow-up migration and tests pass and evidence is reviewed. ADR-0027 remains `Proposed`; R6 is not authorized.
 - **R6+:** future work; not authorized by the existence of code or proposed documents.
 
 The supplied project ZIP has no Git metadata. Before taking repository action, verify branch, HEAD, merge status, and worktree on the actual checkout using `AGENTS.md`.
 
 ## Next actionable step
 
-**Next: record the operator's formal R5 exit decision.** R5-A is committed locally as `71c7b1d`; R5-B is committed locally as `1012aaa` on `R5-rebased`. Post-fix focused and full verification has been recorded below. R5 remains in progress until the formal gate is explicitly recorded.
+**Next: verify the R5-B lifecycle constraint correction before deciding the overall R5 gate.** The corrective branch `r5b-lifecycle-constraint-fix` is based on GitHub `main` at `dcc85b4` and currently points to `95a1e8e`. Its changes are committed but not yet verified in the programmer's local PostgreSQL environment.
 
-1. Review the R5-A and R5-B gate records and the stated Task-completion dependency.
-2. Record the operator's decision on the overall R5 exit gate, with the evidence and any qualification stated explicitly.
-3. If R5 is approved for closure, update the current recorded state, milestone overview, and R5 closure record consistently. Do not mark it closed merely because a slice or test suite is READY/passing.
-4. Carry the Task-completion dependency into the milestone that delivers Task execution.
-5. Do not start R6 before formal R5 closure.
+1. Check out the corrective branch only after confirming the local working tree is clean; preserve any local-only commits or edits.
+2. Apply migration `0008_plan_lifecycle_state` to a disposable database that is at `0007_plan_lifecycle`, then verify fresh-upgrade and upgrade behavior as appropriate.
+3. Run the lifecycle tests, R5-A regression tests, full suite, Ruff, mypy, and diff checks; report exact commands/results.
+4. Record the follow-up results in `PLAN.md` and `docs/testing.md`. Do not infer success from the committed tests.
+5. If the fix passes, review the overall R5 exit evidence and record the operator's formal gate decision; retain the Task-completion dependency for the milestone that delivers Task execution.
+6. Do not start R6 before formal R5 closure.
 ## Milestone overview
 
 | Phase | Recorded status | Purpose |
@@ -181,6 +182,10 @@ The agent reported the following implementation and verification on `R5-rebased`
 - **Post-fix verification.** On the disposable `watch_r5b_fresh` database, `uv run pytest tests/test_plan_lifecycle.py -q` passed (**36 passed**); `uv run pytest tests/test_plans.py tests/test_task_runtime.py tests/test_strategy.py -q` passed (**147 passed**); and `uv run pytest -q` passed (**258 passed**). `uv run ruff check core/plans.py tests/test_plan_lifecycle.py`, `uv run mypy core` (11 source files), and `git diff --check` all passed.
 - **Migration qualification.** The post-fix patch changed only `core/plans.py` and `tests/test_plan_lifecycle.py`; migrations were not rerun in this post-fix pass. Fresh-install, previous-head upgrade, downgrade/upgrade round-trip, and downgrade refusal evidence remains the earlier recorded R5-B migration verification above. The persistent `watch` database was not targeted.
 
+#### R5-B database-constraint correction — pending verification (2026-10-24)
+
+A follow-up review found that the `0007_plan_lifecycle` version of `ck_plans_lifecycle_state` permits a non-null `successor_plan_id` when a stopped Plan's reason is `abandoned` or `invalidated`. The application service rejects these requests, but the database constraint did not enforce the documented invariant. Branch `r5b-lifecycle-constraint-fix` at commit `95a1e8e` adds migration `0008_plan_lifecycle_state`, mirrors the tighter constraint in `core/models.py`, adds regression coverage for both stop reasons, and corrects a stale status sentence in `CHANGE_MAP.md`. These changes are committed but **not yet tested**. R5 remains in progress until disposable-PostgreSQL migration and regression verification passes.
+
 
 #### Task-completion dependency — recorded, not resolved in R5
 
@@ -190,9 +195,7 @@ This does not change the R5 exit criteria. `PLAN.md` "Overall R5 exit criteria" 
 
 #### R5 status after R5-B
 
-The R5-A and R5-B implementation and verification criteria are satisfied by the recorded evidence: R5-A's materialization, integrity, quota, admission, atomicity, and provenance criteria pass under its gate record; R5-B's lifecycle transitions and reconstruction criteria pass under its gate record; Task dependencies use the existing Task admission path without a second scheduler or hidden Task-state mutation; and the focused and full verification runs used disposable PostgreSQL databases. Both slice gates and the post-fix verification are recorded. R5-B is committed locally as `1012aaa`.
-
-The operator's formal R5 exit decision remains pending. **R5 is READY TO CLOSE**, but it is not yet closed. Record the formal decision and update the milestone status and closure record consistently before authorizing R6. R6 remains unauthorized until formal R5 closure.
+The recorded R5-A and initial R5-B verification at `1012aaa` passed their stated checks. The subsequent database-constraint follow-up at `95a1e8e` is not yet verified, so the overall R5 exit criteria cannot currently be treated as fully satisfied. **R5 remains IN PROGRESS** until the follow-up migration and regression tests pass on a disposable PostgreSQL database and the evidence is recorded. The missing Task-completion path remains a documented dependency for the later execution milestone. ADR-0027 remains `Proposed`, and R6 is not authorized.
 
 ### Daily quota semantics and authority
 

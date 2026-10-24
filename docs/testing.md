@@ -75,6 +75,10 @@ After strengthening lifecycle Event-payload validation and validating history be
 
 The four additional parameterized tampering cases cover `stopped_reason`, `operation`, `expected_status`, and `target_status`; another test verifies that a same-Task retry rejects a tampered lifecycle Event instead of replaying it. The follow-up changed no schema or migration, so the migration-path results above are the earlier R5-B verification and were not rerun in this post-fix pass. The persistent `watch` database was not used.
 
+### Database constraint follow-up — pending verification (2026-10-24)
+
+Review of the initial lifecycle migration found that the database constraint did not require `successor_plan_id IS NULL` for stopped Plans whose reason is `abandoned` or `invalidated`. The correction is on branch `r5b-lifecycle-constraint-fix` at `95a1e8e`: migration `0008_plan_lifecycle_state` tightens `ck_plans_lifecycle_state`, and two parameterized regression cases exercise the invalid combinations. **No verification result is recorded yet for this correction.** After syncing the branch, run the migration from `0007` to head and rerun focused lifecycle, focused R5-A regressions, full tests, Ruff, mypy, and `git diff --check` on disposable PostgreSQL. Do not use the persistent `watch` database.
+
 **Unresolved dependency, distinct from the tested behavior above.** No component in the current codebase moves a Task to `done`; `docs/architecture.md` §4 assigns the `running → done` transition to the worker/execution path, which this repository does not implement. The completion-precondition tests therefore exercise durable Task/Event state prepared for the test. Preparing that state is not a delivered capability, and these tests do not demonstrate an end-to-end executable Plan completion. `PLAN.md` records this dependency and its effect on the R5 gate.
 
 ## R5-A failure-oriented verification
