@@ -6,19 +6,14 @@ This file is the **single source of current milestone status**. Other documents 
 
 - **K0, K1, R0, R1, R2, R3:** recorded complete.
 - **R4:** **closed 2026-10-20.** The redesigned multi-perspective Strategy implementation was verified freshly on the live repository (44 focused Strategy tests + full 185-test suite passing, Ruff, `mypy core`, disposable-DB migrations to `0006_immutable_plan_actions`); ADR-0023/ADR-0024 were accepted by explicit operator decision; the phase-boundary merge to `main` was performed. See the R4 closure record below.
-- **R5:** in progress. **R5-A: READY (2026-10-21)** — implementation and verification are recorded at commit `71c7b1d`. **R5-B: READY (2026-10-24, programmer-reported verification; correction integrated into `main` via PR #2 merge commit `435e88f`)** — correction commit `95a1e8e` adds migration `0008_plan_lifecycle_state` to enforce that only a stopped Plan with reason `superseded` may reference a successor. On the checkout at `c99858f` in `r5b-lifecycle-constraint-fix`, the disposable database upgraded from `0007_plan_lifecycle` to `0008_plan_lifecycle_state`; 38 lifecycle tests, 147 R5-A/Strategy regression tests, and 260 full-suite tests passed; Ruff, `mypy core` (11 source files), and `git diff --check` passed. A fresh full-chain migration through `0008` was not rerun; the subsequent `0008 → 0007 → 0008` downgrade/upgrade round trip succeeded on the same disposable database, but schema equivalence after that round trip was not separately compared. Overall R5 remains IN PROGRESS pending the operator's formal exit-gate decision. The missing Task-completion path remains a documented later dependency assigned to R6; it does not remove or weaken the R5 completion preconditions. ADR-0027 remains `Proposed`; R6 is not authorized.
+- **R5: CLOSED 2026-10-24 by explicit operator decision.** **R5-A: READY (2026-10-21)** and **R5-B: READY (2026-10-24, programmer-reported verification)** are integrated into `main`. PR #2 merged the lifecycle-constraint correction (`95a1e8e`) and migration `0008_plan_lifecycle_state` at merge commit `435e88f`; PR #3 merged this closure-record update at `9ba1072`. On the checkout at `c99858f` in `r5b-lifecycle-constraint-fix`, the disposable database upgraded from `0007_plan_lifecycle` to `0008_plan_lifecycle_state`; 38 lifecycle tests, 147 R5-A/Strategy regression tests, and 260 full-suite tests passed; Ruff, `mypy core` (11 source files), and `git diff --check` passed. A fresh full-chain migration through `0008` was not rerun; the subsequent `0008 → 0007 → 0008` downgrade/upgrade round trip succeeded on the same disposable database, but schema equivalence after that round trip was not separately compared. The end-to-end Task-completion path remains assigned to R6; the R5 completion-precondition requirements are unchanged. ADR-0027 remains `Proposed`; R5 closure does not itself authorize R6.
 - **R6+:** future work; not authorized by the existence of code or proposed documents.
 
 The supplied project ZIP has no Git metadata. Before taking repository action, verify branch, HEAD, merge status, and worktree on the actual checkout using `AGENTS.md`.
 
 ## Next actionable step
 
-**Next: record the operator's formal R5 exit decision.** The R5-B lifecycle-constraint correction is integrated into `main` via PR #2, merge commit `435e88f` (source correction `95a1e8e`). Integration does not itself close R5.
-
-1. Review the overall R5 exit criteria and the recorded R5-A/R5-B evidence in this document.
-2. Preserve the migration qualification explicitly: upgrade from `0007` to `0008` and the later `0008 → 0007 → 0008` round trip were reported successful on disposable PostgreSQL; a fresh full-chain installation through `0008` and a schema-equivalence comparison after that round trip were not performed.
-3. Record the Task-completion limitation in accordance with the existing R5 contract: lifecycle completion tests use prepared durable Task/Event state, while the end-to-end path that transitions a Task to `done` remains assigned to R6. This does not weaken R5's requirement that Plan completion be allowed only when its durable preconditions hold.
-4. Keep ADR-0027 `Proposed` unless separately authorized; do not start R6 before formal R5 closure.
+**R5 is formally closed as of 2026-10-24. No subsequent milestone is authorized by this closure.** Before beginning R6 implementation, obtain separate explicit operator authorization and scope the R6 entry gate. R6 owns the end-to-end worker/execution path that transitions Tasks to `done`; R5's durable Plan-completion preconditions remain mandatory. Keep ADR-0027 `Proposed` unless it is separately accepted.
 
 
 ## Milestone overview
@@ -32,7 +27,7 @@ The supplied project ZIP has no Git metadata. Before taking repository action, v
 | R2 | Complete | Durable Objective model and lifecycle. |
 | R3 | Complete | Deterministic, read-only StateAssessment with provenance. |
 | R4 | **Complete** (closed 2026-10-20) | StrategyProposal boundary, multi-Vision/Workstream/Action semantics, deterministic validation and reconstruction. |
-| R5 | **In progress** (operator-authorized 2026-10-20; entry gate READY) | Materialize one accepted Strategy as one durable Plan and ordinary Tasks. |
+| R5 | **Complete — closed 2026-10-24 by explicit operator decision** | Materialize one accepted Strategy as one durable Plan and ordinary Tasks; retain the Task-execution dependency for R6. |
 | R6 | Future | First end-to-end intelligent Control loop. |
 | R7 | Future | Evaluation and learning integration. |
 | R8 | Future | Multi-domain pressure test. |
@@ -87,9 +82,9 @@ The source PLAN records the redesigned implementation at commit `50e288a` on the
 - **Authority resolution:** ADR-0023 (Control layer) and ADR-0024 (Strategy is not TeamPolicy) moved from `Proposed` to `Accepted` by explicit operator decision dated 2026-10-20, recorded in the ADRs. ADR-0025, ADR-0026, and ADR-0027 remain `Proposed` (R5 scope; not required for R4 closure).
 - **Phase boundary:** `docs/refactor` merged into `main` with a merge commit per operator decision, following the repository's `Merge branch '...'` convention. No push was performed.
 
-## R5 — Plan materialization and lifecycle (**in progress**)
+## R5 — Plan materialization and lifecycle (**complete — closed 2026-10-24**)
 
-R5 is deliberately divided into two implementation slices. This split changes the delivery sequence, not the overall R5 contract or exit criteria. **R5 is not complete until both R5-A and R5-B are implemented and verified.**
+R5 was deliberately divided into two required implementation slices. This split changed the delivery sequence, not the overall R5 contract or exit criteria. Both R5-A and R5-B are recorded READY, their correction is integrated into `main`, and the operator's formal R5 closure decision is recorded below.
 
 ### Entry gate — recorded 2026-10-20: READY
 
@@ -144,7 +139,7 @@ The agent reported and committed the following fixes on `R5-rebased`. The commit
 - The agent also reported a fresh disposable PostgreSQL migration run reaching `0006_immutable_plan_actions`, with both immutability triggers present. The report does not state that this migration command was rerun after the implementation commit; the full suite and static checks were explicitly rerun after commit.
 - The implementation includes failure-oriented regression coverage for incomplete/corrupt state and daily quota edge cases.
 
-**R5-A gate: READY (2026-10-21).** This records the completed R5-A slice only. R5 remains in progress until R5-B and all overall R5 exit criteria are satisfied. ADR-0027 remains `Proposed`; this gate does not change its formal status and does not claim any daily monetary/token-cost enforcement.
+**R5-A gate: READY (2026-10-21).** This historical record marks the completed R5-A slice only. At that point, overall R5 remained in progress pending R5-B and the overall exit criteria. ADR-0027 remains `Proposed`; this slice gate does not change its formal status and does not claim any daily monetary/token-cost enforcement.
 
 ### R5-B — Plan Lifecycle Behavior (**required after R5-A**)
 
@@ -197,7 +192,7 @@ Programmer-reported verification on the checkout at `c99858f` in `r5b-lifecycle-
 - `uv run mypy core` — passed, 11 source files.
 - `git diff --check` — clean.
 
-Both `DATABASE_URL` and `TEST_DATABASE_URL` were set to the disposable `watch_r5b_fresh` database; the persistent `watch` database was not targeted. This pass verifies the existing-database upgrade from `0007` to `0008`. A fresh full-chain migration through `0008` was not rerun for this correction. After synchronizing the documentation commits, the programmer successfully downgraded to `0007_plan_lifecycle` and upgraded back to `0008_plan_lifecycle_state` on the same disposable database; schema equivalence was not separately compared. At the time this verification record was written, review/integration and the operator's formal overall R5 gate were still pending. The correction was subsequently integrated into `main` by PR #2, merge commit `435e88f`; R5 remains IN PROGRESS until the operator formally records the overall gate.
+Both `DATABASE_URL` and `TEST_DATABASE_URL` were set to the disposable `watch_r5b_fresh` database; the persistent `watch` database was not targeted. This pass verifies the existing-database upgrade from `0007` to `0008`. A fresh full-chain migration through `0008` was not rerun for this correction. After synchronizing the documentation commits, the programmer successfully downgraded to `0007_plan_lifecycle` and upgraded back to `0008_plan_lifecycle_state` on the same disposable database; schema equivalence was not separately compared. At the time this verification record was written, review/integration and the operator's formal overall R5 gate were pending. The correction was subsequently integrated into `main` by PR #2, merge commit `435e88f`; the operator later formally closed R5 on 2026-10-24, as recorded below.
 
 
 #### Task-completion dependency — recorded, not resolved in R5
@@ -208,7 +203,22 @@ This does not change the R5 exit criteria. `PLAN.md` "Overall R5 exit criteria" 
 
 #### R5 status after R5-B
 
-The R5-A implementation and the R5-B lifecycle implementation, including the `0008_plan_lifecycle_state` database-constraint correction, have passed the recorded focused/full tests and static checks on the corrective branch. The migration upgrade from `0007` to `0008` was verified on disposable PostgreSQL. The correction is integrated into `main` by PR #2, merge commit `435e88f`; the operator's formal exit decision remains pending. **R5 remains IN PROGRESS** until the formal gate is recorded. The missing Task-completion path remains a documented dependency assigned to the later execution milestone under the current R5 exit-criteria interpretation. ADR-0027 remains `Proposed`, and R6 is not authorized.
+The R5-A implementation and the R5-B lifecycle implementation, including the `0008_plan_lifecycle_state` database-constraint correction, have passed the recorded focused/full tests and static checks on the corrective branch. The migration upgrade from `0007` to `0008` was verified on disposable PostgreSQL. The correction is integrated into `main` by PR #2, merge commit `435e88f`. The operator formally approved R5 closure on 2026-10-24; the closure record below preserves the verification qualifications and Task-execution dependency. ADR-0027 remains `Proposed`, and R6 is not authorized.
+
+#### Formal R5 closure record — 2026-10-24
+
+**Decision:** The operator explicitly approved closing R5, with the Task-execution dependency retained for R6. R5 is CLOSED as of 2026-10-24. This is a milestone-gate decision, not acceptance of ADR-0027 or authorization to start R6.
+
+**Exit-gate basis:**
+
+- R5-A is recorded READY for Plan materialization, reconstruction, integrity, prerequisite admission, quota, atomicity, idempotency, concurrency, immutability, and provenance.
+- R5-B is recorded READY for Plan lifecycle transitions, terminal-state protection, durable completion preconditions, stop/supersession rules, Event validation, reconstruction, concurrency, and rollback behavior. The database constraint correction was integrated through PR #2 (merge `435e88f`), and the documentation/closure record was integrated through PR #3 (merge `9ba1072`).
+- Programmer-reported verification on disposable PostgreSQL: 38 lifecycle tests, 147 focused R5-A/Strategy regression tests, and 260 full-suite tests passed; `ruff check .`, `mypy core` (11 source files), and `git diff --check` passed. This record preserves those results as reported; they were not independently rerun during closure documentation.
+- Migration qualification: upgrading an existing disposable database from `0007_plan_lifecycle` to `0008_plan_lifecycle_state` and the later `0008 → 0007 → 0008` round trip were reported successful. A fresh full-chain installation through `0008` was not rerun, and schema equivalence after the downgrade/upgrade round trip was not separately compared.
+
+**Task-execution dependency retained for R6:** The current repository has no worker/execution path that transitions a Task to `done`; R5-B completion tests therefore use durable Task/Event state prepared for the test. R5 verified that Plan completion is allowed only when its required durable preconditions hold. Delivering the end-to-end Task execution path remains R6 work and is not claimed as completed by R5.
+
+**Decision boundaries:** ADR-0027 remains `Proposed`. R5 closure does not itself authorize R6; a separate operator authorization and R6 entry-gate review are required.
 
 
 ### Daily quota semantics and authority
