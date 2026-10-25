@@ -79,7 +79,7 @@ Prefer one injectable source-fetch interface, a fake fetcher in tests, and a pro
 
 Define the first supported Outcome kind, subject and Team ownership, source/provenance requirements, Task write scope, transaction boundary, event semantics, idempotency, and crash/replay behavior. Decide whether Outcome persistence is part of the application-controlled final completion transaction or a separate scoped Task operation. Preserve the historical StateAssessment basis used by the originating Strategy/Plan; a follow-up assessment must be deterministic and read-only.
 
-### G0-D5 — Knowledge-core source of truth and RAG contract (ADR-0028)
+### G0-D5 — Knowledge-core source of truth and RAG contract ([ADR-0028](../decisions/ADR-0028-rag-backed-knowledge-cores.md))
 
 Decide:
 - Which canonical records make up the initial Domain Knowledge Core and which accepted records make up the Team Experience Core.
@@ -91,7 +91,7 @@ Decide:
 
 The retrieval index must remain regenerable and non-authoritative. A vector match alone is not proof of a claim. Corrections, supersession, rejection, retirement, or access changes must prevent stale or unauthorized indexed content from being treated as current. Existing source/quote validation remains in force.
 
-### G0-D6 — LLM-assisted experience distillation (ADR-0029)
+### G0-D6 — LLM-assisted experience distillation ([ADR-0029](../decisions/ADR-0029-llm-assisted-experience-distillation.md))
 
 Define the first distillation input and output contract:
 - Inputs are durable experience records, Outcomes, applicable Evaluations, and referenced evidence—not an unbounded conversation transcript.
