@@ -2,11 +2,12 @@
 
 ## Status and authority
 
-- **R6-G0: IN PROGRESS.** The operator authorized R6 entry-gate planning on 2026-10-24 and approved revising the design direction on 2026-10-25.
-- **No R6 implementation slice has started or is authorized by this document change.** This is a documentation/design revision only. No application code, schema, migrations, providers, vector indexes, or runtime behavior are changed here.
-- **ADR-0028 and ADR-0029 are Accepted for architectural principles only**, based on the operator's explicit agreement with the design direction on 2026-10-25. Their concrete implementation choices remain unresolved R6-G0 decisions. This acceptance does not authorize implementation.
-- Repository baseline after merge of PR #7 and subsequent main update: remote GitHub main at 9eb01aa0e9b5bad3289b131cce51b29d33a3986c (2026-10-25). This is not evidence of the operator's current local branch, HEAD, or worktree. Verify the actual local checkout before implementation.
-- R5 remains formally closed. Its Plan materialization, lifecycle, prerequisite, provenance, and completion-precondition requirements remain mandatory. The end-to-end Task-execution dependency remains assigned to R6. ADR-0027 remains Proposed unless separately accepted.
+- **R6-G0 design decisions: RECORDED.** The operator explicitly requested resolution of the remaining G0 decisions on 2026-10-25. The accepted records are ADR-0025, ADR-0026, ADR-0028, ADR-0029, and ADR-0030.
+- **R6-G0 milestone status remains IN PROGRESS.** The actual local checkout preflight has not been recorded, and this documentation decision does not itself authorize R6-A or any implementation.
+- **ADR-0027 remains Proposed.** Its Task-start quota semantics are separate; this decision record neither accepts that ADR nor changes quota behavior.
+- Current GitHub main baseline for this decision set: `44c0944720600f8a1d4018d4eb39424a9660168e` (PR #8 merge). This is not evidence of the operator's local branch, HEAD, worktree, or database state.
+- R5 remains formally closed. Its immutable Plan, prerequisite, provenance, lifecycle, completion-precondition, and single-runtime constraints remain mandatory.
+- Current implementation gaps remain real: TaskRuntime admits Tasks but does not dispatch/finalize work; configured-source fetch is absent; Outcome/Evaluation/KnowledgeItem/LearningChange persistence and RAG Context assembly/distillation are not implemented in the current ORM/migrations baseline. This record changes no code, schema, migration, provider, network, index, or runtime behavior.
 
 ## 1. Revised R6 purpose
 
@@ -55,74 +56,47 @@ RAG is the retrieval mechanism across these logical layers. A single physical in
 - There is no model-backed Strategy proposer established by this baseline.
 - The production model provider, embedding/reranking choices, index implementation, freshness mechanics, and detailed context-packet persistence semantics are not selected by this proposal.
 
-## G0 recommendation packet
+## 3. R6-G0 — resolved decisions and exit boundary
 
-See [R6-G0 Decision Proposals](r6-g0-decision-proposals.md) for a concrete recommendation per unresolved decision, grounded in the current code/spec baseline. That document is advisory only: no ADR has been accepted by implication, and operator decisions must be recorded explicitly in the relevant ADR/spec before the gate can exit.
+The concrete G0 decisions are recorded in the following authorities. The decision packet is a summary and navigation aid, not a competing specification.
 
-## 3. R6-G0: required decisions before implementation
+| Decision | Recorded disposition | Governing authority |
+|---|---|---|
+| G0-D1 — Control authority | Accept ADR-0025 and ADR-0026 unchanged. Keep ADR-0027 Proposed and separate. | ADR-0025, ADR-0026, ADR-0027 |
+| G0-D2 — Task lifecycle/recovery | One TaskRuntime lifecycle authority; three total starts; attempt-number fencing; bounded interrupted-task recovery; atomic terminal Event + Outcome. | ADR-0030; `docs/tasks.md` |
+| G0-D3 — Source-fetch security | One configured-source HTTPS fetcher; no redirects; public-address/DNS-rebinding defenses; finite time/size limits; fake fetcher in tests. | ADR-0030 |
+| G0-D4 — Outcome | One terminal `task_execution` Outcome per Task, backed by immutable observation Snapshot and committed atomically with terminal Task state/Event. | ADR-0030; `docs/architecture.md` |
+| G0-D5 — Knowledge/RAG | Initial Domain Knowledge is Signal + immutable source Snapshot; accepted Team KnowledgeItems are Experience Core; PostgreSQL full-text + pgvector hybrid retrieval; bounded, immutable Context provenance; stale/unauthorized candidates fail closed. | ADR-0028 |
+| G0-D6 — Distillation | Typed, evidence-linked LearningChange; two evaluated Tasks for cross-case abstractions; one-case practice stays narrow/low-confidence; explicit operator review; only current accepted versions are retrievable. | ADR-0029 |
+| G0-D7 — Providers | Provider-neutral interfaces and deterministic fakes. Defer embedding provider/model choice until immediately before R6-D and generation provider/model until immediately before R6-E. Those choices must be recorded before their respective slices. | ADR-0028, ADR-0029, `PLAN.md` |
+| G0-D8 — First acceptance fixture | Domain-neutral implementation tested with a small fictional newsroom/scientific-reporting fixture, including conflicting evidence, Team isolation, rejection, stale index, and crash/replay cases. No external network/model calls in the deterministic acceptance suite. | This gate; `docs/testing.md` |
 
-R6-G0 remains open until the decisions below are recorded in authoritative documents and the first vertical-slice contract is testable. Recommendations are not accepted decisions.
+The accepted architectural loop remains:
 
-### G0-D1 — Existing Control decisions and authority
+Domain Knowledge + accepted Team Experience → bounded RAG Context → validated Strategy → immutable Plan + ordinary Tasks → bounded worker execution → durable Outcome → deterministic reassessment → evidence-linked distillation proposal → authorized learning commit → current retrieval projection → later Task reuse.
 
-Review and explicitly decide ADR-0025 (Plan is derived execution state) and ADR-0026 (dual-entry execution model). ADR-0027 also remains Proposed and must not be treated as accepted by implication.
+RAG rank is not truth; LLM output is never authority for durable writes. Team memory changes only through INV-12's learning path. The first slice does not introduce a second runtime, a general scheduler, arbitrary tools, automated TeamPolicy changes, or recursive self-modification.
 
-Preserve these established R5/R6 boundaries: Plan is immutable intent; Tasks, Events, source records, and Outcomes describe execution; reactive and deliberative entry paths converge on ordinary Tasks; no second runtime; Task and Plan safeguards remain in force.
+### First integrated acceptance contract
 
-### G0-D2 — Task lifecycle and recovery
+The deterministic end-to-end fixture must demonstrate all of the following before R6-G completion:
 
-Choose one application-controlled owner for successful completion, retryable failure, exhausted failure, attempt semantics, timestamps, Task-attributed Events, idempotency, and replay recovery. Extend TaskRuntime or define a narrowly scoped lifecycle service used by the same runtime. Worker code must not write Task lifecycle state or Events directly.
+1. Ingest configured HTTPS source fixtures into canonical Signal/Snapshot records, without arbitrary URL selection.
+2. Retrieve relevant Domain Knowledge with the approved hybrid strategy; prove source authorization, Team/domain isolation, canonical hash/status checks, and the 8,000-character Context limit.
+3. Persist a content-addressed Context Snapshot and Task-attributed manifest with canonical references and retrieval configuration.
+4. Use a fake StrategyProposer. A valid proposal passes the existing validator and preserves accepted provenance before one immutable Plan creates ordinary Tasks; a rejected proposal creates no Plan.
+5. Execute through the single Task runtime. Test unsafe-host rejection, no redirects, response limits, transient retry, three-start exhaustion, and a crash after ingestion commit but before terminal finalization without duplicate Signal/Event/Outcome records.
+6. Record exactly one terminal `task_execution` Outcome with its Snapshot and finalize Task status/Event atomically; reproduce deterministic follow-up StateAssessment from the same durable state.
+7. Feed at least two independently evaluated Task Outcomes, plus a contrasting case, to a deterministic fake distiller. Validate the typed proposal and its basis hash. A one-case candidate may only be a narrowly scoped low-confidence practice.
+8. Reject a LearningChange and prove it is not retrievable; separately accept one through the authorized learning path and prove only that current canonical version is eligible.
+9. Retrieve the accepted Team Experience in a later Task without using the previous transcript. Exercise stale-index exclusion and rebuild after a canonical version/status change.
+10. Inject provider, transaction, projection, and replay failures; verify canonical writes remain atomic and index failure never pretends to accept or publish knowledge.
 
-### G0-D3 — First executable capability and network boundary
+**Frozen initial limits:** three total Task starts per Task; 30-second worker deadline; recover an orphaned running Task after 60 seconds with attempt-number fencing; source connect/read/total timeouts of 3/10/15 seconds; 2 MiB decompressed response ceiling; no redirects; maximum eight retrieved passages and 8,000 Unicode characters of retrieved knowledge. Production embedding and generation providers are deliberately staged to R6-D and R6-E, respectively.
 
-The first worker remains a bounded configured-source ingest_source Task. Define permitted URL schemes; validation of configured and resolved destinations; private, loopback, link-local, and metadata-service protections; redirect revalidation; connection/read timeouts; response-size limits; malformed responses; HTTP failures; and cancellation behavior.
+### Explicitly deferred
 
-Prefer one injectable source-fetch interface, a fake fetcher in tests, and a production fetcher restricted to approved configured sources. Do not expose arbitrary model-chosen URLs, shell, or general filesystem access.
-
-### G0-D4 — Outcome and reassessment contract
-
-Define the first supported Outcome kind, subject and Team ownership, source/provenance requirements, Task write scope, transaction boundary, event semantics, idempotency, and crash/replay behavior. Decide whether Outcome persistence is part of the application-controlled final completion transaction or a separate scoped Task operation. Preserve the historical StateAssessment basis used by the originating Strategy/Plan; a follow-up assessment must be deterministic and read-only.
-
-### G0-D5 — Remaining implementation choices for Knowledge Cores and RAG ([ADR-0028](../decisions/ADR-0028-rag-backed-knowledge-cores.md))
-
-Decide:
-- Which canonical records make up the initial Domain Knowledge Core and which accepted records make up the Team Experience Core.
-- Whether the first slice needs a distinct durable context-core/brief entity or can derive the view from existing canonical records; do not add entities for convenience.
-- Retrieval scoping and authorization by Team/domain, knowledge layer, entity kind, current status, and sensitivity.
-- Retrieval/index design, including keyword/vector or hybrid matching, embedding model/version, optional reranking, context budget, freshness, re-indexing, and failure behavior.
-- How retrieved candidates are resolved back to current canonical records and how source Snapshots, hashes, statuses, and conflicting claims are represented in the Context.
-- Whether and how the selected context basis is durably recorded so a Strategy/Outcome can be explained and reconstructed later.
-
-The retrieval index must remain regenerable and non-authoritative. A vector match alone is not proof of a claim. Corrections, supersession, rejection, retirement, or access changes must prevent stale or unauthorized indexed content from being treated as current. Existing source/quote validation remains in force.
-
-### G0-D6 — Remaining implementation choices for experience distillation ([ADR-0029](../decisions/ADR-0029-llm-assisted-experience-distillation.md))
-
-Define the first distillation input and output contract:
-- Inputs are durable experience records, Outcomes, applicable Evaluations, and referenced evidence—not an unbounded conversation transcript.
-- The LLM proposes an abstraction that explains its supporting cases, scope/applicability, assumptions, limitations, counterexamples, and unresolved uncertainty.
-- The first vocabulary should align with the existing KnowledgeItem kinds: practice, pattern, method, and playbook, subject to the actual schema and accepted authority.
-- A proposal must retain provenance to its basis and must not convert correlation or a single successful case into unsupported general truth.
-- Application validation and the existing authorized learning commit path govern persistence. The LLM does not directly create or revise KnowledgeItems or TeamPolicy.
-- The accepted version, supersession/review behavior, and the point at which it becomes retrievable must be explicit. Only accepted canonical knowledge is published to retrieval; the index itself is not a commit path.
-- The first R6 vertical slice should use a bounded, reviewable approval path. No autonomous policy changes, recursive self-modification, or automatic acceptance merely because a Task succeeded.
-
-### G0-D7 — Strategy proposer and model-provider boundary
-
-Define a narrow StrategyProposer interface that consumes the objective, deterministic assessment, policy constraints, and approved assembled Context. Provider calls occur outside database transactions. All model output passes existing Strategy validation and accepted-event provenance before Plan materialization. Select the production provider or explicitly stage that choice; do not add a dependency, credential path, or provider network behavior by assumption.
-
-### G0-D8 — First end-to-end acceptance contract
-
-Freeze the first test domain, seed/context setup, allowed source capability, first Outcome type, distillation basis, approval path, and deferred scope. The first integrated success should demonstrate:
-
-- A Strategy proposal is grounded in a recorded, bounded RAG Context and is accepted through the existing validator.
-- One accepted Strategy materializes one immutable Plan and ordinary Task(s).
-- A bounded configured-source Task executes through the single runtime, with safe fetch rules and idempotent recovery.
-- Durable execution evidence and an Outcome support a reproducible follow-up StateAssessment.
-- An LLM proposes an evidence-linked reusable abstraction from that experience.
-- The authorized learning path accepts or rejects it explicitly; rejected or unapproved knowledge is not published as accepted retrieval context.
-- A subsequent task can retrieve an accepted abstraction, resolve its canonical provenance, and use it without relying on the prior transcript.
-
-Broader scheduling, multiple worker types, arbitrary tools, autonomous policy changes, general replanning, multi-domain automation, and large-scale learning-quality optimization remain outside the first vertical slice.
+No production provider/SDK or credentials path before its slice; no external reranker or separate vector service; no arbitrary URLs, redirect following, PDFs, shell, or general-purpose tools; no additional World-memory entity families unless the first slice proves them necessary; no unattended learning acceptance, direct TeamPolicy mutation, autonomous policy learning, or general multi-domain automation.
 
 ## 4. Proposed implementation traversal after G0 exits
 
@@ -186,16 +160,18 @@ Run required focused and full-suite tests, Ruff, mypy, and applicable disposable
 - Use disposable databases for tests; never modify the persistent watch database to make tests pass.
 - PLAN.md remains the single source of current milestone status; update CHANGE_MAP.md when authority mapping changes.
 
-## 6. G0 exit checklist
+## 6. G0 decision checklist and remaining implementation prerequisite
 
-- [ ] Explicit operator disposition recorded for ADR-0025 and ADR-0026.
-- [ ] Task completion, failure, retry, attempt, Event, timestamp, and recovery contract agreed.
-- [ ] Bounded ingest_source behavior and network-safety contract agreed.
-- [ ] Outcome schema/scope/provenance/transaction/replay semantics agreed.
-- [ ] ADR-0028's remaining implementation choices are explicitly decided: canonical record types, retrieval approach/model versions, Context-basis representation, scope/permissions, freshness, rebuild, and recovery.
-- [ ] ADR-0029's remaining implementation choices are explicitly decided: first proposal schema, evidence/counterexample handling, review/approval mechanics, versioning, and retrieval publication boundary.
-- [ ] StrategyProposer interface and production provider decision recorded, or provider choice explicitly deferred with a bounded fake-backed implementation scope.
-- [ ] First integrated acceptance tests, first domain, review path, failure/recovery cases, and deferred scope frozen.
-- [ ] Actual local branch, HEAD, merge status, worktree, and disposable database verified before implementation.
+- [x] ADR-0025 explicitly accepted unchanged.
+- [x] ADR-0026 explicitly accepted unchanged.
+- [x] ADR-0027 explicitly remains Proposed; no quota status change.
+- [x] Task lifecycle, retry limit, expected-attempt fencing, timestamps, Events, and interrupted-task recovery recorded in ADR-0030.
+- [x] Bounded configured-source behavior and network-safety limits recorded in ADR-0030.
+- [x] Terminal Outcome shape, provenance, uniqueness, transaction, and replay rules recorded in ADR-0030.
+- [x] Initial canonical Knowledge Core inputs, PostgreSQL hybrid retrieval, scope/access filters, Context Snapshot/manifest, bounds, freshness, and rebuild behavior recorded in ADR-0028.
+- [x] Distillation proposal fields, evidence rule, review/commit, versioning, and publication boundary recorded in ADR-0029.
+- [x] Provider choices intentionally staged: embedding provider/model before R6-D; generation provider/model before R6-E.
+- [x] First deterministic acceptance fixture and success, rejection, failure, and replay contract recorded above.
+- [ ] **Before implementation:** verify actual local branch, HEAD, merge status, worktree, current migrations, and disposable PostgreSQL database using `AGENTS.md`. The remote branch or a documentation export is not local preflight evidence.
 
-Until this checklist is satisfied, keep R6-G0 in progress. This documentation redesign does not start R6-A or authorize schema, network, provider, index, or lifecycle implementation.
+**Gate status:** all design decisions requested for G0 are recorded, but R6-G0 remains **IN PROGRESS** until actual local preflight is documented. This PR does not authorize implementation. R6-A requires a separate explicit operator instruction after this decision record is integrated and local preflight has passed.
