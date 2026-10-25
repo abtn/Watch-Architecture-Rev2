@@ -111,3 +111,23 @@ A Strategy-level Action count is not the same concept as a team-wide daily Task-
 - Human/operator actions pass the same applicable validation and commit gates as worker-generated proposals.
 - If a Task can express the needed work, do not add a new runtime entity for convenience.
 - Use `PLAN.md` to determine phase status and authorization. This model does not close a milestone by itself.
+
+## 9. Proposed R6 direction: RAG-backed context and experience distillation
+
+This is a **proposed design direction for R6-G0**, not a statement that the capability is implemented or that the related ADRs are accepted. See [ADR-0028](decisions/ADR-0028-rag-backed-knowledge-cores.md), [ADR-0029](decisions/ADR-0029-llm-assisted-experience-distillation.md), and the [R6 entry gate](development/r6-entry-gate.md).
+
+Watch should distinguish three logical roles:
+
+- **Domain Knowledge Core:** what the team knows about a subject, grounded in canonical source records, claims or hypotheses, evidence, provenance, uncertainty, and current status.
+- **Team Experience Core:** what the team has learned from doing the work, represented by accepted, versioned practices, patterns, methods, and playbooks.
+- **Task Context:** a bounded, derived assembly of relevant retrieved records, current authoritative state, objective, policy constraints, and source/version references for one task.
+
+RAG retrieves candidate material from these logical cores. A retrieval index may share physical infrastructure across cores, but it must preserve Team/domain scope, permissions, record kind, acceptance/status, and provenance. Indexes, embeddings, summaries, and rankings are regenerable projections. A retrieval match cannot establish truth or authorize a write; the application resolves candidates to current canonical records and existing validation/commit rules still apply.
+
+The proposed experience loop is:
+
+**durable execution and evidence → Outcome/Evaluation → LLM-proposed abstraction → application validation and authorized learning commit → accepted canonical knowledge → retrieval for later work.**
+
+Distillation means abstracting reusable experience—not saving transcripts or merely summarizing a run. Proposed abstractions must retain their evidence basis, scope/applicability, limitations, uncertainty, and counterexamples where available. A model cannot directly commit team knowledge or TeamPolicy. The R6 G0 gate must define the first bounded contract and recovery/approval behavior before implementation.
+
+This direction does not change the Control/Task boundary: deliberative proposals still pass Strategy validation; accepted Plans still materialize ordinary Tasks; reactive work remains valid without a Plan; and both entry paths use one runtime.
