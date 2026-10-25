@@ -13,7 +13,7 @@ This file identifies the active source for each concern. It is an index, not a s
 | StateAssessment | `docs/control-model.md`, `core/state_assessment.py`, tests | Derived, read-only, deterministic, non-authoritative; preserve decision-basis provenance. |
 | StrategyProposal, Vision, Workstream, Action | `docs/control-model.md`, ADR-0023/0024, `docs/tasks.md` | Acceptance means deterministic legality, not strategic wisdom. Exact accepted structure/provenance must be reconstructable. |
 | Plan, lifecycle, and Action prerequisites | `docs/control-model.md`, ADR-0025/0026, `docs/tasks.md`, `core/plans.py`, `core/task_runtime.py`, `migrations/versions/0007_plan_lifecycle.py`, `migrations/versions/0008_plan_lifecycle_state.py`, tests | Plan intent is immutable; R5-B lifecycle changes use the scoped `transition_plan` Task operation; Events record each transition. Dependencies are enforced by existing admission. |
-| R6 entry gate and execution-path traversal | [`PLAN.md`](PLAN.md), [`docs/development/r6-entry-gate.md`](docs/development/r6-entry-gate.md), `docs/control-model.md`, `docs/tasks.md`, relevant ADRs | G0 is in progress by explicit operator authorization. Resolve Task lifecycle, source-network safety, Outcome persistence, and Strategy proposer decisions before R6-A implementation; preserve one runtime and all R5 safeguards. |
+| R6 knowledge-grounded loop and entry gate | [`PLAN.md`](PLAN.md), [`docs/development/r6-entry-gate.md`](docs/development/r6-entry-gate.md), `docs/control-model.md`, `docs/tasks.md`, ADR-0025/0026 and proposed ADR-0028/0029 | R6-G0 remains in progress; implementation has not started. Resolve Task lifecycle, safe source execution, Outcome provenance, RAG-backed Knowledge Cores, Context assembly, experience distillation, learning commit/index-publication boundaries, and the first integrated acceptance contract before R6-A. Preserve one runtime and all R5 safeguards. |
 | Task types, write scopes, commit rules, budgets | [`docs/tasks.md`](docs/tasks.md) | The Task matrix is the operative scope contract; do not infer extra scope from prose. |
 | Architectural invariants | [`docs/invariants.md`](docs/invariants.md) | Normative constraints; use PLAN, code, and tests to determine which are implemented in the current phase. |
 | Domain-pack boundary | [`docs/domains.md`](docs/domains.md), ADR-0016 | Packs cannot extend the Kernel. |
@@ -21,6 +21,12 @@ This file identifies the active source for each concern. It is an index, not a s
 | Testing | [`docs/testing.md`](docs/testing.md), `pyproject.toml`, test fixtures | Verify only the stated command/environment and report skipped checks. |
 | Reasons behind decisions | [`docs/decisions.md`](docs/decisions.md), full ADRs in `docs/decisions/` | A `Proposed` ADR is not an accepted decision. |
 | Workflow-validation evidence | `docs/development/workflow-validation.md` | Append-only history, read only when validating the development process or when a task requires its evidence. |
+
+## Proposed R6 knowledge direction (not accepted authority)
+
+- **RAG-backed Knowledge Cores:** ADR-0028 (Proposed) governs the design proposal for Domain Knowledge Core, Team Experience Core, derived Task Context, traceable retrieval, access/status filtering, and regenerable indexes. Canonical records—not retrieval rank or embeddings—remain authoritative.
+- **LLM-assisted experience distillation:** ADR-0029 (Proposed) governs the design proposal for turning durable experience into evidence-linked reusable abstractions through controlled validation and the authorized learning commit path.
+- The R6 entry gate in `docs/development/r6-entry-gate.md` owns the unresolved decisions and acceptance criteria. These proposals do not authorize implementation or imply that the concepts are already implemented.
 
 ## Revision 2 concepts
 
