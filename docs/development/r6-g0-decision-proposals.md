@@ -27,7 +27,7 @@ Governing records:
 
 ## Initial canonical-data and retrieval boundaries
 
-The Domain Knowledge Core initially reads canonical Signal records and immutable source Snapshots (`snapshot_ref`, `content_hash`). Signals are not Team-owned in the current ORM; initial retrieval is authorized against the requesting Team's current configured-source allowlist and filtered by Team/domain before model exposure. If authorization or canonical provenance cannot be resolved, fail closed.
+The Domain Knowledge Core initially reads canonical Signal records and immutable source Snapshots (`snapshot_ref`, `content_hash`). Signals are not Team-owned in the current ORM; initial retrieval is authorized against the requesting Team's current `TeamPolicy.rules["sources"]` allowlist using exact `(origin_url, source_type)` pairs, then filtered by Team/domain before model exposure. If authorization or canonical provenance cannot be resolved, fail closed.
 
 The Team Experience Core contains only accepted, versioned KnowledgeItems committed through the authorized learning path. Proposed/rejected LearningChanges, retired or superseded items, and items marked `needs_review` or past their review date are excluded. Do not implement every conceptual World-memory entity in the first slice.
 
