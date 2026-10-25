@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted — architectural principles only, 2026-10-25, by explicit operator agreement with the LLM-assisted Experience Distillation design.** This acceptance does not authorize implementation. The first schema/output contract, evidence threshold, approval workflow, versioning policy, and retrieval-publication details remain within R6-G0.
+**Accepted — architectural principles and initial R6 implementation contract, 2026-10-25, under the operator's explicit request to resolve the remaining R6-G0 decisions.** This records design authority only; no implementation is authorized.
 
 ## Context
 
@@ -36,7 +36,7 @@ The intended first pipeline is:
 3. **Evaluation:** assess the Outcome and relevant work using the recorded evidence. An Evaluation is itself a proposal until validated and recorded; it is not an oracle.
 4. **Distillation proposal:** an LLM receives the bounded, traceable basis and proposes an abstraction, including its applicable situation, assumptions/preconditions, supporting cases, counterexamples or contradictions, known limitations, uncertainty, and references to the basis.
 5. **Validation:** application code validates the proposal schema, Team ownership, basis references, evidence and version preconditions, allowed write scope, and policy requirements. A model cannot validate its own authority to commit.
-6. **Learning commit:** accepted changes go through the existing authorized LearningChange/learning commit path. The model does not write KnowledgeItem or TeamPolicy records directly. Where approval or policy authorization is required, the existing rule governs; G0 must resolve any ambiguity before implementation.
+6. **Learning commit:** accepted changes go through the authorized LearningChange/learning commit path. For the first R6 slice, every LearningChange is explicitly reviewed by an operator through `approve_learning_change`; a model cannot approve its own proposal. The first slice does not authorize TeamPolicy changes. The model does not write KnowledgeItem or TeamPolicy records directly.
 7. **Publication for reuse:** only accepted canonical knowledge becomes eligible for RAG indexing. Indexing is a regenerable projection and is not the learning commit itself. Subsequent Tasks retrieve the accepted version through ADR-0028's Context path.
 
 ### 3. Guard against overgeneralization
@@ -79,26 +79,36 @@ RAG helps retrieve knowledge for the current Task; distillation proposes new reu
 - **Have a second model act as final authority for durable learning:** rejected. Another model's judgment is still a proposal and cannot replace application validation or operator approval where required.
 - **Automatically modify policy or the Kernel from a distilled lesson:** rejected. TeamPolicy and Kernel authority remain separate from learned domain practices, and no recursive self-modifying runtime is introduced.
 
-## Implementation decisions remaining for R6-G0
+## Initial proposal, evidence, review, and publication contract
 
-- Which durable records and Outcome/Evaluation types are the required input to the first distillation?
-- What is the minimum acceptable evidence basis, and how can a single-case lesson be represented narrowly without being presented as a general rule?
-- Which output fields and evidence-reference format are needed for the initial KnowledgeItem/LearningChange schema?
-- Which learning changes require operator approval, and how does the first slice expose accept/reject/revise outcomes?
-- How are versions, supersession, review/expiry, and retrieval eligibility represented?
-- What constitutes a conflicting case, and how should it affect a proposed abstraction?
-- How is successful later reuse recorded so R7 can evaluate whether the abstraction helped?
-- What idempotency key or durable event boundary prevents replay from creating duplicate learning proposals or accepted versions?
+The first distillation operation reads durable Task Events, terminal `task_execution` Outcomes, recorded Evaluations, and their canonical Signal/Snapshot evidence. It never uses an unbounded transcript as its evidence basis.
 
-## Acceptance criteria for a future implementation
+A proposed `LearningChange.proposed_state` must validate against this logical payload before commit:
 
-- Given durable experience and an evidence basis, an LLM can propose a typed abstraction with applicable context, limitations, uncertainty, and source references.
-- Invalid, missing, cross-Team, stale-version, or unsupported evidence references are rejected by application validation.
-- A model cannot commit its own proposed abstraction or alter TeamPolicy directly.
-- Counterexamples and uncertainty remain representable; the implementation does not infer causation or universal validity solely from recurrence or success.
-- Acceptance/rejection is durable, auditable, versioned, and idempotent under retry/replay.
-- Only accepted canonical knowledge is made eligible for retrieval, and its retrieval provenance resolves to the accepted version.
-- A later Task can retrieve and use an accepted abstraction without relying on the prior model transcript.
-- Tests cover failure, rejection, conflict, duplicate/replay, and index-update recovery paths.
+- `kind`: `practice`, `pattern`, `method`, or `playbook`;
+- `title`, `statement`, and `body`;
+- `applicability` and preconditions/task class;
+- assumptions, limitations, missing information, uncertainty, and known counterexamples;
+- references to supporting Outcome IDs, Evaluation IDs, canonical Signal IDs and Snapshot hashes;
+- references to contrary/disconfirming records where present;
+- a deterministic hash/version of the complete evidence basis.
 
-These criteria describe the accepted architectural target, not completed tests or current capabilities.
+These fields belong to the proposed state and evidence references; they do not imply that every field needs a new column. The minimum `KnowledgeItem` and `LearningChange` schema must follow the architecture fields and existing learning-commit path, not a parallel memory subsystem.
+
+**Evidence rule:** two independently recorded Outcomes from distinct Task IDs, with corresponding recorded Evaluations, are required before an abstraction is represented as a cross-case Pattern, Method, or Playbook. That threshold permits a proposal; it does not prove causation or universal transfer. A single case may only motivate a narrowly scoped `practice` candidate, explicitly marked low confidence and tied to its exact situation; it must not be described as a general rule. Counterexamples and conflicting evidence must be preserved, not averaged away. If no counterexample is known, say it was not observed in the available basis rather than claiming none exists.
+
+**Review and commit:** every first-slice LearningChange is reviewed explicitly by an operator using the authorized `approve_learning_change` path. The model cannot accept its own proposal. Application validation checks Team ownership, every referenced record/hash, evidence rule, current target version, status, allowed Task scope, and concurrency. Acceptance/rejection and any committed KnowledgeItem version are durable and attributable; replay cannot create a second accepted version. No R6-F distillation write may change TeamPolicy.
+
+**Versioning:** accepted changes create an auditable version. The prior state is retained in LearningChange history; only the current accepted `active` version that has not reached `review_after` is eligible for Team Experience retrieval. `needs_review`, retired, rejected, proposed, or superseded material is excluded.
+
+**Publication:** canonical learning commit is independent from its retrieval projection. If indexing fails, keep the canonical decision and record projection staleness; do not advertise the new version as retrievable. Retrieval must verify the current canonical version/status/hash before sending content to a model. Projection retry/rebuild is idempotent and does not create or accept knowledge.
+
+## Acceptance criteria for implementation
+
+- Missing, mismatched, cross-Team, stale, or unauthorized evidence references are rejected by application validation.
+- A single success cannot become a generalized Pattern, Method, or Playbook. A one-case practice is clearly narrow and low confidence.
+- Conflicts, contrary evidence, uncertainty, and applicability limits remain inspectable.
+- Operator rejection and acceptance are durable; replay cannot duplicate a proposal commit or version.
+- Only the accepted current canonical version is eligible for retrieval; failed/stale publication never claims that the new version is already available.
+- No distillation result can alter TeamPolicy, bypass INV-12, or write directly from the LLM to Team memory.
+

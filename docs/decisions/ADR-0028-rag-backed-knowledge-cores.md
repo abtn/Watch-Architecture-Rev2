@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted — architectural principles only, 2026-10-25, by explicit operator agreement with the RAG-backed Knowledge Core design.** This acceptance does not authorize implementation. Retrieval-store selection, embedding/reranking choices, canonical input types, Context-basis persistence, freshness mechanics, and other concrete implementation choices remain within R6-G0.
+**Accepted — architectural principles and initial R6 implementation contract, 2026-10-25, under the operator's explicit request to resolve the remaining R6-G0 decisions.** This records design authority only; no implementation is authorized.
 
 ## Context
 
@@ -48,7 +48,7 @@ A retrieved result is relevant material to inspect, not a verified fact. The und
 
 ### 4. Initial implementation boundary
 
-R6 should begin with one bounded Team/domain and a small, auditable retrieval flow. It should be possible to use a single physical index while maintaining separate logical retrieval filters for Domain Knowledge and accepted Team Experience. The initial keyword/vector/hybrid strategy, embedding model, optional reranking, persistence of a Context manifest, index freshness mechanism, and concrete index storage are open G0 choices; this ADR does not select a provider or mandate a schema.
+**Initial retrieval decisions:** use the existing PostgreSQL database with its enabled pgvector extension; do not add a separately operated vector service or reranker for the first slice. Use hybrid PostgreSQL full-text and vector retrieval, combine the top 20 candidates from each channel with reciprocal-rank fusion (RRF, k=60), then select at most 8 passages and 8,000 Unicode characters of retrieved knowledge. Chunk source text at a maximum of 1,200 characters with 150-character overlap. The production embedding provider, model, dimensions, and version must be selected and pinned before R6-D implementation. Until then, tests use deterministic fake embeddings; projection rows record the exact model/config version and entries from another version are not mixed into a query.
 
 ## Consequences
 
@@ -63,24 +63,26 @@ R6 should begin with one bounded Team/domain and a small, auditable retrieval fl
 - **Put every source and lesson into every prompt:** rejected. It is unbounded, poorly scoped, difficult to audit, and does not provide reliable cross-Task persistence.
 - **Require a separate physical RAG service for every logical core:** not required by the design. Logical scope and semantics must be separate; physical deployment can be selected against the project's actual scale and operational needs.
 
-## Implementation decisions remaining for R6-G0
+## Initial canonical records, scope, and Context contract
 
-- Which exact canonical entity types and source records are in the initial Domain Knowledge Core?
-- Does the first version need a separate durable subject brief/context-core entity, or can it derive the view from existing canonical records?
-- What retrieval approach, embedding model/version, and optional reranker are appropriate for the first bounded slice?
-- How are filters for Team/domain, sensitivity, status, and knowledge layer enforced and tested?
-- What context size/ranking policy is used, and how are conflicting evidence and stale records presented?
-- What exact Context/retrieval manifest must be persisted to reconstruct why a Strategy proposal was made?
-- How are index versions, deletion/retirement, retries, rebuilds, and partial update failures handled?
+- **Domain Knowledge Core for the first slice:** existing canonical `Signal` records and their immutable source Snapshots, identified by `snapshot_ref` and `content_hash`. Do not add Thread, Hypothesis, EvidenceLink, or a separate subject-brief/Context entity solely to support the first slice; add other canonical types only when a later approved slice demonstrates the need.
+- **Team Experience Core:** accepted, versioned `KnowledgeItem` records only. R6 must add the minimum missing `KnowledgeItem` and `LearningChange` persistence/commit path required by ADR-0029; the current ORM does not yet provide them.
+- **Task Context:** a derived per-Task view containing permitted Domain Knowledge, accepted Team Experience, Objective/StateAssessment and policy constraints. No standalone Context row is required.
+- **Team/domain isolation:** Signals are not Team-owned in the current schema. For the first slice, a Signal is eligible only if its exact `(origin_url, source_type)` pair appears in the requesting Team's current `TeamPolicy.rules["sources"]` allowlist, using the existing ingestion configuration shape; resolve that authorization at retrieval time as well as when projecting. Team Experience is scoped by `team_id`. Filter before model exposure and fail closed if authorization or canonical provenance cannot be resolved.
+- **Canonical resolution:** every candidate must be resolved to its current Signal/KnowledgeItem and source Snapshot before use. Preserve source URL, Snapshot reference/hash, record kind/ID, canonical status/version, Team/domain scope, chunk identity, and index/embedding configuration. Include supporting and challenging source references where they exist. Ranking is relevance, not truth.
+- **Context basis:** preserve the exact assembled Context bytes as an immutable content-addressed Snapshot using the existing Snapshot mechanism, and emit a Task-attributed `context_assembled` Event with a versioned manifest of selected canonical references/hashes, logical core, query hash, chunk identifiers, ranking/config version, and embedding model/version. Do not add a standalone Context entity. Apply existing access rules and bounded retention to the Snapshot.
+- **Freshness/rebuild:** store canonical content hash/version and configuration version with each index projection. At query time, exclude any entry whose canonical record is missing, no longer authorized, no longer eligible, or has changed hash/version. Rebuild/update is idempotent from canonical records. Projection failure must not roll back a canonical Signal or accepted KnowledgeItem; record/reconcile staleness and do not claim a newly accepted version is retrievable until its projection is current. Rejected, retired, superseded, and `needs_review` knowledge is not eligible.
+- A source-policy change takes effect immediately at query time even if stale vectors remain. If source access cannot be established from current policy, retrieval returns no such record rather than guessing.
 
-## Acceptance criteria for a future implementation
+## Staged provider choice
 
-- Tests show that relevant canonical source and knowledge records can be retrieved for a bounded query and traced to their canonical references.
-- Team/domain and access filters are enforced before material is exposed to a worker.
-- Rejected, superseded, stale, or unauthorized records are not treated as current because an index is stale.
-- Index projections can be rebuilt from canonical state, and failures never mutate canonical knowledge.
-- Retrieved evidence preserves source provenance and relevant uncertainty; retrieval ranking alone cannot validate or commit a claim.
-- The selected Context is bounded and its basis is explainable from durable records.
-- The implementation does not bypass existing Task, policy, evidence, and Kernel/application validation boundaries.
+The embedding provider/model is deliberately deferred until immediately before R6-D; it is not a blocker for R6-A through R6-C. Before R6-D starts, choose a production provider/model and pin model identifier, dimensions, normalization, chunking version, and rebuild behavior. Do not add provider SDKs, credentials, or outbound model calls in R6-A through R6-C. A provider-neutral adapter and deterministic fakes are the only allowed earlier boundary.
 
-These criteria describe the accepted architectural target, not completed tests or current capabilities.
+## Acceptance criteria for implementation
+
+- Tests demonstrate relevant hybrid retrieval, Team/domain isolation, configured-source authorization, canonical reference/hash resolution, and bounded Context size.
+- Rejected, retired, superseded, out-of-scope, or stale records never reach a model merely because a vector entry remains.
+- Context provenance is reconstructable from its immutable Snapshot and Event manifest.
+- Index update/rebuild is idempotent and projection failure leaves canonical state intact.
+- Retrieval does not validate claims or commit knowledge; all writes still use the ordinary Task and authorized application/Kernel path.
+
