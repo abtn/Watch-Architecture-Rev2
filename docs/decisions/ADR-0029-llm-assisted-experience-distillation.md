@@ -8,7 +8,7 @@
 
 Watch is intended to preserve what its team learns beyond a single Task or model run. Saving transcripts, generating a summary, or automatically promoting every successful result does not establish reusable experience. The system needs a controlled method for using LLMs to abstract lessons from specific work while preserving the evidence, limitations, and circumstances that justify those lessons.
 
-The existing architecture describes Outcomes, Evaluations, KnowledgeItems, and LearningChanges and states that Team memory changes only through the authorized learning path (INV-12). Those concepts are not all implemented in the current ORM/migration baseline. This ADR proposes their role in the future R6 loop; it does not claim the path already exists.
+The existing architecture describes Outcomes, Evaluations, KnowledgeItems, and LearningChanges and states that Team memory changes only through the authorized learning path (INV-12). Those concepts are not all implemented in the current ORM/migration baseline. This ADR records their intended role in the future R6 loop; it does not claim the path already exists.
 
 ## Decision
 
