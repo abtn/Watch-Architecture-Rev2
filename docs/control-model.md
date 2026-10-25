@@ -114,7 +114,7 @@ A Strategy-level Action count is not the same concept as a team-wide daily Task-
 
 ## 9. Accepted R6 architectural direction: RAG-backed context and experience distillation
 
-These architectural principles were accepted by the operator's explicit agreement with the design direction on 2026-10-25. This is **not** a statement that the capability is implemented or authorization to start implementation. Concrete retrieval, Context-persistence, evidence-contract, approval, versioning, and publication choices remain in R6-G0. See [ADR-0028](decisions/ADR-0028-rag-backed-knowledge-cores.md), [ADR-0029](decisions/ADR-0029-llm-assisted-experience-distillation.md), and the [R6 entry gate](development/r6-entry-gate.md).
+The architectural direction and initial implementation contracts were recorded in ADR-0028, ADR-0029, and ADR-0030 after the operator's explicit request to resolve the remaining G0 decisions. This is **not** a statement that the capability is implemented or authorization to start implementation. Provider choices remain deliberately staged to before R6-D and R6-E; local preflight and milestone authorization remain prerequisites. See [ADR-0028](decisions/ADR-0028-rag-backed-knowledge-cores.md), [ADR-0029](decisions/ADR-0029-llm-assisted-experience-distillation.md), [ADR-0030](decisions/ADR-0030-r6-bounded-execution-source-safety-outcome.md), and the [R6 entry gate](development/r6-entry-gate.md).
 
 Watch should distinguish three logical roles:
 
