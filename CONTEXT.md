@@ -8,15 +8,15 @@ Watch is a persistent, evidence-oriented team system. **Model intelligence is te
 
 Reactive and deliberative work converge on the same ordinary Task runtime. Tasks, Events, and committed records describe what actually happened; Plans describe intended work.
 
-## Current R6 design direction (proposed)
+## Current R6 design direction (architectural principles accepted; implementation gated)
 
-R6-G0 remains in progress; implementation has not started. The proposed target is a knowledge-grounded loop: use RAG to retrieve source-traceable context from logically distinct Domain Knowledge and Team Experience cores, execute work through the ordinary Task runtime, record durable Outcomes, use LLMs to distill evidence-linked reusable abstractions through the authorized learning path, and retrieve accepted knowledge for later tasks. RAG indexes are projections, not authorities. ADR-0028 and ADR-0029 remain Proposed.
+R6-G0 remains in progress; implementation has not started. The accepted architectural target is a knowledge-grounded loop: use RAG to retrieve source-traceable context from logically distinct Domain Knowledge and Team Experience cores, execute work through the ordinary Task runtime, record durable Outcomes, use LLMs to distill evidence-linked reusable abstractions through the authorized learning path, and retrieve accepted knowledge for later tasks. RAG indexes are projections, not authorities. ADR-0028 and ADR-0029 are accepted at principle level; their implementation choices remain in R6-G0.
 
 For these decisions, read:
 - [R6 entry gate](docs/development/r6-entry-gate.md) — unresolved G0 decisions and the future R6-A through R6-G sequence.
 - [R6-G0 Decision Proposals](docs/development/r6-g0-decision-proposals.md) — recommended defaults for each unresolved design choice; recommendations only, not accepted decisions.
-- [ADR-0028](docs/decisions/ADR-0028-rag-backed-knowledge-cores.md) — proposed RAG and Knowledge Core boundaries.
-- [ADR-0029](docs/decisions/ADR-0029-llm-assisted-experience-distillation.md) — proposed experience-distillation boundaries.
+- [ADR-0028](docs/decisions/ADR-0028-rag-backed-knowledge-cores.md) — accepted RAG and Knowledge Core principles; implementation remains gated.
+- [ADR-0029](docs/decisions/ADR-0029-llm-assisted-experience-distillation.md) — accepted distillation principles; implementation remains gated.
 
 ## Open the smallest relevant set of documents
 

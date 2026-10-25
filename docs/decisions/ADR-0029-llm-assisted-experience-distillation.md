@@ -2,15 +2,15 @@
 
 ## Status
 
-**Proposed — R6-G0 design proposal, 2026-10-25.** This ADR is not accepted authority and does not authorize implementation. R6 remains in its entry gate; implementation has not started.
+**Accepted — architectural principles only, 2026-10-25, by explicit operator agreement with the LLM-assisted Experience Distillation design.** This acceptance does not authorize implementation. The first schema/output contract, evidence threshold, approval workflow, versioning policy, and retrieval-publication details remain within R6-G0.
 
 ## Context
 
 Watch is intended to preserve what its team learns beyond a single Task or model run. Saving transcripts, generating a summary, or automatically promoting every successful result does not establish reusable experience. The system needs a controlled method for using LLMs to abstract lessons from specific work while preserving the evidence, limitations, and circumstances that justify those lessons.
 
-The existing architecture describes Outcomes, Evaluations, KnowledgeItems, and LearningChanges and states that Team memory changes only through the authorized learning path (INV-12). Those concepts are not all implemented in the current ORM/migration baseline. This ADR proposes their role in the future R6 loop; it does not claim the path already exists.
+The existing architecture describes Outcomes, Evaluations, KnowledgeItems, and LearningChanges and states that Team memory changes only through the authorized learning path (INV-12). Those concepts are not all implemented in the current ORM/migration baseline. This ADR records their intended role in the future R6 loop; it does not claim the path already exists.
 
-## Proposed design
+## Decision
 
 ### 1. Meaning of distillation
 
@@ -65,7 +65,7 @@ RAG helps retrieve knowledge for the current Task; distillation proposes new reu
 - After an accepted canonical change, the retrieval projection must be updated or rebuilt. Until it is eligible and current, the new version must not be represented as already available for retrieval.
 - Later evaluations should examine whether retrieved abstractions were useful, misleading, stale, or inapplicable and should preserve that evidence for future review.
 
-## Consequences if accepted
+## Consequences
 
 - Watch can accumulate reusable team experience rather than depend on chat history.
 - LLMs perform the high-level abstraction work, while application code governs evidence, authority, persistence, and version transitions.
@@ -79,7 +79,7 @@ RAG helps retrieve knowledge for the current Task; distillation proposes new reu
 - **Have a second model act as final authority for durable learning:** rejected. Another model's judgment is still a proposal and cannot replace application validation or operator approval where required.
 - **Automatically modify policy or the Kernel from a distilled lesson:** rejected. TeamPolicy and Kernel authority remain separate from learned domain practices, and no recursive self-modifying runtime is introduced.
 
-## Open questions for R6-G0
+## Implementation decisions remaining for R6-G0
 
 - Which durable records and Outcome/Evaluation types are the required input to the first distillation?
 - What is the minimum acceptable evidence basis, and how can a single-case lesson be represented narrowly without being presented as a general rule?
@@ -101,4 +101,4 @@ RAG helps retrieve knowledge for the current Task; distillation proposes new reu
 - A later Task can retrieve and use an accepted abstraction without relying on the prior model transcript.
 - Tests cover failure, rejection, conflict, duplicate/replay, and index-update recovery paths.
 
-These criteria describe the proposed target, not completed tests or current capabilities.
+These criteria describe the accepted architectural target, not completed tests or current capabilities.

@@ -4,8 +4,8 @@
 
 - **R6-G0: IN PROGRESS.** The operator authorized R6 entry-gate planning on 2026-10-24 and approved revising the design direction on 2026-10-25.
 - **No R6 implementation slice has started or is authorized by this document change.** This is a documentation/design revision only. No application code, schema, migrations, providers, vector indexes, or runtime behavior are changed here.
-- **ADR-0028 and ADR-0029 are Proposed.** They describe the new direction; they are not accepted architecture authority until explicitly decided.
-- Repository baseline after merge of PR #6: remote GitHub main at 83148dc0aedef5c69d2a9491cd0933efb11ca419 (2026-10-25). This is not evidence of the operator's current local branch, HEAD, or worktree. Verify the actual local checkout before implementation.
+- **ADR-0028 and ADR-0029 are Accepted for architectural principles only**, based on the operator's explicit agreement with the design direction on 2026-10-25. Their concrete implementation choices remain unresolved R6-G0 decisions. This acceptance does not authorize implementation.
+- Repository baseline after merge of PR #7 and subsequent main update: remote GitHub main at 9eb01aa0e9b5bad3289b131cce51b29d33a3986c (2026-10-25). This is not evidence of the operator's current local branch, HEAD, or worktree. Verify the actual local checkout before implementation.
 - R5 remains formally closed. Its Plan materialization, lifecycle, prerequisite, provenance, and completion-precondition requirements remain mandatory. The end-to-end Task-execution dependency remains assigned to R6. ADR-0027 remains Proposed unless separately accepted.
 
 ## 1. Revised R6 purpose
@@ -83,7 +83,7 @@ Prefer one injectable source-fetch interface, a fake fetcher in tests, and a pro
 
 Define the first supported Outcome kind, subject and Team ownership, source/provenance requirements, Task write scope, transaction boundary, event semantics, idempotency, and crash/replay behavior. Decide whether Outcome persistence is part of the application-controlled final completion transaction or a separate scoped Task operation. Preserve the historical StateAssessment basis used by the originating Strategy/Plan; a follow-up assessment must be deterministic and read-only.
 
-### G0-D5 — Knowledge-core source of truth and RAG contract ([ADR-0028](../decisions/ADR-0028-rag-backed-knowledge-cores.md))
+### G0-D5 — Remaining implementation choices for Knowledge Cores and RAG ([ADR-0028](../decisions/ADR-0028-rag-backed-knowledge-cores.md))
 
 Decide:
 - Which canonical records make up the initial Domain Knowledge Core and which accepted records make up the Team Experience Core.
@@ -95,7 +95,7 @@ Decide:
 
 The retrieval index must remain regenerable and non-authoritative. A vector match alone is not proof of a claim. Corrections, supersession, rejection, retirement, or access changes must prevent stale or unauthorized indexed content from being treated as current. Existing source/quote validation remains in force.
 
-### G0-D6 — LLM-assisted experience distillation ([ADR-0029](../decisions/ADR-0029-llm-assisted-experience-distillation.md))
+### G0-D6 — Remaining implementation choices for experience distillation ([ADR-0029](../decisions/ADR-0029-llm-assisted-experience-distillation.md))
 
 Define the first distillation input and output contract:
 - Inputs are durable experience records, Outcomes, applicable Evaluations, and referenced evidence—not an unbounded conversation transcript.
@@ -182,7 +182,7 @@ Run required focused and full-suite tests, Ruff, mypy, and applicable disposable
 - Team memory changes only through the authorized learning path (INV-12); no direct worker writes and no automatic policy changes.
 - Reactive Tasks remain valid without Objectives or Plans. No second runtime, scheduler, or workflow engine.
 - R5's durable Plan-completion preconditions remain mandatory.
-- ADR-0025, ADR-0026, ADR-0027, ADR-0028, and ADR-0029 must not be silently accepted.
+- ADR-0025, ADR-0026, and ADR-0027 must not be silently accepted. ADR-0028 and ADR-0029 are accepted only at the architectural-principle level; their remaining implementation choices stay gated.
 - Use disposable databases for tests; never modify the persistent watch database to make tests pass.
 - PLAN.md remains the single source of current milestone status; update CHANGE_MAP.md when authority mapping changes.
 
@@ -192,8 +192,8 @@ Run required focused and full-suite tests, Ruff, mypy, and applicable disposable
 - [ ] Task completion, failure, retry, attempt, Event, timestamp, and recovery contract agreed.
 - [ ] Bounded ingest_source behavior and network-safety contract agreed.
 - [ ] Outcome schema/scope/provenance/transaction/replay semantics agreed.
-- [ ] ADR-0028 RAG authority, core separation, retrieval scoping, context provenance, index freshness, and initial implementation choices explicitly decided.
-- [ ] ADR-0029 distillation proposal, evidence/counterexample requirements, learning commit/approval path, versioning, and retrieval publication boundary explicitly decided.
+- [ ] ADR-0028's remaining implementation choices are explicitly decided: canonical record types, retrieval approach/model versions, Context-basis representation, scope/permissions, freshness, rebuild, and recovery.
+- [ ] ADR-0029's remaining implementation choices are explicitly decided: first proposal schema, evidence/counterexample handling, review/approval mechanics, versioning, and retrieval publication boundary.
 - [ ] StrategyProposer interface and production provider decision recorded, or provider choice explicitly deferred with a bounded fake-backed implementation scope.
 - [ ] First integrated acceptance tests, first domain, review path, failure/recovery cases, and deferred scope frozen.
 - [ ] Actual local branch, HEAD, merge status, worktree, and disposable database verified before implementation.

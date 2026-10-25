@@ -2,7 +2,7 @@
 
 ## Status
 
-**Proposed — R6-G0 design proposal, 2026-10-25.** This ADR is not accepted authority and does not authorize implementation. The operator approved making the future design visible in documentation while R6-G0 remains open.
+**Accepted — architectural principles only, 2026-10-25, by explicit operator agreement with the RAG-backed Knowledge Core design.** This acceptance does not authorize implementation. Retrieval-store selection, embedding/reranking choices, canonical input types, Context-basis persistence, freshness mechanics, and other concrete implementation choices remain within R6-G0.
 
 ## Context
 
@@ -12,7 +12,7 @@ The existing architecture already distinguishes World memory (what is observed o
 
 A vector index is useful for locating relevant content, but it is a lossy, derived projection. It must not become the source of truth or a way to bypass the existing evidence and application-validation rules.
 
-## Proposed design
+## Decision
 
 ### 1. Three logical roles
 
@@ -50,7 +50,7 @@ A retrieved result is relevant material to inspect, not a verified fact. The und
 
 R6 should begin with one bounded Team/domain and a small, auditable retrieval flow. It should be possible to use a single physical index while maintaining separate logical retrieval filters for Domain Knowledge and accepted Team Experience. The initial keyword/vector/hybrid strategy, embedding model, optional reranking, persistence of a Context manifest, index freshness mechanism, and concrete index storage are open G0 choices; this ADR does not select a provider or mandate a schema.
 
-## Consequences if accepted
+## Consequences
 
 - Broad-subject context becomes a persistent and retrievable capability rather than a prompt assembled from an entire transcript.
 - LLM proposals can be traced to the particular source records and accepted experience they consumed.
@@ -63,7 +63,7 @@ R6 should begin with one bounded Team/domain and a small, auditable retrieval fl
 - **Put every source and lesson into every prompt:** rejected. It is unbounded, poorly scoped, difficult to audit, and does not provide reliable cross-Task persistence.
 - **Require a separate physical RAG service for every logical core:** not required by the design. Logical scope and semantics must be separate; physical deployment can be selected against the project's actual scale and operational needs.
 
-## Open questions for R6-G0
+## Implementation decisions remaining for R6-G0
 
 - Which exact canonical entity types and source records are in the initial Domain Knowledge Core?
 - Does the first version need a separate durable subject brief/context-core entity, or can it derive the view from existing canonical records?
@@ -83,4 +83,4 @@ R6 should begin with one bounded Team/domain and a small, auditable retrieval fl
 - The selected Context is bounded and its basis is explainable from durable records.
 - The implementation does not bypass existing Task, policy, evidence, and Kernel/application validation boundaries.
 
-These criteria describe the proposed target, not completed tests or current capabilities.
+These criteria describe the accepted architectural target, not completed tests or current capabilities.

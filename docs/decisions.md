@@ -13,8 +13,8 @@ This is a navigation index, not a replacement for the full ADRs. Open the linked
 | [0025](decisions/ADR-0025-plan-is-derived-execution-state.md) | Plan is derived execution state. | Plan stores intended work; Tasks/Events describe actual execution. |
 | [0026](decisions/ADR-0026-dual-entry-execution-model.md) | Dual-entry execution model. | Reactive and deliberative entry paths converge on the same Task runtime. |
 | [0027](decisions/ADR-0027-team-policy-daily-task-quota.md) | TeamPolicy daily Task-start quota. **Status: Proposed in this snapshot.** | Semantics are documented, but do not treat the proposal as accepted or as releasing the R5 gate. Resolve the authority issue described in `PLAN.md` and `CHANGE_MAP.md` first. |
-| [0028](decisions/ADR-0028-rag-backed-knowledge-cores.md) | RAG-backed Knowledge Cores. **Status: Proposed (R6-G0).** | Define subject/domain knowledge, accepted team experience, traceable Context assembly, retrieval permissions, canonical-record authority, and index freshness; not implementation authorization. |
-| [0029](decisions/ADR-0029-llm-assisted-experience-distillation.md) | LLM-assisted Experience Distillation. **Status: Proposed (R6-G0).** | Define evidence-linked abstraction of durable experience and controlled acceptance/publication through the learning path; model output remains a proposal. |
+| [0028](decisions/ADR-0028-rag-backed-knowledge-cores.md) | RAG-backed Knowledge Cores. **Accepted 2026-10-25 (architectural principles only).** | Canonical records remain authoritative; RAG retrieves source-traceable material across logically distinct Domain Knowledge and Team Experience cores. Concrete retrieval, index, Context, and freshness choices remain in R6-G0. |
+| [0029](decisions/ADR-0029-llm-assisted-experience-distillation.md) | LLM-assisted Experience Distillation. **Accepted 2026-10-25 (architectural principles only).** | LLMs propose evidence-linked reusable abstractions from durable experience; validation and the authorized learning path govern acceptance. Concrete schema, evidence, approval, version, and publication choices remain in R6-G0. |
 
 ## Reading rule
 
