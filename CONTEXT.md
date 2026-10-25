@@ -14,6 +14,7 @@ R6-G0 remains in progress; implementation has not started. The proposed target i
 
 For these decisions, read:
 - [R6 entry gate](docs/development/r6-entry-gate.md) — unresolved G0 decisions and the future R6-A through R6-G sequence.
+- [R6-G0 Decision Proposals](docs/development/r6-g0-decision-proposals.md) — recommended defaults for each unresolved design choice; recommendations only, not accepted decisions.
 - [ADR-0028](docs/decisions/ADR-0028-rag-backed-knowledge-cores.md) — proposed RAG and Knowledge Core boundaries.
 - [ADR-0029](docs/decisions/ADR-0029-llm-assisted-experience-distillation.md) — proposed experience-distillation boundaries.
 
