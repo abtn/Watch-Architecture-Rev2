@@ -36,7 +36,7 @@ The intended first pipeline is:
 3. **Evaluation:** assess the Outcome and relevant work using the recorded evidence. An Evaluation is itself a proposal until validated and recorded; it is not an oracle.
 4. **Distillation proposal:** an LLM receives the bounded, traceable basis and proposes an abstraction, including its applicable situation, assumptions/preconditions, supporting cases, counterexamples or contradictions, known limitations, uncertainty, and references to the basis.
 5. **Validation:** application code validates the proposal schema, Team ownership, basis references, evidence and version preconditions, allowed write scope, and policy requirements. A model cannot validate its own authority to commit.
-6. **Learning commit:** accepted changes go through the existing authorized LearningChange/learning commit path. The model does not write KnowledgeItem or TeamPolicy records directly. Where approval or policy authorization is required, the existing rule governs; G0 must resolve any ambiguity before implementation.
+6. **Learning commit:** accepted changes go through the authorized LearningChange/learning commit path. For the first R6 slice, every LearningChange is explicitly reviewed by an operator through `approve_learning_change`; a model cannot approve its own proposal. The first slice does not authorize TeamPolicy changes. The model does not write KnowledgeItem or TeamPolicy records directly.
 7. **Publication for reuse:** only accepted canonical knowledge becomes eligible for RAG indexing. Indexing is a regenerable projection and is not the learning commit itself. Subsequent Tasks retrieve the accepted version through ADR-0028's Context path.
 
 ### 3. Guard against overgeneralization
