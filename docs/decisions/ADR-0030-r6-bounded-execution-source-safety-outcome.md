@@ -33,7 +33,7 @@ A worker execution has a hard 30-second deadline. On dispatcher startup, a `runn
 
 ### 3. First executable capability and network boundary
 
-The first handler is `ingest_source` for a source explicitly configured in the requesting Team's current `TeamPolicy`. The model cannot supply or modify a URL, and a Task payload alone does not grant source access.
+The first handler is `ingest_source` for a source explicitly configured in the requesting Team's current `TeamPolicy.rules["sources"]` list. A configuration entry authorizes the exact `(origin_url, source_type)` pair, matching the current `IngestionService._source_is_configured` contract. The model cannot supply or modify a URL, and a Task payload alone does not grant source access.
 
 - Accept only HTTPS URLs from the exact configured-source allowlist. Reject URL user-info, IP-literal hosts, unsupported schemes, fragments, and non-canonical/mismatched URLs.
 - Resolve DNS at connection time. Reject the request if any resolved destination is loopback, private, link-local, multicast, reserved, unspecified, or a metadata-service address. Connect only to a validated resolved address while preserving the original hostname for TLS SNI/certificate validation; do not permit DNS rebinding to bypass the address check.
