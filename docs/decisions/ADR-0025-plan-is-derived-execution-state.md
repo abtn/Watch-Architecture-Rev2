@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+**Accepted — unchanged, 2026-10-25, under the operator's explicit request to resolve the remaining R6-G0 decisions.**
 
 ## Context
 
