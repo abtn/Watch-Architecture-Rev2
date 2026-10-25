@@ -52,6 +52,23 @@ Two memory layers:
 - **World memory** — the subject being watched: Signals, Threads, Hypotheses, EvidenceLinks, ConfidenceChanges, SignalDispositions. Intentionally revisable and decaying.
 - **Team memory** — what the Team learned from its own work: Outcomes, Evaluations, KnowledgeItems, LearningChanges, TeamPolicy. Changes only through the explicit learning path (INV-12).
 
+### Knowledge-grounded context and experience distillation (proposed R6 direction)
+
+The following is a proposed direction for R6-G0, governed by [ADR-0028](decisions/ADR-0028-rag-backed-knowledge-cores.md) and [ADR-0029](decisions/ADR-0029-llm-assisted-experience-distillation.md). Both ADRs remain Proposed; this subsection describes the intended future system, not current implementation status.
+
+Watch should maintain two logically distinct knowledge cores:
+
+- **Domain Knowledge Core:** what the Team knows about the watched subject, grounded in source Snapshots, Signals, Threads, Hypotheses, EvidenceLinks, dispositions, and other accepted canonical subject records.
+- **Team Experience Core:** what the Team has learned by performing work, expressed as accepted, versioned practices, patterns, methods, and playbooks supported by Outcomes, Evaluations, and evidence.
+
+A per-task **Context** is a derived and bounded selection across those cores plus relevant current state, Objective, TeamPolicy constraints, and provenance. RAG retrieves candidate records; application code resolves them to current canonical state and enforces Team/domain scope, access, lifecycle status, and source integrity before the records are used. The two logical cores may share retrieval infrastructure, but retrieval must preserve their different meaning and permissions.
+
+The intended cycle is:
+
+Domain Knowledge Core + accepted Team Experience Core → RAG retrieval → bounded, traceable Task Context → LLM proposal → application validation and ordinary Task execution → durable evidence and Outcome → Evaluation and LLM-proposed abstraction → authorized learning commit → accepted Team Experience Core → refreshed retrieval projection.
+
+Embedding vectors, summaries, rankings, and indexes are projections, not authority (INV-11). A vector match does not prove a claim. Immutable Snapshots, quote/hash validation, provenance, competing evidence, current record status, and existing commit gates remain in force. Distillation is abstraction from concrete experience, not transcript retention or automatic learning from a single success. Model output cannot directly alter Team memory or TeamPolicy (INV-12).
+
 ### Human participation
 
 Humans enter the loop through three channels, all of which pass the same validation gates (INV-15):
