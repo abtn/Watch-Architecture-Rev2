@@ -14,7 +14,7 @@ The supplied project ZIP has no Git metadata. Before taking repository action, v
 
 ## Next actionable step
 
-**Keep R6-G0 open.** Review and record the decisions and acceptance contract in [docs/development/r6-entry-gate.md](docs/development/r6-entry-gate.md), including Proposed ADR-0028 and ADR-0029. This revision changes the future path only: do not start implementation slices until the gate checklist is satisfied and the actual local checkout has passed preflight. The first R6 vertical slice must connect source-grounded RAG Context, the existing validation boundary, ordinary Task execution, durable Outcome evidence, evidence-linked experience distillation, authorized learning commit, and later retrieval of accepted knowledge.
+**Keep R6-G0 open.** Review the [R6-G0 Decision Proposals](docs/development/r6-g0-decision-proposals.md) alongside the [entry gate](docs/development/r6-entry-gate.md), then explicitly approve or revise the recommended defaults. Record each accepted decision in its governing ADR/spec. ADR-0028 and ADR-0029 remain Proposed until explicitly decided. This is planning only: do not start implementation slices until the gate checklist is satisfied and the actual local checkout has passed preflight. The first R6 vertical slice must connect source-grounded RAG Context, the existing validation boundary, ordinary Task execution, durable Outcome evidence, evidence-linked experience distillation, authorized learning commit, and later retrieval of accepted knowledge.
 
 ## Milestone overview
 
