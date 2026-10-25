@@ -124,10 +124,10 @@ Watch should distinguish three logical roles:
 
 RAG retrieves candidate material from these logical cores. A retrieval index may share physical infrastructure across cores, but it must preserve Team/domain scope, permissions, record kind, acceptance/status, and provenance. Indexes, embeddings, summaries, and rankings are regenerable projections. A retrieval match cannot establish truth or authorize a write; the application resolves candidates to current canonical records and existing validation/commit rules still apply.
 
-The proposed experience loop is:
+The R6 experience loop is:
 
 **durable execution and evidence → Outcome/Evaluation → LLM-proposed abstraction → application validation and authorized learning commit → accepted canonical knowledge → retrieval for later work.**
 
-Distillation means abstracting reusable experience—not saving transcripts or merely summarizing a run. Proposed abstractions must retain their evidence basis, scope/applicability, limitations, uncertainty, and counterexamples where available. A model cannot directly commit team knowledge or TeamPolicy. The R6 G0 gate must define the first bounded contract and recovery/approval behavior before implementation.
+Distillation means abstracting reusable experience—not saving transcripts or merely summarizing a run. Proposed abstractions must retain their evidence basis, scope/applicability, limitations, uncertainty, and counterexamples where available. A model cannot directly commit team knowledge or TeamPolicy. The first-slice contracts and recovery/approval behavior are recorded in ADR-0028, ADR-0029, and ADR-0030; implementation remains gated by PLAN.md and the R6 entry gate.
 
 This direction does not change the Control/Task boundary: deliberative proposals still pass Strategy validation; accepted Plans still materialize ordinary Tasks; reactive work remains valid without a Plan; and both entry paths use one runtime.
