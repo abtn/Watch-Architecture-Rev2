@@ -52,9 +52,9 @@ Two memory layers:
 - **World memory** — the subject being watched: Signals, Threads, Hypotheses, EvidenceLinks, ConfidenceChanges, SignalDispositions. Intentionally revisable and decaying.
 - **Team memory** — what the Team learned from its own work: Outcomes, Evaluations, KnowledgeItems, LearningChanges, TeamPolicy. Changes only through the explicit learning path (INV-12).
 
-### Knowledge-grounded context and experience distillation (accepted R6 principles; implementation gated)
+### Knowledge-grounded context and experience distillation (G0 contracts recorded; implementation gated)
 
-These architectural principles were accepted by the operator's explicit agreement with the design direction on 2026-10-25 and are governed by [ADR-0028](decisions/ADR-0028-rag-backed-knowledge-cores.md) and [ADR-0029](decisions/ADR-0029-llm-assisted-experience-distillation.md). The concrete implementation choices remain in R6-G0; this subsection does not describe capabilities already implemented or authorize implementation.
+The architectural principles and first-slice contracts are recorded in [ADR-0028](decisions/ADR-0028-rag-backed-knowledge-cores.md), [ADR-0029](decisions/ADR-0029-llm-assisted-experience-distillation.md), and [ADR-0030](decisions/ADR-0030-r6-bounded-execution-source-safety-outcome.md). This subsection describes the accepted target, not capabilities already implemented, and does not authorize implementation.
 
 Watch should maintain two logically distinct knowledge cores:
 
@@ -304,6 +304,8 @@ Predictions are recorded as **two Outcomes** (ADR-0013): `prediction_registered`
 ```
 
 External textual material should be ingested as a Signal where possible; manual observations are stored immutably and attributed to the recording Task.
+
+For the first R6 slice, the terminal Outcome type is `task_execution` and there is at most one per Task. It records a deterministic terminal observation (result category, relevant Signal/Snapshot references and hashes, terminal attempt, and observation time), not an LLM interpretation. Its immutable observation Snapshot, Outcome row, terminal Task status, and `task_completed`/`task_failed` Event commit atomically. The canonical contract and replay rules are in [ADR-0030](decisions/ADR-0030-r6-bounded-execution-source-safety-outcome.md); this is not yet implemented in the current ORM.
 
 ### `Evaluation`
 
