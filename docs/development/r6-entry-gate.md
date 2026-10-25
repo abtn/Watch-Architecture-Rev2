@@ -5,7 +5,7 @@
 - **R6-G0: IN PROGRESS.** The operator authorized R6 entry-gate planning on 2026-10-24 and approved revising the design direction on 2026-10-25.
 - **No R6 implementation slice has started or is authorized by this document change.** This is a documentation/design revision only. No application code, schema, migrations, providers, vector indexes, or runtime behavior are changed here.
 - **ADR-0028 and ADR-0029 are Proposed.** They describe the new direction; they are not accepted architecture authority until explicitly decided.
-- Repository baseline for this documentation revision: remote GitHub main at 29c62522398dd39a7efeb9df7a11b1d05873f816 (2026-10-24). This is not evidence of the operator's current local branch, HEAD, or worktree. Verify the actual local checkout before implementation.
+- Repository baseline after merge of PR #6: remote GitHub main at 83148dc0aedef5c69d2a9491cd0933efb11ca419 (2026-10-25). This is not evidence of the operator's current local branch, HEAD, or worktree. Verify the actual local checkout before implementation.
 - R5 remains formally closed. Its Plan materialization, lifecycle, prerequisite, provenance, and completion-precondition requirements remain mandatory. The end-to-end Task-execution dependency remains assigned to R6. ADR-0027 remains Proposed unless separately accepted.
 
 ## 1. Revised R6 purpose
@@ -54,6 +54,10 @@ RAG is the retrieval mechanism across these logical layers. A single physical in
 - There is no end-to-end LLM-assisted experience-distillation and accepted-knowledge re-indexing path established by this baseline.
 - There is no model-backed Strategy proposer established by this baseline.
 - The production model provider, embedding/reranking choices, index implementation, freshness mechanics, and detailed context-packet persistence semantics are not selected by this proposal.
+
+## G0 recommendation packet
+
+See [R6-G0 Decision Proposals](r6-g0-decision-proposals.md) for a concrete recommendation per unresolved decision, grounded in the current code/spec baseline. That document is advisory only: no ADR has been accepted by implication, and operator decisions must be recorded explicitly in the relevant ADR/spec before the gate can exit.
 
 ## 3. R6-G0: required decisions before implementation
 
