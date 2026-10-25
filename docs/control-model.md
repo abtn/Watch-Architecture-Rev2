@@ -112,9 +112,9 @@ A Strategy-level Action count is not the same concept as a team-wide daily Task-
 - If a Task can express the needed work, do not add a new runtime entity for convenience.
 - Use `PLAN.md` to determine phase status and authorization. This model does not close a milestone by itself.
 
-## 9. Proposed R6 direction: RAG-backed context and experience distillation
+## 9. Accepted R6 architectural direction: RAG-backed context and experience distillation
 
-This is a **proposed design direction for R6-G0**, not a statement that the capability is implemented or that the related ADRs are accepted. See [ADR-0028](decisions/ADR-0028-rag-backed-knowledge-cores.md), [ADR-0029](decisions/ADR-0029-llm-assisted-experience-distillation.md), and the [R6 entry gate](development/r6-entry-gate.md).
+These architectural principles were accepted by the operator's explicit agreement with the design direction on 2026-10-25. This is **not** a statement that the capability is implemented or authorization to start implementation. Concrete retrieval, Context-persistence, evidence-contract, approval, versioning, and publication choices remain in R6-G0. See [ADR-0028](decisions/ADR-0028-rag-backed-knowledge-cores.md), [ADR-0029](decisions/ADR-0029-llm-assisted-experience-distillation.md), and the [R6 entry gate](development/r6-entry-gate.md).
 
 Watch should distinguish three logical roles:
 
