@@ -52,9 +52,9 @@ Two memory layers:
 - **World memory** — the subject being watched: Signals, Threads, Hypotheses, EvidenceLinks, ConfidenceChanges, SignalDispositions. Intentionally revisable and decaying.
 - **Team memory** — what the Team learned from its own work: Outcomes, Evaluations, KnowledgeItems, LearningChanges, TeamPolicy. Changes only through the explicit learning path (INV-12).
 
-### Knowledge-grounded context and experience distillation (proposed R6 direction)
+### Knowledge-grounded context and experience distillation (accepted R6 principles; implementation gated)
 
-The following is a proposed direction for R6-G0, governed by [ADR-0028](decisions/ADR-0028-rag-backed-knowledge-cores.md) and [ADR-0029](decisions/ADR-0029-llm-assisted-experience-distillation.md). Both ADRs remain Proposed; this subsection describes the intended future system, not current implementation status.
+These architectural principles were accepted by the operator's explicit agreement with the design direction on 2026-10-25 and are governed by [ADR-0028](decisions/ADR-0028-rag-backed-knowledge-cores.md) and [ADR-0029](decisions/ADR-0029-llm-assisted-experience-distillation.md). The concrete implementation choices remain in R6-G0; this subsection does not describe capabilities already implemented or authorize implementation.
 
 Watch should maintain two logically distinct knowledge cores:
 
