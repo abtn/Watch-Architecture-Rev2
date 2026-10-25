@@ -1,142 +1,197 @@
-# R6 Entry Gate and Implementation Traversal
+# R6 Entry Gate — Knowledge-Grounded Execution and Experience Distillation
 
-## Status
+## Status and authority
 
-- **R6-G0: IN PROGRESS.** The operator authorized starting the R6 path and its entry-gate work on 2026-10-24.
-- **Implementation slices R6-A onward have not started.** This document is a gate proposal, not permission to silently decide architecture, schema, security, or provider questions.
-- Baseline inspected: `main` at `1c7436ef3f7b1db89289af9230f7499aba81c1e0` (2026-10-24).
-- R5 remains formally closed. Its durable Plan completion preconditions remain mandatory. ADR-0027 remains Proposed unless separately accepted.
+- **R6-G0: IN PROGRESS.** The operator authorized R6 entry-gate planning on 2026-10-24 and approved revising the design direction on 2026-10-25.
+- **No R6 implementation slice has started or is authorized by this document change.** This is a documentation/design revision only. No application code, schema, migrations, providers, vector indexes, or runtime behavior are changed here.
+- **ADR-0028 and ADR-0029 are Proposed.** They describe the new direction; they are not accepted architecture authority until explicitly decided.
+- Repository baseline for this documentation revision: remote GitHub main at 29c62522398dd39a7efeb9df7a11b1d05873f816 (2026-10-24). This is not evidence of the operator's current local branch, HEAD, or worktree. Verify the actual local checkout before implementation.
+- R5 remains formally closed. Its Plan materialization, lifecycle, prerequisite, provenance, and completion-precondition requirements remain mandatory. The end-to-end Task-execution dependency remains assigned to R6. ADR-0027 remains Proposed unless separately accepted.
 
-## 1. R6 outcome
+## 1. Revised R6 purpose
 
-Deliver the first testable end-to-end Control loop:
+R6 should deliver the first small, testable **knowledge-grounded Watch loop**, not only a Task-completion path.
 
-```text
-Objective
-  → deterministic StateAssessment
-  → proposed StrategyProposal
-  → application validation and accepted Strategy Event
-  → immutable Plan and ordinary Tasks
-  → existing Task admission/execution/commit path
-  → durable execution result / Outcome
-  → new StateAssessment based on the changed durable state
-```
+The intended cycle is:
 
-The loop must remain recoverable without model transcripts. Workers propose; application code validates and commits. Plan remains immutable intent, while Task/Event/Signal/Outcome records establish what happened. Reactive Tasks still work without an Objective or Plan. There is one Task runtime, not a separate Plan executor or scheduler.
+1. Maintain a domain knowledge core for what the team knows about a subject, including source provenance, claims, evidence, uncertainty, and relevant context.
+2. Use RAG to retrieve a bounded set of relevant records for a specific task or Objective.
+3. Assemble a traceable context from retrieved records, current authoritative state, applicable policy, and the task's purpose.
+4. Let an LLM propose a strategy or perform a bounded task, while existing application validation and Kernel commit boundaries remain authoritative.
+5. Record what actually happened in durable Tasks, Events, source records, and Outcomes.
+6. Use LLMs to propose reusable abstractions from recorded experience—patterns, practices, methods, or playbooks—rather than merely retaining transcripts or summarizing individual runs.
+7. Validate and commit accepted experience through the authorized learning path, then make accepted knowledge retrievable for future work.
 
-## 2. What exists now, and what does not
+This is the target design, not a claim that the full cycle exists today.
+
+### Logical knowledge layers
+
+The design distinguishes three logical roles without requiring three separate databases:
+
+- **Domain Knowledge Core — what we know about the subject.** Canonical source records, subject context, claims or hypotheses, evidence, provenance, freshness, and unresolved questions. Existing World-memory records and immutable source Snapshots are relevant foundations; the exact core representation remains a G0 decision.
+- **Team Experience Core — what we have learned by doing the work.** Accepted, versioned practices, patterns, methods, and playbooks based on evaluated experience and supporting evidence. The architecture describes KnowledgeItem and LearningChange concepts, but their current ORM/migration implementation must be verified and completed as part of the approved path.
+- **Task Context — what is relevant now.** A bounded, task-specific assembly of retrieved knowledge, canonical records, current state, policy constraints, and source/version references. It is a derived input, not a new authority.
+
+RAG is the retrieval mechanism across these logical layers. A single physical index may serve multiple logical cores, provided team/domain scope, access control, record kind, status, and provenance remain explicit. The index is a regenerable projection, never the source of truth (INV-11).
+
+## 2. Existing foundations and gaps
 
 ### Existing foundations
 
-- `core/objectives.py`: application-controlled Objective creation and lifecycle.
-- `core/state_assessment.py`: deterministic, read-only StateAssessment construction.
-- `core/strategy.py` and `core/strategy_proposal.py`: proposal validation, accepted-event provenance, and reconstruction. The service validates a supplied proposal; it does not itself call a model to create one.
-- `core/plans.py`: Plan materialization, reconstruction, lifecycle, and completion precondition checks.
-- `core/task_runtime.py`: atomic pending-to-running admission, policy/quota checks, Task-attributed `task_started` Event, and Plan prerequisite admission. It does not implement successful completion, failure, retry/requeue, or worker dispatch.
-- `core/ingestion.py`: bounded proposal validation and atomic ingestion commit for provided fetched bytes. It does not fetch a configured source or run a Task.
-- Current ORM classes in `core/models.py` include Team, TeamPolicy, Objective, Plan, PlanAction, Task, Signal, and Event. **There is no Outcome ORM model or Outcome migration**, although `docs/architecture.md` defines the intended Outcome entity.
-- The documented K1 boundary deliberately does not implement a source connector, Task dispatcher, scheduler, worker lifecycle, or a model-backed Strategy proposer.
+- Objective creation/lifecycle and deterministic, read-only StateAssessment construction.
+- Strategy proposal validation, accepted-event provenance, and reconstruction; StrategyService validates a supplied proposal but does not currently call a model to create it.
+- Plan materialization, reconstruction, lifecycle, Action-to-Task mapping, prerequisite admission, and durable completion preconditions.
+- TaskRuntime admission with policy/quota checks and Task-attributed task_started Event.
+- Ingestion proposal validation and atomic commit for fetched bytes supplied to the service.
+- World-memory concepts, immutable source Snapshots, EvidenceLinks, and architecture-level KnowledgeItem, Outcome, Evaluation, and LearningChange specifications.
 
-### Consequence
+### Gaps that must not be mistaken for implementation
 
-The missing R6 path is not just a missing `running → done` assignment. A real execution path must own admission, bounded handler invocation, success/failure/retry transitions, required Events, idempotent recovery, and the connection between durable execution results and a subsequent assessment.
+- No complete worker dispatcher/lifecycle path performs Task completion, failure, retries, and recovery.
+- Ingestion does not fetch a configured source or execute it as a Task.
+- The current ORM/migrations do not yet implement the documented Outcome, Evaluation, and KnowledgeItem entities; confirm actual branch state before planning schema work.
+- There is no implemented RAG-backed knowledge-core retrieval/context assembly path established by this baseline.
+- There is no end-to-end LLM-assisted experience-distillation and accepted-knowledge re-indexing path established by this baseline.
+- There is no model-backed Strategy proposer established by this baseline.
+- The production model provider, embedding/reranking choices, index implementation, freshness mechanics, and detailed context-packet persistence semantics are not selected by this proposal.
 
-## 3. R6-G0: decisions required before implementation
+## 3. R6-G0: required decisions before implementation
 
-These decisions are deliberately left **unresolved** in this proposal. The relevant ADRs stay Proposed until the operator explicitly decides otherwise.
+R6-G0 remains open until the decisions below are recorded in authoritative documents and the first vertical-slice contract is testable. Recommendations are not accepted decisions.
 
-### G0-D1 — ADR-0025 and ADR-0026 status
+### G0-D1 — Existing Control decisions and authority
 
-- **ADR-0025 — Plan Is Derived Execution State:** Proposed.
-- **ADR-0026 — Dual-Entry Execution Model:** Proposed.
+Review and explicitly decide ADR-0025 (Plan is derived execution state) and ADR-0026 (dual-entry execution model). ADR-0027 also remains Proposed and must not be treated as accepted by implication.
 
-**Recommendation:** review both against the already implemented R5 contracts, then explicitly accept or revise them before R6-A. Their intended boundaries are essential to R6: Plan is intent, Tasks/Events/Outcomes are execution evidence, reactive and deliberative work converge on ordinary Tasks, and there is no second runtime. This document does not mark either ADR accepted.
+Preserve these established R5/R6 boundaries: Plan is immutable intent; Tasks, Events, source records, and Outcomes describe execution; reactive and deliberative entry paths converge on ordinary Tasks; no second runtime; Task and Plan safeguards remain in force.
 
-### G0-D2 — Owner of Task completion, failure, and retry
+### G0-D2 — Task lifecycle and recovery
 
-Select and document one application-controlled owner for `running → done`, `running → pending` on a retryable failure, and `running → failed` when retries are exhausted. It must record the appropriate Task-attributed Event, set `completed_at` only on terminal success, reject illegal transitions, and make retries safe.
+Choose one application-controlled owner for successful completion, retryable failure, exhausted failure, attempt semantics, timestamps, Task-attributed Events, idempotency, and replay recovery. Extend TaskRuntime or define a narrowly scoped lifecycle service used by the same runtime. Worker code must not write Task lifecycle state or Events directly.
 
-**Recommendation:** extend the existing `TaskRuntime` boundary or add a narrowly scoped lifecycle service used by the same runtime. Keep the state transition and Event atomic; never let the worker write Task status or Event rows directly. Do not add another scheduler or workflow engine. Specify retry ownership and maximum-attempt semantics before coding; do not invent a new Task column unless the chosen policy requires one.
+### G0-D3 — First executable capability and network boundary
 
-### G0-D3 — First supported worker capability and network boundary
+The first worker remains a bounded configured-source ingest_source Task. Define permitted URL schemes; validation of configured and resolved destinations; private, loopback, link-local, and metadata-service protections; redirect revalidation; connection/read timeouts; response-size limits; malformed responses; HTTP failures; and cancellation behavior.
 
-The first end-to-end vertical slice should be the bounded configured-source `ingest_source` Task, because its proposal validation and commit path already exist and the Plan currently materializes that Task type. It should not initially execute arbitrary model-proposed tools or URLs.
+Prefer one injectable source-fetch interface, a fake fetcher in tests, and a production fetcher restricted to approved configured sources. Do not expose arbitrary model-chosen URLs, shell, or general filesystem access.
 
-Before enabling network access, define and test: permitted URL schemes; validation of configured source URLs and resolved destinations; treatment of loopback, private, link-local, and metadata-service addresses; redirect policy and revalidation; connection/read timeouts; response-size limits; and the behavior for HTTP errors, malformed content, and cancellation. A configured source is input to validate, not authority to access arbitrary network resources.
+### G0-D4 — Outcome and reassessment contract
 
-**Recommendation:** implement one injectable source-fetch interface, use a fake fetcher in tests, and make the production fetcher restricted to configured sources with explicit timeout/size/redirect rules. Do not expose general filesystem, shell, or arbitrary network tools to workers.
+Define the first supported Outcome kind, subject and Team ownership, source/provenance requirements, Task write scope, transaction boundary, event semantics, idempotency, and crash/replay behavior. Decide whether Outcome persistence is part of the application-controlled final completion transaction or a separate scoped Task operation. Preserve the historical StateAssessment basis used by the originating Strategy/Plan; a follow-up assessment must be deterministic and read-only.
 
-### G0-D4 — Meaning and persistence of Outcome in R6
+### G0-D5 — Knowledge-core source of truth and RAG contract ([ADR-0028](../decisions/ADR-0028-rag-backed-knowledge-cores.md))
 
-The architecture describes an `Outcome` entity, but the current ORM and migrations do not implement it. This is a schema/API decision, not something the worker should improvise.
+Decide:
+- Which canonical records make up the initial Domain Knowledge Core and which accepted records make up the Team Experience Core.
+- Whether the first slice needs a distinct durable context-core/brief entity or can derive the view from existing canonical records; do not add entities for convenience.
+- Retrieval scoping and authorization by Team/domain, knowledge layer, entity kind, current status, and sensitivity.
+- Retrieval/index design, including keyword/vector or hybrid matching, embedding model/version, optional reranking, context budget, freshness, re-indexing, and failure behavior.
+- How retrieved candidates are resolved back to current canonical records and how source Snapshots, hashes, statuses, and conflicting claims are represented in the Context.
+- Whether and how the selected context basis is durably recorded so a Strategy/Outcome can be explained and reconstructed later.
 
-**Recommendation:** add the smallest Outcome implementation required by the first loop, aligned with the existing architecture definition in `docs/architecture.md`; do not pull Evaluation, prediction scoring, or learning into R6. Specify the first outcome type and observation provenance before migration work. The Task completion Event and Signal/Event evidence must remain consistent and idempotent on retries. Decide whether Outcome recording belongs in the final application-controlled completion transaction or in a separate Task operation, and test crash/replay behavior either way.
+The retrieval index must remain regenerable and non-authoritative. A vector match alone is not proof of a claim. Corrections, supersession, rejection, retirement, or access changes must prevent stale or unauthorized indexed content from being treated as current. Existing source/quote validation remains in force.
 
-### G0-D5 — Strategy proposal generation
+### G0-D6 — LLM-assisted experience distillation ([ADR-0029](../decisions/ADR-0029-llm-assisted-experience-distillation.md))
 
-`StrategyService.submit` validates and records a proposal that is supplied to it; there is no current model-backed Strategy proposer in the repository. A full intelligent loop needs an explicit proposal-generation boundary while retaining the validator as the authority gate.
+Define the first distillation input and output contract:
+- Inputs are durable experience records, Outcomes, applicable Evaluations, and referenced evidence—not an unbounded conversation transcript.
+- The LLM proposes an abstraction that explains its supporting cases, scope/applicability, assumptions, limitations, counterexamples, and unresolved uncertainty.
+- The first vocabulary should align with the existing KnowledgeItem kinds: practice, pattern, method, and playbook, subject to the actual schema and accepted authority.
+- A proposal must retain provenance to its basis and must not convert correlation or a single successful case into unsupported general truth.
+- Application validation and the existing authorized learning commit path govern persistence. The LLM does not directly create or revise KnowledgeItems or TeamPolicy.
+- The accepted version, supersession/review behavior, and the point at which it becomes retrievable must be explicit. Only accepted canonical knowledge is published to retrieval; the index itself is not a commit path.
+- The first R6 vertical slice should use a bounded, reviewable approval path. No autonomous policy changes, recursive self-modification, or automatic acceptance merely because a Task succeeded.
 
-**Recommendation:** define a small `StrategyProposer` interface; tests use a deterministic fake, and one selected production provider implements the interface. Keep provider calls outside database transactions. Never pass model output directly to Plan materialization: it must pass existing Strategy validation and accepted-event provenance first. The architecture currently names the Anthropic Python SDK, so confirm that remains the intended production provider before adding its dependency, credential requirements, or network path. No provider is selected by this document.
+### G0-D7 — Strategy proposer and model-provider boundary
 
-### G0-D6 — First loop boundary
+Define a narrow StrategyProposer interface that consumes the objective, deterministic assessment, policy constraints, and approved assembled Context. Provider calls occur outside database transactions. All model output passes existing Strategy validation and accepted-event provenance before Plan materialization. Select the production provider or explicitly stage that choice; do not add a dependency, credential path, or provider network behavior by assumption.
 
-Define exactly what the first success proves and what is deferred. The first success should execute one supported configured-source Action from a real accepted Plan, produce a durable Signal and success/no-change evidence, finish its ordinary Task through the runtime-owned lifecycle, record the agreed Outcome representation, and build a new deterministic StateAssessment from the resulting records.
+### G0-D8 — First end-to-end acceptance contract
 
-Keep broad scheduling, multiple worker types, arbitrary tools, autonomous policy changes, evaluation/learning, replanning, and multi-domain automation out of the first vertical slice unless an explicit decision expands scope.
+Freeze the first test domain, seed/context setup, allowed source capability, first Outcome type, distillation basis, approval path, and deferred scope. The first integrated success should demonstrate:
 
-## 4. Proposed delivery sequence
+- A Strategy proposal is grounded in a recorded, bounded RAG Context and is accepted through the existing validator.
+- One accepted Strategy materializes one immutable Plan and ordinary Task(s).
+- A bounded configured-source Task executes through the single runtime, with safe fetch rules and idempotent recovery.
+- Durable execution evidence and an Outcome support a reproducible follow-up StateAssessment.
+- An LLM proposes an evidence-linked reusable abstraction from that experience.
+- The authorized learning path accepts or rejects it explicitly; rejected or unapproved knowledge is not published as accepted retrieval context.
+- A subsequent task can retrieve an accepted abstraction, resolve its canonical provenance, and use it without relying on the prior transcript.
 
-Each slice should be a small pull request with focused tests, then applicable static checks, a full-suite run at the milestone gate, and disposable-PostgreSQL migration/integration evidence when applicable. Do not begin the next slice while its predecessor's gate is unresolved.
+Broader scheduling, multiple worker types, arbitrary tools, autonomous policy changes, general replanning, multi-domain automation, and large-scale learning-quality optimization remain outside the first vertical slice.
+
+## 4. Proposed implementation traversal after G0 exits
+
+These are future implementation slices only. They must not begin until G0 exit decisions and acceptance criteria are recorded.
 
 ### R6-A — Task execution lifecycle
 
-Implement and test the application-controlled lifecycle that follows existing `TaskRuntime.admit`. Include success, retryable failure, exhausted failure, Event attribution, timestamps, concurrent/conflicting transitions, and idempotent recovery. Reuse the current policy version, quota, write-scope, and prerequisite checks. No worker dispatch or new scheduler in this slice unless the approved G0 contract explicitly requires it.
+Implement the application-controlled lifecycle following TaskRuntime admission: success, retryable failure, exhausted failure, Events, timestamps, concurrency/conflict handling, replay, and idempotency.
 
-**Exit:** tests prove legal transitions only, one terminal result per Task execution attempt, durable Events agree with Task state, retry/replay does not duplicate commits, and failures cannot leave partial lifecycle changes.
+**Exit:** legal transitions only; Task state and Events agree; retries and crashes do not double-commit or leave partial lifecycle changes.
 
-### R6-B — One bounded `ingest_source` worker
+### R6-B — One bounded configured-source worker
 
-Add a small dispatcher/handler that loads the Task and its durable configured Action/source context, uses the approved restricted fetcher, passes the fetched content into `IngestionService`, and reports success/failure through the lifecycle owner. The handler cannot commit business rows or Task/Event lifecycle state directly. No general-purpose agent runtime.
+Add a small dispatcher/handler for the configured-source ingest_source Task. It loads durable Task/source context, uses the approved restricted fetcher, invokes the existing IngestionService, and reports outcomes through the lifecycle owner. The handler cannot commit business rows or lifecycle state directly.
 
-**Exit:** integration tests exercise the complete Task admission → handler → ingestion commit → Task completion path, including no-change, rejection, retries, crash after ingestion commit, and replay without duplicate Signals or Events.
+**Exit:** integration tests cover admission → handler → ingestion commit → lifecycle completion, including no-change, rejection, retry, crash after ingestion commit, and replay without duplicate Signals or Events.
 
-### R6-C — Durable Outcome and re-assessment
+### R6-C — Durable Outcome and reassessment
 
-Implement the G0-approved Outcome representation, schema migration if needed, Task scope, service, provenance, and idempotency. Build a new StateAssessment after the durable execution result; preserve the historical basis used by the original Strategy/Plan. Assessment remains read-only and does not mutate memory or policy.
+Implement the G0-approved Outcome representation, scope, service, migration if required, provenance, and idempotency. Build a new deterministic assessment from the resulting durable records while preserving the original decision basis.
 
-**Exit:** a restart/replay test can reconstruct the Plan and explain the execution result from durable records, and the follow-up assessment is reproducible from the same database state.
+**Exit:** restart/replay reconstructs the Plan and explains the execution result; reassessment is reproducible from the same durable state.
 
-### R6-D — Connect the deliberative path
+### R6-D — RAG-backed Knowledge Cores
 
-Use the selected `StrategyProposer` implementation to propose against an existing Objective and deterministic assessment. Submit through `StrategyService`, materialize only the accepted proposal through `PlanService`, then dispatch the resulting ordinary Task through R6-B. Rejected proposals must not materialize a Plan. Model output cannot select tools, expand writes, change TeamPolicy, or bypass budget and dependency rules.
+Implement the minimal canonical knowledge selection and a regenerable retrieval projection consistent with ADR-0028. Retrieve source-grounded Domain Knowledge Core records and, where available, accepted Team Experience Core records. Preserve access and status filtering, canonical references, index freshness/rebuild behavior, and a bounded context budget.
 
-**Exit:** one integration test starts from an active Objective, runs the full loop, and asserts the accepted provenance, Plan/Task mapping, Task lifecycle, durable execution evidence, Outcome, and new assessment.
+**Exit:** tests prove relevant retrieval, Team/domain isolation, status/access filtering, traceable source references, stale-index rejection after a canonical change, and index rebuild/replay. No retrieval-only assertion can commit a fact or lesson.
 
-### R6-E — Gate, integrate, and close
+### R6-E — Task Context assembly and StrategyProposer
 
-Run the required focused tests, complete test suite, Ruff, mypy, and migration paths on disposable PostgreSQL. Verify clean diff, recovery behavior, and architecture boundaries. Record commands, environments, passed/failed/skipped checks, and any remaining limitations. Merge reviewed changes to main, then request an explicit R6 exit decision. R6 is not closed by tests or merge alone.
+Assemble a bounded Context from RAG candidates resolved to current canonical records plus Objective, StateAssessment, policy constraints, and permitted task information. Record sufficient source/version provenance for later explanation. Use a fake proposer in tests and the G0-approved production-provider boundary. Submit the proposal through existing Strategy validation; only an accepted proposal may materialize a Plan.
 
-## 5. Non-negotiable invariants during R6
+**Exit:** tests cover source attribution, conflicting/uncertain evidence, context limits, model-output rejection, provider failure, and no Plan for a rejected proposal.
 
-- Do not bypass `TaskRuntime.admit`, quota, policy-version, Task budget, Plan prerequisite, write-scope, or Kernel/application validation.
-- Every durable write and Event remains attributable to a Task; worker output is a proposal, never authority.
-- Plan intent and the selected historical assessment/proposal basis remain immutable and reconstructable.
-- Do not use Task status alone as proof that declared Plan completion conditions were met; R5 durable evidence checks remain mandatory.
-- Reactive Tasks remain valid without Objectives or Plans.
-- Do not silently accept ADR-0025, ADR-0026, or ADR-0027. Do not broaden a Task-count quota into spend accounting.
-- No destructive Git/database cleanup; tests use disposable databases, never the persistent `watch` database.
-- The only current milestone status source is `PLAN.md`; update `CHANGE_MAP.md` when the governing map changes.
+### R6-F — First experience-distillation path
+
+Build a scoped distillation operation from durable Outcomes/Evaluations and their evidence basis. An LLM proposes a reusable practice, pattern, method, or playbook with scope, limits, counterexamples/uncertainty, and source references. Validate the proposal and route it through the approved LearningChange/learning commit path. Publish only accepted canonical versions to RAG.
+
+**Exit:** tests cover a valid abstraction, missing or mismatched evidence, contradictory examples, single-case overgeneralization, rejection, duplicate/replay behavior, version/supersession, and failure to publish an unaccepted proposal.
+
+### R6-G — Integrated vertical slice and formal gate
+
+Exercise the full cycle from Objective/assessment and RAG Context through accepted Strategy, Plan/Task execution, durable Outcome, follow-up assessment, proposed and accepted distillation, index update, and retrieval by a later task. Verify recovery after restart and explainability from canonical records rather than transcripts.
+
+Run required focused and full-suite tests, Ruff, mypy, and applicable disposable-PostgreSQL migration/integration checks. Record actual commands, environment, results, skipped checks, and remaining limitations. R6 is not closed by code, tests, or merge alone; request explicit operator exit approval.
+
+## 5. Non-negotiable constraints
+
+- Worker/model output is a proposal, never authority for a durable write.
+- Preserve Task scope, budgets, policy-version checks, quota semantics, Plan prerequisites, and Kernel/application validation.
+- Every durable write and Event remains attributable to an authorized Task.
+- Plan intent and historical Strategy/assessment provenance remain immutable and reconstructable.
+- StateAssessment remains deterministic, derived, read-only, and non-authoritative.
+- RAG indexes, embeddings, summaries, and context rankings are projections; canonical records determine truth and current status.
+- A claim's retrieved relevance is not a truth score. Preserve supporting and challenging evidence, uncertainty, and source provenance.
+- Team memory changes only through the authorized learning path (INV-12); no direct worker writes and no automatic policy changes.
+- Reactive Tasks remain valid without Objectives or Plans. No second runtime, scheduler, or workflow engine.
+- R5's durable Plan-completion preconditions remain mandatory.
+- ADR-0025, ADR-0026, ADR-0027, ADR-0028, and ADR-0029 must not be silently accepted.
+- Use disposable databases for tests; never modify the persistent watch database to make tests pass.
+- PLAN.md remains the single source of current milestone status; update CHANGE_MAP.md when authority mapping changes.
 
 ## 6. G0 exit checklist
 
-R6-A can start when the following are explicitly resolved and reflected in the relevant authority documents:
+- [ ] Explicit operator disposition recorded for ADR-0025 and ADR-0026.
+- [ ] Task completion, failure, retry, attempt, Event, timestamp, and recovery contract agreed.
+- [ ] Bounded ingest_source behavior and network-safety contract agreed.
+- [ ] Outcome schema/scope/provenance/transaction/replay semantics agreed.
+- [ ] ADR-0028 RAG authority, core separation, retrieval scoping, context provenance, index freshness, and initial implementation choices explicitly decided.
+- [ ] ADR-0029 distillation proposal, evidence/counterexample requirements, learning commit/approval path, versioning, and retrieval publication boundary explicitly decided.
+- [ ] StrategyProposer interface and production provider decision recorded, or provider choice explicitly deferred with a bounded fake-backed implementation scope.
+- [ ] First integrated acceptance tests, first domain, review path, failure/recovery cases, and deferred scope frozen.
+- [ ] Actual local branch, HEAD, merge status, worktree, and disposable database verified before implementation.
 
-- [ ] Operator decision recorded for ADR-0025 and ADR-0026.
-- [ ] One owner and contract for Task completion, failure, retries, and Event semantics.
-- [ ] First `ingest_source` execution boundary and network-safety requirements agreed.
-- [ ] Outcome entity/scope/transaction/replay semantics decided against `docs/architecture.md`.
-- [ ] Strategy proposer interface and production-provider choice (or a clearly bounded staged provider decision) recorded.
-- [ ] First vertical slice acceptance tests, failure/recovery cases, and deferred scope frozen.
-- [ ] R6-A branch base, current HEAD, clean worktree, and required disposable test database verified from the actual local checkout.
-
-Until the checklist is satisfied, keep R6-G0 in progress and do not implement schema, network, provider, or lifecycle behavior by assumption.
+Until this checklist is satisfied, keep R6-G0 in progress. This documentation redesign does not start R6-A or authorize schema, network, provider, index, or lifecycle implementation.

@@ -7,15 +7,14 @@ This file is the **single source of current milestone status**. Other documents 
 - **K0, K1, R0, R1, R2, R3:** recorded complete.
 - **R4:** **closed 2026-10-20.** The redesigned multi-perspective Strategy implementation was verified freshly on the live repository (44 focused Strategy tests + full 185-test suite passing, Ruff, `mypy core`, disposable-DB migrations to `0006_immutable_plan_actions`); ADR-0023/ADR-0024 were accepted by explicit operator decision; the phase-boundary merge to `main` was performed. See the R4 closure record below.
 - **R5: CLOSED 2026-10-24 by explicit operator decision.** **R5-A: READY (2026-10-21)** and **R5-B: READY (2026-10-24, programmer-reported verification)** are integrated into `main`. PR #2 merged the lifecycle-constraint correction (`95a1e8e`) and migration `0008_plan_lifecycle_state` at merge commit `435e88f`; PR #3 merged the preceding R5 status-alignment documentation at `9ba1072`. This formal closure record is added by the current documentation change. On the checkout at `c99858f` in `r5b-lifecycle-constraint-fix`, the disposable database upgraded from `0007_plan_lifecycle` to `0008_plan_lifecycle_state`; 38 lifecycle tests, 147 R5-A/Strategy regression tests, and 260 full-suite tests passed; Ruff, `mypy core` (11 source files), and `git diff --check` passed. A fresh full-chain migration through `0008` was not rerun; the subsequent `0008 → 0007 → 0008` downgrade/upgrade round trip succeeded on the same disposable database, but schema equivalence after that round trip was not separately compared. The end-to-end Task-completion path remains assigned to R6; the R5 completion-precondition requirements are unchanged. ADR-0027 remains `Proposed`; R5 closure does not itself authorize R6.
-- **R6:** **G0 entry-gate work in progress (operator authorization 2026-10-24).** The operator authorized starting the R6 path; this authorizes G0 planning and decision work, not silent acceptance of Proposed ADRs or unresolved schema, security, provider, or lifecycle choices. The implementation slices are sequenced in [`docs/development/r6-entry-gate.md`](docs/development/r6-entry-gate.md) and must wait for the G0 decisions to be recorded.
+- **R6:** **G0 entry gate in progress; implementation not started or authorized.** The revised design target is a knowledge-grounded loop combining RAG-backed Domain Knowledge Cores, durable execution evidence, and LLM-assisted experience distillation.  [ADR-0028](docs/decisions/ADR-0028-rag-backed-knowledge-cores.md) and [ADR-0029](docs/decisions/ADR-0029-llm-assisted-experience-distillation.md) are Proposed. R6-A onward remain pending the explicit G0 exit decisions in [the entry gate](docs/development/r6-entry-gate.md).
 - **R7+:** future work; not authorized by the existence of code or proposed documents.
 
 The supplied project ZIP has no Git metadata. Before taking repository action, verify branch, HEAD, merge status, and worktree on the actual checkout using `AGENTS.md`.
 
 ## Next actionable step
 
-**R5 is formally closed as of 2026-10-24. The operator authorized starting R6 and its G0 entry-gate work on 2026-10-24.** G0 must resolve the decisions and acceptance contract in [`docs/development/r6-entry-gate.md`](docs/development/r6-entry-gate.md) before R6-A implementation starts. The end-to-end worker/execution path that transitions Tasks to `done` remains R6 work; R5's durable Plan-completion preconditions remain mandatory. This authorization does not implicitly accept ADR-0025, ADR-0026, or ADR-0027; record each ADR decision explicitly.
-
+**Keep R6-G0 open.** Review and record the decisions and acceptance contract in [docs/development/r6-entry-gate.md](docs/development/r6-entry-gate.md), including Proposed ADR-0028 and ADR-0029. This revision changes the future path only: do not start implementation slices until the gate checklist is satisfied and the actual local checkout has passed preflight. The first R6 vertical slice must connect source-grounded RAG Context, the existing validation boundary, ordinary Task execution, durable Outcome evidence, evidence-linked experience distillation, authorized learning commit, and later retrieval of accepted knowledge.
 
 ## Milestone overview
 
@@ -29,8 +28,8 @@ The supplied project ZIP has no Git metadata. Before taking repository action, v
 | R3 | Complete | Deterministic, read-only StateAssessment with provenance. |
 | R4 | **Complete** (closed 2026-10-20) | StrategyProposal boundary, multi-Vision/Workstream/Action semantics, deterministic validation and reconstruction. |
 | R5 | **Complete — closed 2026-10-24 by explicit operator decision** | Materialize one accepted Strategy as one durable Plan and ordinary Tasks; retain the Task-execution dependency for R6. |
-| R6 | **G0 entry gate in progress; implementation slices pending G0 exit** | First end-to-end intelligent Control loop; ordinary Task execution, durable Outcome evidence, and re-assessment. |
-| R7 | Future | Evaluation and learning integration. |
+| R6 | **G0 entry gate in progress; implementation not started** | First knowledge-grounded end-to-end loop: RAG Context, ordinary Task execution, durable Outcomes, LLM-assisted experience distillation, and reuse of accepted knowledge. |
+| R7 | Future | Distillation quality, cross-case evaluation, and knowledge lifecycle. |
 | R8 | Future | Multi-domain pressure test. |
 | R9 | Future | Codified agent-assisted production workflow. |
 
@@ -236,21 +235,23 @@ ADR-0027 remains `Proposed` in the decision index. The R5-A implementation/test 
 - Required focused and full verification is freshly run; migration/integration evidence uses a disposable PostgreSQL database.
 - All checks and the formal phase exit gate are recorded honestly.
 
-## R6 — First intelligent Control loop (G0 entry gate in progress)
+## R6 — Knowledge-grounded execution and experience distillation (G0 entry gate in progress)
 
-**Authorization:** The operator authorized R6 entry-gate work on 2026-10-24. R6-G0 is in progress; code implementation must not begin by assuming unresolved architecture, schema, security, provider, or Task lifecycle decisions.
+**Status and authority:** The operator authorized R6 entry-gate planning on 2026-10-24 and approved the revised design direction on 2026-10-25. R6-G0 remains **IN PROGRESS**. This documentation-only change does not start R6-A or authorize implementation. [ADR-0028 (RAG-backed Knowledge Cores)](docs/decisions/ADR-0028-rag-backed-knowledge-cores.md) and [ADR-0029 (LLM-assisted Experience Distillation)](docs/decisions/ADR-0029-llm-assisted-experience-distillation.md) are **Proposed**, not accepted. See [the R6 entry gate](docs/development/r6-entry-gate.md).
 
-**Target loop:** Objective → deterministic StateAssessment → proposed StrategyProposal → application validation/accepted Strategy → immutable Plan → ordinary Tasks → existing Task admission/execution/Kernel commit → durable execution result/Outcome → new StateAssessment. The system must explain why Tasks exist and resume from durable records after worker/runtime failure.
+**Revised target:** deliver the first small end-to-end knowledge cycle: retrieve scoped, source-traceable knowledge through RAG; assemble a bounded task Context; propose and validate Strategy; materialize immutable Plan and ordinary Tasks; execute one bounded configured-source Task; persist durable evidence and Outcome; reassess; distill an evidence-linked abstraction from experience; commit it through the authorized learning path; index the accepted canonical version; then retrieve it for a later task.
 
-**Current gaps:** `TaskRuntime` implements admission but not completion/failure/retry transitions or dispatch; `IngestionService` commits proposals made from already-fetched bytes but does not fetch configured sources or run Tasks; `StrategyService` validates a supplied proposal but has no model-backed proposer; the documented Outcome entity is absent from current ORM/migrations. R5's Plan materialization, lifecycle, dependency, quota, and completion-precondition checks remain the foundation and must not be bypassed.
+The logical knowledge layers are: **Domain Knowledge Core** (what the team knows about the subject), **Team Experience Core** (what it has learned from doing the work), and a derived **Task Context** (what matters for one job). RAG indexes are regenerable projections, not authority. A vector match does not establish truth; current canonical records, source provenance, access control, status, uncertainty, and the existing application/Kernel validation gates remain authoritative. The layers may share physical retrieval infrastructure, but their scope and semantics must remain distinguishable.
 
-**Traversal:** G0 freezes authority and the minimum end-to-end contract. R6-A adds application-controlled Task completion/failure/retry lifecycle; R6-B adds one bounded configured-source `ingest_source` worker path; R6-C adds the explicitly approved durable Outcome representation and follow-up StateAssessment; R6-D connects a selected Strategy proposer through validation, Plan materialization, and ordinary Task execution; R6-E runs full verification and records the formal exit gate. See [`docs/development/r6-entry-gate.md`](docs/development/r6-entry-gate.md) for current findings, recommended boundaries, decision points, tests, and G0 exit checklist.
+**Current gaps:** the current source has Task admission but no end-to-end Task completion/failure/retry/dispatch path; ingestion accepts fetched bytes but does not fetch configured sources or run Tasks; StrategyService validates supplied proposals but has no model-backed StrategyProposer; and Outcome, Evaluation, and KnowledgeItem are described in architecture but are not implemented in the current ORM/migrations baseline. RAG Context assembly and the end-to-end distillation/index-publication path are also not established as implemented capabilities. Verify the actual branch before implementation; do not infer current code from this roadmap.
 
-**Gate:** R6-A remains pending until the G0 decisions are resolved and recorded. ADR-0027 remains Proposed unless separately accepted.
+**Traversal after G0 exits:** R6-A Task lifecycle and recovery; R6-B one bounded configured-source worker; R6-C durable Outcome and reassessment; R6-D minimal RAG-backed Knowledge Cores and safe, traceable retrieval; R6-E Context assembly and StrategyProposer; R6-F LLM-assisted experience distillation through the authorized learning path; R6-G integrated vertical slice, full verification, and explicit exit gate. Each slice requires its own narrow scope, tests, and predecessor gate. Exact decisions and acceptance conditions are listed in [the R6 entry gate](docs/development/r6-entry-gate.md).
 
-## R7 — Evaluation and learning integration (future)
+**G0 must resolve before implementation:** ADR-0025/0026 disposition; Task lifecycle/retry/Event/recovery semantics; safe source-fetch boundary; Outcome persistence/provenance/replay; canonical sources and logical separation of the knowledge cores; RAG access filtering, freshness/rebuild, Context provenance and budget; the first distillation proposal and approval/commit contract; StrategyProposer/provider boundary; and the first vertical-slice failure/recovery tests. ADR-0027 remains Proposed unless separately accepted. No code, schema, provider, network, or index implementation is authorized by the design revision alone.
 
-Classify world, strategy, execution, evidence, and policy failures. Failure classification must not silently rewrite world memory or TeamPolicy.
+## R7 — Distillation quality and knowledge lifecycle (future)
+
+Improve evaluation of abstractions across multiple cases, contradictory evidence and counterexamples, transferability tests, retrieval quality, review/expiry, staleness detection, supersession, and retirement. R7 may improve the learning loop but must preserve explicit provenance, canonical authority, and controlled commits; it does not imply autonomous TeamPolicy changes.
 
 ## R8 — Multi-domain pressure test (future)
 
@@ -266,9 +267,9 @@ Codify bounded task packets, test-first changes, architecture reviews, verificat
 
 Before expanding beyond tightly bounded workers, define and enforce each worker's allowed filesystem, network, and tool surface; keep secrets out of worker contexts; and isolate execution. Before claiming monetary or token-cost limits, account for all relevant model and tool spend, including failed calls and retries, and test the completeness of that accounting. The current bounded ingestion capability with zero tools and zero cost does not require a general cost-accounting framework or recursive harness.
 
-### Durable experience library
+### Broader experience library beyond the initial R6 slice
 
-A later dedicated milestone may add a bounded, domain-aware library of reusable experience. Retain a lesson only with an identified situation, supporting evidence, known limitations, and a reason it may transfer to another situation. Do not store arbitrary reflections as durable knowledge and do not implement recursive self-improvement inside the Kernel or Plan materialization layer.
+The first bounded Domain Knowledge Core, Team Experience Core, and controlled distillation/retrieval loop are now part of the proposed R6 target. A broad, multi-domain experience library and more advanced transfer learning remain later work. Retain abstractions only with an identified situation, supporting evidence, applicability boundaries, known limitations, counterexamples where available, and a reason they may transfer. Do not store arbitrary reflections as durable knowledge or implement recursive self-improvement inside the Kernel or Plan materialization layer.
 
 ## Change rule
 

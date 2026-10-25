@@ -8,6 +8,15 @@ Watch is a persistent, evidence-oriented team system. **Model intelligence is te
 
 Reactive and deliberative work converge on the same ordinary Task runtime. Tasks, Events, and committed records describe what actually happened; Plans describe intended work.
 
+## Current R6 design direction (proposed)
+
+R6-G0 remains in progress; implementation has not started. The proposed target is a knowledge-grounded loop: use RAG to retrieve source-traceable context from logically distinct Domain Knowledge and Team Experience cores, execute work through the ordinary Task runtime, record durable Outcomes, use LLMs to distill evidence-linked reusable abstractions through the authorized learning path, and retrieve accepted knowledge for later tasks. RAG indexes are projections, not authorities. ADR-0028 and ADR-0029 remain Proposed.
+
+For these decisions, read:
+- [R6 entry gate](docs/development/r6-entry-gate.md) — unresolved G0 decisions and the future R6-A through R6-G sequence.
+- [ADR-0028](docs/decisions/ADR-0028-rag-backed-knowledge-cores.md) — proposed RAG and Knowledge Core boundaries.
+- [ADR-0029](docs/decisions/ADR-0029-llm-assisted-experience-distillation.md) — proposed experience-distillation boundaries.
+
 ## Open the smallest relevant set of documents
 
 1. [`PLAN.md`](PLAN.md) — the only source for current milestone status, gates, and next action.
