@@ -1,18 +1,35 @@
 # Task specifications
 Every durable write in Watch is performed by a Task. This document is the spec for each v1 task type: what it reads, what it may write, how it runs, what is validated at commit time, and how it fails.
 ## 1. Task model
-- Every Task has: Team, `task_type`, optional Thread, `input_refs`, `allowed_tools`, `allowed_writes`, `policy_version`, `budget` (`max_tool_calls`, `max_cost_usd`, `deadline_seconds`).
+- Every Task has: Team, `task_type`, optional Thread, `input_refs`, `allowed_tools`, `allowed_writes`, `policy_version`, `budget` (`max_tool_calls`, `max_cost_usd`, `deadline_seconds`), `created_at`, `attempt_count`, and a per-Task pinned `max_attempts` (initial default: 3 total starts). `completed_at` is nullable and set only for status `done`. These lifecycle fields are part of the R6 target; they are not all present in the current ORM baseline.
 - Task statuses and transitions: see `docs/architecture.md` §4.
 - **All durable writes go through core repositories/services** that enforce schema, ownership, scope, and transitions (INV-02, INV-14). Graph nodes return proposal objects; they never write.
 - `allowed_writes` names the business/domain entity kinds that the Task's worker may propose to create or change, subject to this matrix. It does not grant the worker direct database or object-storage access.
 - The matrix also marks `K` operations: explicitly scoped Task lifecycle or companion writes performed only by application/Kernel code. They are mandatory, conditional, or optional only as the row's specification states. `K` is an explicit scope category, not an exception to INV-14. A `K` cell authorizes only the exact Task, Event, or Snapshot operation specified for that Task type; it never permits a worker to request arbitrary Tasks, Events, or Snapshots. The application controls Task lifecycle/enqueue data and Event type, payload, and attribution, and validates Snapshot content/reference and association with the permitted business write.
 - Every Task transition emits a Task-attributed Event. A commit emits its required success, no-change, or rejection Event as applicable. These Kernel-generated records are constrained by the row's `K` entries; the worker cannot write them directly. Commit-time preconditions are re-checked (INV-13).
 - **Per-proposal validation:** valid proposals commit atomically as one set; invalid proposals are rejected with Events carrying reasons; a Task whose proposals all fail is marked failed.
-- Retries (arq) re-execute idempotently: prior commits are detected via the Task's Events and skipped.
-- `TaskRuntime.admit` is the application-controlled worker-pickup boundary: it validates a pending Task, active Team (except team setup), and matching TeamPolicy version, then atomically increments `attempt_count`, changes `pending → running`, and records one Task-attributed `task_started` Event. The Task-row lock serializes competing claims; non-pending claims are rejected rather than replayed as a second transition.
+- Retries must re-execute idempotently: prior business commits are detected through canonical idempotency keys and Task Events and skipped. R6's initial policy is three total starts per Task; retry/failure transitions, attempt fencing, and interrupted-task recovery are specified in [ADR-0030](decisions/ADR-0030-r6-bounded-execution-source-safety-outcome.md).
+- `TaskRuntime.admit` is the application-controlled worker-pickup boundary: it validates a pending Task, active Team (except team setup), matching TeamPolicy version, and prerequisites; then atomically increments `attempt_count`, changes `pending → running`, and records one Task-attributed `task_started` Event. The Task-row lock serializes competing claims; non-pending claims are rejected rather than replayed as a second transition. `attempt_count` counts successful starts, including retries.
 - Tool calls and token usage are attributed to the Task and counted against its budget.
 - Most task types require an `active` Team; `create_team`, `configure_team`, and `activate_team` operate on shell/configuring teams and are the exceptions.
 - **No path bypasses validation for being human** (INV-15): operator task types use the same commit kernel, and operator identity is recorded in Event payloads.
+### R6 first-slice lifecycle contract (decision recorded; not yet implemented)
+
+The sole lifecycle authority is `TaskRuntime` (an internal service may be called by it but may not become a second authority). Workers return typed results and never write Task status, attempt counters, or lifecycle Events directly.
+
+| Transition | Required atomic effects |
+|---|---|
+| `pending → running` | Increment `attempt_count`; emit `task_started` |
+| `running → pending` after retryable failure with starts remaining | Emit `task_attempt_failed` and `task_retry_scheduled` with attempt/reason metadata |
+| `running → done` | Set `completed_at`; emit `task_completed`; persist the unique terminal `task_execution` Outcome |
+| `running → failed` after non-retryable failure or exhaustion | Emit `task_attempt_failed` and `task_failed`; persist the terminal failure Outcome |
+
+Every finalization supplies the attempt number that was admitted. A stale result from an earlier attempt is rejected if recovery/re-admission advanced the attempt. The first worker has a 30-second execution deadline; a still-running Task whose last start is older than 60 seconds at dispatcher startup is recovered to pending if starts remain, otherwise failed. This is compare-and-set recovery in the existing runtime, not a new scheduler.
+
+For the initial `ingest_source` worker, transient transport failures/timeouts and HTTP 408, 429, and 5xx may retry. Unsafe/mismatched URLs, redirects, unsupported media types, malformed data, other 4xx responses, and application validation errors are non-retryable. The full URL/DNS/IP, redirect, timeout, and byte-limit contract is in [ADR-0030](decisions/ADR-0030-r6-bounded-execution-source-safety-outcome.md). Each dispatcher invocation makes at most one attempt; it must not spin in an unbounded retry loop.
+
+The terminal Task status, terminal Task Event, and terminal Outcome are committed atomically. The ingestion business commit remains independently atomic and idempotent; replay after a crash must reuse that result and never duplicate Signal, terminal Event, or Outcome.
+
 ### TeamPolicy daily Task-start quota
 > **Authority status:** ADR-0027 remains `Proposed`; this paragraph does not change that formal status. For R5-A, the operator has explicitly directed verification and correction of the existing configured quota path against the behavior below. Keep the implementation auditable and report any conflict that cannot be resolved from these requirements. Do not imply that this Task-count quota enforces monetary or token spend.
 When a TeamPolicy configures `rules["budgets"]["max_tasks_per_day"]`, the
