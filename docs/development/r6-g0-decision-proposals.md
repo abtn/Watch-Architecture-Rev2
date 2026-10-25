@@ -2,24 +2,24 @@
 
 ## Status and authority
 
-**Status: recommendation packet only — no decisions accepted.** Prepared for R6-G0 on 2026-10-25 after the documentation redesign was merged to `main` at `83148dc0aedef5c69d2a9491cd0933efb11ca419`.
+**Status: recommendation packet only for unresolved implementation choices.** The operator accepted the architectural principles in ADR-0028 and ADR-0029 by explicit agreement with the design direction on 2026-10-25. This packet does not approve its remaining recommendations, accept ADR-0025/0026/0027, or authorize implementation. Prepared for R6-G0 on 2026-10-25 after the documentation redesign was merged to `main` at `83148dc0aedef5c69d2a9491cd0933efb11ca419`.
 
-This document makes the open gate easier to resolve. It does not amend ADR statuses, authorize implementation, select a production provider, or replace the canonical rules in `PLAN.md`, `AGENTS.md`, `CHANGE_MAP.md`, specs, and accepted ADRs. Every item below is a recommendation for explicit operator approval or revision.
+This document makes the open gate easier to resolve. It records the accepted high-level scope of ADR-0028/0029 but does not settle their remaining implementation choices, amend other ADR statuses, authorize implementation, select a production provider, or replace the canonical rules in `PLAN.md`, `AGENTS.md`, `CHANGE_MAP.md`, specs, and accepted ADRs. The remaining recommendations below still require explicit operator approval or revision.
 
 ## Summary of recommended direction
 
 | Decision | Recommendation | Still requires |
 |---|---|---|
-| ADR-0025 — Plan as derived execution state | Accept unchanged | Explicit operator disposition |
-| ADR-0026 — Dual-entry execution | Accept unchanged | Explicit operator disposition |
+| ADR-0025 — Plan as derived execution state | Accept unchanged | Explicit operator disposition; still Proposed |
+| ADR-0026 — Dual-entry execution | Accept unchanged | Explicit operator disposition; still Proposed |
 | ADR-0027 — Daily Task-start quota | Leave Proposed for now; do not broaden R6 scope | Separate disposition if desired; preserve current documented behavior |
 | Task lifecycle/retry | One application-controlled lifecycle owner used by the existing runtime; typed and auditable transitions | Agree transition/event semantics, retry bound, and required schema |
 | First worker/network | One configured-source `ingest_source` capability; HTTPS and publicly routable destinations only for the first slice; validate every redirect | Approve security contract and exact finite limits before code |
 | First Outcome | A durable, typed Task-execution observation for the terminal result; separate observation from Evaluation | Agree payload, Snapshot/provenance, uniqueness, and atomicity contract |
-| RAG substrate | Start with existing PostgreSQL + pgvector capability; evaluate hybrid keyword/vector retrieval; do not add a separate vector service without evidence | Choose embedding provider/model/version and retrieval test set before R6-D |
+| RAG substrate (ADR-0028 principles accepted) | Start with existing PostgreSQL + pgvector capability; evaluate hybrid keyword/vector retrieval; do not add a separate vector service without evidence | Confirm initial canonical source types; choose embedding provider/model/version and retrieval test set before R6-D |
 | Knowledge cores | Domain knowledge and accepted team experience remain logically distinct, even if they share one retrieval index | Confirm initial canonical record types and permissions |
 | Context provenance | Preserve an immutable, source/version-linked context basis; no transcript dependency | Choose Snapshot/manifest representation and retention/access rules |
-| Experience distillation | LLM proposes scoped abstractions from durable Outcomes/Evaluations/evidence; initial acceptance is reviewable and goes through the existing learning authority | Approve evidence threshold, proposal fields, version lifecycle, and publication rule |
+| Experience distillation (ADR-0029 principles accepted) | LLM proposes scoped abstractions from durable Outcomes/Evaluations/evidence; initial acceptance is reviewable and goes through the existing learning authority | Approve evidence basis/threshold, proposal fields, version lifecycle, and publication rule |
 | Model providers | Define provider-neutral interfaces and test with fakes; defer production selection until the relevant slice needs network access | Explicit model and embedding provider choices before R6-D/R6-E |
 | First acceptance domain | Use a small newsroom/scientific-reporting fixture as a pressure test; keep Kernel, schemas, and core contracts domain-neutral | Agree fixture data and exact end-to-end test cases |
 
