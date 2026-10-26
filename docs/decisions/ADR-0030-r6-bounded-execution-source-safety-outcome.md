@@ -56,6 +56,17 @@ There is at most one `task_execution` Outcome per Task, enforced by an idempoten
 
 The existing ingestion business commit remains its own atomic/idempotent operation. If a crash occurs after Signal/Snapshot commit but before task finalization, replay must discover the prior ingestion result, not create duplicate Signals, and then finalize the Task/Outcome once. Outcome failure must never leave a Task falsely marked `done`.
 
+### 5. R6-A / R6-C implementation boundary
+
+This subsection clarifies **delivery sequencing only**. It does not change the accepted Outcome schema or semantics, the retry/recovery contract, the atomicity requirements, the source-fetch rules, or the single `TaskRuntime` lifecycle authority established above.
+
+- **R6-A owns the minimum complete terminal Outcome path.** The R6-A slice must persist the terminal `task_execution` Outcome required by section 4 as part of the lifecycle it introduces. Terminal Outcome persistence is not a later enhancement to be supplied by R6-C.
+- **Terminal finalization is one atomic commit.** On terminal success or terminal failure, the Outcome row, the immutable observation Snapshot reference/hash, the terminal Task status, and the corresponding terminal Task Event (`task_completed` or `task_failed`) commit in the same transaction. A partial commit is a defect, not an acceptable intermediate state.
+- **R6-A is not complete without it.** R6-A's Task lifecycle implementation must not be considered complete if terminal finalization can commit without its required Outcome, or if the Outcome can commit without the terminal status and Event.
+- **The Outcome contract applies from the first implementation.** The uniqueness/idempotency rule (at most one `task_execution` Outcome per Task, equivalent to `(recorded_by_task_id, outcome_type)`) and the Task attribution rules (`subject_kind="task"`, `subject_id=task.id`, `recorded_by_task_id=task.id`, matching `team_id`) are R6-A requirements, not R6-C additions.
+- **R6-C consumes already-durable Outcomes.** R6-C implements deterministic reassessment over these durable Outcomes plus the remaining Outcome-driven integration (evaluation/reassessment wiring, derived-state reconstruction, and replay of that derivation). R6-C must not defer or re-implement the core terminal Outcome write path, must not introduce a duplicate Outcome representation, and must not weaken R6-A's atomicity guarantees.
+- **A schema/migration for the Outcome belongs to the slice that first writes it.** Because R6-A writes the terminal Outcome, the representation it needs is introduced with R6-A. R6-C may extend derived read models and reassessment support, but it does not own the initial terminal Outcome persistence.
+
 ## Consequences and boundaries
 
 - This contract does not add a second Task runtime, a general job scheduler, arbitrary tools, or autonomous policy change.
