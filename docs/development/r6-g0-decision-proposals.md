@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Decision record: all architectural/design decisions requested for R6-G0 are recorded as of 2026-10-25.** This is planning authority only and does not authorize any R6 implementation. R6-G0 remains IN PROGRESS until the actual local checkout preflight is documented; R6-A additionally requires a separate explicit operator instruction.
+**Decision record: all architectural/design decisions requested for R6-G0 are recorded as of 2026-10-25.** This is planning authority only and does not authorize any R6 implementation. **R6-G0 is COMPLETE as of 2026-10-25**: the recorded design decisions are complete and the local checkout preflight is documented. **R6-A additionally requires a separate explicit operator instruction** and is not authorized by this record or by the G0 closeout.
 
 Governing records:
 - [ADR-0025](../decisions/ADR-0025-plan-is-derived-execution-state.md) — accepted unchanged.
@@ -65,6 +65,8 @@ Use static fictional news/science sources, including at least one contradictory 
 - No reranker, separate vector service, redirect-following, PDF fetch, arbitrary model-selected URL, shell, or general-purpose tools.
 - No broad new World-memory model family, separate Context entity, second runtime, new general scheduler, unattended learning acceptance, direct TeamPolicy mutation, or recursive self-modification.
 
-## Remaining prerequisite
+## Authorization prerequisite
 
-The only unchecked G0 checklist item is operational: verify actual local branch, HEAD, status/diff, merge state, migrations, and disposable PostgreSQL database using `AGENTS.md`. Then request explicit authorization before R6-A. This decision record does not claim the code exists or that any tests have been run.
+The operational prerequisite — verify actual local branch, HEAD, status/diff, merge state, migrations, and disposable PostgreSQL database using `AGENTS.md` — is **satisfied 2026-10-25** and recorded in [PLAN.md](../../PLAN.md) and the [R6 entry gate](r6-entry-gate.md). R6-G0 is therefore COMPLETE.
+
+This decision record still does not claim the code exists or that R6-A is authorized. The remaining gate is explicit operator authorization: R6-A requires a separate explicit operator instruction.

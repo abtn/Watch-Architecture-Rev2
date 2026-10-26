@@ -3,9 +3,9 @@
 ## Status and authority
 
 - **R6-G0 design decisions: RECORDED.** The operator explicitly requested resolution of the remaining G0 decisions on 2026-10-25. The accepted records are ADR-0025, ADR-0026, ADR-0028, ADR-0029, and ADR-0030.
-- **R6-G0 milestone status remains IN PROGRESS.** The actual local checkout preflight has not been recorded, and this documentation decision does not itself authorize R6-A or any implementation.
+- **R6-G0 milestone status: COMPLETE — 2026-10-25.** The design decisions are recorded and the local checkout preflight is documented below. **This closeout does not authorize R6-A or any implementation**; R6-A requires a separate explicit operator instruction.
 - **ADR-0027 remains Proposed.** Its Task-start quota semantics are separate; this decision record neither accepts that ADR nor changes quota behavior.
-- Current GitHub main baseline for this decision set: `44c0944720600f8a1d4018d4eb39424a9660168e` (PR #8 merge). This is not evidence of the operator's local branch, HEAD, worktree, or database state.
+- Git baselines: PR #8 merge commit `44c0944720600f8a1d4018d4eb39424a9660168e` is the historical baseline for the original decision set; PR #9 merge commit `f9207156533b6944d320a6adfff42963f7e1e17c` is the verified current `main` baseline. Neither is evidence of the operator's local branch, HEAD, worktree, or database state; the verified local state is recorded in the preflight record below.
 - R5 remains formally closed. Its immutable Plan, prerequisite, provenance, lifecycle, completion-precondition, and single-runtime constraints remain mandatory.
 - Current implementation gaps remain real: TaskRuntime admits Tasks but does not dispatch/finalize work; configured-source fetch is absent; Outcome/Evaluation/KnowledgeItem/LearningChange persistence and RAG Context assembly/distillation are not implemented in the current ORM/migrations baseline. This record changes no code, schema, migration, provider, network, index, or runtime behavior.
 
@@ -29,7 +29,7 @@ This is the target design, not a claim that the full cycle exists today.
 
 The design distinguishes three logical roles without requiring three separate databases:
 
-- **Domain Knowledge Core — what we know about the subject.** Canonical source records, subject context, claims or hypotheses, evidence, provenance, freshness, and unresolved questions. Existing World-memory records and immutable source Snapshots are relevant foundations; the exact core representation remains a G0 decision.
+- **Domain Knowledge Core — what we know about the subject.** Canonical source records, subject context, claims or hypotheses, evidence, provenance, freshness, and unresolved questions. Existing World-memory records and immutable source Snapshots are relevant foundations; the exact core representation is recorded in ADR-0028.
 - **Team Experience Core — what we have learned by doing the work.** Accepted, versioned practices, patterns, methods, and playbooks based on evaluated experience and supporting evidence. The architecture describes KnowledgeItem and LearningChange concepts, but their current ORM/migration implementation must be verified and completed as part of the approved path.
 - **Task Context — what is relevant now.** A bounded, task-specific assembly of retrieved knowledge, canonical records, current state, policy constraints, and source/version references. It is a derived input, not a new authority.
 
@@ -100,7 +100,7 @@ No production provider/SDK or credentials path before its slice; no external rer
 
 ## 4. Proposed implementation traversal after G0 exits
 
-These are future implementation slices only. They must not begin until G0 exit decisions and acceptance criteria are recorded.
+These are future implementation slices only. G0 is complete, but they must not begin until a separate explicit operator instruction authorizes R6-A.
 
 ### R6-A — Task execution lifecycle
 
@@ -160,7 +160,7 @@ Run required focused and full-suite tests, Ruff, mypy, and applicable disposable
 - Use disposable databases for tests; never modify the persistent watch database to make tests pass.
 - PLAN.md remains the single source of current milestone status; update CHANGE_MAP.md when authority mapping changes.
 
-## 6. G0 decision checklist and remaining implementation prerequisite
+## 6. G0 decision checklist and implementation authorization prerequisite
 
 - [x] ADR-0025 explicitly accepted unchanged.
 - [x] ADR-0026 explicitly accepted unchanged.
@@ -172,6 +172,22 @@ Run required focused and full-suite tests, Ruff, mypy, and applicable disposable
 - [x] Distillation proposal fields, evidence rule, review/commit, versioning, and publication boundary recorded in ADR-0029.
 - [x] Provider choices intentionally staged: embedding provider/model before R6-D; generation provider/model before R6-E.
 - [x] First deterministic acceptance fixture and success, rejection, failure, and replay contract recorded above.
-- [ ] **Before implementation:** verify actual local branch, HEAD, merge status, worktree, current migrations, and disposable PostgreSQL database using `AGENTS.md`. The remote branch or a documentation export is not local preflight evidence.
+- [x] **Before implementation:** verify actual local branch, HEAD, merge status, worktree, current migrations, and disposable PostgreSQL database using `AGENTS.md`. The remote branch or a documentation export is not local preflight evidence. **Satisfied 2026-10-25 — see the preflight record below.**
 
-**Gate status:** all design decisions requested for G0 are recorded, but R6-G0 remains **IN PROGRESS** until actual local preflight is documented. This PR does not authorize implementation. R6-A requires a separate explicit operator instruction after this decision record is integrated and local preflight has passed.
+**Gate status:** all design decisions requested for G0 are recorded and the local preflight is documented, so **R6-G0 is COMPLETE as of 2026-10-25**. Completing G0 does not authorize implementation. **R6-A requires a separate explicit operator instruction**; until that instruction is given, do not start implementation. ADR-0027 remains Proposed, and the embedding/generation provider choices remain staged to before R6-D and before R6-E.
+
+## 7. R6-G0 local preflight record — 2026-10-25
+
+Documentation-only closeout. No application code, tests, migrations, schema, Docker volumes, or persistent database contents were changed; no commit, push, merge, reset, or branch deletion was performed. No database commands or tests were run during this closeout — the preflight results below are the operator-supplied and previously recorded evidence.
+
+**Verified local Git state:**
+
+- Branch `R5-rebased`; HEAD `f9207156533b6944d320a6adfff42963f7e1e17c`.
+- HEAD equals `origin/main` (`f920715`, merge of PR #9); no divergence and no local-only commits.
+- The preflight checks were completed while the working tree was clean. The closeout itself introduces six intentional, unstaged documentation modifications (`PLAN.md`, this file, `docs/development/r6-g0-decision-proposals.md`, `CHANGE_MAP.md`, `CONTEXT.md`, `docs/control-model.md`). The working tree is therefore **not** clean at the end of this closeout; nothing is staged, committed, or pushed.
+
+**Migrations:** the source chain is a single lineage `0001` → `0008_plan_lifecycle_state`. During preflight, `uv run alembic upgrade head`, `uv run alembic current`, and `uv run alembic heads` against the isolated disposable database `watch_r6_preflight` reported `0008_plan_lifecycle_state (head)` with exactly one head.
+
+**Recorded preflight verification results:** `DATABASE_URL` and `TEST_DATABASE_URL` targeted `watch_r6_preflight` on `127.0.0.1:55448` (persistent `watch` database never targeted); `uv run pytest` → 260 passed in 25.88 seconds; `uv run ruff check core tests migrations` → passed; `uv run mypy core` → passed (11 source files); `git diff --check` → clean.
+
+**Exit boundary:** every item in the §6 checklist above is satisfied. G0 completion does not authorize R6-A, does not accept ADR-0027, and does not select the embedding or generation providers.

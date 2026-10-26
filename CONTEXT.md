@@ -10,10 +10,10 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current R6 design direction (architectural principles accepted; implementation gated)
 
-R6-G0 design decisions are recorded, but the gate remains IN PROGRESS pending actual local preflight; implementation has not started or been authorized. The accepted target uses RAG-backed Domain Knowledge and Team Experience cores, ordinary Task execution, terminal Outcomes, and review-controlled LLM-assisted distillation through the authorized learning path. ADR-0025/0026/0028/0029/0030 are accepted; ADR-0027 remains Proposed. Embedding provider selection is staged until R6-D and generation provider selection until R6-E.
+R6-G0 design decisions are recorded and the local preflight is verified, so **R6-G0 is COMPLETE as of 2026-10-25**. R6-A is **not authorized** by that closeout; it requires a separate explicit operator instruction. The accepted target uses RAG-backed Domain Knowledge and Team Experience cores, ordinary Task execution, terminal Outcomes, and review-controlled LLM-assisted distillation through the authorized learning path. ADR-0025/0026/0028/0029/0030 are accepted; ADR-0027 remains Proposed. Embedding provider selection is staged until R6-D and generation provider selection until R6-E.
 
 For these decisions, read:
-- [R6 entry gate](docs/development/r6-entry-gate.md) — unresolved G0 decisions and the future R6-A through R6-G sequence.
+- [R6 entry gate](docs/development/r6-entry-gate.md) — resolved G0 decisions and the future R6-A through R6-G sequence.
 - [R6-G0 Decision Record](docs/development/r6-g0-decision-proposals.md) — accepted G0 defaults and deliberately staged provider choices.
 - [ADR-0028](docs/decisions/ADR-0028-rag-backed-knowledge-cores.md) — accepted RAG and Knowledge Core principles; implementation remains gated.
 - [ADR-0029](docs/decisions/ADR-0029-llm-assisted-experience-distillation.md) — accepted distillation contract; implementation remains gated.
