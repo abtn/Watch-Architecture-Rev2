@@ -102,11 +102,11 @@ No production provider/SDK or credentials path before its slice; no external rer
 
 These are future implementation slices only. G0 is complete, but they must not begin until a separate explicit operator instruction authorizes R6-A.
 
-### R6-A — Task execution lifecycle
+### R6-A — Task execution lifecycle and atomic terminal Outcome
 
-Implement the application-controlled lifecycle following TaskRuntime admission: success, retryable failure, exhausted failure, Events, timestamps, concurrency/conflict handling, replay, and idempotency.
+Implement the application-controlled lifecycle following TaskRuntime admission: success, retryable failure, exhausted failure, Events, timestamps, concurrency/conflict handling, replay, and idempotency. R6-A includes the minimum complete terminal `task_execution` Outcome persistence required by [ADR-0030 §4](../decisions/ADR-0030-r6-bounded-execution-source-safety-outcome.md): on terminal success or terminal failure the Outcome, immutable observation Snapshot reference/hash, terminal Task status, and terminal Task Event commit atomically in the same transaction, with the ADR-0030 uniqueness/idempotency and Task-attribution rules applied from the first implementation.
 
-**Exit:** legal transitions only; Task state and Events agree; retries and crashes do not double-commit or leave partial lifecycle changes.
+**Exit:** legal transitions only; Task state and Events agree; terminal finalization cannot commit without its required Outcome; retries and crashes do not double-commit or leave partial lifecycle changes.
 
 ### R6-B — One bounded configured-source worker
 
@@ -114,11 +114,11 @@ Add a small dispatcher/handler for the configured-source ingest_source Task. It 
 
 **Exit:** integration tests cover admission → handler → ingestion commit → lifecycle completion, including no-change, rejection, retry, crash after ingestion commit, and replay without duplicate Signals or Events.
 
-### R6-C — Durable Outcome and reassessment
+### R6-C — Outcome-backed deterministic reassessment and follow-on integration
 
-Implement the G0-approved Outcome representation, scope, service, migration if required, provenance, and idempotency. Build a new deterministic assessment from the resulting durable records while preserving the original decision basis.
+Consume the terminal Outcomes already made durable by R6-A: build a new deterministic assessment from those durable records while preserving the original decision basis, and complete the remaining Outcome-driven integration. R6-C does not own the initial terminal Outcome representation or write path; it must not defer, duplicate, or weaken R6-A's atomic terminal finalization contract.
 
-**Exit:** restart/replay reconstructs the Plan and explains the execution result; reassessment is reproducible from the same durable state.
+**Exit:** restart/replay reconstructs the Plan and explains the execution result from the Outcomes and Events R6-A already committed; reassessment is reproducible from the same durable state; replay after restart produces no duplicate Outcome, Event, or derived record.
 
 ### R6-D — RAG-backed Knowledge Cores
 
