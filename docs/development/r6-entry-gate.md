@@ -3,11 +3,12 @@
 ## Status and authority
 
 - **R6-G0 design decisions: RECORDED.** The operator explicitly requested resolution of the remaining G0 decisions on 2026-10-25. The accepted records are ADR-0025, ADR-0026, ADR-0028, ADR-0029, and ADR-0030.
-- **R6-G0 milestone status: COMPLETE — 2026-10-25.** The design decisions are recorded and the local checkout preflight is documented below. **This closeout does not authorize R6-A or any implementation**; R6-A requires a separate explicit operator instruction.
+- **R6-G0 milestone status: COMPLETE — 2026-10-25.** The design decisions are recorded and the local checkout preflight is documented below. **This closeout did not itself authorize R6-A or any implementation**; R6-A required a separate explicit operator instruction, which was subsequently given.
+- **R6-A current status: IN PROGRESS — not complete.** Step 1 (migration `0009_task_lifecycle_outcome`, the `Outcome` ORM mapping, and explicit `max_attempts=3` pinning in `PlanService._create`, with focused schema tests) is committed locally at `42257ad` on branch `r6a-step1-schema-outcome` and remains **unmerged**. Terminal finalization, attempt-number fencing, retry transitions, and interrupted-task recovery are **unimplemented**, so the R6-A exit criteria in §4 are unmet. See `PLAN.md` for the authoritative milestone status.
 - **ADR-0027 remains Proposed.** Its Task-start quota semantics are separate; this decision record neither accepts that ADR nor changes quota behavior.
 - Git baselines: PR #8 merge commit `44c0944720600f8a1d4018d4eb39424a9660168e` is the historical baseline for the original decision set; PR #9 merge commit `f9207156533b6944d320a6adfff42963f7e1e17c` is the verified current `main` baseline. Neither is evidence of the operator's local branch, HEAD, worktree, or database state; the verified local state is recorded in the preflight record below.
 - R5 remains formally closed. Its immutable Plan, prerequisite, provenance, lifecycle, completion-precondition, and single-runtime constraints remain mandatory.
-- Current implementation gaps remain real: TaskRuntime admits Tasks but does not dispatch/finalize work; configured-source fetch is absent; Outcome/Evaluation/KnowledgeItem/LearningChange persistence and RAG Context assembly/distillation are not implemented in the current ORM/migrations baseline. This record changes no code, schema, migration, provider, network, index, or runtime behavior.
+- Current implementation gaps remain real: TaskRuntime admits Tasks but does not dispatch/finalize work; configured-source fetch is absent; the `Outcome` entity now exists in the ORM and migrations (R6-A Step 1) but no code writes one, and Evaluation/KnowledgeItem/LearningChange persistence plus RAG Context assembly/distillation remain unimplemented. This record changes no code, schema, migration, provider, network, index, or runtime behavior.
 
 ## 1. Revised R6 purpose
 
@@ -50,7 +51,7 @@ RAG is the retrieval mechanism across these logical layers. A single physical in
 
 - No complete worker dispatcher/lifecycle path performs Task completion, failure, retries, and recovery.
 - Ingestion does not fetch a configured source or execute it as a Task.
-- The current ORM/migrations do not yet implement the documented Outcome, Evaluation, and KnowledgeItem entities; confirm actual branch state before planning schema work.
+- The current ORM/migrations implement the documented `Outcome` entity (R6-A Step 1) but not Evaluation or KnowledgeItem; no code writes an Outcome yet. Confirm actual branch state before planning further schema work.
 - There is no implemented RAG-backed knowledge-core retrieval/context assembly path established by this baseline.
 - There is no end-to-end LLM-assisted experience-distillation and accepted-knowledge re-indexing path established by this baseline.
 - There is no model-backed Strategy proposer established by this baseline.
@@ -100,7 +101,7 @@ No production provider/SDK or credentials path before its slice; no external rer
 
 ## 4. Proposed implementation traversal after G0 exits
 
-These are future implementation slices only. G0 is complete, but they must not begin until a separate explicit operator instruction authorizes R6-A.
+These are implementation slices. G0 is complete, and R6-A was separately authorized by the operator and is in progress (Step 1 committed locally at `42257ad`, unmerged; lifecycle work unimplemented). The remaining slices must not begin until their predecessor gate is satisfied and a separate explicit operator instruction authorizes them.
 
 ### R6-A — Task execution lifecycle and atomic terminal Outcome
 
@@ -174,7 +175,7 @@ Run required focused and full-suite tests, Ruff, mypy, and applicable disposable
 - [x] First deterministic acceptance fixture and success, rejection, failure, and replay contract recorded above.
 - [x] **Before implementation:** verify actual local branch, HEAD, merge status, worktree, current migrations, and disposable PostgreSQL database using `AGENTS.md`. The remote branch or a documentation export is not local preflight evidence. **Satisfied 2026-10-25 — see the preflight record below.**
 
-**Gate status:** all design decisions requested for G0 are recorded and the local preflight is documented, so **R6-G0 is COMPLETE as of 2026-10-25**. Completing G0 does not authorize implementation. **R6-A requires a separate explicit operator instruction**; until that instruction is given, do not start implementation. ADR-0027 remains Proposed, and the embedding/generation provider choices remain staged to before R6-D and before R6-E.
+**Gate status:** all design decisions requested for G0 are recorded and the local preflight is documented, so **R6-G0 is COMPLETE as of 2026-10-25**. Completing G0 did not itself authorize implementation; **R6-A required a separate explicit operator instruction, which was subsequently given.** R6-A is now **IN PROGRESS, not complete**: Step 1 is committed locally at `42257ad` and unmerged, and terminal finalization, attempt fencing, retry transitions, and interrupted recovery remain unimplemented. ADR-0027 remains Proposed, and the embedding/generation provider choices remain staged to before R6-D and before R6-E.
 
 ## 7. R6-G0 local preflight record — 2026-10-25
 
