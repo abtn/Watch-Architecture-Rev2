@@ -218,9 +218,23 @@ validation of worker proposals. `K` identifies an explicitly bounded,
 Kernel-managed operation; it is not included in the worker's `allowed_writes`
 list. The `Task (K)` column always covers the current Task's documented runtime
 transitions. Superscripts there additionally permit only the named Task
-enqueue operation. `—` means that the Task type cannot cause that write.
+enqueue operation. `—` means that the Task type cannot cause that
+business/domain write through the worker-proposal channel; it does not disable
+the separately governed `K` lifecycle side effects described below.
 All Task, Snapshot, and Event writes are performed by application code, never
 by a worker.
+
+The `Outcome` column covers worker-proposed or domain-level Outcome writes,
+such as the `record_outcome` operation. It does not govern the terminal
+`task_execution` lifecycle record required by
+[ADR-0030](decisions/ADR-0030-r6-bounded-execution-source-safety-outcome.md).
+`TaskRuntime` owns terminal lifecycle finalization: it writes the terminal
+`task_execution` Outcome and its immutable observation Snapshot in the same
+transaction as the terminal Task status and the corresponding terminal Event.
+Those are application-managed `K` lifecycle side effects, not worker-authored
+writes, and they never enter a worker's `allowed_writes`. They are generic
+TaskRuntime lifecycle records, distinct from the task-specific Signal Snapshot
+side effect in footnote ¹; footnote ¹ grants no worker Snapshot permission.
 | Task type | Team | Signal | SignalDisposition | Thread | Hypothesis | EvidenceLink | ConfidenceChange | Artifact | Outcome | Evaluation | KnowledgeItem | TeamPolicy | LearningChange | Trigger | Consultation | TeamDraft | Task (K) | Snapshot (K) | Event (K) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `ingest_source` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | K¹ | K |
@@ -244,7 +258,15 @@ by a worker.
 | `activate_team` | W¹⁷ | — | — | C | — | — | — | — | — | — | — | W | — | — | — | W¹⁸ | K | K¹⁹ | K |
 | `transition_plan` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | — | K²⁴ |
 ¹ Store only the immutable Snapshot for the Signal created by this ingestion
-operation. ² Create on `new_thread`; reactivate `dormant → active`.
+operation. This footnote governs that ingestion side effect alone: it grants no
+worker Snapshot permission, and it does not limit the separate terminal
+`task_execution` observation Snapshot that `TaskRuntime` commits during
+terminal lifecycle finalization (see the §4 preamble). That observation
+Snapshot is created under the universal `Task (K)` lifecycle authority
+described in footnote ¹⁹ and ADR-0030, not under this `Snapshot (K) = K¹`
+cell; it is an application-managed lifecycle record committed atomically with
+the Outcome, terminal Task status, and corresponding terminal Event.
+² Create on `new_thread`; reactivate `dormant → active`.
 ³ Refine `deferred` only. ⁴ Summary projection and explicit resolution only.
 ⁵ `active → dormant` only. ⁶ `active → needs_review` only.
 ⁷ Store only the Snapshot for the Artifact produced by this operation.
