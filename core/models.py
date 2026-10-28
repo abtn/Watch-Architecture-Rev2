@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     Uuid,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -164,6 +165,7 @@ class Task(Base):
             name="fk_tasks_plan_action",
         ),
         UniqueConstraint("plan_id", "plan_action_id", name="uq_tasks_plan_action"),
+        UniqueConstraint("id", "team_id", name="uq_tasks_id_team"),
         CheckConstraint(
             "(plan_id IS NULL) = (plan_action_id IS NULL)",
             name="ck_tasks_plan_action_pair",
@@ -187,6 +189,15 @@ class Task(Base):
     )
     allowed_writes: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     budget: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    max_attempts: Mapped[int] = mapped_column(
+        nullable=False, default=3, server_default="3"
+    )
 
 
 class Signal(Base):
@@ -224,4 +235,75 @@ class Event(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
+    )
+
+
+class Outcome(Base):
+    __tablename__ = "outcomes"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["recorded_by_task_id", "team_id"],
+            ["tasks.id", "tasks.team_id"],
+            name="fk_outcomes_task_team",
+        ),
+        UniqueConstraint(
+            "recorded_by_task_id", "outcome_type", name="uq_outcomes_task_type"
+        ),
+        CheckConstraint(
+            "(outcome_type = 'prediction_registered' "
+            "AND observation_snapshot_ref IS NULL "
+            "AND observation_hash IS NULL "
+            "AND observed_at IS NULL) OR "
+            "(outcome_type <> 'prediction_registered' "
+            "AND observation_snapshot_ref IS NOT NULL "
+            "AND observation_hash IS NOT NULL "
+            "AND observed_at IS NOT NULL)",
+            name="ck_outcomes_observation_state",
+        ),
+        CheckConstraint(
+            "outcome_type <> 'prediction_registered' OR expected IS NOT NULL",
+            name="ck_outcomes_expected_present",
+        ),
+        CheckConstraint(
+            "observation_snapshot_ref IS NULL OR "
+            "observation_snapshot_ref ~ '^snap://sha256/[0-9a-f]{64}$'",
+            name="ck_outcomes_observation_ref",
+        ),
+        CheckConstraint(
+            "observation_hash IS NULL OR "
+            "observation_hash ~ '^sha256:[0-9a-f]{64}$'",
+            name="ck_outcomes_observation_hash",
+        ),
+        CheckConstraint(
+            "observation_snapshot_ref IS NULL OR observation_hash IS NULL OR "
+            "split_part(observation_snapshot_ref, '/', 4) = "
+            "split_part(observation_hash, ':', 2)",
+            name="ck_outcomes_observation_pair",
+        ),
+        CheckConstraint(
+            "outcome_type <> 'task_execution' OR "
+            "(subject_kind = 'task' AND subject_id = recorded_by_task_id)",
+            name="ck_outcomes_task_execution_subject",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False
+    )
+    subject_kind: Mapped[str] = mapped_column(String, nullable=False)
+    subject_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    outcome_type: Mapped[str] = mapped_column(String, nullable=False)
+    expected: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    observation_snapshot_ref: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )
+    observation_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    observed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    recorded_by_task_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
     )

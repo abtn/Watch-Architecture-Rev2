@@ -99,6 +99,12 @@ In addition to success-path tests, assert that reconstruction and failed operati
 
 For atomic operations, inject or simulate failures at meaningful persistence boundaries and verify that no partial Plan, Action mapping, Task transition, quota consumption, or required Event remains committed. Run concurrency and locking behavior against disposable PostgreSQL, not a substitute database whose locking semantics differ from production.
 
+## Automated CI
+
+`.github/workflows/ci.yml` runs the verification chain on every push to `main` and `r6a-step1-schema-outcome` and on every pull request. It provisions a disposable `pgvector/pgvector:pg16` service container, installs the locked dependency set with `uv sync --locked`, applies `alembic upgrade head` to a fresh database, asserts exactly one migration head and that the database is at that head, then runs `ruff check core tests migrations`, `mypy core`, and `pytest -q`.
+
+CI is a repeatable check, not milestone evidence by itself. A green CI run proves only the named commands in that environment; it does not close a milestone or replace the disposable-database verification required by a phase gate. The workflow targets its own service container and never the persistent `watch` database.
+
 ## Invariant and architecture tests
 
 Maintain tests for the invariants relevant to the slice, including the proposal/commit authority boundary, immutable Snapshots/evidence, commit-time revalidation, Task write scope, and idempotency. Use `docs/invariants.md` for the normative invariant list and `docs/tasks.md` for the exact scope of each Task type.

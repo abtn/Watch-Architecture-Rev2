@@ -11,6 +11,7 @@ At task start, read `PLAN.md`, `CHANGE_MAP.md`, this file, and only the relevant
 - **Current milestone, gate, next step:** `PLAN.md` only.
 - **Which document governs a concept:** `CHANGE_MAP.md`.
 - **Repository behavior and safe workflow:** this file.
+- **Standing delivery authorization and merge conditions:** [`docs/development/agent-delivery-protocol.md`](docs/development/agent-delivery-protocol.md). It supplements this file; it does not override the authority chain or the stop conditions below.
 - **General/original architecture:** `docs/architecture.md` for concepts not replaced by Revision 2.
 - **Revision 2 Control contract:** `docs/control-model.md` and linked ADRs.
 - **Hard constraints:** `docs/invariants.md`.
@@ -31,7 +32,7 @@ git log --oneline -12
 git diff --check
 ```
 
-Inspect the relevant diff before editing. Preserve all pre-existing changes. Never use `reset --hard`, destructive checkout/restore, stash, volume deletion, or cleanup commands to make the worktree look clean. Do not stage, commit, or push unless explicitly requested.
+Inspect the relevant diff before editing. Preserve all pre-existing changes. Never use `reset --hard`, destructive checkout/restore, stash, volume deletion, or cleanup commands to make the worktree look clean. Do not stage, commit, or push unless explicitly requested or authorized by the standing delivery protocol.
 
 A supplied ZIP or text export is not Git evidence: it cannot prove branch, HEAD, merge status, or uncommitted work.
 
@@ -77,7 +78,7 @@ git diff --check
 
 Run the full suite when the scope or milestone requires it. Report skipped checks and the reasons. Do not say a command passed unless it was run and passed.
 
-Database tests must use the repository's configured disposable/test database. Never modify the persistent `watch` database to make tests pass. Never use `docker compose down -v` as generic cleanup.
+Database tests must use the repository's configured disposable/test database. Never modify the persistent `watch` database to make tests pass. Never use `docker compose down -v` as generic cleanup. Positively identify the target database before running database-backed tests or migrations; an ambiguous target is a stop condition.
 
 ## 8. Workflow-validation record
 

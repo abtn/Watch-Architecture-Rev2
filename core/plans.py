@@ -247,6 +247,7 @@ class PlanService:
                     policy_version=task.policy_version,
                     allowed_writes=["Signal"],
                     budget=dict(_TASK_BUDGET),
+                    max_attempts=3,
                 )
                 for action in actions
             ]

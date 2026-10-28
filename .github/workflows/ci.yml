@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main, r6a-step1-schema-outcome]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: postgres, static checks, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: watch_ci
+          POSTGRES_USER: watch_ci
+          POSTGRES_PASSWORD: watch_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U watch_ci -d watch_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 5s
+
+    env:
+      DATABASE_URL: postgresql+psycopg://watch_ci:watch_ci@127.0.0.1:5432/watch_ci
+      TEST_DATABASE_URL: postgresql+psycopg://watch_ci:watch_ci@127.0.0.1:5432/watch_ci
+
+    steps:
+      - name: Check out the exact commit
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install the locked dependency set
+        run: uv sync --locked
+
+      - name: Apply migrations to a fresh database
+        run: uv run alembic upgrade head
+
+      - name: Verify the migration revision is at head
+        run: |
+          heads="$(uv run alembic heads | wc -l)"
+          if [ "$heads" -ne 1 ]; then
+            echo "Expected exactly one migration head, found $heads"
+            uv run alembic heads
+            exit 1
+          fi
+          current="$(uv run alembic current | awk '{print $1}')"
+          head="$(uv run alembic heads | awk '{print $1}')"
+          if [ "$current" != "$head" ]; then
+            echo "Database is at '$current', expected head '$head'"
+            exit 1
+          fi
+
+      - name: Lint
+        run: uv run ruff check core tests migrations
+
+      - name: Type-check
+        run: uv run mypy core
+
+      - name: Test
+        run: uv run pytest -q
