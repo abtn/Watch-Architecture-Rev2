@@ -101,7 +101,7 @@ No production provider/SDK or credentials path before its slice; no external rer
 
 ## 4. Proposed implementation traversal after G0 exits
 
-These are implementation slices. G0 is complete and R6-A is complete (merged to `main` by PR #12, merge commit `ebbc48d`). The remaining slices must not begin until their predecessor gate is satisfied and a separate explicit operator instruction authorizes them.
+These are implementation slices. G0 is complete, R6-A is complete (merged to `main` by PR #12, merge commit `ebbc48d`), and R6-B is complete (merged to `main` by PR #14, merge commit `226c6b7`). The remaining slices must not begin until their predecessor gate is satisfied and a separate explicit operator instruction authorizes them.
 
 ### R6-A — Task execution lifecycle and atomic terminal Outcome
 
@@ -115,7 +115,7 @@ Add a small dispatcher/handler for the configured-source ingest_source Task. It 
 
 **Exit:** integration tests cover admission → handler → ingestion commit → lifecycle completion, including no-change, rejection, retry, crash after ingestion commit, and replay without duplicate Signals or Events.
 
-**Implementation status: implemented on branch `r6b-configured-source-worker`; not yet merged.** `core/dispatcher.py` provides `TaskDispatcher` (`find_eligible_task`, `dispatch`, `recover_interrupted`); `core/source_fetch.py` provides the approved `RestrictedFetcher` and its URL/DNS/redirect/media-type/timeout/byte-ceiling contract. Durable source identity is the Task's `PlanAction` (`origin_url`, `source_type`), authorized against `TeamPolicy.rules["sources"]`; a Task with no Plan Action has no durable source identity and is rejected before admission. `tests/test_r6b_dispatcher.py` covers the successful path, no-change, retryable and non-retryable failure, exhaustion, configuration rejection, startup recovery, crash-after-ingestion-commit replay, and the fetcher's safety contract.
+**Implementation status: COMPLETE — merged to `main` by PR #14** (merge commit `226c6b7`, 2026-10-28). `core/dispatcher.py` provides `TaskDispatcher` (`find_eligible_task`, `dispatch`, `recover_interrupted`); `core/source_fetch.py` provides the approved `RestrictedFetcher` and its URL/DNS/redirect/media-type/timeout/byte-ceiling contract. Durable source identity is the Task's `PlanAction` (`origin_url`, `source_type`), authorized against `TeamPolicy.rules["sources"]`; a Task with no Plan Action has no durable source identity and is rejected before admission. `tests/test_r6b_dispatcher.py` covers the successful path, no-change, retryable and non-retryable failure, exhaustion, configuration rejection, startup recovery, crash-after-ingestion-commit replay, and the fetcher's safety contract.
 
 ### R6-C — Outcome-backed deterministic reassessment and follow-on integration
 
