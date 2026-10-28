@@ -15,6 +15,7 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 - [`CONTEXT.md`](CONTEXT.md) — concise session orientation.
 - [`PLAN.md`](PLAN.md) — current milestone status, gates, and next action.
 - [`AGENTS.md`](AGENTS.md) — instructions for coding agents.
+- [`docs/development/agent-delivery-protocol.md`](docs/development/agent-delivery-protocol.md) — standing delivery authorization, automatic advancement, and merge conditions.
 - [`CHANGE_MAP.md`](CHANGE_MAP.md) — authority map for concepts.
 - [`docs/control-model.md`](docs/control-model.md) — Objective, StateAssessment, Strategy, Plan, and the dual-entry model.
 - [`docs/architecture.md`](docs/architecture.md) — general/original architecture for concepts not replaced by Revision 2.
@@ -25,7 +26,7 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 
 ## Technical baseline
 
-Python 3.12+, SQLAlchemy 2, PostgreSQL with pgvector, Alembic, `uv`, pytest, Ruff, and mypy. See `pyproject.toml`, `uv.lock`, and `compose.yaml` for the executable configuration.
+Python 3.12+, SQLAlchemy 2, PostgreSQL with pgvector, Alembic, `uv`, pytest, Ruff, and mypy. See `pyproject.toml`, `uv.lock`, and `compose.yaml` for the executable configuration. `.github/workflows/ci.yml` runs the same checks against a disposable PostgreSQL service container.
 
 ## Development rule
 

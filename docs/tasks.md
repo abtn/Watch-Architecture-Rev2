@@ -13,9 +13,9 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 - Tool calls and token usage are attributed to the Task and counted against its budget.
 - Most task types require an `active` Team; `create_team`, `configure_team`, and `activate_team` operate on shell/configuring teams and are the exceptions.
 - **No path bypasses validation for being human** (INV-15): operator task types use the same commit kernel, and operator identity is recorded in Event payloads.
-### R6 first-slice lifecycle contract (schema implemented; lifecycle not yet implemented)
+### R6 first-slice lifecycle contract (schema and lifecycle transitions implemented; recovery not yet implemented)
 
-**Implementation status.** The R6-A Step 1 schema portion is implemented (commit `42257ad`, local and unmerged): `Task.created_at`, nullable `Task.completed_at`, `Task.max_attempts` with a backfill from the earliest `task_started` Event, `uq_tasks_id_team`, and the `outcomes` table with its named constraints, plus the `Outcome` ORM mapping and explicit `max_attempts=3` pinning in `PlanService._create`. **The lifecycle contract below remains unimplemented:** no terminal transition, retry transition, attempt fencing, interrupted-task recovery, or terminal `task_execution` Outcome write exists yet. The requirements below are unchanged and remain mandatory.
+**Implementation status.** The R6-A schema and lifecycle transitions are implemented locally and unmerged on `r6a-step1-schema-outcome`: Step 1 schema at `42257ad` (`Task.created_at`, nullable `Task.completed_at`, `Task.max_attempts` with a backfill from the earliest `task_started` Event, `uq_tasks_id_team`, and the `outcomes` table with its named constraints, plus the `Outcome` ORM mapping and explicit `max_attempts=3` pinning in `PlanService._create`); Checkpoint 2A terminal finalization at `c3e9428`; and Checkpoint 2B retry scheduling and attempt exhaustion at `e05a8a4`. **Interrupted-task recovery remains unimplemented.** The requirements below are unchanged and remain mandatory.
 
 The sole lifecycle authority is `TaskRuntime` (an internal service may be called by it but may not become a second authority). Workers return typed results and never write Task status, attempt counters, or lifecycle Events directly.
 

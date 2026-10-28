@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current R6 design direction (architectural principles accepted; implementation gated)
 
-R6-G0 design decisions are recorded and the local preflight is verified, so **R6-G0 is COMPLETE as of 2026-10-25**. **R6-A is authorized and IN PROGRESS — not complete.** Step 1 (Task lifecycle and Outcome schema, ORM mapping, and `max_attempts` pinning) is committed locally at `42257ad` on branch `r6a-step1-schema-outcome` and is **unmerged**; terminal finalization, retry transitions, attempt fencing, and interrupted recovery remain unimplemented. The accepted target uses RAG-backed Domain Knowledge and Team Experience cores, ordinary Task execution, terminal Outcomes, and review-controlled LLM-assisted distillation through the authorized learning path. ADR-0025/0026/0028/0029/0030 are accepted; ADR-0027 remains Proposed. Embedding provider selection is staged until R6-D and generation provider selection until R6-E.
+R6-G0 design decisions are recorded and the local preflight is verified, so **R6-G0 is COMPLETE as of 2026-10-25**. **R6-A is authorized and IN PROGRESS — not complete**; see [`PLAN.md`](PLAN.md) for the authoritative checkpoint status. The accepted target uses RAG-backed Domain Knowledge and Team Experience cores, ordinary Task execution, terminal Outcomes, and review-controlled LLM-assisted distillation through the authorized learning path. ADR-0025/0026/0028/0029/0030 are accepted; ADR-0027 remains Proposed. Embedding provider selection is staged until R6-D and generation provider selection until R6-E.
 
 For these decisions, read:
 - [R6 entry gate](docs/development/r6-entry-gate.md) — resolved G0 decisions and the future R6-A through R6-G sequence.
