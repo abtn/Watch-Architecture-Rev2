@@ -8,7 +8,7 @@
 - **ADR-0027 remains Proposed.** Its Task-start quota semantics are separate; this decision record neither accepts that ADR nor changes quota behavior.
 - Git baselines: PR #8 merge commit `44c0944720600f8a1d4018d4eb39424a9660168e` is the historical baseline for the original decision set; PR #9 merge commit `f9207156533b6944d320a6adfff42963f7e1e17c` is the verified current `main` baseline. Neither is evidence of the operator's local branch, HEAD, worktree, or database state; the verified local state is recorded in the preflight record below.
 - R5 remains formally closed. Its immutable Plan, prerequisite, provenance, lifecycle, completion-precondition, and single-runtime constraints remain mandatory.
-- Current implementation gaps remain real: TaskRuntime admits Tasks, finalizes terminal results, handles retry/exhaustion, and recovers interrupted Tasks, but does not dispatch work; configured-source fetch is absent; the `Outcome` entity exists in the ORM and migrations (R6-A Step 1) and is written by terminal finalization (Checkpoint 2A), while Evaluation/KnowledgeItem/LearningChange persistence plus RAG Context assembly/distillation remain unimplemented. This record changes no code, schema, migration, provider, network, index, or runtime behavior.
+- Current implementation gaps remain real: TaskRuntime admits Tasks, finalizes terminal results, handles retry/exhaustion, and recovers interrupted Tasks, and the R6-B dispatcher executes one configured-source `ingest_source` Task end to end; the `Outcome` entity exists in the ORM and migrations (R6-A Step 1) and is written by terminal finalization (Checkpoint 2A), while Evaluation/KnowledgeItem/LearningChange persistence plus RAG Context assembly/distillation remain unimplemented. This record changes no code, schema, migration, provider, network, index, or runtime behavior.
 
 ## 1. Revised R6 purpose
 
@@ -49,7 +49,7 @@ RAG is the retrieval mechanism across these logical layers. A single physical in
 
 ### Gaps that must not be mistaken for implementation
 
-- No complete worker dispatcher/lifecycle path dispatches work: terminal finalization, retry/exhaustion transitions (R6-A Checkpoints 2A/2B), and interrupted-task recovery (Checkpoint 2C) are implemented, but dispatch is not.
+- No complete worker dispatcher/lifecycle path dispatches work: terminal finalization, retry/exhaustion transitions (R6-A Checkpoints 2A/2B), interrupted-task recovery (Checkpoint 2C), and the R6-B configured-source dispatcher are implemented; a general multi-task-type dispatcher is not.
 - Ingestion does not fetch a configured source or execute it as a Task.
 - The current ORM/migrations implement the documented `Outcome` entity (R6-A Step 1) and terminal finalization writes one (Checkpoint 2A), but Evaluation and KnowledgeItem are not implemented. Confirm actual branch state before planning further schema work.
 - There is no implemented RAG-backed knowledge-core retrieval/context assembly path established by this baseline.
@@ -114,6 +114,8 @@ Implement the application-controlled lifecycle following TaskRuntime admission: 
 Add a small dispatcher/handler for the configured-source ingest_source Task. It loads durable Task/source context, uses the approved restricted fetcher, invokes the existing IngestionService, and reports outcomes through the lifecycle owner. The handler cannot commit business rows or lifecycle state directly.
 
 **Exit:** integration tests cover admission → handler → ingestion commit → lifecycle completion, including no-change, rejection, retry, crash after ingestion commit, and replay without duplicate Signals or Events.
+
+**Implementation status: implemented on branch `r6b-configured-source-worker`; not yet merged.** `core/dispatcher.py` provides `TaskDispatcher` (`find_eligible_task`, `dispatch`, `recover_interrupted`); `core/source_fetch.py` provides the approved `RestrictedFetcher` and its URL/DNS/redirect/media-type/timeout/byte-ceiling contract. Durable source identity is the Task's `PlanAction` (`origin_url`, `source_type`), authorized against `TeamPolicy.rules["sources"]`; a Task with no Plan Action has no durable source identity and is rejected before admission. `tests/test_r6b_dispatcher.py` covers the successful path, no-change, retryable and non-retryable failure, exhaustion, configuration rejection, startup recovery, crash-after-ingestion-commit replay, and the fetcher's safety contract.
 
 ### R6-C — Outcome-backed deterministic reassessment and follow-on integration
 
