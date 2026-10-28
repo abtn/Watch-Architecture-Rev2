@@ -20,6 +20,18 @@ _TERMINAL_STATUSES = frozenset({"done", "failed"})
 _SUCCESS_CATEGORIES = frozenset({"success_signal_created", "success_no_change"})
 _RESULT_CATEGORIES = _SUCCESS_CATEGORIES | {"terminal_failure"}
 
+# ADR-0030 §2: a `running` Task whose latest `task_started` Event is older than
+# this is interrupted. The comparison is strict, so a start exactly at the
+# boundary is not yet stale.
+_INTERRUPTION_AGE = timedelta(seconds=60)
+_INTERRUPTION_REASON = "interrupted_execution"
+
+# Recovery resolves per-Task races into its result instead of aborting the whole
+# scan, so one Task another caller already advanced cannot block dispatcher
+# startup. These are the finalization reasons that describe a lost race rather
+# than recorded-state corruption; corruption and conflicts propagate unchanged.
+_SKIPPED_FINALIZATION_REASONS = frozenset({"stale_attempt", "task_not_running"})
+
 
 @dataclass(frozen=True)
 class AdmissionResult:
@@ -101,6 +113,36 @@ class TaskNotEligible(ValueError):
 
 class TaskNotFinalizable(ValueError):
     """Raised when a failure report or finalization request is invalid."""
+
+
+@dataclass(frozen=True)
+class InterruptedTask:
+    """One `running` Task and the latest start of its current attempt.
+
+    `started_at` is `None` when the current attempt has no `task_started`
+    Event. That is inconsistent recorded state, not a stale start, so it is
+    reported rather than assigned a fabricated time.
+    """
+
+    task_id: UUID
+    attempt: int
+    started_at: datetime | None
+
+
+@dataclass(frozen=True)
+class RecoveryResult:
+    """What one `recover_interrupted()` call actually changed.
+
+    `retried` and `failed` name the Tasks this call transitioned; `skipped`
+    names candidates another operation had already advanced past. `inconsistent`
+    names `running` Tasks whose current attempt has no usable `task_started`
+    Event; they are reported, never mutated.
+    """
+
+    retried: tuple[UUID, ...] = ()
+    failed: tuple[UUID, ...] = ()
+    skipped: tuple[UUID, ...] = ()
+    inconsistent: tuple[UUID, ...] = ()
 
 
 class TaskRuntime:
@@ -417,6 +459,189 @@ class TaskRuntime:
             attempt_count=terminal.attempt_count,
             event_ids=terminal.event_ids,
             terminal=terminal,
+        )
+
+    def recover_interrupted(
+        self, *, now: datetime | None = None
+    ) -> RecoveryResult:
+        """Recover `running` Tasks whose current attempt is stale (ADR-0030 §2).
+
+        A `running` Task whose latest `task_started` Event for its current
+        attempt is strictly older than 60 seconds is interrupted. With starts
+        remaining it returns to `pending` through the same durable retry
+        disposition `report_failure()` uses; with attempts exhausted it
+        terminalizes through the single `finalize()` path. This is a
+        compare-and-set lifecycle operation on the existing runtime, not a
+        second runtime or scheduler.
+
+        Discovery is read-only. Every candidate is rechecked under the Task-row
+        lock before any change, so a Task that completed, was re-admitted, or
+        was already recovered by another caller is skipped rather than
+        overwritten. `now` is injectable so the age comparison is deterministic
+        in tests; it defaults to the current UTC time.
+        """
+        reference = now if now is not None else datetime.now(timezone.utc)
+        if reference.tzinfo is None or reference.utcoffset() is None:
+            raise TaskNotFinalizable("reference_time_not_timezone_aware")
+
+        retried: list[UUID] = []
+        failed: list[UUID] = []
+        skipped: list[UUID] = []
+        inconsistent: list[UUID] = []
+
+        for candidate in self._interrupted_candidates(reference):
+            if candidate.started_at is None:
+                # A `running` Task with no start Event for its current attempt
+                # is inconsistent recorded state. It is surfaced, never reset
+                # or given a fabricated start time.
+                inconsistent.append(candidate.task_id)
+                continue
+
+            outcome = self._recover_candidate(candidate, reference)
+            if outcome == "retried":
+                retried.append(candidate.task_id)
+            elif outcome == "failed":
+                failed.append(candidate.task_id)
+            elif outcome == "inconsistent":
+                inconsistent.append(candidate.task_id)
+            else:
+                skipped.append(candidate.task_id)
+
+        return RecoveryResult(
+            retried=tuple(retried),
+            failed=tuple(failed),
+            skipped=tuple(skipped),
+            inconsistent=tuple(inconsistent),
+        )
+
+    def _interrupted_candidates(self, reference: datetime) -> list[InterruptedTask]:
+        """Read-only discovery of `running` Tasks with a stale current attempt.
+
+        The start is matched to the Task's current `attempt_count`, so an older
+        start from a previous attempt cannot make a newly admitted attempt look
+        stale. A `running` Task with no start for its current attempt is
+        returned with `started_at=None` so it is surfaced as inconsistent.
+        """
+        with self._session_factory() as session:
+            current_start = (
+                select(
+                    Event.task_id.label("task_id"),
+                    func.max(Event.created_at).label("started_at"),
+                )
+                .join(
+                    Task,
+                    (Task.id == Event.task_id)
+                    & (
+                        Event.payload["attempt_count"].as_integer()
+                        == Task.attempt_count
+                    ),
+                )
+                .where(Event.type == "task_started")
+                .group_by(Event.task_id)
+                .subquery()
+            )
+            rows = session.execute(
+                select(Task.id, Task.attempt_count, current_start.c.started_at)
+                .outerjoin(current_start, current_start.c.task_id == Task.id)
+                .where(Task.status == "running")
+            ).all()
+
+        candidates: list[InterruptedTask] = []
+        for task_id, attempt_count, started_at in rows:
+            if started_at is None:
+                candidates.append(InterruptedTask(task_id, attempt_count, None))
+            elif reference - started_at > _INTERRUPTION_AGE:
+                candidates.append(InterruptedTask(task_id, attempt_count, started_at))
+        return candidates
+
+    def _recover_candidate(
+        self, candidate: InterruptedTask, reference: datetime
+    ) -> str:
+        """Recheck one candidate under the Task-row lock and recover it.
+
+        Returns ``"retried"``, ``"failed"``, ``"inconsistent"``, or
+        ``"skipped"``. The decision transaction is released before any terminal
+        finalization, because writing the observation Snapshot must not happen
+        inside an open database transaction.
+        """
+        with self._session_factory.begin() as session:
+            task = ObjectiveService._lock_task(session, candidate.task_id)
+            if task is None:
+                return "skipped"
+
+            # Recheck under the lock: another caller may have completed,
+            # re-admitted, or already recovered this Task since discovery.
+            if task.status != "running":
+                return "skipped"
+            if task.attempt_count != candidate.attempt:
+                return "skipped"
+
+            started_at = self._current_attempt_start(session, task)
+            if started_at is None:
+                return "inconsistent"
+            if reference - started_at <= _INTERRUPTION_AGE:
+                return "skipped"
+
+            if task.attempt_count < task.max_attempts:
+                disposition = self._retry_disposition(
+                    session, task.id, task.attempt_count
+                )
+                if disposition == "corrupt":
+                    raise TaskNotFinalizable("recorded_retry_events_corrupt")
+                if disposition == "committed":
+                    # A concurrent recovery already scheduled this retry.
+                    return "skipped"
+
+                task.status = "pending"
+                payload = {
+                    "from_status": "running",
+                    "to_status": "pending",
+                    "attempt_count": task.attempt_count,
+                    "result_category": "retryable_failure",
+                    "failure_reason": _INTERRUPTION_REASON,
+                }
+                for event_type in _RETRY_EVENTS:
+                    ObjectiveService._add_event(session, task.id, event_type, payload)
+                session.flush()
+                return "retried"
+
+            attempt = task.attempt_count
+            observed_at = started_at
+
+        # Attempts are exhausted: resolve through the single terminal path.
+        # `observed_at` is the durable current-attempt start, so repeated or
+        # concurrent recovery derives the same canonical observation and
+        # replays instead of conflicting on a fresh timestamp.
+        observation = TerminalObservation(
+            task_id=candidate.task_id,
+            attempt=attempt,
+            result_category="terminal_failure",
+            observed_at=observed_at,
+            failure_reason=_INTERRUPTION_REASON,
+        )
+        try:
+            self.finalize(observation)
+        except TaskNotFinalizable as error:
+            # A lost race is a skip; recorded-state corruption and conflicts
+            # propagate unchanged, exactly as they do from `report_failure()`.
+            if str(error) in _SKIPPED_FINALIZATION_REASONS:
+                return "skipped"
+            raise
+        return "failed"
+
+    @staticmethod
+    def _current_attempt_start(session: Session, task: Task) -> datetime | None:
+        """The latest `task_started` Event for the Task's current attempt.
+
+        `attempt_count` counts successful admissions, so the current attempt's
+        start is the newest `task_started` Event carrying that attempt number.
+        """
+        return session.scalar(
+            select(func.max(Event.created_at)).where(
+                Event.task_id == task.id,
+                Event.type == "task_started",
+                Event.payload["attempt_count"].as_integer() == task.attempt_count,
+            )
         )
 
     @staticmethod
