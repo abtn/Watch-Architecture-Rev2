@@ -4,11 +4,11 @@
 
 - **R6-G0 design decisions: RECORDED.** The operator explicitly requested resolution of the remaining G0 decisions on 2026-10-25. The accepted records are ADR-0025, ADR-0026, ADR-0028, ADR-0029, and ADR-0030.
 - **R6-G0 milestone status: COMPLETE — 2026-10-25.** The design decisions are recorded and the local checkout preflight is documented below. **This closeout did not itself authorize R6-A or any implementation**; R6-A required a separate explicit operator instruction, which was subsequently given.
-- **R6-A current status: IN PROGRESS — not complete.** Three checkpoints are committed locally on branch `r6a-step1-schema-outcome` and remain **unmerged**: Step 1 schema at `42257ad` (migration `0009_task_lifecycle_outcome`, the `Outcome` ORM mapping, and explicit `max_attempts=3` pinning in `PlanService._create`, with focused schema tests); Checkpoint 2A terminal finalization at `c3e9428`; and Checkpoint 2B retry scheduling and attempt exhaustion at `e05a8a4`. Automated CI is committed at `bda8d55`. **Interrupted-task recovery is unimplemented**, so the R6-A exit criteria in §4 are unmet. See `PLAN.md` for the authoritative milestone status.
+- **R6-A current status: IN PROGRESS — not complete.** Four checkpoints are committed locally on branch `r6a-step1-schema-outcome` and remain **unmerged**: Step 1 schema at `42257ad` (migration `0009_task_lifecycle_outcome`, the `Outcome` ORM mapping, and explicit `max_attempts=3` pinning in `PlanService._create`, with focused schema tests); Checkpoint 2A terminal finalization at `c3e9428`; Checkpoint 2B retry scheduling and attempt exhaustion at `e05a8a4`; and Checkpoint 2C interrupted-task recovery in `TaskRuntime.recover_interrupted()`, with focused recovery tests in `tests/test_task_lifecycle_recovery.py`. Automated CI is committed at `bda8d55`. The R6-A lifecycle scope is now covered end to end; the R6-A exit criteria in §4 are satisfied subject to the recorded verification. See `PLAN.md` for the authoritative milestone status.
 - **ADR-0027 remains Proposed.** Its Task-start quota semantics are separate; this decision record neither accepts that ADR nor changes quota behavior.
 - Git baselines: PR #8 merge commit `44c0944720600f8a1d4018d4eb39424a9660168e` is the historical baseline for the original decision set; PR #9 merge commit `f9207156533b6944d320a6adfff42963f7e1e17c` is the verified current `main` baseline. Neither is evidence of the operator's local branch, HEAD, worktree, or database state; the verified local state is recorded in the preflight record below.
 - R5 remains formally closed. Its immutable Plan, prerequisite, provenance, lifecycle, completion-precondition, and single-runtime constraints remain mandatory.
-- Current implementation gaps remain real: TaskRuntime admits Tasks, finalizes terminal results, and handles retry/exhaustion, but does not recover interrupted Tasks or dispatch work; configured-source fetch is absent; the `Outcome` entity exists in the ORM and migrations (R6-A Step 1) and is written by terminal finalization (Checkpoint 2A), while Evaluation/KnowledgeItem/LearningChange persistence plus RAG Context assembly/distillation remain unimplemented. This record changes no code, schema, migration, provider, network, index, or runtime behavior.
+- Current implementation gaps remain real: TaskRuntime admits Tasks, finalizes terminal results, handles retry/exhaustion, and recovers interrupted Tasks, but does not dispatch work; configured-source fetch is absent; the `Outcome` entity exists in the ORM and migrations (R6-A Step 1) and is written by terminal finalization (Checkpoint 2A), while Evaluation/KnowledgeItem/LearningChange persistence plus RAG Context assembly/distillation remain unimplemented. This record changes no code, schema, migration, provider, network, index, or runtime behavior.
 
 ## 1. Revised R6 purpose
 
@@ -49,7 +49,7 @@ RAG is the retrieval mechanism across these logical layers. A single physical in
 
 ### Gaps that must not be mistaken for implementation
 
-- No complete worker dispatcher/lifecycle path performs Task completion, failure, retries, and recovery. Terminal finalization and retry/exhaustion transitions are implemented (R6-A Checkpoints 2A/2B); interrupted-task recovery and dispatch are not.
+- No complete worker dispatcher/lifecycle path dispatches work: terminal finalization, retry/exhaustion transitions (R6-A Checkpoints 2A/2B), and interrupted-task recovery (Checkpoint 2C) are implemented, but dispatch is not.
 - Ingestion does not fetch a configured source or execute it as a Task.
 - The current ORM/migrations implement the documented `Outcome` entity (R6-A Step 1) and terminal finalization writes one (Checkpoint 2A), but Evaluation and KnowledgeItem are not implemented. Confirm actual branch state before planning further schema work.
 - There is no implemented RAG-backed knowledge-core retrieval/context assembly path established by this baseline.
@@ -101,7 +101,7 @@ No production provider/SDK or credentials path before its slice; no external rer
 
 ## 4. Proposed implementation traversal after G0 exits
 
-These are implementation slices. G0 is complete, and R6-A was separately authorized by the operator and is in progress (checkpoints 1/2A/2B committed locally, unmerged; interrupted recovery unimplemented). The remaining slices must not begin until their predecessor gate is satisfied and a separate explicit operator instruction authorizes them.
+These are implementation slices. G0 is complete, and R6-A was separately authorized by the operator and is in progress (checkpoints 1/2A/2B/2C committed locally, unmerged). The remaining slices must not begin until their predecessor gate is satisfied and a separate explicit operator instruction authorizes them.
 
 ### R6-A — Task execution lifecycle and atomic terminal Outcome
 
@@ -175,7 +175,7 @@ Run required focused and full-suite tests, Ruff, mypy, and applicable disposable
 - [x] First deterministic acceptance fixture and success, rejection, failure, and replay contract recorded above.
 - [x] **Before implementation:** verify actual local branch, HEAD, merge status, worktree, current migrations, and disposable PostgreSQL database using `AGENTS.md`. The remote branch or a documentation export is not local preflight evidence. **Satisfied 2026-10-25 — see the preflight record below.**
 
-**Gate status:** all design decisions requested for G0 are recorded and the local preflight is documented, so **R6-G0 is COMPLETE as of 2026-10-25**. Completing G0 did not itself authorize implementation; **R6-A required a separate explicit operator instruction, which was subsequently given.** R6-A is now **IN PROGRESS, not complete**: checkpoints 1/2A/2B are committed locally and unmerged, and interrupted-task recovery remains unimplemented. ADR-0027 remains Proposed, and the embedding/generation provider choices remain staged to before R6-D and before R6-E.
+**Gate status:** all design decisions requested for G0 are recorded and the local preflight is documented, so **R6-G0 is COMPLETE as of 2026-10-25**. Completing G0 did not itself authorize implementation; **R6-A required a separate explicit operator instruction, which was subsequently given.** R6-A is now **IN PROGRESS, not complete**: checkpoints 1/2A/2B/2C are committed locally and unmerged, and the R6-A lifecycle scope is covered end to end subject to recorded verification. ADR-0027 remains Proposed, and the embedding/generation provider choices remain staged to before R6-D and before R6-E.
 
 ## 7. R6-G0 local preflight record — 2026-10-25
 
