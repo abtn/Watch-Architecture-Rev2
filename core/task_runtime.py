@@ -1,4 +1,4 @@
-"""Application-controlled Task admission and terminal finalization."""
+"""Application-controlled Task admission, failure reporting, and finalization."""
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -15,6 +15,7 @@ from core.snapshot_store import SnapshotStore
 from core.state_assessment import _canonical_json, _timestamp
 
 _TERMINAL_EVENTS = ("task_completed", "task_failed")
+_RETRY_EVENTS = ("task_attempt_failed", "task_retry_scheduled")
 _TERMINAL_STATUSES = frozenset({"done", "failed"})
 _SUCCESS_CATEGORIES = frozenset({"success_signal_created", "success_no_change"})
 _RESULT_CATEGORIES = _SUCCESS_CATEGORIES | {"terminal_failure"}
@@ -61,12 +62,45 @@ class FinalizationResult:
     replayed: bool = False
 
 
+@dataclass(frozen=True)
+class FailureObservation:
+    """One worker-reported attempt failure.
+
+    `retryable` is the caller's transport-level classification; `TaskRuntime`
+    decides only whether the retry limit permits another start. `reason` is
+    recorded verbatim, because accepted documents require a categorized reason
+    but prescribe no closed failure-reason vocabulary.
+    """
+
+    task_id: UUID
+    attempt: int
+    observed_at: datetime
+    reason: str
+    retryable: bool
+
+
+@dataclass(frozen=True)
+class FailureResult:
+    """The outcome of one failure report.
+
+    `retry_scheduled` separates a retry transition from a terminal
+    finalization. `terminal` is populated only when an Outcome was created.
+    """
+
+    task_id: UUID
+    retry_scheduled: bool
+    status: str
+    attempt_count: int
+    event_ids: tuple[UUID, ...]
+    terminal: FinalizationResult | None = None
+
+
 class TaskNotEligible(ValueError):
     pass
 
 
 class TaskNotFinalizable(ValueError):
-    """Raised when a terminal finalization request is invalid or stale."""
+    """Raised when a failure report or finalization request is invalid."""
 
 
 class TaskRuntime:
@@ -86,6 +120,13 @@ class TaskRuntime:
 
             if task.status != "pending":
                 raise TaskNotEligible("task_not_pending")
+
+            # A Task returned to `pending` by a retry must not be started again
+            # once the pinned start limit is reached. Checked before the quota
+            # window and before any start side effect, so a rejected exhausted
+            # admission consumes nothing (ADR-0030 §1).
+            if task.attempt_count >= task.max_attempts:
+                raise TaskNotEligible("task_attempts_exhausted")
 
             self._require_prerequisites(session, task)
 
@@ -287,6 +328,121 @@ class TaskRuntime:
                 outcome_id=outcome.id,
             )
 
+    def report_failure(self, failure: FailureObservation) -> FailureResult:
+        """Record one worker-reported attempt failure.
+
+        A retryable failure with starts remaining returns the Task to `pending`
+        with `task_attempt_failed` and `task_retry_scheduled` in one atomic
+        transaction, and creates no Outcome or Snapshot. Every other case
+        delegates to `finalize()`, the single terminal Outcome path, so the
+        terminal Outcome, Snapshot, Events, and status are never written here.
+
+        The retry decision is taken under the Task-row lock, so competing
+        reports cannot both schedule a retry or schedule a retry after a
+        terminal result has been committed. The decision transaction is
+        released before delegating, because writing the observation Snapshot
+        must not happen inside an open database transaction; `finalize()`
+        revalidates status and attempt under its own lock.
+        """
+        self._validate_failure(failure)
+
+        with self._session_factory.begin() as session:
+            task = ObjectiveService._lock_task(session, failure.task_id)
+            if task is None:
+                raise TaskNotFound(f"Task {failure.task_id} does not exist")
+
+            terminal_recorded = self._prior_terminal(session, task.id) is not None
+            # A retry is possible only for a running Task on the attempt that
+            # was admitted, with the pinned start limit not yet reached.
+            retry_possible = (
+                failure.retryable
+                and failure.attempt == task.attempt_count
+                and task.attempt_count < task.max_attempts
+            )
+
+            # A committed terminal result wins, and a terminal status with no
+            # Outcome is recorded-state corruption. Both are reported by the
+            # terminal path below, never repaired or retried here.
+            if not terminal_recorded and task.status not in _TERMINAL_STATUSES:
+                # A Task still `pending` at the reported attempt may already
+                # carry the durable retry disposition for that attempt. That is
+                # a duplicate report, not a generic non-running state, so it is
+                # rejected distinctly and never schedules a second retry.
+                if task.status == "pending" and failure.attempt == task.attempt_count:
+                    disposition = self._retry_disposition(
+                        session, task.id, failure.attempt
+                    )
+                    if disposition == "corrupt":
+                        raise TaskNotFinalizable("recorded_retry_events_corrupt")
+                    if disposition == "committed":
+                        raise TaskNotFinalizable("retry_already_scheduled")
+                if task.status != "running":
+                    raise TaskNotFinalizable("task_not_running")
+                if failure.attempt != task.attempt_count:
+                    raise TaskNotFinalizable("stale_attempt")
+                if retry_possible:
+                    task.status = "pending"
+                    payload = {
+                        "from_status": "running",
+                        "to_status": "pending",
+                        "attempt_count": task.attempt_count,
+                        "result_category": "retryable_failure",
+                        "failure_reason": failure.reason,
+                    }
+                    events = [
+                        ObjectiveService._add_event(
+                            session, task.id, event_type, payload
+                        )
+                        for event_type in _RETRY_EVENTS
+                    ]
+                    session.flush()
+
+                    return FailureResult(
+                        task_id=task.id,
+                        retry_scheduled=True,
+                        status=task.status,
+                        attempt_count=task.attempt_count,
+                        event_ids=tuple(event.id for event in events),
+                    )
+
+        # Non-retryable failures, exhausted retries, terminal-state corruption,
+        # and repeats of a committed terminal result all resolve through the
+        # single Checkpoint 2A finalization path. The decision transaction is
+        # released first so no Snapshot write happens inside it.
+        terminal = self.finalize(self._terminal_observation(failure))
+        return FailureResult(
+            task_id=terminal.task_id,
+            retry_scheduled=False,
+            status=terminal.status,
+            attempt_count=terminal.attempt_count,
+            event_ids=terminal.event_ids,
+            terminal=terminal,
+        )
+
+    @staticmethod
+    def _validate_failure(failure: FailureObservation) -> None:
+        if failure.observed_at.tzinfo is None or (
+            failure.observed_at.utcoffset() is None
+        ):
+            raise TaskNotFinalizable("observed_at_not_timezone_aware")
+        if isinstance(failure.attempt, bool) or failure.attempt < 1:
+            raise TaskNotFinalizable("invalid_attempt")
+        if not isinstance(failure.reason, str) or not failure.reason.strip():
+            raise TaskNotFinalizable("failure_reason_required")
+
+    @staticmethod
+    def _terminal_observation(
+        failure: FailureObservation,
+    ) -> TerminalObservation:
+        """Adapt a failure report to the single terminal finalization path."""
+        return TerminalObservation(
+            task_id=failure.task_id,
+            attempt=failure.attempt,
+            result_category="terminal_failure",
+            observed_at=failure.observed_at,
+            failure_reason=failure.reason,
+        )
+
     @staticmethod
     def _validate_observation(observation: TerminalObservation) -> None:
         if observation.result_category not in _RESULT_CATEGORIES:
@@ -344,6 +500,31 @@ class TaskRuntime:
             )
         )
 
+    @staticmethod
+    def _retry_disposition(session: Session, task_id: UUID, attempt: int) -> str:
+        """Classify the durable retry record for one attempt.
+
+        Returns ``"absent"`` when the attempt has no retry Event, ``"committed"``
+        when exactly one complete ``task_attempt_failed``/``task_retry_scheduled``
+        pair exists, and ``"corrupt"`` when the pair is incomplete or duplicated.
+        The committed Events are the durable record; no separate marker is added.
+        """
+        counts: dict[str, int] = {}
+        for event in session.scalars(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type.in_(_RETRY_EVENTS),
+                Event.payload["attempt_count"].as_integer() == attempt,
+            )
+        ):
+            counts[event.type] = counts.get(event.type, 0) + 1
+
+        if not counts:
+            return "absent"
+        if counts == {"task_attempt_failed": 1, "task_retry_scheduled": 1}:
+            return "committed"
+        return "corrupt"
+
     def _replay(
         self,
         session: Session,
@@ -374,11 +555,19 @@ class TaskRuntime:
         )
         # Both failure Events may share a timestamp, so match by type rather
         # than relying on insertion order.
+        #
+        # Only the Events of the recorded terminal attempt define the terminal
+        # disposition. Earlier retryable attempts also emit `task_attempt_failed`
+        # with a lower `attempt_count`, so the attempt filter is what keeps a
+        # legitimately retried Task from looking like duplicated terminal Events.
+        # `observation.attempt` is the recorded attempt: the canonical payload
+        # comparison above already proved it matches the committed observation.
         by_type: dict[str, Event] = {}
         for event in session.scalars(
             select(Event).where(
                 Event.task_id == task.id,
                 Event.type.in_(_TERMINAL_EVENTS + ("task_attempt_failed",)),
+                Event.payload["attempt_count"].as_integer() == observation.attempt,
             )
         ):
             if event.type in by_type:
