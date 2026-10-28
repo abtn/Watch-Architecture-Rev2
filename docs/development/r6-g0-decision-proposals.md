@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Decision record: all architectural/design decisions requested for R6-G0 are recorded as of 2026-10-25.** This is planning authority only and does not authorize any R6 implementation. **R6-G0 is COMPLETE as of 2026-10-25**: the recorded design decisions are complete and the local checkout preflight is documented. **R6-A required a separate explicit operator instruction**, which was subsequently given; R6-A is now IN PROGRESS and not complete. See `PLAN.md` for the authoritative checkpoint status.
+**Decision record: all architectural/design decisions requested for R6-G0 are recorded as of 2026-10-25.** This is planning authority only and does not authorize any R6 implementation. **R6-G0 is COMPLETE as of 2026-10-25**: the recorded design decisions are complete and the local checkout preflight is documented. **R6-A required a separate explicit operator instruction**, which was subsequently given; R6-A is now COMPLETE, merged to `main` by PR #12 (merge commit `ebbc48d`). See `PLAN.md` for the authoritative milestone status.
 
 Governing records:
 - [ADR-0025](../decisions/ADR-0025-plan-is-derived-execution-state.md) — accepted unchanged.
@@ -69,4 +69,4 @@ Use static fictional news/science sources, including at least one contradictory 
 
 The operational prerequisite — verify actual local branch, HEAD, status/diff, merge state, migrations, and disposable PostgreSQL database using `AGENTS.md` — is **satisfied 2026-10-25** and recorded in [PLAN.md](../../PLAN.md) and the [R6 entry gate](r6-entry-gate.md). R6-G0 is therefore COMPLETE.
 
-This decision record does not itself authorize R6-A. The operator subsequently gave the separate explicit instruction, and R6-A is now IN PROGRESS and not complete; see `PLAN.md` for the authoritative checkpoint status.
+This decision record does not itself authorize R6-A. The operator subsequently gave the separate explicit instruction, and R6-A is now COMPLETE and merged to `main` by PR #12; see `PLAN.md` for the authoritative milestone status.
