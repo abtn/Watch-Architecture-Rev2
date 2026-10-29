@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.models import Event, Outcome, Plan, PlanAction, Signal, Task
-from core.plans import PlanResult, PlanService
+from core.plans import PlanService
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
 from core.state_assessment import _canonical_json, _timestamp
 
@@ -242,6 +242,8 @@ class ExecutionAssessmentBuilder:
                             else None
                         ),
                         "proposal_hash": plan.proposal_hash,
+                        "budget": plan.budget,
+                        "completion_condition": plan.completion_condition,
                         "accepted_event_id": str(plan.accepted_event_id),
                         "created_by_task_id": str(plan.created_by_task_id),
                         "created_event_ids": [
@@ -340,6 +342,15 @@ class ExecutionAssessmentBuilder:
         if len(outcomes) > 1:
             findings.append("duplicate_terminal_outcomes")
         outcome = outcomes[0] if len(outcomes) == 1 else None
+
+        all_attempt_event_numbers = (
+            set(starts) | set(retry_failures) | set(retry_scheduled) | set(completed) | set(failed)
+        )
+        if any(
+            number < 1 or number > task.attempt_count
+            for number in all_attempt_event_numbers
+        ):
+            findings.append("attempt_event_outside_recorded_history")
 
         attempt_rows: list[dict[str, Any]] = []
         if task.attempt_count >= 0:
@@ -562,6 +573,13 @@ class ExecutionAssessmentBuilder:
             "action": action.action,
             "task_id": str(task.id),
             "task_status": task.status,
+            "policy_version": task.policy_version,
+            "created_at": _timestamp(task.created_at),
+            "completed_at": (
+                _timestamp(task.completed_at)
+                if task.completed_at is not None
+                else None
+            ),
             "attempt_count": task.attempt_count,
             "attempts": attempt_rows,
             "conclusion": conclusion,
@@ -675,6 +693,7 @@ class ExecutionAssessmentBuilder:
                 or signal.source_type != action.action.get("source_type")
             ):
                 findings.append("terminal_outcome_signal_source_mismatch")
+            self._verify_signal_snapshot_integrity(signal, findings)
             signals.append(
                 {
                     "signal_id": str(signal.id),
@@ -691,6 +710,7 @@ class ExecutionAssessmentBuilder:
         return {
             "id": str(outcome.id),
             "type": outcome.outcome_type,
+            "expected": outcome.expected,
             "subject_kind": outcome.subject_kind,
             "subject_id": str(outcome.subject_id),
             "recorded_by_task_id": str(outcome.recorded_by_task_id),
@@ -745,8 +765,8 @@ class ExecutionAssessmentBuilder:
             findings,
         )
 
-    @staticmethod
     def _validate_source_signal(
+        self,
         session: Session,
         action: PlanAction,
         signal_id_raw: Any,
@@ -769,6 +789,19 @@ class ExecutionAssessmentBuilder:
             or signal.source_type != action.action.get("source_type")
         ):
             findings.append("ingestion_event_signal_mismatch")
+        self._verify_signal_snapshot_integrity(signal, findings)
+
+    def _verify_signal_snapshot_integrity(
+        self, signal: Signal, findings: list[str]
+    ) -> None:
+        try:
+            content = self._snapshot_store.read(signal.snapshot_ref)
+        except (SnapshotIntegrityError, OSError, ValueError):
+            findings.append("signal_snapshot_unreadable")
+            return
+        actual_hash = "sha256:" + hashlib.sha256(content).hexdigest()
+        if actual_hash != signal.content_hash:
+            findings.append("signal_snapshot_hash_mismatch")
 
     @staticmethod
     def _valid_retry_pair(
