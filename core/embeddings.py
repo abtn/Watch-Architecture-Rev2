@@ -1,7 +1,8 @@
-"""Provider-neutral embeddings with a local Ollama/BGE-M3 adapter.
+"""Provider-neutral embeddings over an OpenAI-compatible API.
 
-No provider SDK is required. Deterministic tests inject a fake implementation of
-EmbeddingProvider and never make network requests or download model weights.
+The adapter works with local servers such as LM Studio and with hosted services
+that implement the standard /v1/models and /v1/embeddings contract. Tests inject
+deterministic fakes and never make inference requests or download model weights.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ import hashlib
 import json
 import math
 import os
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -21,9 +23,10 @@ from urllib.request import Request, urlopen
 class EmbeddingProviderError(RuntimeError):
     """A safe, non-payload-bearing embedding provider failure."""
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, *, retryable: bool = False) -> None:
         super().__init__(reason)
         self.reason = reason
+        self.retryable = retryable
 
 
 @dataclass(frozen=True)
@@ -71,23 +74,35 @@ class EmbeddingProvider(Protocol):
         ...
 
 
-class OllamaEmbeddingProvider:
-    """Call a locally reachable Ollama server's native embedding API."""
+class OpenAICompatibleEmbeddingProvider:
+    """Call an OpenAI-compatible /v1/models and /v1/embeddings API."""
 
-    provider_name = "ollama"
+    provider_name = "openai_compatible"
+    _RETRYABLE_HTTP_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 
     def __init__(
         self,
-        base_url: str = "http://localhost:11434",
+        base_url: str = "http://localhost:1234/v1",
         model: str = "bge-m3",
         dimensions: int = 1024,
-        timeout_seconds: float = 60.0,
-        batch_size: int = 32,
-        configuration: str = "ollama-embed-v1",
+        timeout_seconds: float = 180.0,
+        batch_size: int = 8,
+        configuration: str = "openai-embeddings-v1",
+        api_key: str = "",
+        revision: str = "",
+        ready_timeout_seconds: float = 180.0,
+        retry_attempts: int = 2,
     ) -> None:
         parsed = urlparse(base_url.strip().rstrip("/"))
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError("invalid_ollama_base_url")
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("invalid_embedding_api_base_url")
         if not model.strip():
             raise ValueError("empty_embedding_model")
         if dimensions <= 0:
@@ -98,59 +113,88 @@ class OllamaEmbeddingProvider:
             raise ValueError("invalid_embedding_batch_size")
         if not configuration.strip():
             raise ValueError("empty_embedding_configuration")
+        if ready_timeout_seconds <= 0 or not math.isfinite(ready_timeout_seconds):
+            raise ValueError("invalid_embedding_ready_timeout")
+        if retry_attempts <= 0:
+            raise ValueError("invalid_embedding_retry_attempts")
 
         self._base_url = base_url.strip().rstrip("/") + "/"
+        self._endpoint_identity = base_url.strip().rstrip("/")
         self._model = model.strip()
         self._dimensions = dimensions
         self._timeout_seconds = timeout_seconds
         self._batch_size = batch_size
-        self._configuration = configuration.strip()
-
-    def current_space(self) -> EmbeddingSpace:
-        """Resolve the exact installed digest instead of trusting a mutable tag."""
-        document = self._request_json("GET", "api/tags")
-        models = document.get("models")
-        if not isinstance(models, list):
-            raise EmbeddingProviderError("ollama_invalid_tags_response")
-
-        accepted_names = {self._model}
-        if ":" not in self._model:
-            accepted_names.add(f"{self._model}:latest")
-
-        matches: list[dict[str, Any]] = []
-        for item in models:
-            if not isinstance(item, dict):
-                continue
-            names = {item.get("name"), item.get("model")}
-            if any(isinstance(name, str) and name in accepted_names for name in names):
-                matches.append(item)
-
-        if not matches:
-            raise EmbeddingProviderError("ollama_model_not_installed_run_ollama_pull")
-        if len(matches) != 1:
-            # Exact and :latest aliases can refer to the same local model. Prefer an
-            # exact configured name; otherwise require an unambiguous latest alias.
-            exact = [
-                item
-                for item in matches
-                if item.get("name") == self._model or item.get("model") == self._model
-            ]
-            matches = exact if len(exact) == 1 else matches[:1]
-
-        digest = matches[0].get("digest")
-        if not isinstance(digest, str) or not digest.strip():
-            raise EmbeddingProviderError("ollama_model_digest_missing")
-
-        return EmbeddingSpace(
-            provider=self.provider_name,
-            model=self._model,
-            revision=digest.strip(),
-            dimensions=self._dimensions,
-            configuration=self._configuration,
+        self._api_key = api_key.strip()
+        self._revision = revision.strip()
+        self._ready_timeout_seconds = ready_timeout_seconds
+        self._retry_attempts = retry_attempts
+        # Endpoint identity keeps compatible-looking but different servers apart.
+        self._configuration = json.dumps(
+            {
+                "adapter": configuration.strip(),
+                "base_url": self._endpoint_identity,
+                "request_contract": "openai-compatible-embeddings-v1",
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
         )
 
+    def current_space(self) -> EmbeddingSpace:
+        """Wait boundedly for the configured model to appear in the API model list.
+
+        The API owns loading and GPU placement. This adapter does not issue
+        provider-specific load/unload commands; it observes readiness and times out
+        with a safe diagnostic if the service or configured model never appears.
+        """
+        deadline = time.monotonic() + self._ready_timeout_seconds
+        delay = 0.25
+        last_reason = "embedding_model_not_listed"
+
+        while True:
+            try:
+                document = self._request_json("GET", "models")
+                data = document.get("data")
+                if not isinstance(data, list):
+                    raise EmbeddingProviderError(
+                        "embedding_api_invalid_models_response"
+                    )
+
+                matches = [
+                    item
+                    for item in data
+                    if isinstance(item, dict) and item.get("id") == self._model
+                ]
+                if len(matches) > 1:
+                    raise EmbeddingProviderError(
+                        "embedding_api_ambiguous_model_identifier"
+                    )
+                if matches:
+                    model_metadata = matches[0]
+                    revision = self._revision or _metadata_revision(model_metadata)
+                    return EmbeddingSpace(
+                        provider=self.provider_name,
+                        model=self._model,
+                        revision=revision,
+                        dimensions=self._dimensions,
+                        configuration=self._configuration,
+                    )
+                last_reason = "embedding_model_not_listed"
+            except EmbeddingProviderError as error:
+                if not error.retryable:
+                    raise
+                last_reason = error.reason
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise EmbeddingProviderError(
+                    f"{last_reason}_after_ready_timeout"
+                ) from None
+            time.sleep(min(delay, remaining))
+            delay = min(delay * 2, 3.0)
+
     def embed(self, texts: Sequence[str]) -> EmbeddingBatch:
-        """Generate vectors and verify the installed model did not change mid-call."""
+        """Embed in modest batches and reject ordering, shape, or model changes."""
         for value in texts:
             if not isinstance(value, str) or not value.strip():
                 raise ValueError("embedding_text_must_be_nonempty")
@@ -167,27 +211,27 @@ class OllamaEmbeddingProvider:
                 raise EmbeddingProviderError("embedding_space_changed_during_request")
 
             batch_texts = list(texts[start : start + self._batch_size])
-            response = self._request_json(
+            response = self._request_json_with_retries(
                 "POST",
-                "api/embed",
+                "embeddings",
                 {
                     "model": self._model,
                     "input": batch_texts,
-                    "truncate": False,
+                    "encoding_format": "float",
                 },
             )
-            raw_embeddings = response.get("embeddings")
-            if not isinstance(raw_embeddings, list) or len(raw_embeddings) != len(
-                batch_texts
-            ):
-                raise EmbeddingProviderError("ollama_embedding_count_mismatch")
+            raw_data = response.get("data")
+            if not isinstance(raw_data, list) or len(raw_data) != len(batch_texts):
+                raise EmbeddingProviderError("embedding_count_mismatch")
 
+            ordered_data = _ordered_embedding_data(raw_data, len(batch_texts))
             batch_vectors: list[tuple[float, ...]] = []
-            for raw in raw_embeddings:
-                if not isinstance(raw, list):
-                    raise EmbeddingProviderError("ollama_invalid_embedding_vector")
+            for item in ordered_data:
+                raw_vector = item.get("embedding")
+                if not isinstance(raw_vector, list):
+                    raise EmbeddingProviderError("invalid_embedding_vector")
                 try:
-                    vector = _validate_vector(raw, initial_space.dimensions)
+                    vector = _validate_vector(raw_vector, initial_space.dimensions)
                 except ValueError as error:
                     raise EmbeddingProviderError(error.args[0]) from error
                 batch_vectors.append(tuple(vector))
@@ -201,6 +245,21 @@ class OllamaEmbeddingProvider:
 
         return EmbeddingBatch(space=initial_space, vectors=tuple(vectors))
 
+    def _request_json_with_retries(
+        self, method: str, path: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Retry only transient failures, with a small bounded exponential delay."""
+        delay = 1.0
+        for attempt in range(self._retry_attempts):
+            try:
+                return self._request_json(method, path, payload)
+            except EmbeddingProviderError as error:
+                if not error.retryable or attempt == self._retry_attempts - 1:
+                    raise
+                time.sleep(min(delay, 5.0))
+                delay = min(delay * 2, 5.0)
+        raise EmbeddingProviderError("embedding_api_retry_exhausted")
+
     def _request_json(
         self, method: str, path: str, payload: dict[str, Any] | None = None
     ) -> dict[str, Any]:
@@ -210,28 +269,92 @@ class OllamaEmbeddingProvider:
         if payload is not None:
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             headers["Content-Type"] = "application/json"
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
         request = Request(url, data=data, headers=headers, method=method)
 
         try:
             with urlopen(request, timeout=self._timeout_seconds) as response:
                 raw = response.read(20 * 1024 * 1024 + 1)
         except HTTPError as error:
-            # Do not put remote response bodies or query text into logs/exceptions.
+            # Never include provider response bodies, API keys, or input text here.
             raise EmbeddingProviderError(
-                f"ollama_http_error_{error.code}"
+                f"embedding_api_http_error_{error.code}",
+                retryable=error.code in self._RETRYABLE_HTTP_CODES,
             ) from None
         except (URLError, TimeoutError, OSError):
-            raise EmbeddingProviderError("ollama_unavailable_or_timeout") from None
+            raise EmbeddingProviderError(
+                "embedding_api_unavailable_or_timeout", retryable=True
+            ) from None
 
         if len(raw) > 20 * 1024 * 1024:
-            raise EmbeddingProviderError("ollama_response_too_large")
+            raise EmbeddingProviderError("embedding_api_response_too_large")
         try:
             document = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
-            raise EmbeddingProviderError("ollama_invalid_json_response") from None
+            raise EmbeddingProviderError(
+                "embedding_api_invalid_json_response"
+            ) from None
         if not isinstance(document, dict):
-            raise EmbeddingProviderError("ollama_invalid_json_shape")
+            raise EmbeddingProviderError("embedding_api_invalid_json_shape")
         return document
+
+
+def _ordered_embedding_data(
+    data: list[object], expected_count: int
+) -> list[dict[str, Any]]:
+    if not all(isinstance(item, dict) for item in data):
+        raise EmbeddingProviderError("invalid_embedding_response_item")
+
+    items = [item for item in data if isinstance(item, dict)]
+    indexed = ["index" in item for item in items]
+    if any(indexed) and not all(indexed):
+        raise EmbeddingProviderError("invalid_embedding_response_indices")
+    if all(indexed):
+        indices: list[int] = []
+        for item in items:
+            index = item.get("index")
+            if isinstance(index, bool) or not isinstance(index, int):
+                raise EmbeddingProviderError("invalid_embedding_response_indices")
+            indices.append(index)
+        if sorted(indices) != list(range(expected_count)):
+            raise EmbeddingProviderError("invalid_embedding_response_indices")
+        items.sort(key=lambda item: item["index"])
+    return items
+
+
+def _metadata_revision(metadata: dict[str, Any]) -> str:
+    """Fingerprint stable identity metadata, excluding runtime loading state.
+
+    OpenAI-compatible APIs do not standardize an immutable model-weight digest.
+    Runtime fields such as loaded_instances can change during just-in-time loading.
+    Operators should set WATCH_EMBEDDING_REVISION when model IDs can be reused.
+    """
+    identity_fields = (
+        "id",
+        "owned_by",
+        "root",
+        "parent",
+        "path",
+        "model",
+        "revision",
+        "digest",
+        "sha",
+        "architecture",
+        "quantization",
+        "format",
+        "parameters",
+        "model_type",
+    )
+    identity = {
+        field: metadata[field]
+        for field in identity_fields
+        if field in metadata and metadata[field] is not None
+    }
+    canonical = json.dumps(
+        identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return "metadata-sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _validate_vector(values: Sequence[object], dimensions: int) -> list[float]:
@@ -249,27 +372,40 @@ def _validate_vector(values: Sequence[object], dimensions: int) -> list[float]:
 
 
 def embedding_provider_from_env() -> EmbeddingProvider:
-    """Build the configured embedding provider; only local Ollama is enabled yet."""
-    provider_name = os.environ.get("WATCH_EMBEDDING_PROVIDER", "ollama").strip().lower()
-    if provider_name != "ollama":
+    """Build the configured provider-neutral API adapter."""
+    provider_name = (
+        os.environ.get("WATCH_EMBEDDING_PROVIDER", "openai_compatible")
+        .strip()
+        .lower()
+        .replace("-", "_")
+    )
+    if provider_name != "openai_compatible":
         raise ValueError("unsupported_embedding_provider")
 
     try:
         dimensions = int(os.environ.get("WATCH_EMBEDDING_DIMENSIONS", "1024"))
-        timeout = float(os.environ.get("WATCH_EMBEDDING_TIMEOUT_SECONDS", "60"))
-        batch_size = int(os.environ.get("WATCH_EMBEDDING_BATCH_SIZE", "32"))
+        timeout = float(os.environ.get("WATCH_EMBEDDING_TIMEOUT_SECONDS", "180"))
+        ready_timeout = float(
+            os.environ.get("WATCH_EMBEDDING_READY_TIMEOUT_SECONDS", "180")
+        )
+        batch_size = int(os.environ.get("WATCH_EMBEDDING_BATCH_SIZE", "8"))
+        retry_attempts = int(os.environ.get("WATCH_EMBEDDING_RETRY_ATTEMPTS", "2"))
     except ValueError as error:
         raise ValueError("invalid_embedding_provider_configuration") from error
 
-    return OllamaEmbeddingProvider(
+    return OpenAICompatibleEmbeddingProvider(
         base_url=os.environ.get(
-            "WATCH_EMBEDDING_BASE_URL", "http://localhost:11434"
+            "WATCH_EMBEDDING_BASE_URL", "http://localhost:1234/v1"
         ),
         model=os.environ.get("WATCH_EMBEDDING_MODEL", "bge-m3"),
         dimensions=dimensions,
         timeout_seconds=timeout,
+        ready_timeout_seconds=ready_timeout,
         batch_size=batch_size,
+        retry_attempts=retry_attempts,
         configuration=os.environ.get(
-            "WATCH_EMBEDDING_CONFIGURATION", "ollama-embed-v1"
+            "WATCH_EMBEDDING_CONFIGURATION", "openai-embeddings-v1"
         ),
+        api_key=os.environ.get("WATCH_EMBEDDING_API_KEY", ""),
+        revision=os.environ.get("WATCH_EMBEDDING_REVISION", ""),
     )

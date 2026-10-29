@@ -1,4 +1,4 @@
-"""Run a disposable end-to-end smoke test against a local Ollama BGE-M3 model.
+"""Run an end-to-end smoke test against the configured embedding API.
 
 Usage on the developer machine:
     uv run alembic upgrade head
@@ -45,12 +45,11 @@ def main() -> int:
     policy_id = uuid4()
     signal_id = uuid4()
     origin_url = f"https://local-smoke.invalid/{signal_id}"
-    source_type = "local_embedding_smoke"
+    source_type = "embedding_api_smoke"
     source_content = (
-        b"Local-only smoke-test article. BGE-M3 embeddings and PostgreSQL "
-        b"vector retrieval should preserve this astronomy evidence."
+        b"Local-only smoke-test article. Embeddings and PostgreSQL vector retrieval "
+        b"should preserve this astronomy evidence."
     )
-    snapshot_store: SnapshotStore | None = None
     success = False
     cleanup_error = False
     schema_ready = False
@@ -68,12 +67,8 @@ def main() -> int:
 
         provider = embedding_provider_from_env()
         space = provider.current_space()
-        if space.model != "bge-m3" or space.dimensions != 1024:
-            raise RuntimeError(
-                "local smoke test expects model bge-m3 with 1024 dimensions"
-            )
 
-        with TemporaryDirectory(prefix="watch-local-embedding-smoke-") as root:
+        with TemporaryDirectory(prefix="watch-embedding-api-smoke-") as root:
             snapshot_store = SnapshotStore(Path(root))
             snapshot_ref, stored_hash = snapshot_store.put(source_content)
 
@@ -114,41 +109,42 @@ def main() -> int:
             retriever = HybridKnowledgeRetriever(
                 session_factory, snapshot_store, provider
             )
-            passages = retriever.retrieve(team_id, "BGE-M3 astronomy evidence")
+            passages = retriever.retrieve(team_id, "embedding astronomy evidence")
 
             if first.outcome != "indexed" or first.chunk_count != 1:
-                raise RuntimeError("local smoke test did not index its test Signal")
+                raise RuntimeError("smoke test did not index its test Signal")
             if second.outcome != "unchanged":
-                raise RuntimeError("local smoke test did not prove idempotency")
+                raise RuntimeError("smoke test did not prove idempotency")
             if not any(
                 passage.signal_id == signal_id
                 and "astronomy evidence" in passage.text
                 for passage in passages
             ):
                 raise RuntimeError(
-                    "local smoke test could not retrieve its authorized test Signal"
+                    "smoke test could not retrieve its authorized test Signal"
                 )
 
-            print("Local BGE-M3 smoke test: PASS")
-            print(f"Embedding model: {space.model}")
-            print(f"Installed revision: {space.revision}")
+            print("Embedding API smoke test: PASS")
+            print(f"Provider: {space.provider}")
+            print(f"Model ID: {space.model}")
+            print(f"Model revision/fingerprint: {space.revision}")
             print(f"Embedding dimensions: {space.dimensions}")
             print("Projection indexing: PASS")
             print("Repeat indexing / idempotency: PASS")
             print("Authorized hybrid retrieval: PASS")
             success = True
     except (EmbeddingProviderError, RuntimeError, ValueError) as error:
-        print(f"Local embedding smoke test failed: {error}", file=sys.stderr)
+        print(f"Embedding API smoke test failed: {error}", file=sys.stderr)
     except SQLAlchemyError:
         print(
-            "Local embedding smoke test could not access the migrated PostgreSQL "
+            "Embedding API smoke test could not access the migrated PostgreSQL "
             "database. Check TEST_DATABASE_URL and database availability.",
             file=sys.stderr,
         )
     except OSError:
         print(
-            "Local embedding smoke test could not access Ollama or local Snapshot "
-            "storage. Check that Ollama is running and BGE-M3 is installed.",
+            "Embedding API smoke test could not access local Snapshot storage. "
+            "Check the configured embedding API/model and database separately.",
             file=sys.stderr,
         )
     finally:
