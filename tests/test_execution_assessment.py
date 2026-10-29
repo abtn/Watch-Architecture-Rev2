@@ -7,8 +7,10 @@ from uuid import UUID
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from core.ingestion import IngestionProposal, IngestionService
+import pytest
+
 from core.execution_assessment import ExecutionAssessmentBuilder
+from core.ingestion import IngestionProposal, IngestionService
 from core.models import Event, Outcome, PlanAction, Signal, Task
 from core.plans import PlanResult, PlanService
 from core.snapshot_store import SnapshotStore
@@ -23,10 +25,10 @@ from tests.test_plans import plan_request  # noqa: F401
 
 @pytest.fixture
 def materialized_plan(
+    request: pytest.FixtureRequest,
     session_factory: sessionmaker[Session],
-    snapshot_store: SnapshotStore,
-    plan_request: dict,
 ):
+    plan_request = request.getfixturevalue("plan_request")
     result: PlanResult = PlanService(session_factory).create(**plan_request)
     try:
         yield {**plan_request, "plan_id": result.plan_id, "result": result}
