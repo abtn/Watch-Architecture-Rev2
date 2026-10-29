@@ -141,3 +141,22 @@ def test_embedding_provider_rejects_unknown_provider(
 
     with pytest.raises(ValueError, match="unsupported_embedding_provider"):
         embedding_provider_from_env()
+
+
+def test_ollama_provider_rejects_model_digest_change_mid_request() -> None:
+    class ChangingDigest(MockOllama):
+        tag_calls = 0
+
+        def _request_json(
+            self, method: str, path: str, payload: dict[str, Any] | None = None
+        ) -> dict[str, Any]:
+            if path == "api/tags":
+                self.tag_calls += 1
+                if self.tag_calls >= 2:
+                    self.digest = "sha256:new-revision"
+            return super()._request_json(method, path, payload)
+
+    with pytest.raises(
+        EmbeddingProviderError, match="embedding_space_changed_during_request"
+    ):
+        ChangingDigest().embed(["test"])
