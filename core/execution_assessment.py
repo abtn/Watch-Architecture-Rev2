@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -77,9 +77,7 @@ class ExecutionAssessmentBuilder:
                     execution_options={"isolation_level": "REPEATABLE READ"}
                 )
                 try:
-                    reconstruction: PlanResult = PlanService._reconstruct(
-                        session, plan_id
-                    )
+                    PlanService._reconstruct(session, plan_id)
                 except ValueError as error:
                     raise ExecutionAssessmentError(str(error)) from error
 
@@ -99,7 +97,8 @@ class ExecutionAssessmentBuilder:
                 historical_assessment = accepted_event.payload["assessment"]
                 if (
                     plan.assessment_basis != historical_assessment.get("basis")
-                    or plan.assessment_created_at != historical_assessment.get("created_at")
+                    or plan.assessment_created_at
+                    != historical_assessment.get("created_at")
                 ):
                     raise ExecutionAssessmentError(
                         "historical_decision_assessment_mismatch"
@@ -196,7 +195,9 @@ class ExecutionAssessmentBuilder:
                 if plan.status == "completed" and any(
                     item["conclusion"] != "succeeded" for item in action_payloads
                 ):
-                    plan_findings.append("completed_plan_without_complete_success_evidence")
+                    plan_findings.append(
+                        "completed_plan_without_complete_success_evidence"
+                    )
 
                 all_findings = sorted(
                     set(plan_findings).union(
@@ -262,7 +263,9 @@ class ExecutionAssessmentBuilder:
                     "integrity": integrity,
                     "findings": all_findings,
                 }
-                digest = hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+                digest = hashlib.sha256(
+                    _canonical_json(payload).encode("utf-8")
+                ).hexdigest()
                 return PlanExecutionAssessment(
                     plan_id=plan.id,
                     team_id=plan.team_id,
@@ -328,7 +331,11 @@ class ExecutionAssessmentBuilder:
                 business_events.append(event)
             event_payloads.append(self._event_reference(event))
 
-        if isinstance(task.attempt_count, bool) or not isinstance(task.attempt_count, int) or task.attempt_count < 0:
+        if (
+            isinstance(task.attempt_count, bool)
+            or not isinstance(task.attempt_count, int)
+            or task.attempt_count < 0
+        ):
             findings.append("task_attempt_count_invalid")
         if len(outcomes) > 1:
             findings.append("duplicate_terminal_outcomes")
@@ -368,7 +375,12 @@ class ExecutionAssessmentBuilder:
                         findings.append("retry_attempt_has_terminal_event")
                 elif number == task.attempt_count and task.status == "running":
                     disposition = "running"
-                    if failed_events or scheduled_events or completed_events or failed_terminal_events:
+                    if (
+                        failed_events
+                        or scheduled_events
+                        or completed_events
+                        or failed_terminal_events
+                    ):
                         findings.append("running_attempt_has_disposition_events")
                 elif number == task.attempt_count and task.status == "done":
                     disposition = "succeeded"
@@ -500,7 +512,10 @@ class ExecutionAssessmentBuilder:
         )
         if outcome_category in _SUCCESS_CATEGORIES:
             if outcome_category == "success_signal_created":
-                if len(business_events) != 1 or business_events[0].type != "signal_ingested":
+                if (
+                    len(business_events) != 1
+                    or business_events[0].type != "signal_ingested"
+                ):
                     findings.append("signal_ingestion_evidence_missing_or_ambiguous")
                 if len(signal_summary) != 1:
                     findings.append("created_signal_evidence_invalid")
@@ -511,7 +526,10 @@ class ExecutionAssessmentBuilder:
             else:
                 if len(signal_summary) != 0:
                     findings.append("no_change_outcome_has_signal_evidence")
-                if len(business_events) != 1 or business_events[0].type != "fetch_no_change":
+                if (
+                    len(business_events) != 1
+                    or business_events[0].type != "fetch_no_change"
+                ):
                     findings.append("no_change_ingestion_evidence_missing_or_ambiguous")
                 elif len(business_events) == 1:
                     self._validate_no_change_event(
@@ -596,7 +614,10 @@ class ExecutionAssessmentBuilder:
         except (UnicodeDecodeError, json.JSONDecodeError):
             findings.append("terminal_outcome_snapshot_not_json")
             return None
-        if not isinstance(decoded, dict) or _canonical_json(decoded).encode("utf-8") != content:
+        if (
+            not isinstance(decoded, dict)
+            or _canonical_json(decoded).encode("utf-8") != content
+        ):
             findings.append("terminal_outcome_snapshot_not_canonical")
             return None
         category = decoded.get("result_category")
@@ -623,7 +644,11 @@ class ExecutionAssessmentBuilder:
             findings.append("terminal_outcome_signal_evidence_invalid")
             return None
         if category == "terminal_failure":
-            if not isinstance(failure_reason, str) or not failure_reason.strip() or signal_rows:
+            if (
+                not isinstance(failure_reason, str)
+                or not failure_reason.strip()
+                or signal_rows
+            ):
                 findings.append("terminal_failure_observation_invalid")
         elif failure_reason is not None:
             findings.append("successful_outcome_has_failure_reason")
@@ -746,11 +771,21 @@ class ExecutionAssessmentBuilder:
             findings.append("ingestion_event_signal_mismatch")
 
     @staticmethod
-    def _valid_retry_pair(failed_event: Event, scheduled_event: Event, attempt: int) -> bool:
+    def _valid_retry_pair(
+        failed_event: Event, scheduled_event: Event, attempt: int
+    ) -> bool:
         failed = failed_event.payload if isinstance(failed_event.payload, dict) else {}
-        scheduled = scheduled_event.payload if isinstance(scheduled_event.payload, dict) else {}
+        scheduled = (
+            scheduled_event.payload
+            if isinstance(scheduled_event.payload, dict)
+            else {}
+        )
         expected_keys = {
-            "from_status", "to_status", "attempt_count", "result_category", "failure_reason"
+            "from_status",
+            "to_status",
+            "attempt_count",
+            "result_category",
+            "failure_reason",
         }
         return (
             set(failed) == expected_keys
@@ -768,11 +803,22 @@ class ExecutionAssessmentBuilder:
     def _valid_terminal_failure_pair(
         failed_attempt: Event, terminal_failure: Event, attempt: int
     ) -> bool:
-        first = failed_attempt.payload if isinstance(failed_attempt.payload, dict) else {}
-        second = terminal_failure.payload if isinstance(terminal_failure.payload, dict) else {}
+        first = (
+            failed_attempt.payload
+            if isinstance(failed_attempt.payload, dict)
+            else {}
+        )
+        second = (
+            terminal_failure.payload
+            if isinstance(terminal_failure.payload, dict)
+            else {}
+        )
         expected = {
             "from_status", "to_status", "attempt_count", "result_category",
-            "failure_reason", "outcome_id", "observation_snapshot_ref", "observation_hash",
+            "failure_reason",
+            "outcome_id",
+            "observation_snapshot_ref",
+            "observation_hash",
         }
         return (
             set(first) == expected
