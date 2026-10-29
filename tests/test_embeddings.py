@@ -6,23 +6,25 @@ import pytest
 from core.embeddings import (
     EmbeddingProviderError,
     EmbeddingSpace,
-    OllamaEmbeddingProvider,
+    OpenAICompatibleEmbeddingProvider,
     embedding_provider_from_env,
 )
 from core.vector_type import parse_vector, serialize_vector, validate_vector
 
 
 def test_embedding_space_key_is_stable_and_covers_model_revision() -> None:
-    space = EmbeddingSpace("ollama", "bge-m3", "digest-a", 1024, "ollama-embed-v1")
+    space = EmbeddingSpace(
+        "openai_compatible", "bge-m3", "revision-a", 1024, "openai-embed-v1"
+    )
 
     assert space.key == EmbeddingSpace(
-        "ollama", "bge-m3", "digest-a", 1024, "ollama-embed-v1"
+        "openai_compatible", "bge-m3", "revision-a", 1024, "openai-embed-v1"
     ).key
     assert space.key != EmbeddingSpace(
-        "ollama", "bge-m3", "digest-b", 1024, "ollama-embed-v1"
+        "openai_compatible", "bge-m3", "revision-b", 1024, "openai-embed-v1"
     ).key
     assert space.key != EmbeddingSpace(
-        "ollama", "bge-m3", "digest-a", 768, "ollama-embed-v1"
+        "openai_compatible", "bge-m3", "revision-a", 768, "openai-embed-v1"
     ).key
 
 
@@ -41,122 +43,219 @@ def test_vector_text_round_trip_and_validation() -> None:
         parse_vector("not a vector")
 
 
-class MockOllama(OllamaEmbeddingProvider):
-    def __init__(self, *, digest: str = "sha256:model-revision") -> None:
-        super().__init__(base_url="http://localhost:11434", dimensions=3, batch_size=2)
-        self.digest = digest
+class MockEmbeddingAPI(OpenAICompatibleEmbeddingProvider):
+    def __init__(self, *, ready_after: int = 0, dimensions: int = 3) -> None:
+        super().__init__(
+            base_url="http://localhost:1234/v1",
+            model="bge-m3",
+            dimensions=dimensions,
+            timeout_seconds=1,
+            ready_timeout_seconds=0.2,
+            batch_size=2,
+            retry_attempts=2,
+        )
+        self.ready_after = ready_after
+        self.model_calls = 0
+        self.embedding_calls = 0
         self.requests: list[tuple[str, str, dict[str, Any] | None]] = []
+        self.fail_first_embedding = False
+        self.reverse_results = False
 
     def _request_json(
         self, method: str, path: str, payload: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         self.requests.append((method, path, payload))
-        if path == "api/tags":
+        if path == "models":
+            self.model_calls += 1
+            if self.model_calls <= self.ready_after:
+                return {"data": []}
             return {
-                "models": [
+                "data": [
                     {
-                        "name": "bge-m3:latest",
-                        "model": "bge-m3:latest",
-                        "digest": self.digest,
+                        "id": "bge-m3",
+                        "object": "model",
+                        "owned_by": "local",
+                        "created": 123,
                     }
                 ]
             }
-        if path == "api/embed":
+        if path == "embeddings":
+            self.embedding_calls += 1
+            if self.fail_first_embedding and self.embedding_calls == 1:
+                raise EmbeddingProviderError(
+                    "embedding_api_http_error_503", retryable=True
+                )
             assert payload is not None
-            texts = payload["input"]
-            return {"embeddings": [[1.0, 0.5, 0.25] for _ in texts]}
-        raise AssertionError(f"unexpected path: {path}")
+            data = [
+                {
+                    "object": "embedding",
+                    "index": index,
+                    "embedding": [float(len(text)), 0.5, 0.25],
+                }
+                for index, text in enumerate(payload["input"])
+            ]
+            if self.reverse_results:
+                data.reverse()
+            return {"data": data}
+        raise AssertionError(f"unexpected endpoint: {path}")
 
 
-def test_ollama_provider_resolves_digest_and_batches_without_truncation() -> None:
-    provider = MockOllama()
+def test_openai_compatible_provider_uses_standard_api_and_batches() -> None:
+    provider = MockEmbeddingAPI()
 
     batch = provider.embed(["first source", "second source", "third source"])
 
-    assert batch.space.provider == "ollama"
+    assert batch.space.provider == "openai_compatible"
     assert batch.space.model == "bge-m3"
-    assert batch.space.revision == "sha256:model-revision"
+    assert batch.space.revision.startswith("metadata-sha256:")
     assert batch.space.dimensions == 3
-    assert len(batch.vectors) == 3
-    embed_requests = [
-        request for request in provider.requests if request[1] == "api/embed"
+    assert [vector[0] for vector in batch.vectors] == [12.0, 13.0, 12.0]
+    embedding_requests = [
+        request for request in provider.requests if request[1] == "embeddings"
     ]
-    assert [len(request[2]["input"]) for request in embed_requests if request[2]] == [
-        2,
-        1,
-    ]
+    assert [
+        len(request[2]["input"]) for request in embedding_requests if request[2]
+    ] == [2, 1]
     assert all(
-        request[2]["truncate"] is False
-        for request in embed_requests
+        request[2]["encoding_format"] == "float"
+        for request in embedding_requests
         if request[2]
     )
 
 
-def test_ollama_provider_rejects_missing_model() -> None:
-    class MissingModel(MockOllama):
+def test_openai_compatible_provider_restores_response_order() -> None:
+    provider = MockEmbeddingAPI()
+    provider.reverse_results = True
+
+    batch = provider.embed(["one", "longer"])
+
+    assert [vector[0] for vector in batch.vectors] == [3.0, 6.0]
+
+
+def test_provider_waits_for_local_model_to_become_visible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("core.embeddings.time.sleep", lambda _: None)
+    provider = MockEmbeddingAPI(ready_after=2)
+
+    space = provider.current_space()
+
+    assert space.model == "bge-m3"
+    assert provider.model_calls == 3
+
+
+def test_provider_times_out_when_model_is_not_loaded() -> None:
+    class MissingModel(MockEmbeddingAPI):
         def _request_json(
             self, method: str, path: str, payload: dict[str, Any] | None = None
         ) -> dict[str, Any]:
-            if path == "api/tags":
-                return {"models": []}
+            if path == "models":
+                self.model_calls += 1
+                return {"data": []}
             return super()._request_json(method, path, payload)
 
-    with pytest.raises(EmbeddingProviderError, match="ollama_model_not_installed"):
-        MissingModel().current_space()
+    provider = MissingModel()
+    provider._ready_timeout_seconds = 0.001
+
+    with pytest.raises(
+        EmbeddingProviderError, match="embedding_model_not_listed_after_ready_timeout"
+    ):
+        provider.current_space()
 
 
-def test_ollama_provider_rejects_invalid_dimensions() -> None:
-    class BadVector(MockOllama):
+def test_provider_rejects_invalid_dimensions() -> None:
+    class BadVector(MockEmbeddingAPI):
         def _request_json(
             self, method: str, path: str, payload: dict[str, Any] | None = None
         ) -> dict[str, Any]:
-            if path == "api/embed":
-                return {"embeddings": [[1.0, 2.0]]}
+            if path == "embeddings":
+                return {"data": [{"index": 0, "embedding": [1.0, 2.0]}]}
             return super()._request_json(method, path, payload)
 
     with pytest.raises(EmbeddingProviderError, match="embedding_dimension_mismatch"):
         BadVector().embed(["test"])
 
 
-def test_embedding_provider_environment_defaults_to_local_ollama(
+def test_provider_retries_transient_embedding_failures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("WATCH_EMBEDDING_PROVIDER", raising=False)
-    monkeypatch.delenv("WATCH_EMBEDDING_BASE_URL", raising=False)
-    monkeypatch.delenv("WATCH_EMBEDDING_MODEL", raising=False)
-    monkeypatch.delenv("WATCH_EMBEDDING_DIMENSIONS", raising=False)
-    monkeypatch.delenv("WATCH_EMBEDDING_TIMEOUT_SECONDS", raising=False)
-    monkeypatch.delenv("WATCH_EMBEDDING_BATCH_SIZE", raising=False)
-    provider = embedding_provider_from_env()
+    monkeypatch.setattr("core.embeddings.time.sleep", lambda _: None)
+    provider = MockEmbeddingAPI()
+    provider.fail_first_embedding = True
 
-    assert isinstance(provider, OllamaEmbeddingProvider)
-    assert provider._model == "bge-m3"
-    assert provider._dimensions == 1024
+    batch = provider.embed(["test"])
+
+    assert len(batch.vectors) == 1
+    assert provider.embedding_calls == 2
 
 
-def test_embedding_provider_rejects_unknown_provider(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("WATCH_EMBEDDING_PROVIDER", "remote_provider")
-
-    with pytest.raises(ValueError, match="unsupported_embedding_provider"):
-        embedding_provider_from_env()
-
-
-def test_ollama_provider_rejects_model_digest_change_mid_request() -> None:
-    class ChangingDigest(MockOllama):
-        tag_calls = 0
-
+def test_provider_rejects_model_metadata_change_mid_request() -> None:
+    class ChangingMetadata(MockEmbeddingAPI):
         def _request_json(
             self, method: str, path: str, payload: dict[str, Any] | None = None
         ) -> dict[str, Any]:
-            if path == "api/tags":
-                self.tag_calls += 1
-                if self.tag_calls >= 2:
-                    self.digest = "sha256:new-revision"
+            if path == "models":
+                self.model_calls += 1
+                owner = "local-a" if self.model_calls == 1 else "local-b"
+                return {
+                    "data": [
+                        {
+                            "id": "bge-m3",
+                            "object": "model",
+                            "owned_by": owner,
+                            "created": 123,
+                        }
+                    ]
+                }
             return super()._request_json(method, path, payload)
 
     with pytest.raises(
         EmbeddingProviderError, match="embedding_space_changed_during_request"
     ):
-        ChangingDigest().embed(["test"])
+        ChangingMetadata().embed(["test"])
+
+
+def test_embedding_provider_environment_defaults_to_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "WATCH_EMBEDDING_PROVIDER",
+        "WATCH_EMBEDDING_BASE_URL",
+        "WATCH_EMBEDDING_MODEL",
+        "WATCH_EMBEDDING_DIMENSIONS",
+        "WATCH_EMBEDDING_TIMEOUT_SECONDS",
+        "WATCH_EMBEDDING_READY_TIMEOUT_SECONDS",
+        "WATCH_EMBEDDING_BATCH_SIZE",
+        "WATCH_EMBEDDING_RETRY_ATTEMPTS",
+        "WATCH_EMBEDDING_CONFIGURATION",
+        "WATCH_EMBEDDING_API_KEY",
+        "WATCH_EMBEDDING_REVISION",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    provider = embedding_provider_from_env()
+
+    assert isinstance(provider, OpenAICompatibleEmbeddingProvider)
+    assert provider._model == "bge-m3"
+    assert provider._dimensions == 1024
+    assert provider._base_url == "http://localhost:1234/v1/"
+    assert provider._batch_size == 8
+    assert provider._timeout_seconds == 180.0
+    assert provider._ready_timeout_seconds == 180.0
+
+
+def test_embedding_provider_rejects_unsupported_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("WATCH_EMBEDDING_PROVIDER", "native_provider")
+
+    with pytest.raises(ValueError, match="unsupported_embedding_provider"):
+        embedding_provider_from_env()
+
+
+def test_explicit_revision_overrides_api_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("WATCH_EMBEDDING_REVISION", "bge-m3-q8-v1")
+    provider = embedding_provider_from_env()
+    assert provider._revision == "bge-m3-q8-v1"
