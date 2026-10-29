@@ -156,7 +156,9 @@ class OpenAICompatibleEmbeddingProvider:
                 document = self._request_json("GET", "models")
                 data = document.get("data")
                 if not isinstance(data, list):
-                    raise EmbeddingProviderError("embedding_api_invalid_models_response")
+                    raise EmbeddingProviderError(
+                        "embedding_api_invalid_models_response"
+                    )
 
                 matches = [
                     item
@@ -290,7 +292,9 @@ class OpenAICompatibleEmbeddingProvider:
         try:
             document = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
-            raise EmbeddingProviderError("embedding_api_invalid_json_response") from None
+            raise EmbeddingProviderError(
+                "embedding_api_invalid_json_response"
+            ) from None
         if not isinstance(document, dict):
             raise EmbeddingProviderError("embedding_api_invalid_json_shape")
         return document
@@ -308,7 +312,9 @@ def _ordered_embedding_data(
         raise EmbeddingProviderError("invalid_embedding_response_indices")
     if all(indexed):
         indices = [item.get("index") for item in items]
-        if any(isinstance(index, bool) or not isinstance(index, int) for index in indices):
+        if any(
+            isinstance(index, bool) or not isinstance(index, int) for index in indices
+        ):
             raise EmbeddingProviderError("invalid_embedding_response_indices")
         if sorted(indices) != list(range(expected_count)):
             raise EmbeddingProviderError("invalid_embedding_response_indices")
