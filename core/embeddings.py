@@ -311,11 +311,12 @@ def _ordered_embedding_data(
     if any(indexed) and not all(indexed):
         raise EmbeddingProviderError("invalid_embedding_response_indices")
     if all(indexed):
-        indices = [item.get("index") for item in items]
-        if any(
-            isinstance(index, bool) or not isinstance(index, int) for index in indices
-        ):
-            raise EmbeddingProviderError("invalid_embedding_response_indices")
+        indices: list[int] = []
+        for item in items:
+            index = item.get("index")
+            if isinstance(index, bool) or not isinstance(index, int):
+                raise EmbeddingProviderError("invalid_embedding_response_indices")
+            indices.append(index)
         if sorted(indices) != list(range(expected_count)):
             raise EmbeddingProviderError("invalid_embedding_response_indices")
         items.sort(key=lambda item: item["index"])
