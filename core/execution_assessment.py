@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.models import Event, Outcome, Plan, PlanAction, Signal, Task
-from core.plans import PlanService, PlanResult
+from core.plans import PlanResult, PlanService
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
 from core.state_assessment import _canonical_json, _timestamp
 
@@ -328,7 +328,7 @@ class ExecutionAssessmentBuilder:
                 business_events.append(event)
             event_payloads.append(self._event_reference(event))
 
-        if task.attempt_count < 0:
+        if isinstance(task.attempt_count, bool) or not isinstance(task.attempt_count, int) or task.attempt_count < 0:
             findings.append("task_attempt_count_invalid")
         if len(outcomes) > 1:
             findings.append("duplicate_terminal_outcomes")
@@ -600,7 +600,7 @@ class ExecutionAssessmentBuilder:
             findings.append("terminal_outcome_snapshot_not_canonical")
             return None
         category = decoded.get("result_category")
-        if category not in _TERMINAL_CATEGORIES:
+        if not isinstance(category, str) or category not in _TERMINAL_CATEGORIES:
             findings.append("terminal_outcome_category_invalid")
             return None
         if decoded.get("attempt") != task.attempt_count:
