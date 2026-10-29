@@ -4,10 +4,9 @@ import hashlib
 from datetime import datetime, timezone
 from uuid import UUID
 
+import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
-
-import pytest
 
 from core.execution_assessment import ExecutionAssessmentBuilder
 from core.ingestion import IngestionProposal, IngestionService
@@ -28,10 +27,10 @@ def materialized_plan(
     request: pytest.FixtureRequest,
     session_factory: sessionmaker[Session],
 ):
-    plan_request = request.getfixturevalue("plan_request")
-    result: PlanResult = PlanService(session_factory).create(**plan_request)
+    plan_request_data = request.getfixturevalue("plan_request")
+    result: PlanResult = PlanService(session_factory).create(**plan_request_data)
     try:
-        yield {**plan_request, "plan_id": result.plan_id, "result": result}
+        yield {**plan_request_data, "plan_id": result.plan_id, "result": result}
     finally:
         # This fixture tears down before the imported plan_request fixture
         # removes its Tasks, so its Outcome foreign keys must be removed first.
