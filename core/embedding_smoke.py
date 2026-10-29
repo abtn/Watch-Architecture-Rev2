@@ -11,16 +11,16 @@ removes those rows in a finally block. Its temporary SnapshotStore is deleted to
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import os
-from pathlib import Path
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 from sqlalchemy import create_engine, delete, text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from core.embeddings import EmbeddingProviderError, embedding_provider_from_env
 from core.knowledge_index import HybridKnowledgeRetriever, SignalIndexer
