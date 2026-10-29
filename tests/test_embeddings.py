@@ -189,6 +189,25 @@ def test_provider_retries_transient_embedding_failures(
     assert provider.embedding_calls == 2
 
 
+
+def test_provider_does_not_retry_permanent_embedding_errors() -> None:
+    class PermanentError(MockEmbeddingAPI):
+        def _request_json(
+            self, method: str, path: str, payload: dict[str, Any] | None = None
+        ) -> dict[str, Any]:
+            if path == "embeddings":
+                self.embedding_calls += 1
+                raise EmbeddingProviderError("embedding_api_http_error_400")
+            return super()._request_json(method, path, payload)
+
+    provider = PermanentError()
+
+    with pytest.raises(EmbeddingProviderError, match="embedding_api_http_error_400"):
+        provider.embed(["test"])
+
+    assert provider.embedding_calls == 1
+
+
 def test_provider_rejects_model_metadata_change_mid_request() -> None:
     class ChangingMetadata(MockEmbeddingAPI):
         def _request_json(

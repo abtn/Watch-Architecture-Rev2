@@ -77,11 +77,14 @@ placeholder with the exact model ID returned by `/v1/models`:
 
 Before embedding, Watch polls `GET /v1/models` with bounded exponential delays until
 the exact configured model ID appears or the readiness timeout expires. This
-accommodates a server starting or a model being loaded in LM Studio. Embedding
-requests have a longer timeout and retry only transient network, timeout, overload,
-rate-limit, and server errors, with a short bounded backoff. Invalid requests,
-wrong model IDs returned by the API, and invalid vectors fail explicitly rather
-than causing repeated expensive calls.
+accommodates a server starting or a model being loaded in LM Studio. If LM Studio's
+just-in-time loading is enabled, the model may be listed before it is resident and
+the first embedding request may trigger loading. That first request can be slow and
+is bounded by the configured HTTP timeout. If just-in-time loading is disabled,
+load the embedding model in LM Studio before running Watch. Embedding requests retry
+only transient network, timeout, overload, rate-limit, and server errors, with a
+short bounded backoff. Invalid requests, wrong model IDs returned by the API, and
+invalid vectors fail explicitly rather than causing repeated expensive calls.
 
 Watch does not issue LM Studio-specific load/unload commands or decide GPU
 offload. LM Studio owns model loading and CPU/GPU placement; Watch observes the

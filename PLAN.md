@@ -283,7 +283,7 @@ This is the evidence-based operational prerequisite required before R6-G0 could 
 
 **G0 exit criteria disposition:** every item in the §6 checklist of the [R6 entry gate](docs/development/r6-entry-gate.md) is satisfied — the design-decision items are recorded in the accepted ADRs, and the previously unchecked operational item (verified local branch, HEAD, merge status, worktree, migrations, and disposable PostgreSQL database) is satisfied by this record. **R6-G0 status: COMPLETE.**
 
-**Boundary retained:** this closeout records gate completion only. It did not start R6-A, does not accept ADR-0027, does not select the embedding or generation providers (still staged to before R6-D and before R6-E), and does not weaken any R5 constraint. R6-A was authorized separately afterwards; checkpoints 1, 2A, 2B, and 2C are merged to `main` by PR #12, and the R6-A lifecycle scope is implemented end to end.
+**Boundary retained:** this closeout records gate completion only. It did not start R6-A, does not accept ADR-0027 or weaken any R5 constraint. At the time of this G0 closeout, provider selection was still pending; the later R6-D embedding choice is now recorded in ADR-0028, while generation provider/model selection remains separately gated before R6-E. R6-A was authorized separately afterwards; checkpoints 1, 2A, 2B, and 2C are merged to `main` by PR #12, and the R6-A lifecycle scope is implemented end to end.
 
 ## R7 — Distillation quality and knowledge lifecycle (future)
 
