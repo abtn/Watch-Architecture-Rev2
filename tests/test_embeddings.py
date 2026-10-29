@@ -78,12 +78,18 @@ def test_ollama_provider_resolves_digest_and_batches_without_truncation() -> Non
     assert batch.space.revision == "sha256:model-revision"
     assert batch.space.dimensions == 3
     assert len(batch.vectors) == 3
-    embed_requests = [request for request in provider.requests if request[1] == "api/embed"]
+    embed_requests = [
+        request for request in provider.requests if request[1] == "api/embed"
+    ]
     assert [len(request[2]["input"]) for request in embed_requests if request[2]] == [
         2,
         1,
     ]
-    assert all(request[2]["truncate"] is False for request in embed_requests if request[2])
+    assert all(
+        request[2]["truncate"] is False
+        for request in embed_requests
+        if request[2]
+    )
 
 
 def test_ollama_provider_rejects_missing_model() -> None:
