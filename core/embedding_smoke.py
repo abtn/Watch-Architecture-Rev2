@@ -53,6 +53,7 @@ def main() -> int:
     snapshot_store: SnapshotStore | None = None
     success = False
     cleanup_error = False
+    schema_ready = False
 
     try:
         with engine.connect() as connection:
@@ -63,6 +64,7 @@ def main() -> int:
             raise RuntimeError(
                 "knowledge_chunks table is missing; run uv run alembic upgrade head"
             )
+        schema_ready = True
 
         provider = embedding_provider_from_env()
         space = provider.current_space()
@@ -150,23 +152,26 @@ def main() -> int:
             file=sys.stderr,
         )
     finally:
-        try:
-            with session_factory.begin() as session:
-                session.execute(
-                    delete(KnowledgeChunk).where(
-                        KnowledgeChunk.signal_id == signal_id
+        if schema_ready:
+            try:
+                with session_factory.begin() as session:
+                    session.execute(
+                        delete(KnowledgeChunk).where(
+                            KnowledgeChunk.signal_id == signal_id
+                        )
                     )
+                    session.execute(delete(Signal).where(Signal.id == signal_id))
+                    session.execute(
+                        delete(TeamPolicy).where(TeamPolicy.id == policy_id)
+                    )
+                    session.execute(delete(Team).where(Team.id == team_id))
+            except SQLAlchemyError:
+                cleanup_error = True
+                print(
+                    "Warning: disposable smoke-test records could not all be removed; "
+                    "inspect the test database before reusing it.",
+                    file=sys.stderr,
                 )
-                session.execute(delete(Signal).where(Signal.id == signal_id))
-                session.execute(delete(TeamPolicy).where(TeamPolicy.id == policy_id))
-                session.execute(delete(Team).where(Team.id == team_id))
-        except SQLAlchemyError:
-            cleanup_error = True
-            print(
-                "Warning: disposable smoke-test records could not all be removed; "
-                "inspect the test database before reusing it.",
-                file=sys.stderr,
-            )
         engine.dispose()
 
     if cleanup_error:
