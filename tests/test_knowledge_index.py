@@ -18,7 +18,6 @@ from core.knowledge_index import (
     KnowledgeIndexError,
     SignalIndexer,
     chunk_source_text,
-    content_hash,
     normalize_source_text,
 )
 from core.models import KnowledgeChunk, Signal, Team, TeamPolicy
