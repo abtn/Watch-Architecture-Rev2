@@ -10,8 +10,9 @@ weights.
 ## Prepare LM Studio on Windows
 
 1. In LM Studio, download a model explicitly intended for **text embeddings**.
-   Your chat models do not automatically provide embeddings. BGE-M3 is the planned
-   model for this initial smoke test.
+   Your chat models do not automatically provide embeddings. BGE-M3 is the initial
+   embedding model. The model ID verified in the operator's 2026-10-29 local run
+   was `text-embedding-bge-m3`; your LM Studio server may expose a different ID.
 2. Load the embedding model in LM Studio, then start its local server from the
    Developer/Server UI. Keep it bound to localhost; do not expose the API to the
    public internet.
@@ -45,13 +46,14 @@ confirming the selected model is the intended embedding model.
 
 ## Watch configuration
 
-Set these variables in the PowerShell session used to run Watch. Replace the
-placeholder with the exact model ID returned by `/v1/models`:
+Set these variables in the same PowerShell session used to run Watch. The
+operator's verified ID was `text-embedding-bge-m3`; first check `/v1/models` and
+replace this value if your running LM Studio instance reports a different ID:
 
     ```powershell
     $env:WATCH_EMBEDDING_PROVIDER = "openai_compatible"
     $env:WATCH_EMBEDDING_BASE_URL = "http://localhost:1234/v1"
-    $env:WATCH_EMBEDDING_MODEL = "<exact-model-id-from-v1-models>"
+    $env:WATCH_EMBEDDING_MODEL = "text-embedding-bge-m3"
     $env:WATCH_EMBEDDING_DIMENSIONS = "1024"
     $env:WATCH_EMBEDDING_TIMEOUT_SECONDS = "180"
     $env:WATCH_EMBEDDING_READY_TIMEOUT_SECONDS = "180"
@@ -109,11 +111,16 @@ initial setup is local LM Studio.
 
 ## Run the Watch end-to-end smoke test
 
-Use a development or disposable PostgreSQL database that has already been migrated
-to head. Do not point this at production. From the project root, in PowerShell:
+Use only a positively identified development or disposable PostgreSQL database.
+The test removes its temporary rows, but `uv run alembic upgrade head` can change the
+schema and is not safe to run against a persistent database just because the smoke
+script cleans up afterward. The URL below is an example for a dedicated disposable
+database named `watch_embedding_smoke`; create/verify that database first, or replace
+the URL with the connection string for your own disposable instance. Do not assume a
+database named `watch` is disposable. From the project root, in PowerShell:
 
     ```powershell
-    $env:DATABASE_URL = "postgresql+psycopg://watch:watch@127.0.0.1:5432/watch"
+    $env:DATABASE_URL = "postgresql+psycopg://watch:watch@127.0.0.1:5432/watch_embedding_smoke"
     $env:TEST_DATABASE_URL = $env:DATABASE_URL
     uv run alembic upgrade head
     uv run python -m core.embedding_smoke
@@ -124,3 +131,10 @@ It creates a uniquely identified temporary Team, source policy, and Signal, then
 checks indexing, idempotency, and authorized hybrid retrieval. It removes the test
 database rows in a finally block and uses a temporary SnapshotStore. If cleanup
 fails, the command prints a warning so the database can be inspected before reuse.
+
+
+### Local run evidence — 2026-10-29
+
+The operator's local Watch smoke command reported PASS with model ID `text-embedding-bge-m3`, 1,024 dimensions, projection indexing, repeat-indexing idempotency, and authorized hybrid retrieval. The API reported metadata fingerprint `metadata-sha256:e8ffcf172118d67251eccbf45916e407b7e0537deef08f70bbd62e86518e9c69`; `WATCH_EMBEDDING_REVISION` was not explicitly set, so this is a metadata-derived fingerprint rather than an operator-managed immutable weight pin.
+
+The command transcript used a database URL ending in `/watch`. That output does not establish that the target was disposable. Until it is confirmed disposable or the smoke is rerun using a verified disposable database, regard the API/index/retrieval result as positive functional evidence, not as formal closure of the R6-D gate.
