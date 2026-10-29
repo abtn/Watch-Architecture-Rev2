@@ -2,7 +2,7 @@
 
 import hashlib
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import delete, func, select
@@ -37,7 +37,11 @@ def materialized_plan(
         with session_factory.begin() as session:
             session.execute(
                 delete(Outcome).where(
-                    Outcome.recorded_by_task_id.in_(result.task_ids),
+                    Outcome.recorded_by_task_id.in_(
+                        select(Task.id).where(
+                            Task.team_id == plan_request_data["team_id"]
+                        )
+                    ),
                     Outcome.outcome_type == "task_execution",
                 )
             )
@@ -225,6 +229,105 @@ def test_retry_then_terminal_failure_is_reconstructed_from_attempt_events(
     assert action["attempts"][0]["failure_reason"] == "temporary_source_timeout"
     assert action["outcome"]["failure_reason"] == "source_not_configured"
     assert action["outcome"]["result_category"] == "terminal_failure"
+
+
+def test_success_no_change_reassessment_uses_ingestion_event_evidence(
+    session_factory, snapshot_store, materialized_plan
+) -> None:
+    task_id = _task_id(materialized_plan)
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    with session_factory() as session:
+        task = session.get(Task, task_id)
+        assert task is not None and task.plan_id is not None
+        action = session.get(PlanAction, (task.plan_id, task.plan_action_id))
+        assert action is not None
+        source_url = action.action["origin_url"]
+        source_type = action.action["source_type"]
+        team_id = task.team_id
+        policy_version = task.policy_version
+        budget = dict(task.budget)
+
+    seed_task_id = uuid4()
+    with session_factory.begin() as session:
+        session.add(
+            Task(
+                id=seed_task_id,
+                team_id=team_id,
+                task_type="ingest_source",
+                status="pending",
+                policy_version=policy_version,
+                allowed_writes=["Signal"],
+                budget=budget,
+            )
+        )
+    seed_admission = runtime.admit(seed_task_id)
+    content = b"already recorded at this configured source"
+    claimed_hash = "sha256:" + hashlib.sha256(content).hexdigest()
+    seed_ingestion = IngestionService(session_factory, snapshot_store).ingest(
+        IngestionProposal(
+            task_id=seed_task_id,
+            origin_url=source_url,
+            source_type=source_type,
+            fetched_at=datetime.now(timezone.utc),
+            content=content,
+            claimed_content_hash=claimed_hash,
+        )
+    )
+    with session_factory() as session:
+        seed_signal = session.get(Signal, seed_ingestion.signal_id)
+        seed_event = session.get(Event, seed_ingestion.event_id)
+        assert seed_signal is not None and seed_event is not None
+    runtime.finalize(
+        TerminalObservation(
+            task_id=seed_task_id,
+            attempt=seed_admission.attempt_count,
+            result_category="success_signal_created",
+            observed_at=seed_event.created_at,
+            signals=(
+                SignalEvidence(
+                    signal_id=seed_signal.id,
+                    snapshot_ref=seed_signal.snapshot_ref,
+                    content_hash=seed_signal.content_hash,
+                ),
+            ),
+        )
+    )
+
+    admitted = runtime.admit(task_id)
+    ingestion = IngestionService(session_factory, snapshot_store).ingest(
+        IngestionProposal(
+            task_id=task_id,
+            origin_url=source_url,
+            source_type=source_type,
+            fetched_at=datetime.now(timezone.utc),
+            content=content,
+            claimed_content_hash=claimed_hash,
+        )
+    )
+    with session_factory() as session:
+        event = session.get(Event, ingestion.event_id)
+        assert event is not None and event.type == "fetch_no_change"
+    runtime.finalize(
+        TerminalObservation(
+            task_id=task_id,
+            attempt=admitted.attempt_count,
+            result_category="success_no_change",
+            observed_at=event.created_at,
+        )
+    )
+
+    assessed = _builder(session_factory, snapshot_store).build(
+        materialized_plan["plan_id"]
+    )
+    action_result = assessed.payload["actions"][0]
+    assert assessed.conclusion == "execution_succeeded_plan_active"
+    assert assessed.integrity == "consistent"
+    assert action_result["conclusion"] == "succeeded"
+    assert action_result["outcome"]["result_category"] == "success_no_change"
+    assert action_result["outcome"]["signals"] == []
+    assert [item["type"] for item in action_result["business_events"]] == [
+        "fetch_no_change"
+    ]
 
 
 def test_terminal_event_without_its_outcome_is_inconsistent(
