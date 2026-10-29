@@ -7,7 +7,7 @@
 - **ADR-0027 remains Proposed.** Its Task-start quota semantics are separate; this decision record neither accepts that ADR nor changes quota behavior.
 - Git baselines: PR #8 merge commit `44c0944720600f8a1d4018d4eb39424a9660168e` is the historical baseline for the original decision set; PR #9 merge commit `f9207156533b6944d320a6adfff42963f7e1e17c` is the verified current `main` baseline. Neither is evidence of the operator's local branch, HEAD, worktree, or database state; the verified local state is recorded in the preflight record below.
 - R5 remains formally closed. Its immutable Plan, prerequisite, provenance, lifecycle, completion-precondition, and single-runtime constraints remain mandatory.
-- Current implementation gaps remain real: TaskRuntime admits Tasks, finalizes terminal results, handles retry/exhaustion, and recovers interrupted Tasks, and the R6-B dispatcher executes one configured-source `ingest_source` Task end to end; the `Outcome` entity exists in the ORM and migrations (R6-A Step 1) and is written by terminal finalization (Checkpoint 2A), while Evaluation/KnowledgeItem/LearningChange persistence plus RAG Context assembly/distillation remain unimplemented. This section documents the architecture and implementation boundaries; current milestone status is maintained only in PLAN.md.
+- Implementation boundaries: TaskRuntime remains the lifecycle authority; TaskDispatcher executes one configured-source `ingest_source` Task through the restricted fetcher and IngestionService. `Outcome` is canonical terminal evidence, and `ExecutionAssessmentBuilder` reconstructs it read-only. Persistent Evaluation/KnowledgeItem/LearningChange records, RAG Context assembly, and experience distillation remain unimplemented. Current milestone status is maintained only in PLAN.md.
 
 ## 1. Revised R6 purpose
 
@@ -49,7 +49,7 @@ RAG is the retrieval mechanism across these logical layers. A single physical in
 ### Gaps that must not be mistaken for implementation
 
 - The implemented dispatcher path is intentionally narrow: it supports one configured-source ingest_source Task; a general multi-task-type dispatcher and scheduler are not part of this slice.
-- Ingestion does not fetch a configured source or execute it as a Task.
+- IngestionService validates and commits fetched bytes supplied to it; the configured-source fetch and dispatch path is implemented separately in TaskDispatcher.
 - `Outcome` is canonical terminal evidence. `ExecutionAssessmentBuilder` reconstructs execution evidence read-only; persistent Evaluation/KnowledgeItem/LearningChange records remain unimplemented, as do RAG Context assembly and experience distillation.
 - There is no implemented RAG-backed knowledge-core retrieval/context assembly path established by this baseline.
 - There is no end-to-end LLM-assisted experience-distillation and accepted-knowledge re-indexing path established by this baseline.
