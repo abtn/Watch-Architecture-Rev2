@@ -344,7 +344,11 @@ class ExecutionAssessmentBuilder:
         outcome = outcomes[0] if len(outcomes) == 1 else None
 
         all_attempt_event_numbers = (
-            set(starts) | set(retry_failures) | set(retry_scheduled) | set(completed) | set(failed)
+            set(starts)
+            | set(retry_failures)
+            | set(retry_scheduled)
+            | set(completed)
+            | set(failed)
         )
         if any(
             number < 1 or number > task.attempt_count
