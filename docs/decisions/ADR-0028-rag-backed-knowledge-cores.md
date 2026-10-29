@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted — architectural principles and initial R6 implementation contract, 2026-10-25, under the operator's explicit request to resolve the remaining R6-G0 decisions.** This records design authority only; no implementation is authorized.
+**Accepted — architectural principles and initial R6 implementation contract, 2026-10-25, under the operator's explicit request to resolve the remaining R6-G0 decisions.** The initial embedding provider decision and R6-D authorization are recorded below; this does not authorize R6-E or change its separate generation-provider gate.
 
 ## Context
 
@@ -48,7 +48,7 @@ A retrieved result is relevant material to inspect, not a verified fact. The und
 
 ### 4. Initial implementation boundary
 
-**Initial retrieval decisions:** use the existing PostgreSQL database with its enabled pgvector extension; do not add a separately operated vector service or reranker for the first slice. Use hybrid PostgreSQL full-text and vector retrieval, combine the top 20 candidates from each channel with reciprocal-rank fusion (RRF, k=60), then select at most 8 passages and 8,000 Unicode characters of retrieved knowledge. Chunk source text at a maximum of 1,200 characters with 150-character overlap. The production embedding provider, model, dimensions, and version must be selected and pinned before R6-D implementation. Until then, tests use deterministic fake embeddings; projection rows record the exact model/config version and entries from another version are not mixed into a query.
+**Initial retrieval decisions:** use the existing PostgreSQL database with its enabled pgvector extension; do not add a separately operated vector service or reranker for the first slice. Use hybrid PostgreSQL full-text and vector retrieval, combine the top 20 candidates from each channel with reciprocal-rank fusion (RRF, k=60), then select at most 8 passages and 8,000 Unicode characters of retrieved knowledge. Chunk source text at a maximum of 1,200 characters with 150-character overlap. The selected initial embedding provider, model, dimensions, revision, and configuration fingerprint are recorded in the R6-D provider decision below. Until then, tests use deterministic fake embeddings; projection rows record the exact model/config version and entries from another version are not mixed into a query.
 
 ## Consequences
 
@@ -74,9 +74,17 @@ A retrieved result is relevant material to inspect, not a verified fact. The und
 - **Freshness/rebuild:** store canonical content hash/version and configuration version with each index projection. At query time, exclude any entry whose canonical record is missing, no longer authorized, no longer eligible, or has changed hash/version. Rebuild/update is idempotent from canonical records. Projection failure must not roll back a canonical Signal or accepted KnowledgeItem; record/reconcile staleness and do not claim a newly accepted version is retrievable until its projection is current. Rejected, retired, superseded, and `needs_review` knowledge is not eligible.
 - A source-policy change takes effect immediately at query time even if stale vectors remain. If source access cannot be established from current policy, retrieval returns no such record rather than guessing.
 
-## Staged provider choice
+## R6-D provider decision — 2026-10-29
 
-The embedding provider/model is deliberately deferred until immediately before R6-D; it is not a blocker for R6-A through R6-C. Before R6-D starts, choose a production provider/model and pin model identifier, dimensions, normalization, chunking version, and rebuild behavior. Do not add provider SDKs, credentials, or outbound model calls in R6-A through R6-C. A provider-neutral adapter and deterministic fakes are the only allowed earlier boundary.
+The operator approved **local BAAI/BGE-M3 served through Ollama** as the initial embedding implementation.
+
+- **Local serving API:** Ollama's `POST /api/embed` endpoint, with the base URL configurable (default `http://localhost:11434`). Resolve the installed model's exact digest through the local `GET /api/tags` endpoint; do not identify an embedding space by the mutable `latest` tag alone.
+- **Model and dimensions:** `bge-m3`, 1,024 dimensions. Validate the dimensions and finite numeric values of every returned vector. Send `truncate: false` so an over-length input fails instead of being silently truncated. Use the returned vectors unchanged with cosine-distance retrieval.
+- **Provider-neutral boundary:** the indexer/retriever consume an `EmbeddingProvider` contract. Ollama is the first adapter; other providers can be added later without coupling the retrieval service to an Ollama SDK or response format.
+- **Version isolation:** derive an embedding-space fingerprint from provider, model identifier, exact installed model digest, dimensions, and a versioned request/configuration identifier. Store that fingerprint with every projected chunk and filter queries to the current fingerprint. A model/configuration change requires re-embedding/rebuilding; never mix vectors from different embedding spaces.
+- **Execution and cost:** the model is downloaded once through the Ollama model library; inference requests remain local. Do not commit model weights, cache files, credentials, or secrets. No remote embedding calls or real Ollama dependency in CI.
+- **Initial scope:** index only existing canonical Signal records and their immutable source Snapshots for the Domain Knowledge Core. Do not represent Signals as Team-owned; authorize each query using the requesting Team's current exact `(origin_url, source_type)` source allowlist. Team Experience indexing waits for canonical, accepted KnowledgeItems through ADR-0029; Task Context assembly remains R6-E work.
+- **Deterministic verification:** CI uses a deterministic fake `EmbeddingProvider`; it does not start Ollama, download model weights, or depend on an external inference service.
 
 ## Acceptance criteria for implementation
 
