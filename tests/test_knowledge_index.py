@@ -87,7 +87,9 @@ class KnowledgeTestEnv:
         self.policy_ids.append(policy_id)
         return team_id
 
-    def add_policy(self, team_id: UUID, version: int, sources: list[dict[str, str]]) -> None:
+    def add_policy(
+        self, team_id: UUID, version: int, sources: list[dict[str, str]]
+    ) -> None:
         policy_id = uuid4()
         with self.session_factory.begin() as session:
             session.add(
@@ -218,7 +220,10 @@ def test_retrieval_applies_current_source_allowlist(
     denied_url = "https://example.test/denied"
     team_id = knowledge_env.add_team("science", [_source(allowed_url)])
     allowed_signal = knowledge_env.add_signal(
-        "science", "test_feed", allowed_url, b"Alpha evidence from an authorized source."
+        "science",
+        "test_feed",
+        allowed_url,
+        b"Alpha evidence from an authorized source.",
     )
     denied_signal = knowledge_env.add_signal(
         "science", "test_feed", denied_url, b"Alpha evidence from a denied source."
@@ -345,7 +350,9 @@ def test_retrieval_obeys_passage_and_character_bounds(
 ) -> None:
     url = "https://example.test/long-report"
     team_id = knowledge_env.add_team("science", [_source(url)])
-    content = ("Alpha evidence discusses a repeatable scientific result. " * 300).encode()
+    content = (
+        "Alpha evidence discusses a repeatable scientific result. " * 300
+    ).encode()
     signal_id = knowledge_env.add_signal("science", "test_feed", url, content)
     provider = FakeEmbeddingProvider()
     indexer = SignalIndexer(
