@@ -6,12 +6,12 @@ EmbeddingProvider and never make network requests or download model weights.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
 import hashlib
 import json
-import os
 import math
+import os
+from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
