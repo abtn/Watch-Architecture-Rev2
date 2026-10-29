@@ -4,8 +4,8 @@ The project deliberately avoids a runtime dependency on the pgvector Python
 package. PostgreSQL still supplies the vector operators and storage type.
 """
 
-from collections.abc import Callable, Sequence
 import math
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from sqlalchemy.engine.interfaces import Dialect
