@@ -47,7 +47,7 @@ class FakeEmbeddingProvider:
         vectors: list[tuple[float, ...]] = []
         for text_value in texts:
             normalized = text_value.casefold()
-            if "alpha" in normalized:
+            if "alpha" in normalized or "topic-one" in normalized:
                 vector = [1.0, 0.1, 0.1, 0.1]
             elif "beta" in normalized:
                 vector = [0.1, 1.0, 0.1, 0.1]
@@ -368,3 +368,57 @@ def test_retrieval_obeys_passage_and_character_bounds(
     assert 0 < len(passages) <= 8
     assert sum(len(passage.text) for passage in passages) <= 8000
     assert all(len(passage.text) <= CHUNK_MAX_CHARACTERS for passage in passages)
+
+
+def test_vector_search_retrieves_related_text_without_lexical_overlap(
+    knowledge_env: KnowledgeTestEnv,
+) -> None:
+    url = "https://example.test/semantic"
+    team_id = knowledge_env.add_team("science", [_source(url)])
+    signal_id = knowledge_env.add_signal(
+        "science",
+        "test_feed",
+        url,
+        b"Alpha evidence from an observational astronomy report.",
+    )
+    provider = FakeEmbeddingProvider()
+    indexer = SignalIndexer(
+        knowledge_env.session_factory, knowledge_env.snapshot_store, provider
+    )
+    indexer.index_signal(signal_id)
+    retriever = HybridKnowledgeRetriever(
+        knowledge_env.session_factory, knowledge_env.snapshot_store, provider
+    )
+
+    passages = retriever.retrieve(team_id, "topic-one")
+
+    assert passages
+    assert passages[0].signal_id == signal_id
+    assert "astronomy" in passages[0].text
+
+
+def test_retrieval_discards_tampered_chunk_projection(
+    knowledge_env: KnowledgeTestEnv,
+) -> None:
+    url = "https://example.test/tampered-chunk"
+    team_id = knowledge_env.add_team("science", [_source(url)])
+    signal_id = knowledge_env.add_signal(
+        "science", "test_feed", url, b"Alpha evidence from a verified report."
+    )
+    provider = FakeEmbeddingProvider()
+    indexer = SignalIndexer(
+        knowledge_env.session_factory, knowledge_env.snapshot_store, provider
+    )
+    indexer.index_signal(signal_id)
+    with knowledge_env.session_factory.begin() as session:
+        chunk = session.scalar(
+            select(KnowledgeChunk).where(KnowledgeChunk.signal_id == signal_id)
+        )
+        assert chunk is not None
+        chunk.chunk_text = "tampered text with a matching lexical query alpha"
+
+    retriever = HybridKnowledgeRetriever(
+        knowledge_env.session_factory, knowledge_env.snapshot_store, provider
+    )
+
+    assert retriever.retrieve(team_id, "alpha") == ()
