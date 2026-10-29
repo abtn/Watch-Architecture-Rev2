@@ -132,6 +132,34 @@ def test_openai_compatible_provider_restores_response_order() -> None:
     assert [vector[0] for vector in batch.vectors] == [3.0, 6.0]
 
 
+def test_runtime_loading_state_does_not_change_model_revision() -> None:
+    class JustInTimeLoading(MockEmbeddingAPI):
+        model_calls = 0
+
+        def _request_json(
+            self, method: str, path: str, payload: dict[str, Any] | None = None
+        ) -> dict[str, Any]:
+            if path == "models":
+                self.model_calls += 1
+                loaded = self.model_calls >= 3
+                return {
+                    "data": [
+                        {
+                            "id": "bge-m3",
+                            "path": "models/bge-m3.gguf",
+                            "architecture": "bge-m3",
+                            "loaded_instances": ["runtime-instance"] if loaded else [],
+                        }
+                    ]
+                }
+            return super()._request_json(method, path, payload)
+
+    batch = JustInTimeLoading().embed(["first request can warm/load the model"])
+
+    assert len(batch.vectors) == 1
+    assert batch.space.revision.startswith("metadata-sha256:")
+
+
 def test_provider_waits_for_local_model_to_become_visible(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

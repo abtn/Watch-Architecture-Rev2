@@ -323,13 +323,35 @@ def _ordered_embedding_data(
 
 
 def _metadata_revision(metadata: dict[str, Any]) -> str:
-    """Fingerprint API model metadata when no stronger revision pin is configured.
+    """Fingerprint stable identity metadata, excluding runtime loading state.
 
     OpenAI-compatible APIs do not standardize an immutable model-weight digest.
+    Runtime fields such as loaded_instances can change during just-in-time loading.
     Operators should set WATCH_EMBEDDING_REVISION when model IDs can be reused.
     """
+    identity_fields = (
+        "id",
+        "owned_by",
+        "root",
+        "parent",
+        "path",
+        "model",
+        "revision",
+        "digest",
+        "sha",
+        "architecture",
+        "quantization",
+        "format",
+        "parameters",
+        "model_type",
+    )
+    identity = {
+        field: metadata[field]
+        for field in identity_fields
+        if field in metadata and metadata[field] is not None
+    }
     canonical = json.dumps(
-        metadata, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
     return "metadata-sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
