@@ -11,12 +11,15 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     String,
+    Text,
     UniqueConstraint,
     Uuid,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from core.vector_type import Vector
 
 
 class Base(DeclarativeBase):
@@ -306,4 +309,74 @@ class Outcome(Base):
     )
     recorded_by_task_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), nullable=False
+    )
+
+
+
+class KnowledgeChunk(Base):
+    """Derived chunk and embedding projection for a canonical Signal Snapshot."""
+
+    __tablename__ = "knowledge_chunks"
+    __table_args__ = (
+        UniqueConstraint(
+            "signal_id",
+            "chunk_index",
+            "embedding_space_key",
+            name="uq_knowledge_chunks_signal_index_space",
+        ),
+        CheckConstraint("chunk_index >= 0", name="ck_knowledge_chunks_chunk_index"),
+        CheckConstraint(
+            "chunk_hash ~ '^sha256:[0-9a-f]{64}$'",
+            name="ck_knowledge_chunks_chunk_hash",
+        ),
+        CheckConstraint(
+            "source_content_hash ~ '^sha256:[0-9a-f]{64}$'",
+            name="ck_knowledge_chunks_source_hash",
+        ),
+        CheckConstraint(
+            "source_snapshot_ref ~ '^snap://sha256/[0-9a-f]{64}$'",
+            name="ck_knowledge_chunks_source_snapshot_ref",
+        ),
+        CheckConstraint(
+            "embedding_dimensions > 0 AND "
+            "vector_dims(embedding) = embedding_dimensions",
+            name="ck_knowledge_chunks_embedding_dimensions",
+        ),
+        CheckConstraint(
+            "embedding_space_key ~ '^sha256:[0-9a-f]{64}$'",
+            name="ck_knowledge_chunks_embedding_space_key",
+        ),
+        CheckConstraint(
+            "length(chunking_version) > 0 AND "
+            "length(embedding_configuration) > 0",
+            name="ck_knowledge_chunks_configuration_nonempty",
+        ),
+        Index(
+            "ix_knowledge_chunks_space_signal",
+            "embedding_space_key",
+            "signal_id",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    signal_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("signals.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    chunk_index: Mapped[int] = mapped_column(nullable=False)
+    chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
+    chunk_hash: Mapped[str] = mapped_column(String, nullable=False)
+    source_snapshot_ref: Mapped[str] = mapped_column(String, nullable=False)
+    source_content_hash: Mapped[str] = mapped_column(String, nullable=False)
+    chunking_version: Mapped[str] = mapped_column(String, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(), nullable=False)
+    embedding_provider: Mapped[str] = mapped_column(String, nullable=False)
+    embedding_model: Mapped[str] = mapped_column(String, nullable=False)
+    embedding_revision: Mapped[str] = mapped_column(String, nullable=False)
+    embedding_configuration: Mapped[str] = mapped_column(String, nullable=False)
+    embedding_dimensions: Mapped[int] = mapped_column(nullable=False)
+    embedding_space_key: Mapped[str] = mapped_column(String, nullable=False)
+    indexed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
