@@ -145,15 +145,6 @@ class SignalIndexer:
         space = self._embedding_provider.current_space()
 
         if self._projection_matches(source, chunks, space):
-            # Old vector-space rows must never be used for the current query space.
-            # Remove obsolete rows even when the current projection is already valid.
-            with self._session_factory.begin() as session:
-                session.execute(
-                    delete(KnowledgeChunk).where(
-                        KnowledgeChunk.signal_id == signal_id,
-                        KnowledgeChunk.embedding_space_key != space.key,
-                    )
-                )
             return IndexingResult(
                 signal_id=signal_id,
                 outcome="unchanged",
@@ -529,7 +520,9 @@ class HybridKnowledgeRetriever:
                 cached = snapshot_cache[reference]
             if cached is None:
                 continue
-            _raw, chunks = cached
+            raw, chunks = cached
+            if content_hash(raw) != row["source_content_hash"]:
+                continue
             index = row["chunk_index"]
             if index < 0 or index >= len(chunks) or chunks[index] != row["chunk_text"]:
                 continue
