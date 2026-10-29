@@ -4,7 +4,6 @@ import hashlib
 from datetime import datetime, timezone
 from uuid import UUID
 
-import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
