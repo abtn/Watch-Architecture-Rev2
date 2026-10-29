@@ -53,8 +53,9 @@ No Ollama service or model downloads are used in CI. Deterministic fake embeddin
 
 After the model-only HTTP smoke test passes, run the Watch-side smoke test against a **development or disposable PostgreSQL database that has already been migrated to head**. Do not point this at a production database. From the project root, in PowerShell:
 
+    $env:DATABASE_URL = "postgresql+psycopg://watch:watch@127.0.0.1:5432/watch"
+    $env:TEST_DATABASE_URL = $env:DATABASE_URL
     uv run alembic upgrade head
-    $env:TEST_DATABASE_URL = "postgresql+psycopg://watch:watch@127.0.0.1:5432/watch"
     uv run python -m core.embedding_smoke
 
 The smoke command requires a reachable Ollama server with BGE-M3 installed. It creates a uniquely identified temporary Team, source policy, and Signal, then checks that indexing works, a second indexing pass is idempotent, and an authorized hybrid query retrieves the source. It removes the test database rows in a finally block and uses a temporary SnapshotStore. If cleanup itself fails, the script prints a warning so the database can be inspected before reuse.
