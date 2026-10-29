@@ -3,12 +3,11 @@
 ## Status and authority
 
 - **R6-G0 design decisions: RECORDED.** The operator explicitly requested resolution of the remaining G0 decisions on 2026-10-25. The accepted records are ADR-0025, ADR-0026, ADR-0028, ADR-0029, and ADR-0030.
-- **R6-G0 milestone status: COMPLETE — 2026-10-25.** The design decisions are recorded and the local checkout preflight is documented below. **This closeout did not itself authorize R6-A or any implementation**; R6-A required a separate explicit operator instruction, which was subsequently given.
-- **R6-A current status: COMPLETE — merged to `main` by PR #12** (merge commit `ebbc48d`, 2026-10-28). Four checkpoints were delivered on branch `r6a-step1-schema-outcome`: Step 1 schema at `42257ad` (migration `0009_task_lifecycle_outcome`, the `Outcome` ORM mapping, and explicit `max_attempts=3` pinning in `PlanService._create`, with focused schema tests); Checkpoint 2A terminal finalization at `c3e9428`; Checkpoint 2B retry scheduling and attempt exhaustion at `e05a8a4`; and Checkpoint 2C interrupted-task recovery at `da47694` in `TaskRuntime.recover_interrupted()`, with focused recovery tests in `tests/test_task_lifecycle_recovery.py`. Automated CI is committed at `bda8d55` and passed on the merged head `ffe8e76`. The R6-A exit criteria in §4 are satisfied. Dispatcher wiring is R6-B. See `PLAN.md` for the authoritative milestone status.
+**Current milestone status:** see [PLAN.md](../../PLAN.md). This document defines gate decisions and acceptance criteria rather than duplicating the current milestone table. The original G0 preflight and authorization record below is retained as historical evidence.
 - **ADR-0027 remains Proposed.** Its Task-start quota semantics are separate; this decision record neither accepts that ADR nor changes quota behavior.
 - Git baselines: PR #8 merge commit `44c0944720600f8a1d4018d4eb39424a9660168e` is the historical baseline for the original decision set; PR #9 merge commit `f9207156533b6944d320a6adfff42963f7e1e17c` is the verified current `main` baseline. Neither is evidence of the operator's local branch, HEAD, worktree, or database state; the verified local state is recorded in the preflight record below.
 - R5 remains formally closed. Its immutable Plan, prerequisite, provenance, lifecycle, completion-precondition, and single-runtime constraints remain mandatory.
-- Current implementation gaps remain real: TaskRuntime admits Tasks, finalizes terminal results, handles retry/exhaustion, and recovers interrupted Tasks, and the R6-B dispatcher executes one configured-source `ingest_source` Task end to end; the `Outcome` entity exists in the ORM and migrations (R6-A Step 1) and is written by terminal finalization (Checkpoint 2A), while Evaluation/KnowledgeItem/LearningChange persistence plus RAG Context assembly/distillation remain unimplemented. This record changes no code, schema, migration, provider, network, index, or runtime behavior.
+- Current implementation gaps remain real: TaskRuntime admits Tasks, finalizes terminal results, handles retry/exhaustion, and recovers interrupted Tasks, and the R6-B dispatcher executes one configured-source `ingest_source` Task end to end; the `Outcome` entity exists in the ORM and migrations (R6-A Step 1) and is written by terminal finalization (Checkpoint 2A), while Evaluation/KnowledgeItem/LearningChange persistence plus RAG Context assembly/distillation remain unimplemented. This section documents the architecture and implementation boundaries; current milestone status is maintained only in PLAN.md.
 
 ## 1. Revised R6 purpose
 
@@ -49,9 +48,9 @@ RAG is the retrieval mechanism across these logical layers. A single physical in
 
 ### Gaps that must not be mistaken for implementation
 
-- No complete worker dispatcher/lifecycle path dispatches work: terminal finalization, retry/exhaustion transitions (R6-A Checkpoints 2A/2B), interrupted-task recovery (Checkpoint 2C), and the R6-B configured-source dispatcher are implemented; a general multi-task-type dispatcher is not.
+- The implemented dispatcher path is intentionally narrow: it supports one configured-source ingest_source Task; a general multi-task-type dispatcher and scheduler are not part of this slice.
 - Ingestion does not fetch a configured source or execute it as a Task.
-- The current ORM/migrations implement the documented `Outcome` entity (R6-A Step 1) and terminal finalization writes one (Checkpoint 2A), but Evaluation and KnowledgeItem are not implemented. Confirm actual branch state before planning further schema work.
+- `Outcome` is canonical terminal evidence. `ExecutionAssessmentBuilder` reconstructs execution evidence read-only; persistent Evaluation/KnowledgeItem/LearningChange records remain unimplemented, as do RAG Context assembly and experience distillation.
 - There is no implemented RAG-backed knowledge-core retrieval/context assembly path established by this baseline.
 - There is no end-to-end LLM-assisted experience-distillation and accepted-knowledge re-indexing path established by this baseline.
 - There is no model-backed Strategy proposer established by this baseline.
@@ -101,7 +100,7 @@ No production provider/SDK or credentials path before its slice; no external rer
 
 ## 4. Proposed implementation traversal after G0 exits
 
-These are implementation slices. G0 is complete, R6-A is complete (merged to `main` by PR #12, merge commit `ebbc48d`), and R6-B is complete (merged to `main` by PR #14, merge commit `226c6b7`). The remaining slices must not begin until their predecessor gate is satisfied and a separate explicit operator instruction authorizes them.
+These sections define implementation-slice scope and exit criteria. Current milestone status is maintained only in PLAN.md. R6-D and later require predecessor gates; external provider/model choices require explicit user sign-off at the applicable milestone.
 
 ### R6-A — Task execution lifecycle and atomic terminal Outcome
 
