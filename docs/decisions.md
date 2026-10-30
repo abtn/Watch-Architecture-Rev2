@@ -16,6 +16,7 @@ This is a navigation index, not a replacement for the full ADRs. Open the linked
 | [0028](decisions/ADR-0028-rag-backed-knowledge-cores.md) | RAG-backed Knowledge Cores. **Accepted 2026-10-25.** | Initial canonical inputs, hybrid PostgreSQL retrieval, scoped access, immutable Context provenance, and projection freshness/rebuild rules are recorded; embedding choice is staged to R6-D. |
 | [0029](decisions/ADR-0029-llm-assisted-experience-distillation.md) | LLM-assisted Experience Distillation. **Accepted 2026-10-25.** | Evidence-linked LearningChange proposals, review/commit, versioning, and eligibility for retrieval are defined; model output cannot commit Team memory or policy. |
 | [0030](decisions/ADR-0030-r6-bounded-execution-source-safety-outcome.md) | R6 bounded execution, recovery, source safety, and Outcome contract. **Accepted 2026-10-25.** | One lifecycle authority, bounded recovery/retry, restricted configured-source fetch, and an atomic terminal Outcome contract. |
+| [0031](decisions/ADR-0031-cloudflare-workers-ai-generation.md) | Initial Cloudflare Workers AI generation provider. **Accepted 2026-10-30.** | The first R6-E hosted model is `@cf/meta/llama-3.1-8b-instruct-fp8`; output remains an untrusted JSON proposal validated by Watch. |
 
 ## Reading rule
 
