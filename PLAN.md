@@ -31,7 +31,7 @@ The supplied project ZIP has no Git metadata. Before taking repository action, v
 | R3 | Complete | Deterministic, read-only StateAssessment with provenance. |
 | R4 | **Complete** (closed 2026-10-20) | StrategyProposal boundary, multi-Vision/Workstream/Action semantics, deterministic validation and reconstruction. |
 | R5 | **Complete — closed 2026-10-24 by explicit operator decision** | Materialize one accepted Strategy as one durable Plan and ordinary Tasks; retain the Task-execution dependency for R6. |
-| R6 | **G0 through R6-D complete; R6-E awaiting separate generation-provider/model sign-off.** | First knowledge-grounded end-to-end loop: RAG Context, ordinary Task execution, durable Outcomes, deterministic reassessment, LLM-assisted experience distillation, and reuse of accepted knowledge. R6-D uses BGE-M3 served by LM Studio through the OpenAI-compatible embeddings API. Disposable-database verification and the pinned local integration smoke passed on 2026-10-30. Generation provider/model choice remains separately gated before R6-E. |
+| R6 | **G0 through R6-D complete; R6-E authorized and in progress.** | First knowledge-grounded end-to-end loop. R6-D uses local BGE-M3 through LM Studio and passed disposable-database verification. R6-E's initial provider is Cloudflare Workers AI `@cf/meta/llama-3.1-8b-instruct-fp8` (ADR-0031); its adapter, smoke command, and unit tests are on the current feature branch. Task Context assembly, model-backed StrategyProposer, and Task-level usage accounting remain outstanding. |
 | R7 | Future | Distillation quality, cross-case evaluation, and knowledge lifecycle. |
 | R8 | Future | Multi-domain pressure test. |
 | R9 | Future | Codified agent-assisted production workflow. |
