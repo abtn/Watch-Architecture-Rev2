@@ -203,7 +203,11 @@ class CloudflareWorkersAIGenerationProvider:
             raise GenerationProviderError("cloudflare_invalid_response_shape")
 
         choices = document.get("choices")
-        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        if (
+            not isinstance(choices, list)
+            or not choices
+            or not isinstance(choices[0], dict)
+        ):
             raise GenerationProviderError("cloudflare_missing_completion_choice")
         message = choices[0].get("message")
         if not isinstance(message, dict):
