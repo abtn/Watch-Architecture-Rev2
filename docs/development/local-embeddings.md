@@ -111,19 +111,44 @@ initial setup is local LM Studio.
 
 ## Run the Watch end-to-end smoke test
 
-Use only a positively identified development or disposable PostgreSQL database.
-The test removes its temporary rows, but `uv run alembic upgrade head` can change the
-schema and is not safe to run against a persistent database just because the smoke
-script cleans up afterward. The URL below is an example for a dedicated disposable
-database named `watch_embedding_smoke`; create/verify that database first, or replace
-the URL with the connection string for your own disposable instance. Do not assume a
-database named `watch` is disposable. From the project root, in PowerShell:
+Use a dedicated disposable PostgreSQL container for this smoke. The main Compose
+container `watch-architecture-rev2-postgres-1` publishes host port `5432` and stores
+data in the persistent `watch-postgres-data` volume; do not target it. The commands
+below start a separate PostgreSQL container with no volume, bind it only to localhost
+on host port `55450`, and use a dedicated database. The `--rm` option removes this
+container when it is stopped. Check that the container name and port are unused before
+starting it. Run from the project root in PowerShell:
 
     ```powershell
-    $env:DATABASE_URL = "postgresql+psycopg://watch:watch@127.0.0.1:5432/watch_embedding_smoke"
+    # Confirm the dedicated container name and host port are unused.
+    docker ps -a --filter "name=^/watch-r6d-embedding-smoke-pg$"
+    docker ps -a --filter "publish=55450"
+
+    # Start an isolated PostgreSQL instance with no persistent volume.
+    docker run --detach --rm --name watch-r6d-embedding-smoke-pg --env POSTGRES_DB=watch_embedding_smoke --env POSTGRES_USER=watch --env POSTGRES_PASSWORD=watch --publish 127.0.0.1:55450:5432 pgvector/pgvector:pg16
+
+    # Wait until PostgreSQL is ready.
+    $ready = $false
+    for ($attempt = 1; $attempt -le 30; $attempt++) {
+        docker exec watch-r6d-embedding-smoke-pg pg_isready -U watch -d watch_embedding_smoke
+        if ($LASTEXITCODE -eq 0) {
+            $ready = $true
+            break
+        }
+        Start-Sleep -Seconds 1
+    }
+    if (-not $ready) {
+        throw "Disposable embedding smoke PostgreSQL did not become ready."
+    }
+
+    $env:DATABASE_URL = "postgresql+psycopg://watch:watch@127.0.0.1:55450/watch_embedding_smoke"
     $env:TEST_DATABASE_URL = $env:DATABASE_URL
     uv run alembic upgrade head
     uv run python -m core.embedding_smoke
+
+    # After inspecting the result, stop only this dedicated smoke container.
+    # Because it was started with --rm and no volume, its data is discarded.
+    docker stop watch-r6d-embedding-smoke-pg
     ```
 
 The smoke command needs the configured API and exact model ID to be visible.
@@ -137,4 +162,4 @@ fails, the command prints a warning so the database can be inspected before reus
 
 The operator's local Watch smoke command reported PASS with model ID `text-embedding-bge-m3`, 1,024 dimensions, projection indexing, repeat-indexing idempotency, and authorized hybrid retrieval. The API reported metadata fingerprint `metadata-sha256:e8ffcf172118d67251eccbf45916e407b7e0537deef08f70bbd62e86518e9c69`; `WATCH_EMBEDDING_REVISION` was not explicitly set, so this is a metadata-derived fingerprint rather than an operator-managed immutable weight pin.
 
-The command transcript used a database URL ending in `/watch`. That output does not establish that the target was disposable. Until it is confirmed disposable or the smoke is rerun using a verified disposable database, regard the API/index/retrieval result as positive functional evidence, not as formal closure of the R6-D gate.
+The operator's 2026-10-30 `docker ps -a` output showed `watch-architecture-rev2-postgres-1` publishing `0.0.0.0:5432->5432/tcp`. The repository's `compose.yaml` defines that main service with the persistent named volume `watch-postgres-data`. Therefore the 2026-10-29 smoke URL ending in `/watch` targeted the main persistent database. The operator also ran `uv run alembic upgrade head` against it; the supplied transcript does not establish whether the schema changed or was already at head. The smoke script's cleanup removes only the uniquely identified temporary rows. Do not treat this run as disposable-database gate evidence; use the isolated-container procedure above for the formal rerun.
