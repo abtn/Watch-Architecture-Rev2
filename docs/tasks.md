@@ -302,8 +302,10 @@ Snapshot, and no Task other than the current one may be written.
 #### R4 `propose_strategy` scope extension
 This ordinary Task validates one transient StrategyProposal against its
 same-Team active Objective and exact derived R3 assessment. It requires a
-running Task, active Team, valid zero-usage Task budget, and policy version.
-Its worker `allowed_writes` is empty and it has no tool capability. No generic
+running Task, active Team, a valid Task budget, and policy version. Its worker
+`allowed_writes` is empty and it has no tool capability. Model usage must be
+reserved and reconciled against `max_cost_usd` before this Task can invoke a
+production generation provider; usage-less responses fail closed. No generic
 Event scope or existing K1/R2 Task permission is broadened.
 | Task type | Business writes | Task (K) | Snapshot (K) | Event (K) |
 |---|---|---|---|---|
