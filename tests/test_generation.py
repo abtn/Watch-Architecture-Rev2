@@ -67,7 +67,8 @@ def test_generation_posts_once_and_returns_validated_json_and_usage(
         captured["url"] = request.full_url
         captured["headers"] = request.headers
         captured["timeout"] = timeout
-        captured["body"] = json.loads(request.data.decode("utf-8"))  # type: ignore[union-attr]
+        assert request.data is not None
+        captured["body"] = json.loads(request.data.decode("utf-8"))
         return FakeHTTPResponse(_response())
 
     monkeypatch.setattr(generation, "urlopen", fake_urlopen)
