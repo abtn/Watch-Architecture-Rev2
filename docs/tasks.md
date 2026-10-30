@@ -312,7 +312,15 @@ Event scope or existing K1/R2 Task permission is broadened.
 | `propose_strategy` | — | Current Task lifecycle only | Only its immutable assembled Task Context Snapshot, written by application code | Only `context_assembled` with its versioned manifest, plus the existing attributed strategy disposition/rejection |
 The producer returns only proposed strategy data. Application code validates
 and records acceptance or rejection; the worker cannot write Objective,
-TeamPolicy, memory, Plan, Team structure, or enqueue Tasks. The redesigned
+TeamPolicy, memory, Plan, Team structure, or enqueue Tasks. For R6-E, application
+code may write exactly one content-addressed Snapshot containing the assembled
+Task Context and one `context_assembled` Event containing its versioned manifest
+(selected canonical references and hashes, logical core, query hash, chunk IDs,
+retrieval configuration, and embedding identity). These are current-Task K effects,
+not worker writes. The exact bytes and manifest are immutable: a matching replay
+reuses the existing Snapshot/Event; conflicting reuse rejects and never replaces
+the original. No arbitrary Snapshot or Event is authorized. The R4 Strategy audit
+remains embedded in the disposition Event and does not gain a separate Snapshot. The redesigned
 StrategyProposal is one coordinated decision for the Objective and its exact
 historical assessment basis. It may contain multiple concurrent Visions,
 Workstreams, Actions, and explicit Action prerequisites, including
