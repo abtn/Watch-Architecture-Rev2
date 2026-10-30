@@ -17,7 +17,7 @@ The supplied project ZIP has no Git metadata. Before taking repository action, v
 
 ## Next actionable step
 
-**Next actionable step: obtain explicit generation-provider/model sign-off before authorizing R6-E.** R6-D's embedding implementation, disposable-database verification, integration smoke, and explicit revision configuration are complete. The embedding decision does not select a generation provider. Record the selected generation provider/model and its operational constraints in the governing decision documents before beginning R6-E Task Context assembly and the model-backed StrategyProposer.
+**Next actionable step: sync `r6e-cloudflare-llama31-provider`, run the focused tests/static checks, then perform the real Cloudflare API smoke test using a locally configured token.** The current branch adds a non-streaming Cloudflare Workers AI adapter and one-request smoke command; it does not yet call the model from a Task. After the smoke passes, complete R6-E's bounded Task Context Snapshot/manifest, model-backed `StrategyProposer`, strict `StrategyProposal` validation, and Task-attributed cost reservation/reconciliation before enabling provider calls in production Task execution.
 
 ## Milestone overview
 
