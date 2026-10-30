@@ -307,7 +307,7 @@ Its worker `allowed_writes` is empty and it has no tool capability. No generic
 Event scope or existing K1/R2 Task permission is broadened.
 | Task type | Business writes | Task (K) | Snapshot (K) | Event (K) |
 |---|---|---|---|---|
-| `propose_strategy` | — | Current Task lifecycle only | — | Only attributed strategy disposition/rejection |
+| `propose_strategy` | — | Current Task lifecycle only | Only its immutable assembled Task Context Snapshot, written by application code | Only `context_assembled` with its versioned manifest, plus the existing attributed strategy disposition/rejection |
 The producer returns only proposed strategy data. Application code validates
 and records acceptance or rejection; the worker cannot write Objective,
 TeamPolicy, memory, Plan, Team structure, or enqueue Tasks. The redesigned
