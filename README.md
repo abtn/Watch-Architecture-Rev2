@@ -35,7 +35,7 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 
 Roadmap per [`PLAN.md`](PLAN.md); future phases are not authorized by the existence of code or proposed documents.
 
-- **R6 remaining:** **R6-E** — bounded Task Context assembly with its Snapshot/Event manifest and a model-backed StrategyProposer (after the R6-D database-safety gate closes and with generation provider/model sign-off first); **R6-F** — LLM-assisted experience distillation committed through the authorized learning path; **R6-G** — the integrated vertical slice, full verification, and explicit exit gate.
+- **R6 remaining:** **R6-E** — complete bounded Task Context assembly with its immutable Snapshot/Event manifest, Cloudflare-backed model StrategyProposer, strict validation, and Task-level usage reservation/reconciliation; **R6-F** — LLM-assisted experience distillation committed through the authorized learning path (not authorized); **R6-G** — the integrated vertical slice, full verification, and explicit exit gate (not authorized).
 - **R7 — Distillation quality and knowledge lifecycle:** cross-case evaluation of abstractions, contradictory evidence and counterexamples, transferability tests, retrieval quality, review/expiry, staleness detection, supersession, and retirement — always preserving explicit provenance, canonical authority, and controlled commits.
 - **R8 — Multi-domain pressure test:** exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge stays outside the Kernel.
 - **R9 — Agent-assisted production workflow:** codified bounded task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.
