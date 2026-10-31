@@ -266,14 +266,11 @@ class StrategyService:
         team_document = document.get("team")
         objective_document = document.get("objective")
         policy_document = document.get("policy")
-        if not all(
-            isinstance(value, dict)
-            for value in (
-                task_document,
-                team_document,
-                objective_document,
-                policy_document,
-            )
+        if (
+            not isinstance(task_document, dict)
+            or not isinstance(team_document, dict)
+            or not isinstance(objective_document, dict)
+            or not isinstance(policy_document, dict)
         ):
             return "context_scope_mismatch"
         if (
