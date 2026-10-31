@@ -105,6 +105,7 @@ def test_generation_fails_closed_when_usage_is_missing(
         "urlopen",
         lambda *_args, **_kwargs: FakeHTTPResponse(
             {
+                "model": generation.DEFAULT_MODEL,
                 "choices": [
                     {"message": {"content": '{"decision":"candidate"}'}}
                 ]

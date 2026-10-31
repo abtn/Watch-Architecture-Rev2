@@ -219,9 +219,9 @@ def test_unknown_usage_keeps_full_reservation_and_blocks_same_attempt_replay(
             )
         )
         assert unknown_event is not None
-        assert unknown_event.payload["conservative_budget_charge_usd"] == str(
-            quote.maximum_cost_usd
-        )
+        assert Decimal(
+            unknown_event.payload["conservative_budget_charge_usd"]
+        ) == quote.maximum_cost_usd
         assert "accounted_cost_usd" not in unknown_event.payload
 
 
@@ -514,6 +514,6 @@ def test_reconciliation_event_failure_keeps_reservation_and_can_be_marked_unknow
             )
         )
         assert unknown_event is not None
-        assert unknown_event.payload["conservative_budget_charge_usd"] == str(
-            quote.maximum_cost_usd
-        )
+        assert Decimal(
+            unknown_event.payload["conservative_budget_charge_usd"]
+        ) == quote.maximum_cost_usd
