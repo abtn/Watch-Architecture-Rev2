@@ -23,10 +23,16 @@ from core.models import Event, Objective, Signal, Task, Team, TeamPolicy
 
 _OBJECTIVE_EVENT_TYPES = ("objective_created", "objective_transitioned")
 _INGESTION_EVENT_TYPES = ("signal_ingested", "fetch_no_change")
-# Context assembly is an immutable Task input artifact, not a domain-state
-# transition. Excluding only this operational Event keeps a proposal's exact
-# StateAssessment basis stable after its Context Snapshot/manifest is committed.
-_NON_DOMAIN_ASSESSMENT_EVENT_TYPES = frozenset({"context_assembled"})
+# These Events record execution protocol and proposal disposition, not
+# Objective-domain changes. Keeping them in the audit log while excluding them
+# from this projection lets exact Context/Strategy retries reuse one assessment.
+_NON_DOMAIN_ASSESSMENT_EVENT_TYPES = frozenset(
+    {
+        "context_assembled",
+        "strategy_proposal_accepted",
+        "strategy_proposal_rejected",
+    }
+)
 
 
 class ObjectiveNotFound(LookupError):
