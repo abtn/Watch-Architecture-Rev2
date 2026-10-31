@@ -14,11 +14,11 @@ from core.generation import (
     CLOUDFLARE_PRICING_REVISION,
     DEFAULT_MAX_OUTPUT_TOKENS,
     DEFAULT_MODEL,
-    GenerationCostQuote,
-    GenerationUsage,
     INPUT_USD_PER_MILLION_TOKENS,
     MAX_MODEL_CONTEXT_TOKENS,
     OUTPUT_USD_PER_MILLION_TOKENS,
+    GenerationCostQuote,
+    GenerationUsage,
 )
 from core.models import Event, Task, TaskGenerationCharge
 from core.objectives import ObjectiveService

@@ -16,12 +16,12 @@ from core.context_assembly import TaskContextAssembler, TaskContextError
 from core.generation import (
     CLOUDFLARE_PRICING_REVISION,
     DEFAULT_MODEL,
+    INPUT_USD_PER_MILLION_TOKENS,
+    OUTPUT_USD_PER_MILLION_TOKENS,
     GenerationCostQuote,
     GenerationProviderError,
     GenerationResult,
     GenerationUsage,
-    INPUT_USD_PER_MILLION_TOKENS,
-    OUTPUT_USD_PER_MILLION_TOKENS,
 )
 from core.models import (
     Event,

@@ -17,10 +17,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from core.generation import (
     CLOUDFLARE_PRICING_REVISION,
     DEFAULT_MODEL,
-    GenerationCostQuote,
-    GenerationUsage,
     INPUT_USD_PER_MILLION_TOKENS,
     OUTPUT_USD_PER_MILLION_TOKENS,
+    GenerationCostQuote,
+    GenerationUsage,
 )
 from core.generation_cost import (
     TaskGenerationCostError,
