@@ -401,43 +401,46 @@ def test_strategy_disposition_events_do_not_change_assessment_basis(
         task = session.get(Task, p.transition_task_id)
         assert task is not None
         task.objective_id = objective_id
-        session.add_all(
-            [
-                Event(
-                    id=event_id,
-                    task_id=p.transition_task_id,
-                    type=event_type,
-                    payload={"operation": event_type},
-                    created_at=fixed_time,
-                )
-                for event_id, event_type in zip(
-                    operational_event_ids,
-                    (
-                        "context_assembled",
-                        "strategy_proposal_accepted",
-                        "strategy_proposal_rejected",
-                    ),
-                    strict=True,
-                )
-            ]
+
+    builder = _builder(session_factory)
+    before = builder.build(objective_id, created_at=fixed_time)
+    try:
+        with session_factory.begin() as session:
+            session.add_all(
+                [
+                    Event(
+                        id=event_id,
+                        task_id=p.transition_task_id,
+                        type=event_type,
+                        payload={"operation": event_type},
+                        created_at=fixed_time,
+                    )
+                    for event_id, event_type in zip(
+                        operational_event_ids,
+                        (
+                            "context_assembled",
+                            "strategy_proposal_accepted",
+                            "strategy_proposal_rejected",
+                        ),
+                        strict=True,
+                    )
+                ]
+            )
+
+        after = builder.build(objective_id, created_at=fixed_time)
+
+        assert before.basis.sha256 == after.basis.sha256
+        assert not set(operational_event_ids).intersection(after.basis.event_ids)
+        assert all(
+            event.id not in set(operational_event_ids) for event in after.events
         )
-
-    before = _builder(session_factory).build(objective_id, created_at=fixed_time)
-
-    with session_factory.begin() as session:
-        session.execute(delete(Event).where(Event.id.in_(operational_event_ids)))
-
-    after = _builder(session_factory).build(objective_id, created_at=fixed_time)
-
-    assert before.basis.sha256 == after.basis.sha256
-    assert not set(operational_event_ids).intersection(before.basis.event_ids)
-    assert all(
-        event.id not in set(operational_event_ids) for event in before.events
-    )
-    # Exclusion from the assessment projection must not delete the audit log.
-    with session_factory() as session:
-        assert session.scalar(
-            select(func.count())
-            .select_from(Event)
-            .where(Event.id.in_(operational_event_ids))
-        ) == 0
+        # Projection exclusion must not delete the durable audit records.
+        with session_factory() as session:
+            assert session.scalar(
+                select(func.count())
+                .select_from(Event)
+                .where(Event.id.in_(operational_event_ids))
+            ) == 3
+    finally:
+        with session_factory.begin() as session:
+            session.execute(delete(Event).where(Event.id.in_(operational_event_ids)))
