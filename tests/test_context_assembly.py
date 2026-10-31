@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
@@ -12,12 +12,21 @@ from core.context_assembly import TaskContextAssembler, TaskContextError
 from core.embeddings import EmbeddingSpace
 from core.knowledge_index import (
     CHUNK_MAX_CHARACTERS,
+    CHUNKING_VERSION,
     MAX_RETRIEVED_CHARACTERS,
     MAX_RETRIEVED_PASSAGES,
     RetrievedPassage,
     text_hash,
 )
-from core.models import Event, Objective, Signal, Task, Team, TeamPolicy
+from core.models import (
+    Event,
+    KnowledgeChunk,
+    Objective,
+    Signal,
+    Task,
+    Team,
+    TeamPolicy,
+)
 from core.snapshot_store import SnapshotStore
 from core.state_assessment import StateAssessmentBuilder, _canonical_json
 
@@ -54,6 +63,15 @@ def context_fixture(
     source_url = "https://example.test/context-assembly"
     source_type = "test_feed"
     source_text = b"Alpha evidence from the configured scientific source."
+    passage_text = source_text.decode()
+    space = EmbeddingSpace(
+        provider="test-fake",
+        model="context-test-embedding",
+        revision="r1",
+        dimensions=4,
+        configuration="test-config-v1",
+    )
+    chunk_id = uuid4()
     snapshot_ref, stored_hash = snapshot_store.put(source_text)
     now = datetime(2026, 10, 31, 12, 0, tzinfo=timezone.utc)
     with session_factory.begin() as session:
@@ -110,22 +128,34 @@ def context_fixture(
                 snapshot_ref=snapshot_ref,
             )
         )
+        session.flush()
+        session.add(
+            KnowledgeChunk(
+                id=chunk_id,
+                signal_id=signal_id,
+                chunk_index=0,
+                chunk_text=passage_text,
+                chunk_hash=text_hash(passage_text),
+                source_snapshot_ref=snapshot_ref,
+                source_content_hash=stored_hash,
+                chunking_version=CHUNKING_VERSION,
+                embedding=[0.1, 0.2, 0.3, 0.4],
+                embedding_provider=space.provider,
+                embedding_model=space.model,
+                embedding_revision=space.revision,
+                embedding_configuration=space.configuration,
+                embedding_dimensions=space.dimensions,
+                embedding_space_key=space.key,
+            )
+        )
 
-    passage_text = source_text.decode()
-    space = EmbeddingSpace(
-        provider="test-fake",
-        model="context-test-embedding",
-        revision="r1",
-        dimensions=4,
-        configuration="test-config-v1",
-    )
     passage = RetrievedPassage(
         signal_id=signal_id,
         source_url=source_url,
         source_type=source_type,
         snapshot_ref=snapshot_ref,
         content_hash=stored_hash,
-        chunk_id=uuid4(),
+        chunk_id=chunk_id,
         chunk_index=0,
         text=passage_text,
         chunk_hash=text_hash(passage_text),
@@ -154,6 +184,9 @@ def context_fixture(
     finally:
         with session_factory.begin() as session:
             session.execute(delete(Event).where(Event.task_id == task_id))
+            session.execute(
+                delete(KnowledgeChunk).where(KnowledgeChunk.signal_id == signal_id)
+            )
             session.execute(delete(Signal).where(Signal.id == signal_id))
             session.execute(delete(Task).where(Task.id == task_id))
             session.execute(delete(Objective).where(Objective.id == objective_id))
@@ -303,6 +336,22 @@ def test_context_rejects_non_object_team_policy_rules(
         session_factory, snapshot_store, _FakeRetriever(passages)
     )
     with pytest.raises(TaskContextError, match="invalid_team_policy"):
+        assembler.assemble(fixture.task_id)
+
+
+def test_context_rejects_replaced_knowledge_chunk_projection(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    context_fixture,
+) -> None:
+    fixture, passages = context_fixture
+    stale_passage = replace(passages[0], chunk_id=uuid4())
+    assembler = TaskContextAssembler(
+        session_factory, snapshot_store, _FakeRetriever((stale_passage,))
+    )
+    with pytest.raises(
+        TaskContextError, match="retrieval_chunk_projection_not_current"
+    ):
         assembler.assemble(fixture.task_id)
 
 

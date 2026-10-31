@@ -27,7 +27,15 @@ from core.knowledge_index import (
     content_hash,
     text_hash,
 )
-from core.models import Event, Objective, Signal, Task, Team, TeamPolicy
+from core.models import (
+    Event,
+    KnowledgeChunk,
+    Objective,
+    Signal,
+    Task,
+    Team,
+    TeamPolicy,
+)
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
 from core.state_assessment import (
     StateAssessment,
@@ -437,6 +445,32 @@ class TaskContextAssembler:
                     raise TaskContextError("retrieval_chunk_not_current")
             elif expected_text != passage.text:
                 raise TaskContextError("retrieval_chunk_not_current")
+
+            # The index is a projection, but the manifest must still identify
+            # the exact projection row returned by retrieval. Reject a row that
+            # was replaced or reconfigured between retrieval and persistence.
+            chunk = session.get(KnowledgeChunk, passage.chunk_id)
+            if (
+                chunk is None
+                or chunk.signal_id != signal.id
+                or chunk.chunk_index != passage.chunk_index
+                or chunk.chunk_text != expected_text
+                or chunk.chunk_hash != passage.chunk_hash
+                or chunk.source_snapshot_ref != signal.snapshot_ref
+                or chunk.source_content_hash != signal.content_hash
+                or chunk.chunking_version != CHUNKING_VERSION
+                or chunk.embedding_provider != passage.embedding_provider
+                or chunk.embedding_model != passage.embedding_model
+                or chunk.embedding_revision != passage.embedding_revision
+                or chunk.embedding_configuration
+                != passage.embedding_configuration
+                or chunk.embedding_dimensions != passage.embedding_dimensions
+                or chunk.embedding_space_key != passage.embedding_space_key
+                or len(chunk.embedding) != passage.embedding_dimensions
+            ):
+                raise TaskContextError(
+                    "retrieval_chunk_projection_not_current"
+                )
 
     @staticmethod
     def _manifest(
