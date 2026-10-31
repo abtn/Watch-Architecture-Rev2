@@ -223,7 +223,9 @@ def test_valid_model_proposal_is_submitted_only_through_strategy_service(
             == result.context.assessment.basis.sha256
         )
         assert list(
-            session.scalars(\n                select(Plan).where(Plan.created_by_task_id == fixture.task_id)\n            )
+            session.scalars(
+                select(Plan).where(Plan.created_by_task_id == fixture.task_id)
+            )
         ) == []
 
 
@@ -248,7 +250,9 @@ def test_incomplete_model_output_is_durably_rejected_without_a_plan(
             result.context.event_id
         )
         assert list(
-            session.scalars(\n                select(Plan).where(Plan.created_by_task_id == fixture.task_id)\n            )
+            session.scalars(
+                select(Plan).where(Plan.created_by_task_id == fixture.task_id)
+            )
         ) == []
 
 
@@ -299,7 +303,9 @@ def test_provider_failure_does_not_create_a_strategy_disposition_or_plan(
         )
         assert dispositions == []
         assert list(
-            session.scalars(\n                select(Plan).where(Plan.created_by_task_id == fixture.task_id)\n            )
+            session.scalars(
+                select(Plan).where(Plan.created_by_task_id == fixture.task_id)
+            )
         ) == []
 
 
@@ -331,7 +337,9 @@ def test_stale_assessment_is_rejected_after_provider_returns(
         with session_factory.begin() as session:
             objective = session.get(Objective, fixture.objective_id)
             assert objective is not None
-            objective.statement = (\n                "The objective changed while the provider was running."\n            )
+            objective.statement = (
+                "The objective changed while the provider was running."
+            )
 
     provider = _FakeGenerationProvider(
         _valid_proposal(fixture), on_call=change_objective
@@ -344,7 +352,9 @@ def test_stale_assessment_is_rejected_after_provider_returns(
     assert result.disposition.reason == "stale_assessment"
     with session_factory() as session:
         assert list(
-            session.scalars(\n                select(Plan).where(Plan.created_by_task_id == fixture.task_id)\n            )
+            session.scalars(
+                select(Plan).where(Plan.created_by_task_id == fixture.task_id)
+            )
         ) == []
 
 
