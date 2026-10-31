@@ -270,7 +270,10 @@ class TaskContextAssembler:
             .limit(1)
         )
         if lock:
-            team_query = team_query.with_for_update(read=True)
+            # FOR UPDATE conflicts with the FK key-share lock used by a new
+            # TeamPolicy row, preventing a newer policy from being published
+            # between the current-policy check and the Context manifest commit.
+            team_query = team_query.with_for_update()
             objective_query = objective_query.with_for_update(read=True)
             policy_query = policy_query.with_for_update(read=True)
 
