@@ -21,7 +21,7 @@ from core.state_assessment import _canonical_json
 from core.strategy import StrategyResult, StrategyService
 
 MAX_STRATEGY_CONTEXT_CHARACTERS = 32_000
-STRATEGY_PROPOSER_SYSTEM_PROMPT = """You produce one candidate StrategyProposal for Watch.
+STRATEGY_PROPOSER_SYSTEM_PROMPT = """You produce one candidate StrategyProposal\nfor Watch.
 Return exactly one JSON object and no Markdown, commentary, or extra keys.
 The object must follow this structure:
 {
