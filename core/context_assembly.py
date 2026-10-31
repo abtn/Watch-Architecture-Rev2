@@ -120,6 +120,22 @@ class TaskContextAssembler:
             raise TaskContextError(error.reason) from error
         return self._persist(scope, query, passages)
 
+    def verify_snapshot(self, context: AssembledTaskContext) -> None:
+        """Re-read and verify the exact immutable bytes passed to a proposer."""
+        try:
+            stored_bytes = self._snapshot_store.read(context.snapshot_ref)
+        except SnapshotIntegrityError as error:
+            raise TaskContextError("context_snapshot_integrity_failure") from error
+        expected_bytes = _canonical_json(context.document).encode("utf-8")
+        expected_hash = content_hash(expected_bytes)
+        digest = expected_hash.removeprefix("sha256:")
+        if (
+            stored_bytes != expected_bytes
+            or context.content_hash != expected_hash
+            or context.snapshot_ref != f"snap://sha256/{digest}"
+        ):
+            raise TaskContextError("context_snapshot_integrity_failure")
+
     def _load_scope(self, task_id: UUID) -> _TaskContextScope:
         with self._session_factory() as session:
             return self._scope_in_session(session, task_id, lock=False)

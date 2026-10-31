@@ -310,6 +310,18 @@ Event scope or existing K1/R2 Task permission is broadened.
 | Task type | Business writes | Task (K) | Snapshot (K) | Event (K) |
 |---|---|---|---|---|
 | `propose_strategy` | — | Current Task lifecycle only | Only its immutable assembled Task Context Snapshot, written by application code | Only `context_assembled` with its versioned manifest, plus the existing attributed strategy disposition/rejection |
+For the R6-E model-backed producer, `StrategyProposer` receives the exact
+assembled Context artifact and provider output remains untrusted JSON. Its
+submission path requires the one Task-attributed `context_assembled` Event,
+checks the Snapshot reference/hash against the canonical Context document,
+pins the manifest and StateAssessment basis, then delegates schema, capability,
+scope, policy, and freshness validation to `StrategyService`. The resulting
+strategy disposition Event records the Context Event ID, Snapshot reference,
+content hash, and exact assessment. A Task with a Context manifest cannot use
+the legacy context-free submission path. The proposer does not materialize a
+Plan. No automatic Task-dispatch path may invoke the production provider until
+Step 3 provides durable maximum-cost reservation and reconciliation.
+
 The producer returns only proposed strategy data. Application code validates
 and records acceptance or rejection; the worker cannot write Objective,
 TeamPolicy, memory, Plan, Team structure, or enqueue Tasks. For R6-E, application

@@ -103,6 +103,7 @@ class StrategyService:
             if (
                 prior is not None
                 and scope_reason is None
+                and context_reason is None
                 and all(
                     prior.payload.get(key) == value for key, value in identity.items()
                 )
