@@ -286,6 +286,24 @@ def test_changed_context_cannot_replace_the_original_snapshot_or_manifest(
         assert snapshot_store.read(first.snapshot_ref)
 
 
+def test_context_rejects_non_object_team_policy_rules(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    context_fixture,
+) -> None:
+    fixture, passages = context_fixture
+    with session_factory.begin() as session:
+        policy = session.get(TeamPolicy, fixture.policy_id)
+        assert policy is not None
+        policy.rules = ["not", "an", "object"]
+
+    assembler = TaskContextAssembler(
+        session_factory, snapshot_store, _FakeRetriever(passages)
+    )
+    with pytest.raises(TaskContextError, match="invalid_team_policy"):
+        assembler.assemble(fixture.task_id)
+
+
 def test_context_rejects_retrieved_material_revoked_by_current_policy(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,

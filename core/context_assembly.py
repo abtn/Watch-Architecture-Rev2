@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.embeddings import EmbeddingSpace
 from core.knowledge_index import (
-    CHUNKING_VERSION,
     CHUNK_MAX_CHARACTERS,
+    CHUNKING_VERSION,
     LEXICAL_CANDIDATE_LIMIT,
     MAX_RETRIEVED_CHARACTERS,
     MAX_RETRIEVED_PASSAGES,
@@ -341,6 +341,8 @@ class TaskContextAssembler:
             raise TaskContextError("retrieval_character_limit_exceeded")
 
         rules = json.loads(scope.policy_rules_json)
+        if not isinstance(rules, dict):
+            raise TaskContextError("invalid_team_policy")
         configured_sources = rules.get("sources", [])
         allowed_sources = (
             {
@@ -348,7 +350,9 @@ class TaskContextAssembler:
                 for entry in configured_sources
                 if isinstance(entry, dict)
                 and isinstance(entry.get("origin_url"), str)
+                and entry.get("origin_url").strip()
                 and isinstance(entry.get("source_type"), str)
+                and entry.get("source_type").strip()
             }
             if isinstance(configured_sources, list)
             else set()
