@@ -480,7 +480,7 @@ class TaskContextAssembler:
             "logical_core": "domain_knowledge",
             "query_hash": content_hash(query.encode("utf-8")),
             "assessment_basis_sha256": assessment.basis.sha256,
-            "assembled_at": assessment.created_at.isoformat(),
+            "assembled_at": assessment.created_at,
             "retrieval": {
                 "configuration_version": RETRIEVAL_CONFIGURATION_VERSION,
                 "strategy": "postgres_full_text_and_pgvector_rrf",
