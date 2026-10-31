@@ -131,11 +131,10 @@ class TaskContextAssembler:
         passages: tuple[RetrievedPassage, ...],
     ) -> AssembledTaskContext:
         with self._session_factory.begin() as session:
-            # Match StateAssessmentBuilder.build(): every state read in this
-            # transaction observes one repeatable-read database snapshot.
-            session.connection().exec_driver_sql(
-                "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"
-            )
+            # PostgreSQL READ COMMITTED is intentional here. The Task lock is
+            # acquired before the existing-manifest query, so a waiter sees a
+            # prior assembler's committed Event in its next statement snapshot.
+            # StrategyService later revalidates the assessment basis before K writes.
             # The Task row is the serialization point for duplicate assemblers.
             current_scope = self._scope_in_session(
                 session, expected_scope.task_id, lock=True
