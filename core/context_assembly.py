@@ -347,19 +347,20 @@ class TaskContextAssembler:
         if not isinstance(rules, dict):
             raise TaskContextError("invalid_team_policy")
         configured_sources = rules.get("sources", [])
-        allowed_sources = (
-            {
-                (entry.get("origin_url"), entry.get("source_type"))
-                for entry in configured_sources
-                if isinstance(entry, dict)
-                and isinstance(entry.get("origin_url"), str)
-                and entry.get("origin_url").strip()
-                and isinstance(entry.get("source_type"), str)
-                and entry.get("source_type").strip()
-            }
-            if isinstance(configured_sources, list)
-            else set()
-        )
+        allowed_sources: set[tuple[str, str]] = set()
+        if isinstance(configured_sources, list):
+            for entry in configured_sources:
+                if not isinstance(entry, dict):
+                    continue
+                origin_url = entry.get("origin_url")
+                source_type = entry.get("source_type")
+                if (
+                    isinstance(origin_url, str)
+                    and origin_url.strip()
+                    and isinstance(source_type, str)
+                    and source_type.strip()
+                ):
+                    allowed_sources.add((origin_url, source_type))
 
         snapshot_cache: dict[str, tuple[bytes, tuple[str, ...]]] = {}
         for passage in passages:
