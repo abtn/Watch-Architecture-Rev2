@@ -23,16 +23,14 @@ _USER_PROMPT = (
 
 
 def main() -> int:
-    import core.generation
-
     try:
-        provider = core.generation.CloudflareWorkersAIGenerationProvider.from_environment()
+        provider = CloudflareWorkersAIGenerationProvider.from_environment()
         result = provider.generate_json(
             system_prompt=_SYSTEM_PROMPT,
             user_prompt=_USER_PROMPT,
             temperature=0.0,
         )
-    except (ValueError, core.generation.GenerationProviderError) as error:
+    except (ValueError, GenerationProviderError) as error:
         print(f"Generation smoke FAILED: {error}", file=sys.stderr)
         return 1
 
