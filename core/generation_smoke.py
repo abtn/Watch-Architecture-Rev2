@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import sys
 
-from . import generation
 
 
 _SYSTEM_PROMPT = (
@@ -24,14 +23,16 @@ _USER_PROMPT = (
 
 
 def main() -> int:
+    import core.generation
+
     try:
-        provider = generation.CloudflareWorkersAIGenerationProvider.from_environment()
+        provider = core.generation.CloudflareWorkersAIGenerationProvider.from_environment()
         result = provider.generate_json(
             system_prompt=_SYSTEM_PROMPT,
             user_prompt=_USER_PROMPT,
             temperature=0.0,
         )
-    except (ValueError, generation.GenerationProviderError) as error:
+    except (ValueError, core.generation.GenerationProviderError) as error:
         print(f"Generation smoke FAILED: {error}", file=sys.stderr)
         return 1
 
