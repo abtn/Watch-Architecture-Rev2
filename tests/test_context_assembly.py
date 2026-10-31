@@ -176,6 +176,7 @@ def test_assembly_persists_bounded_context_snapshot_and_manifest(
     assert result.manifest["logical_core"] == "domain_knowledge"
     assert result.manifest["query_hash"].startswith("sha256:")
     assert result.manifest["assessment_basis_sha256"] == result.assessment.basis.sha256
+    assert result.manifest["assembled_at"] == result.assessment.created_at.isoformat()
     assert result.manifest["selected"][0]["signal_id"] == str(fixture.signal_id)
     assert result.manifest["selected"][0]["source_snapshot_ref"].startswith(
         "snap://sha256/"
