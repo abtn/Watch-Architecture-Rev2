@@ -14,7 +14,6 @@ from core.generation import (
     GenerationProviderError,
 )
 
-
 _SYSTEM_PROMPT = (
     "You are a strict JSON-only assistant. Return one JSON object and no "
     "markdown fences or commentary. Do not include hidden reasoning."
