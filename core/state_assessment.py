@@ -197,16 +197,16 @@ class StateAssessmentBuilder:
             if event.type not in _NON_DOMAIN_ASSESSMENT_EVENT_TYPES
             and (
                 (
-                event.type in _OBJECTIVE_EVENT_TYPES
-                and event.payload.get("objective_id") == str(objective.id)
-            )
-            or (
-                event.type not in _OBJECTIVE_EVENT_TYPES
-                and (
-                    "objective_id" not in event.payload
-                    or event.payload.get("objective_id") == str(objective.id)
+                    event.type in _OBJECTIVE_EVENT_TYPES
+                    and event.payload.get("objective_id") == str(objective.id)
                 )
-            )
+                or (
+                    event.type not in _OBJECTIVE_EVENT_TYPES
+                    and (
+                        "objective_id" not in event.payload
+                        or event.payload.get("objective_id") == str(objective.id)
+                    )
+                )
             )
         ]
         related_events.sort(key=lambda event: str(event.id))

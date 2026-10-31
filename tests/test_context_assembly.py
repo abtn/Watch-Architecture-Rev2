@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Sequence
 from uuid import UUID, uuid4
 
 import pytest
@@ -11,10 +10,16 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.context_assembly import TaskContextAssembler, TaskContextError
 from core.embeddings import EmbeddingSpace
-from core.knowledge_index import RetrievedPassage, content_hash, text_hash
+from core.knowledge_index import (
+    CHUNK_MAX_CHARACTERS,
+    MAX_RETRIEVED_CHARACTERS,
+    MAX_RETRIEVED_PASSAGES,
+    RetrievedPassage,
+    text_hash,
+)
 from core.models import Event, Objective, Signal, Task, Team, TeamPolicy
 from core.snapshot_store import SnapshotStore
-from core.state_assessment import StateAssessmentBuilder
+from core.state_assessment import StateAssessmentBuilder, _canonical_json
 
 
 @dataclass
@@ -182,15 +187,9 @@ def test_assembly_persists_bounded_context_snapshot_and_manifest(
     assert result.document["knowledge"]["domain_knowledge"][0]["text"] == (
         fixture.source_text.decode()
     )
-    assert snapshot_store.read(result.snapshot_ref) == (
-        __import__("json").dumps(
-            result.document,
-            ensure_ascii=True,
-            allow_nan=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode()
-    )
+    assert snapshot_store.read(result.snapshot_ref) == _canonical_json(
+        result.document
+    ).encode("utf-8")
     with session_factory() as session:
         event = session.get(Event, result.event_id)
         assert event is not None
@@ -302,6 +301,66 @@ def test_context_rejects_retrieved_material_revoked_by_current_policy(
         session_factory, snapshot_store, _FakeRetriever(passages)
     )
     with pytest.raises(TaskContextError, match="retrieval_candidate_not_authorized"):
+        assembler.assemble(fixture.task_id)
+
+
+@pytest.mark.parametrize(
+    ("passage_count", "passage_text", "reason"),
+    [
+        (MAX_RETRIEVED_PASSAGES + 1, "valid", "retrieval_passage_limit_exceeded"),
+        (1, "x" * (CHUNK_MAX_CHARACTERS + 1), "invalid_retrieval_passage"),
+    ],
+)
+def test_context_rejects_passages_outside_declared_bounds(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    context_fixture,
+    passage_count: int,
+    passage_text: str,
+    reason: str,
+) -> None:
+    fixture, passages = context_fixture
+    base = passages[0]
+    invalid = tuple(
+        base.__class__(
+            **{
+                **vars(base),
+                "chunk_id": uuid4(),
+                "text": passage_text if passage_text != "valid" else base.text,
+            }
+        )
+        for _ in range(passage_count)
+    )
+    assembler = TaskContextAssembler(
+        session_factory, snapshot_store, _FakeRetriever(invalid)
+    )
+    with pytest.raises(TaskContextError, match=reason):
+        assembler.assemble(fixture.task_id)
+
+
+def test_context_rejects_total_character_limit(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    context_fixture,
+) -> None:
+    fixture, passages = context_fixture
+    base = passages[0]
+    oversized = tuple(
+        base.__class__(
+            **{
+                **vars(base),
+                "chunk_id": uuid4(),
+                "text": base.text + ("x" * (MAX_RETRIEVED_CHARACTERS // 2)),
+            }
+        )
+        for _ in range(2)
+    )
+    assembler = TaskContextAssembler(
+        session_factory, snapshot_store, _FakeRetriever(oversized)
+    )
+    with pytest.raises(
+        TaskContextError, match="retrieval_character_limit_exceeded"
+    ):
         assembler.assemble(fixture.task_id)
 
 

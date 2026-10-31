@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 from dataclasses import asdict, dataclass
@@ -16,6 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from core.embeddings import EmbeddingSpace
 from core.knowledge_index import (
     CHUNKING_VERSION,
+    CHUNK_MAX_CHARACTERS,
     LEXICAL_CANDIDATE_LIMIT,
     MAX_RETRIEVED_CHARACTERS,
     MAX_RETRIEVED_PASSAGES,
@@ -29,7 +29,11 @@ from core.knowledge_index import (
 )
 from core.models import Event, Objective, Signal, Task, Team, TeamPolicy
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
-from core.state_assessment import StateAssessment, StateAssessmentBuilder, _canonical_json
+from core.state_assessment import (
+    StateAssessment,
+    StateAssessmentBuilder,
+    _canonical_json,
+)
 
 CONTEXT_SCHEMA_VERSION = "r6e-task-context-v1"
 CONTEXT_MANIFEST_VERSION = "r6e-context-manifest-v1"
@@ -194,7 +198,9 @@ class TaskContextAssembler:
                 try:
                     stored_bytes = self._snapshot_store.read(reference)
                 except SnapshotIntegrityError as error:
-                    raise TaskContextError("context_snapshot_integrity_failure") from error
+                    raise TaskContextError(
+                        "context_snapshot_integrity_failure"
+                    ) from error
                 if stored_bytes != snapshot_bytes:
                     raise TaskContextError("context_replay_conflict")
                 snapshot_ref = reference
@@ -336,19 +342,23 @@ class TaskContextAssembler:
 
         rules = json.loads(scope.policy_rules_json)
         configured_sources = rules.get("sources", [])
-        allowed_sources = {
-            (entry.get("origin_url"), entry.get("source_type"))
-            for entry in configured_sources
-            if isinstance(entry, dict)
-            and isinstance(entry.get("origin_url"), str)
-            and isinstance(entry.get("source_type"), str)
-        } if isinstance(configured_sources, list) else set()
+        allowed_sources = (
+            {
+                (entry.get("origin_url"), entry.get("source_type"))
+                for entry in configured_sources
+                if isinstance(entry, dict)
+                and isinstance(entry.get("origin_url"), str)
+                and isinstance(entry.get("source_type"), str)
+            }
+            if isinstance(configured_sources, list)
+            else set()
+        )
 
         snapshot_cache: dict[str, tuple[bytes, tuple[str, ...]]] = {}
         for passage in passages:
             if (
                 not passage.text
-                or len(passage.text) > 1200
+                or len(passage.text) > CHUNK_MAX_CHARACTERS
                 or not math.isfinite(passage.score)
                 or passage.score < 0
             ):
@@ -395,7 +405,9 @@ class TaskContextAssembler:
                         raise TaskContextError("source_snapshot_hash_mismatch")
                     chunks = chunk_source_text(raw)
                 except (SnapshotIntegrityError, KnowledgeIndexError) as error:
-                    raise TaskContextError("source_snapshot_integrity_failure") from error
+                    raise TaskContextError(
+                        "source_snapshot_integrity_failure"
+                    ) from error
                 cached = (raw, chunks)
                 snapshot_cache[signal.snapshot_ref] = cached
 
