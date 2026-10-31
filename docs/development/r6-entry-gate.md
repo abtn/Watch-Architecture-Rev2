@@ -129,11 +129,27 @@ Implement the minimal canonical knowledge selection and a regenerable retrieval 
 
 **Exit:** tests prove relevant retrieval, Team/domain isolation, status/access filtering, traceable source references, stale-index rejection after a canonical change, and index rebuild/replay. No retrieval-only assertion can commit a fact or lesson.
 
-### R6-E — Task Context assembly and StrategyProposer
+### R6-E — Task Context assembly, StrategyProposer, and cost accounting
 
-Assemble a bounded Context from RAG candidates resolved to current canonical records plus Objective, StateAssessment, policy constraints, and permitted task information. Record sufficient source/version provenance for later explanation. Use a fake proposer in tests and the G0-approved production-provider boundary. Submit the proposal through existing Strategy validation; only an accepted proposal may materialize a Plan.
+R6-E is delivered in three separately verified checkpoints. Each checkpoint must be committed to the existing R6-E branch and pass hosted CI before the operator syncs and runs local verification. Do not begin the next checkpoint until the operator confirms the previous local verification.
 
-**Exit:** tests cover source attribution, conflicting/uncertain evidence, context limits, model-output rejection, provider failure, and no Plan for a rejected proposal.
+#### Step 1 — Context assembly
+
+Assemble a bounded Context from current, authorized Domain Knowledge Signal passages plus the same-Team active Objective, exact StateAssessment, pinned TeamPolicy, and Task budget. Persist the exact canonical Context bytes as one immutable content-addressed Snapshot and one Task-attributed `context_assembled` Event with a versioned manifest containing the selected canonical Signal/Snapshot references and hashes, logical core, query hash, chunk IDs, retrieval configuration, and embedding identity. A replay must reuse the exact original Snapshot/Event; changed content must reject rather than replace it. The operational manifest Event must not mutate the domain-state assessment basis.
+
+**Exit:** deterministic tests cover current-policy authorization, canonical Signal/Snapshot/hash and chunk verification, 8-passage/8,000-character bounds, manifest completeness, immutable replay/conflict, Task write scope, and assessment-basis stability. No generation provider call occurs in this step.
+
+#### Step 2 — StrategyProposer
+
+Use the existing generation-provider boundary to turn the assembled Context into one strictly typed StrategyProposal. Keep the producer free of write authority; submit its result through the existing StrategyService validation and durable acceptance/rejection audit. Invalid, incomplete, malformed, unsupported, or stale output must be rejected; provider errors must not create a Plan.
+
+**Exit:** deterministic fake-provider tests cover valid and invalid proposals, exact Context/assessment provenance, provider failure, replay/conflict, and proof that only StrategyService can accept. Production generation remains disabled until Step 3 supplies enforceable Task spend reservation/reconciliation.
+
+#### Step 3 — Task cost accounting
+
+Add a durable Task-attributed reservation/usage ledger. Reserve the maximum possible request charge before provider invocation, reconcile against provider-reported usage/cost afterwards, and prevent concurrent or repeated calls from exceeding Task `max_cost_usd`. Failed calls and ambiguous/missing usage must remain accounted for conservatively and fail closed; retries must not bypass the reservation.
+
+**Exit:** tests cover atomic reservation, cap enforcement, concurrency, provider success/failure, usage mismatch/missing usage, retry/replay, and reconciliation rollback/recovery. Only after Steps 1–3 pass may the production Task path call the generation provider.
 
 ### R6-F — First experience-distillation path
 

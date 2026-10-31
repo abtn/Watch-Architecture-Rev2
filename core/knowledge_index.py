@@ -122,6 +122,11 @@ class RetrievedPassage:
     lexical_rank: int | None
     vector_rank: int | None
     embedding_space_key: str
+    embedding_provider: str
+    embedding_model: str
+    embedding_revision: str
+    embedding_configuration: str
+    embedding_dimensions: int
     truncated: bool = False
 
 
@@ -594,6 +599,11 @@ def _bound_passages(
                 lexical_rank=candidate["lexical_rank"],
                 vector_rank=candidate["vector_rank"],
                 embedding_space_key=row["embedding_space_key"],
+                embedding_provider=row["embedding_provider"],
+                embedding_model=row["embedding_model"],
+                embedding_revision=row["embedding_revision"],
+                embedding_configuration=row["embedding_configuration"],
+                embedding_dimensions=row["embedding_dimensions"],
                 truncated=truncated,
             )
         )

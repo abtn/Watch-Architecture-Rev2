@@ -56,4 +56,4 @@ One dependency is recorded and unresolved: no component in the current codebase 
 
 ## Conflict rule
 
-When two relevant sources disagree, stop before the disputed change. Report the paths and statements in conflict and request the smallest explicit decision. Do not use an archived source, a generated text dump, or code presence to silently override an active authority.
+When two relevant sources disagree, stop before the disputed change. Report the paths and statements in conflict and request the smallest explicit decision. Do not use an archived source, a generated text dump, or code presence to silently override an active authority.\n| R6-E Step 1 Task Context assembly | `core/context_assembly.py`, `core/knowledge_index.py`, `core/state_assessment.py`, `tests/test_context_assembly.py`, [ADR-0028](docs/decisions/ADR-0028-rag-backed-knowledge-cores.md), [R6 entry gate](docs/development/r6-entry-gate.md), `docs/tasks.md` | One immutable Task Context Snapshot and one Task-attributed manifest Event, current-policy/canonical-source rechecks, and a StateAssessment basis that excludes this operational artifact. |

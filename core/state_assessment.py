@@ -23,6 +23,10 @@ from core.models import Event, Objective, Signal, Task, Team, TeamPolicy
 
 _OBJECTIVE_EVENT_TYPES = ("objective_created", "objective_transitioned")
 _INGESTION_EVENT_TYPES = ("signal_ingested", "fetch_no_change")
+# Context assembly is an immutable Task input artifact, not a domain-state
+# transition. Excluding only this operational Event keeps a proposal's exact
+# StateAssessment basis stable after its Context Snapshot/manifest is committed.
+_NON_DOMAIN_ASSESSMENT_EVENT_TYPES = frozenset({"context_assembled"})
 
 
 class ObjectiveNotFound(LookupError):
@@ -190,7 +194,9 @@ class StateAssessmentBuilder:
         related_events = [
             event
             for event in related_events
-            if (
+            if event.type not in _NON_DOMAIN_ASSESSMENT_EVENT_TYPES
+            and (
+                (
                 event.type in _OBJECTIVE_EVENT_TYPES
                 and event.payload.get("objective_id") == str(objective.id)
             )
@@ -200,6 +206,7 @@ class StateAssessmentBuilder:
                     "objective_id" not in event.payload
                     or event.payload.get("objective_id") == str(objective.id)
                 )
+            )
             )
         ]
         related_events.sort(key=lambda event: str(event.id))
