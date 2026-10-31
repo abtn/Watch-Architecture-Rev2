@@ -9,8 +9,8 @@ import pytest
 
 import core.generation as generation
 from core.generation import (
-    CloudflareWorkersAIGenerationProvider,
     CloudflareWorkersAIConfig,
+    CloudflareWorkersAIGenerationProvider,
     GenerationProviderError,
 )
 

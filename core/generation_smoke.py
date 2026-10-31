@@ -9,10 +9,7 @@ from __future__ import annotations
 import json
 import sys
 
-from core.generation import (
-    CloudflareWorkersAIGenerationProvider,
-    GenerationProviderError,
-)
+from core.generation import CloudflareWorkersAIGenerationProvider, GenerationProviderError
 
 
 _SYSTEM_PROMPT = (
