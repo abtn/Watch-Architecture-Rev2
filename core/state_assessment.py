@@ -24,13 +24,24 @@ from core.models import Event, Objective, Signal, Task, Team, TeamPolicy
 _OBJECTIVE_EVENT_TYPES = ("objective_created", "objective_transitioned")
 _INGESTION_EVENT_TYPES = ("signal_ingested", "fetch_no_change")
 # These Events record execution protocol and proposal disposition, not
-# Objective-domain changes. Keeping them in the audit log while excluding them
-# from this projection lets exact Context/Strategy retries reuse one assessment.
+# Objective-domain changes. Task status remains projected separately; excluding
+# lifecycle Events prevents attempt/recovery audit history from mutating an
+# immutable Context basis across ordinary TaskRuntime retries. Cost Events and
+# proposal dispositions are also audit-only in this Objective-domain projection.
 _NON_DOMAIN_ASSESSMENT_EVENT_TYPES = frozenset(
     {
         "context_assembled",
         "strategy_proposal_accepted",
         "strategy_proposal_rejected",
+        "generation_cost_reserved",
+        "generation_cost_reconciled",
+        "generation_cost_unknown",
+        "generation_cost_overrun",
+        "task_started",
+        "task_attempt_failed",
+        "task_retry_scheduled",
+        "task_completed",
+        "task_failed",
     }
 )
 

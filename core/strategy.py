@@ -4,6 +4,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
 
@@ -17,7 +18,14 @@ from core.context_assembly import (
     CONTEXT_SCHEMA_VERSION,
     AssembledTaskContext,
 )
-from core.models import Event, Objective, Task, Team, TeamPolicy
+from core.models import (
+    Event,
+    Objective,
+    Task,
+    TaskGenerationCharge,
+    Team,
+    TeamPolicy,
+)
 from core.objectives import ObjectiveService, TaskNotFound
 from core.state_assessment import (
     StateAssessment,
@@ -64,11 +72,17 @@ class StrategyService:
         task_id: UUID,
         proposal: Any,
         context: AssembledTaskContext,
+        *,
+        generation_charge_id: UUID | None = None,
     ) -> StrategyResult:
         """Submit a generated proposal bound to its exact immutable Task Context."""
         try:
             return self._submit(
-                task_id, proposal, context.assessment, context=context
+                task_id,
+                proposal,
+                context.assessment,
+                context=context,
+                generation_charge_id=generation_charge_id,
             )
         except DBAPIError as error:
             if getattr(error.orig, "sqlstate", None) not in {"40001", "40P01"}:
@@ -78,6 +92,7 @@ class StrategyService:
                 proposal,
                 context.assessment,
                 context=context,
+                generation_charge_id=generation_charge_id,
                 conflict_reason="concurrent_state_conflict",
             )
 
@@ -88,6 +103,7 @@ class StrategyService:
         assessment: StateAssessment,
         *,
         context: AssembledTaskContext | None = None,
+        generation_charge_id: UUID | None = None,
         conflict_reason: str | None = None,
     ) -> StrategyResult:
         try:
@@ -114,6 +130,11 @@ class StrategyService:
             "proposal_json": canonical,
             "assessment": assessment_payload,
             "context_provenance": context_provenance,
+            "generation_charge_id": (
+                str(generation_charge_id)
+                if generation_charge_id is not None
+                else None
+            ),
         }
         with self._session_factory.begin() as session:
             if conflict_reason is None:
@@ -141,10 +162,29 @@ class StrategyService:
             context_reason = self._validate_context(
                 session, task, assessment, context
             )
+            charge_reason = (
+                self._validate_generation_charge(
+                    session,
+                    task,
+                    generation_charge_id,
+                    allow_prior_attempt=(
+                        prior is not None
+                        and prior.payload.get("generation_charge_id")
+                        == (
+                            str(generation_charge_id)
+                            if generation_charge_id is not None
+                            else None
+                        )
+                    ),
+                )
+                if context is not None and context_reason is None
+                else None
+            )
             if (
                 prior is not None
                 and scope_reason is None
                 and context_reason is None
+                and charge_reason is None
                 and all(
                     prior.payload.get(key) == value for key, value in identity.items()
                 )
@@ -163,6 +203,7 @@ class StrategyService:
             reason = (
                 scope_reason
                 or context_reason
+                or charge_reason
                 or conflict_reason
                 or (
                     "task_outcome_conflict"
@@ -316,6 +357,72 @@ class StrategyService:
             or event.created_at != expected_timestamp
         ):
             return "context_manifest_event_mismatch"
+        return None
+
+    @staticmethod
+    def _validate_generation_charge(
+        session: Session,
+        task: Task,
+        generation_charge_id: UUID | None,
+        *,
+        allow_prior_attempt: bool = False,
+    ) -> str | None:
+        """Require this attempt's reconciled provider charge before acceptance."""
+        if generation_charge_id is None:
+            return "generation_charge_required"
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.id == generation_charge_id,
+                TaskGenerationCharge.task_id == task.id,
+            )
+        )
+        if charge is None:
+            return "generation_charge_not_found"
+        if charge.attempt_count > task.attempt_count or (
+            charge.attempt_count != task.attempt_count and not allow_prior_attempt
+        ):
+            return "generation_charge_attempt_mismatch"
+        if (
+            charge.operation != "strategy_proposal"
+            or charge.status != "reconciled"
+            or charge.accounted_cost_usd is None
+            or charge.input_tokens is None
+            or charge.output_tokens is None
+        ):
+            return "generation_charge_not_reconciled"
+
+        if not isinstance(task.budget, dict):
+            return "invalid_task_budget"
+        raw_limit = task.budget.get("max_cost_usd")
+        if isinstance(raw_limit, bool) or not isinstance(
+            raw_limit, (int, float, Decimal)
+        ):
+            return "invalid_task_budget"
+        try:
+            limit = Decimal(str(raw_limit))
+        except (InvalidOperation, ValueError):
+            return "invalid_task_budget"
+        if not limit.is_finite() or limit < 0:
+            return "invalid_task_budget"
+
+        charges = list(
+            session.scalars(
+                select(TaskGenerationCharge).where(
+                    TaskGenerationCharge.task_id == task.id
+                )
+            )
+        )
+        accounted = sum(
+            (
+                item.accounted_cost_usd
+                if item.accounted_cost_usd is not None
+                else item.reserved_cost_usd
+                for item in charges
+            ),
+            start=Decimal("0"),
+        )
+        if accounted > limit:
+            return "task_generation_budget_exhausted"
         return None
 
     @staticmethod

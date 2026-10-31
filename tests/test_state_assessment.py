@@ -388,14 +388,14 @@ def test_authoritative_objective_change_changes_assessment_basis(
 
 
 
-def test_strategy_disposition_events_do_not_change_assessment_basis(
+def test_operational_task_events_do_not_change_assessment_basis(
     session_factory: sessionmaker[Session],
     objective_prerequisites: ObjectivePrerequisites,
 ) -> None:
     p = objective_prerequisites
     objective_id = _create_objective(session_factory, p)
     fixed_time = datetime(2026, 10, 31, 12, 0, tzinfo=timezone.utc)
-    operational_event_ids = (uuid4(), uuid4(), uuid4())
+    operational_event_ids = tuple(uuid4() for _ in range(12))
 
     with session_factory.begin() as session:
         task = session.get(Task, p.transition_task_id)
@@ -421,6 +421,15 @@ def test_strategy_disposition_events_do_not_change_assessment_basis(
                             "context_assembled",
                             "strategy_proposal_accepted",
                             "strategy_proposal_rejected",
+                            "generation_cost_reserved",
+                            "generation_cost_reconciled",
+                            "generation_cost_unknown",
+                            "generation_cost_overrun",
+                            "task_started",
+                            "task_attempt_failed",
+                            "task_retry_scheduled",
+                            "task_completed",
+                            "task_failed",
                         ),
                         strict=True,
                     )
@@ -440,7 +449,7 @@ def test_strategy_disposition_events_do_not_change_assessment_basis(
                 select(func.count())
                 .select_from(Event)
                 .where(Event.id.in_(operational_event_ids))
-            ) == 3
+            ) == 12
     finally:
         with session_factory.begin() as session:
             session.execute(delete(Event).where(Event.id.in_(operational_event_ids)))

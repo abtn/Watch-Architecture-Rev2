@@ -303,13 +303,10 @@ Snapshot, and no Task other than the current one may be written.
 This ordinary Task validates one transient StrategyProposal against its
 same-Team active Objective and exact derived R3 assessment. It requires a
 running Task, active Team, a valid Task budget, and policy version. Its worker
-`allowed_writes` is empty and it has no tool capability. Model usage must be
-reserved and reconciled against `max_cost_usd` before this Task can invoke a
-production generation provider; usage-less responses fail closed. No generic
-Event scope or existing K1/R2 Task permission is broadened.
-| Task type | Business writes | Task (K) | Snapshot (K) | Event (K) |
-|---|---|---|---|---|
-| `propose_strategy` | — | Current Task lifecycle only | Only its immutable assembled Task Context Snapshot, written by application code | Only `context_assembled` with its versioned manifest, plus the existing attributed strategy disposition/rejection |
+`allowed_writes` is empty and it has no tool capability. Model usage must be reserved and reconciled against `max_cost_usd` before this Task invokes a generation provider; usage-less responses fail closed. The application writes only one attempt-scoped generation charge record and its specified accounting Events. Unknown usage retains the full reservation, and retries are charged against the same Task-wide ceiling. No generic Event scope or existing K1/R2 Task permission is broadened.
+| Task type | Business writes | Task (K) | Snapshot (K) | Event (K) | Cost ledger (K) |
+|---|---|---|---|---|---|
+| `propose_strategy` | — | Current Task lifecycle only | Only its immutable assembled Task Context Snapshot, written by application code | Only `context_assembled`, the attributed strategy disposition/rejection, and `generation_cost_reserved`, `generation_cost_reconciled`, `generation_cost_unknown`, or `generation_cost_overrun` for this Task | One durable per-attempt `task_generation_charges` reservation/reconciliation record for the `strategy_proposal` operation |
 For the R6-E model-backed producer, `StrategyProposer` receives the exact
 assembled Context artifact and provider output remains untrusted JSON. Its
 submission path requires the one Task-attributed `context_assembled` Event,
@@ -317,10 +314,29 @@ checks the Snapshot reference/hash against the canonical Context document,
 pins the manifest and StateAssessment basis, then delegates schema, capability,
 scope, policy, and freshness validation to `StrategyService`. The resulting
 strategy disposition Event records the Context Event ID, Snapshot reference,
-content hash, and exact assessment. A Task with a Context manifest cannot use
+content hash, exact assessment, and the reconciled generation charge ID. A Task with a Context manifest cannot use
 the legacy context-free submission path. The proposer does not materialize a
-Plan. No automatic Task-dispatch path may invoke the production provider until
-Step 3 provides durable maximum-cost reservation and reconciliation.
+Plan. Before each provider call, application code quotes a conservative
+maximum from the exact prompt and configured output cap, then locks the Task and
+reserves that amount only when all prior Task-attributed charges plus the new
+reservation fit `max_cost_usd`. The initial Cloudflare quote uses a UTF-8-byte
+input bound plus 128 message-framing tokens, at most 1,024 output tokens, and
+the published 32K context ceiling. A unique Task/attempt/operation key prevents
+duplicate calls within one attempt. Valid usage settles the charge at its
+usage-derived estimated cost; invalid, missing, or ambiguous usage leaves the
+maximum reserved as an `unknown` charge and cannot yield a Strategy. Usage
+beyond the reserved bounds is persisted as an `overrun` and also cannot yield
+a Strategy. All prior reconciled and unresolved charges remain included in the
+Task-wide ceiling.
+
+All Task lifecycle Events (`task_started`, `task_attempt_failed`,
+`task_retry_scheduled`, `task_completed`, and `task_failed`) remain in the
+durable audit log, but they do not change the Objective-domain StateAssessment
+basis. Current Task status remains represented in the assessment's Task
+projection. This distinction keeps an immutable Context reproducible when the
+same running Task is retried on a later attempt. Context, Strategy disposition,
+and generation-cost Events are likewise audit/protocol records rather than
+Objective-domain transitions.
 
 The producer returns only proposed strategy data. Application code validates
 and records acceptance or rejection; the worker cannot write Objective,
@@ -329,7 +345,9 @@ code may write exactly one content-addressed Snapshot containing the assembled
 Task Context and one `context_assembled` Event containing its versioned manifest
 (selected canonical references and hashes, logical core, query hash, chunk IDs,
 retrieval configuration, and embedding identity). These are current-Task K effects,
-not worker writes. The exact bytes and manifest are immutable: a matching replay
+not worker writes. Generation charge records and their narrowly enumerated accounting
+Events are also current-Task K effects; they do not extend worker write grants.
+The exact Context bytes and manifest are immutable: a matching replay
 reuses the existing Snapshot/Event; conflicting reuse rejects and never replaces
 the original. No arbitrary Snapshot or Event is authorized. The R4 Strategy audit
 remains embedded in the disposition Event and does not gain a separate Snapshot. The redesigned

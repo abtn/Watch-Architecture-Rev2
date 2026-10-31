@@ -187,3 +187,54 @@ def test_configuration_rejects_output_limit_above_initial_cap() -> None:
             api_key="test-token",
             max_output_tokens=1025,
         )
+
+
+
+def test_initial_provider_quotes_conservative_maximum_without_a_request() -> None:
+    quote = _provider().maximum_request_cost(
+        system_prompt="Return one JSON object.",
+        user_prompt='{"objective":"gather evidence"}',
+    )
+
+    expected_input = (
+        len("Return one JSON object.".encode("utf-8"))
+        + len('{"objective":"gather evidence"}'.encode("utf-8"))
+        + generation.CHAT_TOKEN_OVERHEAD_TOKENS
+    )
+    expected_cost = (
+        Decimal(expected_input) * generation.INPUT_USD_PER_MILLION_TOKENS
+        + Decimal(512) * generation.OUTPUT_USD_PER_MILLION_TOKENS
+    ) / Decimal(1_000_000)
+    assert quote.provider == "cloudflare_workers_ai"
+    assert quote.model == generation.DEFAULT_MODEL
+    assert quote.maximum_input_tokens == expected_input
+    assert quote.maximum_output_tokens == 512
+    assert quote.maximum_cost_usd == expected_cost
+
+
+def test_initial_provider_rejects_a_model_without_a_pinned_price_card() -> None:
+    with pytest.raises(ValueError, match="unsupported_generation_model"):
+        CloudflareWorkersAIConfig(
+            base_url="https://api.cloudflare.com/client/v4/accounts/x/ai/v1",
+            model="@cf/meta/different-model",
+            api_key="test-token",
+        )
+
+
+
+def test_generation_fails_closed_when_provider_returns_a_different_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = _response()
+    document["model"] = "@cf/meta/different-model"
+    monkeypatch.setattr(
+        generation,
+        "urlopen",
+        lambda *_args, **_kwargs: FakeHTTPResponse(document),
+    )
+
+    with pytest.raises(GenerationProviderError, match="cloudflare_model_mismatch"):
+        _provider().generate_json(
+            system_prompt="Return JSON.",
+            user_prompt="Propose one item.",
+        )

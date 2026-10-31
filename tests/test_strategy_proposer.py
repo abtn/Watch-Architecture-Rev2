@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Callable, Iterator
 from uuid import UUID, uuid4
@@ -13,11 +14,24 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.context_assembly import TaskContextAssembler, TaskContextError
 from core.generation import (
+    CLOUDFLARE_PRICING_REVISION,
+    DEFAULT_MODEL,
+    GenerationCostQuote,
     GenerationProviderError,
     GenerationResult,
     GenerationUsage,
+    INPUT_USD_PER_MILLION_TOKENS,
+    OUTPUT_USD_PER_MILLION_TOKENS,
 )
-from core.models import Event, Objective, Plan, Task, Team, TeamPolicy
+from core.models import (
+    Event,
+    Objective,
+    Plan,
+    Task,
+    TaskGenerationCharge,
+    Team,
+    TeamPolicy,
+)
 from core.snapshot_store import SnapshotStore
 from core.strategy import StrategyService
 from core.strategy_proposer import (
@@ -80,6 +94,7 @@ def proposer_fixture(
                 objective_id=objective_id,
                 task_type="propose_strategy",
                 status="running",
+                attempt_count=1,
                 policy_version=1,
                 allowed_writes=[],
                 budget={
@@ -103,6 +118,11 @@ def proposer_fixture(
     finally:
         with session_factory.begin() as session:
             session.execute(delete(Event).where(Event.task_id == task_id))
+            session.execute(
+                delete(TaskGenerationCharge).where(
+                    TaskGenerationCharge.task_id == task_id
+                )
+            )
             session.execute(delete(Plan).where(Plan.created_by_task_id == task_id))
             session.execute(delete(Task).where(Task.id == task_id))
             session.execute(delete(Objective).where(Objective.id == objective_id))
@@ -123,6 +143,23 @@ class _FakeGenerationProvider:
         self.error = error
         self.calls: list[tuple[str, str, float]] = []
 
+    def maximum_request_cost(
+        self, *, system_prompt: str, user_prompt: str
+    ) -> GenerationCostQuote:
+        return GenerationCostQuote(
+            provider="cloudflare_workers_ai",
+            model=DEFAULT_MODEL,
+            maximum_input_tokens=(
+                len(system_prompt.encode("utf-8"))
+                + len(user_prompt.encode("utf-8"))
+                + 128
+            ),
+            maximum_output_tokens=64,
+            input_usd_per_million_tokens=INPUT_USD_PER_MILLION_TOKENS,
+            output_usd_per_million_tokens=OUTPUT_USD_PER_MILLION_TOKENS,
+            pricing_revision=CLOUDFLARE_PRICING_REVISION,
+        )
+
     def generate_json(
         self,
         *,
@@ -137,7 +174,7 @@ class _FakeGenerationProvider:
             raise self.error
         return GenerationResult(
             content=self.content,
-            model="deterministic-fake-model",
+            model=DEFAULT_MODEL,
             usage=GenerationUsage(
                 input_tokens=24,
                 output_tokens=32,
@@ -189,7 +226,22 @@ def test_valid_model_proposal_is_submitted_only_through_strategy_service(
     proposer_fixture: _ProposerFixture,
 ) -> None:
     fixture = proposer_fixture
-    provider = _FakeGenerationProvider(_valid_proposal(fixture))
+
+    def verify_reservation_is_committed() -> None:
+        with session_factory() as session:
+            charges = list(
+                session.scalars(
+                    select(TaskGenerationCharge).where(
+                        TaskGenerationCharge.task_id == fixture.task_id
+                    )
+                )
+            )
+            assert len(charges) == 1
+            assert charges[0].status == "reserved"
+
+    provider = _FakeGenerationProvider(
+        _valid_proposal(fixture), on_call=verify_reservation_is_committed
+    )
     proposer = StrategyProposer(
         session_factory, fixture.assembler, provider, StrategyService(session_factory)
     )
@@ -198,10 +250,24 @@ def test_valid_model_proposal_is_submitted_only_through_strategy_service(
 
     assert result.disposition.accepted
     assert result.disposition.reason is None
-    assert result.model == "deterministic-fake-model"
+    assert result.model == DEFAULT_MODEL
     assert result.usage is not None
     assert result.usage.estimated_cost_usd == Decimal("0.00001")
     assert len(provider.calls) == 1
+    with session_factory() as session:
+        charges = list(
+            session.scalars(
+                select(TaskGenerationCharge).where(
+                    TaskGenerationCharge.task_id == fixture.task_id
+                )
+            )
+        )
+        assert len(charges) == 1
+        assert charges[0].status == "reconciled"
+        assert charges[0].attempt_count == 1
+        assert charges[0].input_tokens == 24
+        assert charges[0].output_tokens == 32
+        assert charges[0].accounted_cost_usd == Decimal("0.000012832")
     system_prompt, user_prompt, temperature = provider.calls[0]
     assert "untrusted data" in system_prompt
     assert len(user_prompt) <= MAX_STRATEGY_CONTEXT_CHARACTERS
@@ -218,6 +284,13 @@ def test_valid_model_proposal_is_submitted_only_through_strategy_service(
             "snapshot_ref": result.context.snapshot_ref,
             "content_hash": result.context.content_hash,
         }
+        assert event.payload["generation_charge_id"]
+        charge = session.get(
+            TaskGenerationCharge, UUID(event.payload["generation_charge_id"])
+        )
+        assert charge is not None
+        assert charge.status == "reconciled"
+        assert charge.accounted_cost_usd == Decimal("0.000012832")
         assert (
             event.payload["assessment"]["basis"]["sha256"]
             == result.context.assessment.basis.sha256
@@ -287,6 +360,13 @@ def test_provider_failure_does_not_create_a_strategy_disposition_or_plan(
     with pytest.raises(GenerationProviderError, match="cloudflare_http_503"):
         proposer.propose(fixture.task_id)
 
+    with pytest.raises(
+        StrategyProposerError,
+        match="generation_attempt_already_reserved_or_recorded",
+    ):
+        proposer.propose(fixture.task_id)
+    assert len(provider.calls) == 1
+
     with session_factory() as session:
         dispositions = list(
             session.scalars(
@@ -302,6 +382,17 @@ def test_provider_failure_does_not_create_a_strategy_disposition_or_plan(
             )
         )
         assert dispositions == []
+        charges = list(
+            session.scalars(
+                select(TaskGenerationCharge).where(
+                    TaskGenerationCharge.task_id == fixture.task_id
+                )
+            )
+        )
+        assert len(charges) == 1
+        assert charges[0].status == "unknown"
+        assert charges[0].accounted_cost_usd is None
+        assert charges[0].failure_reason == "cloudflare_http_503"
         assert list(
             session.scalars(
                 select(Plan).where(Plan.created_by_task_id == fixture.task_id)
@@ -325,6 +416,74 @@ def test_exact_retry_reuses_prior_disposition_without_another_provider_call(
     assert replay.disposition.event_id == first.disposition.event_id
     assert replay.usage is None
     assert len(provider.calls) == 1
+
+
+def test_retry_uses_new_attempt_charge_and_replays_immutable_context(
+    session_factory: sessionmaker[Session],
+    proposer_fixture: _ProposerFixture,
+) -> None:
+    fixture = proposer_fixture
+    provider = _FakeGenerationProvider(
+        _valid_proposal(fixture),
+        error=GenerationProviderError("cloudflare_http_503", retryable=True),
+    )
+    proposer = StrategyProposer(session_factory, fixture.assembler, provider)
+
+    with pytest.raises(GenerationProviderError, match="cloudflare_http_503"):
+        proposer.propose(fixture.task_id)
+
+    with session_factory.begin() as session:
+        task = session.get(Task, fixture.task_id)
+        assert task is not None
+        # Simulate the two committed TaskRuntime transitions and a second
+        # successful admission; the Task is running again on attempt two.
+        task.attempt_count = 2
+        task.status = "running"
+        session.add_all(
+            [
+                Event(
+                    id=uuid4(),
+                    task_id=fixture.task_id,
+                    type="task_attempt_failed",
+                    payload={"attempt_count": 1},
+                    created_at=datetime.now(timezone.utc),
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=fixture.task_id,
+                    type="task_retry_scheduled",
+                    payload={"attempt_count": 1},
+                    created_at=datetime.now(timezone.utc),
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=fixture.task_id,
+                    type="task_started",
+                    payload={"attempt_count": 2},
+                    created_at=datetime.now(timezone.utc),
+                ),
+            ]
+        )
+
+    provider.error = None
+    result = proposer.propose(fixture.task_id)
+
+    assert result.disposition.accepted
+    assert len(provider.calls) == 2
+    with session_factory() as session:
+        charges = list(
+            session.scalars(
+                select(TaskGenerationCharge)
+                .where(TaskGenerationCharge.task_id == fixture.task_id)
+                .order_by(TaskGenerationCharge.attempt_count)
+            )
+        )
+        assert [charge.attempt_count for charge in charges] == [1, 2]
+        assert charges[0].status == "unknown"
+        assert charges[1].status == "reconciled"
+        assert charges[0].reserved_cost_usd + charges[1].accounted_cost_usd <= Decimal(
+            "0.05"
+        )
 
 
 def test_stale_assessment_is_rejected_after_provider_returns(
@@ -415,3 +574,65 @@ def test_oversized_context_is_rejected_before_provider_invocation(
         )
     assert provider.calls == []
 
+
+
+def test_budget_exhaustion_prevents_provider_invocation_and_reservation(
+    session_factory: sessionmaker[Session],
+    proposer_fixture: _ProposerFixture,
+) -> None:
+    fixture = proposer_fixture
+    with session_factory.begin() as session:
+        task = session.get(Task, fixture.task_id)
+        assert task is not None
+        task.budget = {
+            "max_tool_calls": 0,
+            "max_cost_usd": 0.000001,
+            "deadline_seconds": 60,
+        }
+    provider = _FakeGenerationProvider(_valid_proposal(fixture))
+
+    with pytest.raises(
+        StrategyProposerError, match="task_generation_budget_exhausted"
+    ):
+        StrategyProposer(session_factory, fixture.assembler, provider).propose(
+            fixture.task_id
+        )
+
+    assert provider.calls == []
+    with session_factory() as session:
+        assert list(
+            session.scalars(
+                select(TaskGenerationCharge).where(
+                    TaskGenerationCharge.task_id == fixture.task_id
+                )
+            )
+        ) == []
+
+
+def test_context_submission_cannot_accept_without_reconciled_generation_charge(
+    session_factory: sessionmaker[Session],
+    proposer_fixture: _ProposerFixture,
+) -> None:
+    fixture = proposer_fixture
+    context = fixture.assembler.assemble(fixture.task_id)
+
+    result = StrategyService(session_factory).submit_from_context(
+        fixture.task_id,
+        _valid_proposal(fixture),
+        context,
+    )
+
+    assert not result.accepted
+    assert result.reason == "generation_charge_required"
+    with session_factory() as session:
+        event = session.get(Event, result.event_id)
+        assert event is not None
+        assert event.type == "strategy_proposal_rejected"
+        assert event.payload["generation_charge_id"] is None
+        assert list(
+            session.scalars(
+                select(TaskGenerationCharge).where(
+                    TaskGenerationCharge.task_id == fixture.task_id
+                )
+            )
+        ) == []

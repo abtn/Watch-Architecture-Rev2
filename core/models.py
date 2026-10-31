@@ -1,6 +1,7 @@
 """Minimal persistence mappings for the K1 ingestion path."""
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -238,6 +240,98 @@ class Event(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
+    )
+
+
+class TaskGenerationCharge(Base):
+    """One durable provider-cost reservation/reconciliation per Task attempt."""
+
+    __tablename__ = "task_generation_charges"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["task_id"],
+            ["tasks.id"],
+            name="fk_task_generation_charges_task",
+        ),
+        UniqueConstraint(
+            "task_id",
+            "attempt_count",
+            "operation",
+            name="uq_task_generation_charges_attempt_operation",
+        ),
+        CheckConstraint(
+            "attempt_count > 0 AND max_input_tokens >= 0 "
+            "AND max_output_tokens > 0",
+            name="ck_task_generation_charges_token_bounds",
+        ),
+        CheckConstraint(
+            "reserved_cost_usd > 0 AND "
+            "(accounted_cost_usd IS NULL OR accounted_cost_usd >= 0)",
+            name="ck_task_generation_charges_costs",
+        ),
+        CheckConstraint(
+            "length(provider) > 0 AND length(model) > 0 "
+            "AND length(pricing_revision) > 0 AND length(operation) > 0",
+            name="ck_task_generation_charges_identity",
+        ),
+        CheckConstraint(
+            "(status = 'reserved' AND accounted_cost_usd IS NULL "
+            "AND input_tokens IS NULL AND output_tokens IS NULL "
+            "AND settled_at IS NULL AND failure_reason IS NULL) OR "
+            "(status = 'unknown' AND accounted_cost_usd IS NULL "
+            "AND input_tokens IS NULL AND output_tokens IS NULL "
+            "AND settled_at IS NOT NULL AND failure_reason IS NOT NULL) OR "
+            "(status IN ('reconciled', 'overrun') "
+            "AND accounted_cost_usd IS NOT NULL "
+            "AND input_tokens IS NOT NULL AND output_tokens IS NOT NULL "
+            "AND settled_at IS NOT NULL)",
+            name="ck_task_generation_charges_state",
+        ),
+        CheckConstraint(
+            "input_tokens IS NULL OR input_tokens >= 0",
+            name="ck_task_generation_charges_input_tokens",
+        ),
+        CheckConstraint(
+            "output_tokens IS NULL OR output_tokens >= 0",
+            name="ck_task_generation_charges_output_tokens",
+        ),
+        CheckConstraint(
+            "status IN ('reserved', 'reconciled', 'unknown', 'overrun')",
+            name="ck_task_generation_charges_status",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    task_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(nullable=False)
+    operation: Mapped[str] = mapped_column(String, nullable=False)
+    provider: Mapped[str] = mapped_column(String, nullable=False)
+    model: Mapped[str] = mapped_column(String, nullable=False)
+    pricing_revision: Mapped[str] = mapped_column(String, nullable=False)
+    max_input_tokens: Mapped[int] = mapped_column(nullable=False)
+    max_output_tokens: Mapped[int] = mapped_column(nullable=False)
+    input_usd_per_million_tokens: Mapped[Decimal] = mapped_column(
+        Numeric(12, 9), nullable=False
+    )
+    output_usd_per_million_tokens: Mapped[Decimal] = mapped_column(
+        Numeric(12, 9), nullable=False
+    )
+    reserved_cost_usd: Mapped[Decimal] = mapped_column(
+        Numeric(20, 12), nullable=False
+    )
+    accounted_cost_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 12), nullable=True
+    )
+    input_tokens: Mapped[int | None] = mapped_column(nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    failure_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    settled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

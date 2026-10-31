@@ -99,6 +99,38 @@ In addition to success-path tests, assert that reconstruction and failed operati
 
 For atomic operations, inject or simulate failures at meaningful persistence boundaries and verify that no partial Plan, Action mapping, Task transition, quota consumption, or required Event remains committed. Run concurrency and locking behavior against disposable PostgreSQL, not a substitute database whose locking semantics differ from production.
 
+
+## R6-E Step 3 — Task-attributed generation cost
+
+Run the following focused tests on the disposable PostgreSQL test database.
+Concurrency and injected Event-write rollback are PostgreSQL behavior tests and
+must not be substituted with SQLite.
+
+```bash
+uv run pytest tests/test_generation.py tests/test_generation_cost.py tests/test_strategy_proposer.py tests/test_state_assessment.py -q
+uv run ruff check core tests migrations
+uv run mypy core
+uv run alembic upgrade head
+uv run alembic current
+uv run pytest -q
+git diff --check
+```
+
+The new migration is `0011_task_generation_cost`; verify that
+`0011_task_generation_cost (head)` is the single migration head before the
+full suite. Set both `DATABASE_URL` and `TEST_DATABASE_URL` explicitly to the
+same disposable database before executing database-backed checks. Never allow
+the test fixture's local fallback to target the persistent `watch` database.
+
+The focused tests must demonstrate reservation commit before the provider call,
+Task-wide cost ceiling enforcement, exactly one reservation under concurrent
+same-attempt calls, reconciliation from the pinned price card, unknown usage
+retaining the full maximum, usage overrun preventing Strategy acceptance,
+retries charging against previous attempts, Strategy disposition provenance,
+and rollback/recovery when the reconciliation Event write fails. The real
+Cloudflare API smoke is separate from this deterministic test suite and is not
+required for CI.
+
 ## Automated CI
 
 `.github/workflows/ci.yml` runs the verification chain on every push to `main` and `r6a-step1-schema-outcome` and on every pull request. It provisions a disposable `pgvector/pgvector:pg16` service container, installs the locked dependency set with `uv sync --locked`, applies `alembic upgrade head` to a fresh database, asserts exactly one migration head and that the database is at that head, then runs `ruff check core tests migrations`, `mypy core`, and `pytest -q`.

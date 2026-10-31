@@ -20,6 +20,9 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 DEFAULT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"
+MAX_MODEL_CONTEXT_TOKENS = 32_000
+CHAT_TOKEN_OVERHEAD_TOKENS = 128
+CLOUDFLARE_PRICING_REVISION = "cloudflare-llama-3.1-8b-fp8-2026-10-30"
 DEFAULT_MAX_OUTPUT_TOKENS = 1024
 INPUT_USD_PER_MILLION_TOKENS = Decimal("0.152")
 OUTPUT_USD_PER_MILLION_TOKENS = Decimal("0.287")
@@ -33,6 +36,27 @@ class GenerationProviderError(RuntimeError):
         super().__init__(reason)
         self.reason = reason
         self.retryable = retryable
+
+
+@dataclass(frozen=True)
+class GenerationCostQuote:
+    """Conservative maximum request cost for one exact provider prompt."""
+
+    provider: str
+    model: str
+    maximum_input_tokens: int
+    maximum_output_tokens: int
+    input_usd_per_million_tokens: Decimal
+    output_usd_per_million_tokens: Decimal
+    pricing_revision: str
+
+    @property
+    def maximum_cost_usd(self) -> Decimal:
+        return (
+            Decimal(self.maximum_input_tokens) * self.input_usd_per_million_tokens
+            + Decimal(self.maximum_output_tokens)
+            * self.output_usd_per_million_tokens
+        ) / Decimal(1_000_000)
 
 
 @dataclass(frozen=True)
@@ -75,6 +99,8 @@ class CloudflareWorkersAIConfig:
             raise ValueError("invalid_cloudflare_workers_ai_base_url")
         if not self.model.strip():
             raise ValueError("empty_generation_model")
+        if self.model != DEFAULT_MODEL:
+            raise ValueError("unsupported_generation_model")
         if not self.api_key.strip():
             raise ValueError("empty_generation_api_key")
         if (
@@ -136,6 +162,39 @@ class CloudflareWorkersAIGenerationProvider:
     def from_environment(cls) -> CloudflareWorkersAIGenerationProvider:
         return cls(CloudflareWorkersAIConfig.from_environment())
 
+    def maximum_request_cost(
+        self, *, system_prompt: str, user_prompt: str
+    ) -> GenerationCostQuote:
+        """Quote a conservative upper bound without network side effects.
+
+        UTF-8 byte lengths bound the prompt token count, with a fixed allowance
+        for Chat Completions message framing. Input plus output must fit the
+        model's published 32K context window.
+        """
+        if not isinstance(system_prompt, str) or not system_prompt.strip():
+            raise ValueError("empty_generation_system_prompt")
+        if not isinstance(user_prompt, str) or not user_prompt.strip():
+            raise ValueError("empty_generation_user_prompt")
+        maximum_input_tokens = (
+            len(system_prompt.encode("utf-8"))
+            + len(user_prompt.encode("utf-8"))
+            + CHAT_TOKEN_OVERHEAD_TOKENS
+        )
+        if (
+            maximum_input_tokens + self._config.max_output_tokens
+            > MAX_MODEL_CONTEXT_TOKENS
+        ):
+            raise GenerationProviderError("generation_context_budget_exceeded")
+        return GenerationCostQuote(
+            provider=self.provider_name,
+            model=self._config.model,
+            maximum_input_tokens=maximum_input_tokens,
+            maximum_output_tokens=self._config.max_output_tokens,
+            input_usd_per_million_tokens=INPUT_USD_PER_MILLION_TOKENS,
+            output_usd_per_million_tokens=OUTPUT_USD_PER_MILLION_TOKENS,
+            pricing_revision=CLOUDFLARE_PRICING_REVISION,
+        )
+
     def generate_json(
         self,
         *,
@@ -161,6 +220,9 @@ class CloudflareWorkersAIGenerationProvider:
         ):
             raise ValueError("invalid_generation_temperature")
 
+        self.maximum_request_cost(
+            system_prompt=system_prompt, user_prompt=user_prompt
+        )
         payload = {
             "model": self._config.model,
             "messages": [
@@ -201,6 +263,9 @@ class CloudflareWorkersAIGenerationProvider:
         elapsed = time.perf_counter() - started
         if not isinstance(document, dict):
             raise GenerationProviderError("cloudflare_invalid_response_shape")
+        response_model = document.get("model")
+        if response_model != self._config.model:
+            raise GenerationProviderError("cloudflare_model_mismatch")
 
         choices = document.get("choices")
         if (
@@ -257,7 +322,7 @@ class CloudflareWorkersAIGenerationProvider:
         response_id = document.get("id")
         return GenerationResult(
             content=parsed,
-            model=self._config.model,
+            model=response_model,
             usage=usage,
             elapsed_seconds=elapsed,
             request_id=response_id if isinstance(response_id, str) else None,

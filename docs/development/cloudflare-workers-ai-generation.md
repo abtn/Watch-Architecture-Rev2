@@ -104,4 +104,30 @@ The initial adapter uses the stateless Workers AI endpoint directly. Do not enab
 
 ## Task integration is a separate R6-E step
 
-The smoke command is a provider connectivity test, not a production Task execution path. Before invoking this provider from `propose_strategy`, implement Task-attributed cost reservation and reconciliation against `max_cost_usd`, bounded Context assembly and its immutable Snapshot/manifest, attempt fencing, and StrategyProposal schema/application validation. If token usage is missing or malformed, the model response must not be accepted. Do not claim complete global spend accounting from this initial adapter.
+The smoke command is a provider connectivity test, not a production Task execution path. The bounded Context assembler, Context Snapshot/manifest, Context-bound StrategyProposer, application validation, and Task-attributed generation cost reservation/reconciliation are implemented as separate R6-E checkpoints. The proposer remains outside automatic Task dispatch; production invocation through a dispatcher is not enabled by this provider-only guide. If token usage is missing or malformed, the model response must not be accepted. Do not claim complete global spend accounting from this initial adapter.
+
+
+## Task-attributed generation cost accounting
+
+The Task proposer does not call the provider directly until a durable cost
+reservation has committed. The provider quotes a conservative maximum for the
+exact prompt and configured output cap using the pinned ADR-0031 rate card.
+The initial implementation bounds input tokens by UTF-8 prompt bytes plus 128
+message-framing tokens; input plus output must fit the model's 32K context
+window and output is capped at 1,024 tokens.
+
+A unique `task_generation_charges` row is written per Task attempt and
+`strategy_proposal` operation before the network request. Reservation checks
+the Task-wide `max_cost_usd` ceiling while holding the Task row lock and
+includes all prior reconciled and unresolved charges. A valid response is
+reconciled from provider-reported input/output tokens using the rate card
+persisted with that reservation. The usage-derived amount is an estimate, not
+Cloudflare's final account invoice.
+
+A provider failure, missing/malformed usage, or ambiguous reconciliation
+leaves the maximum reservation in an `unknown` state. It is not released.
+An over-bound response is recorded as `overrun`, accounted at no less than
+the reserved amount, and cannot produce a Strategy disposition. A retry can
+make a new request only on a later TaskRuntime attempt and only if its new
+reservation fits on top of all previous Task charges. The same attempt cannot
+invoke the provider twice.
