@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import sys
 
-import core.generation as generation
+from . import generation
 
 
 _SYSTEM_PROMPT = (
