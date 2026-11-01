@@ -315,6 +315,14 @@ class TaskRuntime:
                 raise TaskNotFinalizable("task_not_running")
             if observation.attempt != task.attempt_count:
                 raise TaskNotFinalizable("stale_attempt")
+            if (
+                task.task_type == "evaluate_outcome"
+                and observation.result_category in _SUCCESS_CATEGORIES
+                and observation.result_category not in _EVALUATION_SUCCESS_CATEGORIES
+            ):
+                raise TaskNotFinalizable(
+                    "evaluation_task_requires_evaluation_result"
+                )
             if observation.result_category in _EVALUATION_SUCCESS_CATEGORIES:
                 self._validate_evaluation_result(session, task, observation)
             elif observation.evaluation_id is not None:
