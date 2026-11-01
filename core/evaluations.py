@@ -214,8 +214,24 @@ class EvaluationService:
                 and link.outcome_id == evaluation.outcome_id for link in links)
             ):
                 raise EvaluationValidationError("primary_outcome_evidence_required")
+            normalized = []
             for link in links:
                 self._revalidate_link(session, team, link)
+                normalized.append(self._link_payload(link))
+            normalized.sort(key=lambda item: item["reference_key"])
+            proposal_payload = {
+                "team_id": str(team.id),
+                "outcome_id": str(outcome.id),
+                "conclusion": evaluation.conclusion,
+                "findings": evaluation.findings,
+                "evidence": normalized,
+                "evaluator_kind": evaluation.evaluator_kind,
+                "evaluator_identity": evaluation.evaluator_identity,
+                "evaluator_revision": evaluation.evaluator_revision,
+                "idempotency_key": evaluation.idempotency_key,
+            }
+            if _sha256_json(proposal_payload) != evaluation.proposal_hash:
+                raise EvaluationValidationError("evaluation_proposal_hash_mismatch")
             evaluation.status = "recorded"
             evaluation.resolved_by_task_id = task.id
             evaluation.resolved_at = datetime.now(timezone.utc)
@@ -335,6 +351,24 @@ class EvaluationService:
                 link.quote_text, link.quote_start, link.quote_end)
         elif link.quote_text is not None:
             raise EvaluationValidationError("quote_snapshot_required")
+        if link.reference_key != self._link_payload(link)["reference_key"]:
+            raise EvaluationValidationError("evidence_link_integrity_mismatch")
+
+    @staticmethod
+    def _link_payload(link: EvidenceLink) -> dict[str, Any]:
+        item: dict[str, Any] = {
+            "source_kind": link.source_kind,
+            "outcome_id": str(link.outcome_id) if link.outcome_id else None,
+            "signal_id": str(link.signal_id) if link.signal_id else None,
+            "snapshot_ref": link.snapshot_ref,
+            "snapshot_hash": link.snapshot_hash,
+            "stance": link.stance,
+            "quote_text": link.quote_text,
+            "quote_start": link.quote_start,
+            "quote_end": link.quote_end,
+        }
+        item["reference_key"] = _sha256_json(item)
+        return item
 
     def _verify_snapshot(self, reference: str, expected_hash: str,
         quote: str | None, start: int | None, end: int | None) -> None:
