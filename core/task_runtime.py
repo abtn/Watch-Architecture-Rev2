@@ -8,7 +8,17 @@ from uuid import UUID, uuid4
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from core.models import Evaluation, Event, Outcome, PlanAction, Task, Team, TeamPolicy
+from core.models import (
+    Evaluation,
+    Event,
+    LearningChange,
+    Outcome,
+    PlanAction,
+    Task,
+    TaskGenerationCharge,
+    Team,
+    TeamPolicy,
+)
 from core.objectives import ObjectiveService, TaskNotFound
 from core.policy import InvalidPolicyError, daily_task_quota
 from core.snapshot_store import SnapshotStore
@@ -19,8 +29,10 @@ _RETRY_EVENTS = ("task_attempt_failed", "task_retry_scheduled")
 _TERMINAL_STATUSES = frozenset({"done", "failed"})
 _EVALUATION_SUCCESS_CATEGORIES = frozenset({"success_evaluation_recorded",
     "success_evaluation_rejected"})
-_SUCCESS_CATEGORIES = frozenset({"success_signal_created",
+_LEARNING_CHANGE_SUCCESS_CATEGORIES = frozenset({"success_learning_change_proposed"})
+_SUCCESS_CATEGORIES = (frozenset({"success_signal_created",
     "success_no_change"}) | _EVALUATION_SUCCESS_CATEGORIES
+    | _LEARNING_CHANGE_SUCCESS_CATEGORIES)
 _RESULT_CATEGORIES = _SUCCESS_CATEGORIES | {"terminal_failure"}
 
 # ADR-0030 §2: a `running` Task whose latest `task_started` Event is older than
@@ -61,12 +73,14 @@ class TerminalObservation:
     attempt: int
     result_category: Literal[
         "success_signal_created", "success_no_change", "success_evaluation_recorded",
-        "success_evaluation_rejected", "terminal_failure"
+        "success_evaluation_rejected", "success_learning_change_proposed",
+        "terminal_failure"
     ]
     observed_at: datetime
     signals: tuple[SignalEvidence, ...] = ()
     failure_reason: str | None = None
     evaluation_id: UUID | None = None
+    learning_change_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -323,10 +337,23 @@ class TaskRuntime:
                 raise TaskNotFinalizable(
                     "evaluation_task_requires_evaluation_result"
                 )
+            if (
+                task.task_type == "propose_learning_change"
+                and observation.result_category in _SUCCESS_CATEGORIES
+                and observation.result_category
+                not in _LEARNING_CHANGE_SUCCESS_CATEGORIES
+            ):
+                raise TaskNotFinalizable(
+                    "learning_change_task_requires_learning_change_result"
+                )
             if observation.result_category in _EVALUATION_SUCCESS_CATEGORIES:
                 self._validate_evaluation_result(session, task, observation)
             elif observation.evaluation_id is not None:
                 raise TaskNotFinalizable("evaluation_id_not_allowed")
+            if observation.result_category in _LEARNING_CHANGE_SUCCESS_CATEGORIES:
+                self._validate_learning_change_result(session, task, observation)
+            elif observation.learning_change_id is not None:
+                raise TaskNotFinalizable("learning_change_id_not_allowed")
 
             outcome = Outcome(
                 id=uuid4(),
@@ -365,7 +392,16 @@ class TaskRuntime:
                         "outcome_id": str(outcome.id),
                         "observation_snapshot_ref": snapshot_ref,
                         "observation_hash": observation_hash,
-                        **({"evaluation_id": str(observation.evaluation_id)} if observation.evaluation_id is not None else {}),  # noqa: E501
+                        **(
+                            {"evaluation_id": str(observation.evaluation_id)}
+                            if observation.evaluation_id is not None
+                            else {}
+                        ),
+                        **(
+                            {"learning_change_id": str(observation.learning_change_id)}
+                            if observation.learning_change_id is not None
+                            else {}
+                        ),
                     },
                 )
                 for event_type in event_types
@@ -679,6 +715,79 @@ class TaskRuntime:
             raise TaskNotFinalizable("evaluation_not_recorded")
 
     @staticmethod
+    def _validate_learning_change_result(
+        session: Session, task: Task, observation: TerminalObservation
+    ) -> None:
+        if task.task_type != "propose_learning_change":
+            raise TaskNotFinalizable("learning_change_result_wrong_task_type")
+        if task.allowed_writes != ["LearningChange"]:
+            raise TaskNotFinalizable("learning_change_result_write_scope_violation")
+        learning_change = session.scalar(
+            select(LearningChange).where(
+                LearningChange.id == observation.learning_change_id,
+                LearningChange.team_id == task.team_id,
+            )
+        )
+        if (
+            learning_change is None
+            or learning_change.proposed_by_task_id != task.id
+            or learning_change.status != "proposed"
+            or learning_change.target_kind != "knowledge_item"
+            or learning_change.target_id is not None
+            or learning_change.operation != "create"
+            or learning_change.evidence_basis_hash
+            != learning_change.proposed_state.get("evidence_basis_hash")
+            or len(learning_change.evidence_basis) < 1
+            or len(learning_change.evidence_basis) > 8
+            or learning_change.proposed_state.get("evidence_case_count")
+            != len(learning_change.evidence_basis)
+        ):
+            raise TaskNotFinalizable("learning_change_not_proposed")
+        proposal_hash = learning_change.proposed_state.get("proposal_hash")
+        if (
+            not isinstance(proposal_hash, str)
+            or not proposal_hash.startswith("sha256:")
+            or len(proposal_hash) != 71
+        ):
+            raise TaskNotFinalizable("learning_change_proposal_hash_invalid")
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == task.id,
+                TaskGenerationCharge.attempt_count == task.attempt_count,
+                TaskGenerationCharge.operation == "experience_distillation",
+            )
+        )
+        if charge is None or charge.status != "reconciled":
+            raise TaskNotFinalizable("experience_distillation_cost_not_reconciled")
+        proposal_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == "learning_change_proposed",
+                )
+            )
+        )
+        if len(proposal_events) != 1:
+            raise TaskNotFinalizable("learning_change_proposal_event_missing")
+        payload = proposal_events[0].payload
+        if (
+            payload.get("learning_change_id") != str(learning_change.id)
+            or payload.get("evidence_basis_hash")
+            != learning_change.evidence_basis_hash
+            or payload.get("proposal_hash") != proposal_hash
+            or payload.get("generation_charge_id") != str(charge.id)
+            or payload.get("attempt_count") != task.attempt_count
+            or payload.get("operation") != "create"
+            or payload.get("kind") != learning_change.proposed_state.get("kind")
+            or payload.get("evaluation_ids")
+            != [
+                item.get("evaluation_id")
+                for item in learning_change.evidence_basis
+            ]
+        ):
+            raise TaskNotFinalizable("learning_change_proposal_event_mismatch")
+
+    @staticmethod
     def _validate_failure(failure: FailureObservation) -> None:
         if failure.observed_at.tzinfo is None or (
             failure.observed_at.utcoffset() is None
@@ -724,14 +833,23 @@ class TaskRuntime:
             elif observation.result_category in _EVALUATION_SUCCESS_CATEGORIES:
                 if observation.evaluation_id is None:
                     raise TaskNotFinalizable("evaluation_id_required")
-                if observation.signals:
-                    raise TaskNotFinalizable("signal_evidence_not_allowed")
-            elif observation.signals or observation.evaluation_id is not None:
+                if observation.signals or observation.learning_change_id is not None:
+                    raise TaskNotFinalizable("terminal_evidence_not_allowed")
+            elif observation.result_category in _LEARNING_CHANGE_SUCCESS_CATEGORIES:
+                if observation.learning_change_id is None:
+                    raise TaskNotFinalizable("learning_change_id_required")
+                if observation.signals or observation.evaluation_id is not None:
+                    raise TaskNotFinalizable("terminal_evidence_not_allowed")
+            elif (observation.signals or observation.evaluation_id is not None
+                or observation.learning_change_id is not None):
                 raise TaskNotFinalizable("terminal_evidence_not_allowed")
             return
 
-        if observation.evaluation_id is not None:
-            raise TaskNotFinalizable("evaluation_id_not_allowed")
+        if (
+            observation.evaluation_id is not None
+            or observation.learning_change_id is not None
+        ):
+            raise TaskNotFinalizable("terminal_evidence_not_allowed")
         if not observation.failure_reason or not observation.failure_reason.strip():
             raise TaskNotFinalizable("failure_reason_required")
         if observation.signals:
@@ -755,6 +873,8 @@ class TaskRuntime:
         }
         if observation.evaluation_id is not None:
             payload["evaluation_id"] = str(observation.evaluation_id)
+        if observation.learning_change_id is not None:
+            payload["learning_change_id"] = str(observation.learning_change_id)
         return payload
 
     def _store_snapshot(self, content: bytes) -> tuple[str, str]:

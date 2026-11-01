@@ -38,14 +38,14 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 
 **R6 continuation**
 
-- **R6-F — Checkpoint 1 implemented; PR and verification pending:** the branch now contains migration `0012_learning_foundation`, Evaluation/EvidenceLink persistence and service logic, LearningChange/KnowledgeItem schema foundations, and typed Evaluation finalization through TaskRuntime. D1–D4 are resolved in the [implementation plan](docs/development/r6-f-implementation-plan.md); later provider, review-expiry, and projection decisions remain gated.
+- **R6-F — Checkpoint 1 complete; Checkpoint 2 in implementation:** PR #29 merged at `9a0ba491`; hosted CI and local disposable-PostgreSQL checks passed (11 Evaluation tests, Ruff, mypy, and 526 full-suite tests). The current branch implements the evidence-pack and ExperienceDistiller proposal path, with provider-injected fake-only coverage and typed LearningChange Task completion. R6-F has no approved production provider; Checkpoint 3 Operator commit and Checkpoint 4 Team Experience projection remain gated.
 - **R6-G — later integration gate:** exercise the complete knowledge-grounded loop, full verification, and explicit R6 exit approval.
 
 ## Future plan
 
 Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for current milestone status.
 
-- **R6 next:** finish hosted and operator-local verification for R6-F Checkpoint 1 before beginning Checkpoint 2; R6-G remains the integrated vertical slice and formal exit gate.
+- **R6 next:** review hosted CI and complete operator-local disposable-PostgreSQL verification for R6-F Checkpoint 2 before beginning Checkpoint 3; R6-G remains the integrated vertical slice and formal exit gate.
 - **R7 — Distillation quality and knowledge lifecycle:** cross-case evaluation of abstractions, contradictory evidence and counterexamples, transferability tests, retrieval quality, review/expiry, staleness detection, supersession, and retirement — always preserving explicit provenance, canonical authority, and controlled commits.
 - **R8 — Multi-domain pressure test:** exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge stays outside the Kernel.
 - **R9 — Agent-assisted production workflow:** codified task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.

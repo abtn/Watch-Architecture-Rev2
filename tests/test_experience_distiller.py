@@ -1,0 +1,939 @@
+"""R6-F Checkpoint 2: bounded distillation and proposed LearningChange."""
+
+from __future__ import annotations
+
+import json
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from decimal import Decimal
+from threading import Barrier
+from typing import Any, Callable, Iterator
+from uuid import UUID, uuid4
+
+import pytest
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session, sessionmaker
+
+from core.evaluations import (
+    EvaluationDraft,
+    EvaluationEvidence,
+    EvaluationFindings,
+    EvaluationService,
+)
+from core.experience_distiller import (
+    EXPERIENCE_DISTILLATION_OPERATION,
+    ExperienceDistiller,
+    ExperienceDistillerError,
+)
+from core.generation import (
+    GenerationCostQuote,
+    GenerationResult,
+    GenerationUsage,
+)
+from core.generation_cost import TaskGenerationCostService
+from core.models import (
+    Evaluation,
+    Event,
+    EvidenceLink,
+    KnowledgeItem,
+    LearningChange,
+    Outcome,
+    Task,
+    TaskGenerationCharge,
+    Team,
+    TeamPolicy,
+)
+from core.snapshot_store import SnapshotStore
+from core.task_runtime import (
+    TaskNotFinalizable,
+    TaskRuntime,
+    TerminalObservation,
+)
+
+_FAKE_PROVIDER = "watch_test_fake"
+_FAKE_MODEL = "watch-r6f-distillation-fake"
+_FAKE_PRICING_REVISION = "watch-r6f-fake-price-v1"
+
+
+@dataclass(frozen=True)
+class _Case:
+    source_task_id: UUID
+    evaluation_task_id: UUID
+    outcome_id: UUID
+    evaluation_id: UUID
+
+
+@dataclass(frozen=True)
+class _Fixture:
+    team_id: UUID
+    policy_id: UUID
+    distillation_task_id: UUID
+    cases: tuple[_Case, ...]
+
+
+@pytest.fixture
+def distillation_fixture(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+) -> Iterator[Callable[[int, bool], _Fixture]]:
+    created: list[_Fixture] = []
+
+    def build(
+        case_count: int = 1,
+        include_contrary: bool = False,
+        include_mention: bool = False,
+    ) -> _Fixture:
+        team_id, policy_id, distillation_task_id = (uuid4() for _ in range(3))
+        with session_factory.begin() as session:
+            session.add(Team(id=team_id, domain="distillation_test", status="active"))
+            session.flush()
+            session.add(
+                TeamPolicy(
+                    id=policy_id,
+                    team_id=team_id,
+                    version=1,
+                    rules={"unchanged": True},
+                )
+            )
+            session.flush()
+            session.add(
+                Task(
+                    id=distillation_task_id,
+                    team_id=team_id,
+                    task_type="propose_learning_change",
+                    status="running",
+                    attempt_count=1,
+                    policy_version=1,
+                    allowed_writes=["LearningChange"],
+                    budget={
+                        "max_tool_calls": 0,
+                        "max_cost_usd": 1.0,
+                        "deadline_seconds": 60,
+                    },
+                )
+            )
+
+        cases: list[_Case] = []
+        for index in range(case_count):
+            source_task_id, evaluation_task_id = uuid4(), uuid4()
+            with session_factory.begin() as session:
+                session.add_all(
+                    [
+                        Task(
+                            id=source_task_id,
+                            team_id=team_id,
+                            task_type="ingest_source",
+                            status="running",
+                            attempt_count=1,
+                            policy_version=1,
+                            allowed_writes=["Signal"],
+                            budget={
+                                "max_tool_calls": 0,
+                                "max_cost_usd": 0.0,
+                                "deadline_seconds": 60,
+                            },
+                        ),
+                        Task(
+                            id=evaluation_task_id,
+                            team_id=team_id,
+                            task_type="evaluate_outcome",
+                            status="running",
+                            attempt_count=1,
+                            policy_version=1,
+                            allowed_writes=["Evaluation", "EvidenceLink"],
+                            budget={
+                                "max_tool_calls": 0,
+                                "max_cost_usd": 0.0,
+                                "deadline_seconds": 60,
+                            },
+                        ),
+                    ]
+                )
+
+            source_result = TaskRuntime(
+                session_factory, snapshot_store
+            ).finalize(
+                TerminalObservation(
+                    task_id=source_task_id,
+                    attempt=1,
+                    result_category="success_no_change",
+                    observed_at=datetime.now(timezone.utc),
+                )
+            )
+
+            evidence = [
+                EvaluationEvidence(
+                    source_kind="outcome",
+                    outcome_id=source_result.outcome_id,
+                    stance="supports",
+                )
+            ]
+            if include_contrary and index == 0:
+                evidence.append(
+                    EvaluationEvidence(
+                        source_kind="outcome",
+                        outcome_id=source_result.outcome_id,
+                        stance="challenges",
+                    )
+                )
+            if include_mention and index == 0:
+                evidence.append(
+                    EvaluationEvidence(
+                        source_kind="outcome",
+                        outcome_id=source_result.outcome_id,
+                        stance="mentions",
+                    )
+                )
+
+            evaluation_service = EvaluationService(session_factory, snapshot_store)
+            proposed = evaluation_service.propose(
+                evaluation_task_id,
+                EvaluationDraft(
+                    outcome_id=source_result.outcome_id,
+                    conclusion="worked",
+                    findings=EvaluationFindings(
+                        observed_result=f"Case {index + 1} completed.",
+                        intended_result="A durable execution observation was expected.",
+                        method_or_process="Configured source ingestion.",
+                        context=[f"Independent fixture case {index + 1}."],
+                        alternative_explanations=[
+                            "The source may have changed independently."
+                        ],
+                        attribution="not established",
+                        uncertainty=[
+                            "The observed sequence does not establish causation."
+                        ],
+                    ),
+                    evidence=evidence,
+                    idempotency_key=f"evaluation-{index + 1}",
+                ),
+                evaluator_kind="rule",
+                evaluator_identity="r6f-distiller-test",
+                evaluator_revision="1",
+            )
+            evaluation_service.record(evaluation_task_id, proposed.evaluation_id)
+            TaskRuntime(session_factory, snapshot_store).finalize(
+                TerminalObservation(
+                    task_id=evaluation_task_id,
+                    attempt=1,
+                    result_category="success_evaluation_recorded",
+                    observed_at=datetime.now(timezone.utc),
+                    evaluation_id=proposed.evaluation_id,
+                )
+            )
+            cases.append(
+                _Case(
+                    source_task_id=source_task_id,
+                    evaluation_task_id=evaluation_task_id,
+                    outcome_id=source_result.outcome_id,
+                    evaluation_id=proposed.evaluation_id,
+                )
+            )
+
+        fixture = _Fixture(
+            team_id=team_id,
+            policy_id=policy_id,
+            distillation_task_id=distillation_task_id,
+            cases=tuple(cases),
+        )
+        created.append(fixture)
+        return fixture
+
+    try:
+        yield build
+    finally:
+        for fixture in reversed(created):
+            evaluation_ids = [case.evaluation_id for case in fixture.cases]
+            source_task_ids = [case.source_task_id for case in fixture.cases]
+            evaluation_task_ids = [case.evaluation_task_id for case in fixture.cases]
+            all_task_ids = [
+                fixture.distillation_task_id,
+                *source_task_ids,
+                *evaluation_task_ids,
+            ]
+            with session_factory.begin() as session:
+                session.execute(
+                    delete(EvidenceLink).where(
+                        EvidenceLink.subject_id.in_(evaluation_ids)
+                    )
+                )
+                session.execute(
+                    delete(LearningChange).where(
+                        LearningChange.proposed_by_task_id
+                        == fixture.distillation_task_id
+                    )
+                )
+                session.execute(
+                    delete(Evaluation).where(Evaluation.id.in_(evaluation_ids))
+                )
+                session.execute(
+                    delete(TaskGenerationCharge).where(
+                        TaskGenerationCharge.task_id.in_(all_task_ids)
+                    )
+                )
+                session.execute(
+                    delete(Outcome).where(
+                        Outcome.recorded_by_task_id.in_(all_task_ids)
+                    )
+                )
+                session.execute(delete(Event).where(Event.task_id.in_(all_task_ids)))
+                session.execute(delete(Task).where(Task.id.in_(all_task_ids)))
+                session.execute(
+                    delete(TeamPolicy).where(TeamPolicy.id == fixture.policy_id)
+                )
+                session.execute(delete(Team).where(Team.id == fixture.team_id))
+
+
+class _FakeDistillationProvider:
+    def __init__(
+        self,
+        content_factory: Callable[[str], dict[str, Any]],
+        *,
+        on_call: Callable[[], None] | None = None,
+        error: Exception | None = None,
+        output_tokens: int = 100,
+        quote_barrier: Barrier | None = None,
+        model: str = _FAKE_MODEL,
+    ) -> None:
+        self.content_factory = content_factory
+        self.on_call = on_call
+        self.error = error
+        self.output_tokens = output_tokens
+        self.quote_barrier = quote_barrier
+        self.model = model
+        self.calls = 0
+        self.last_quote: GenerationCostQuote | None = None
+
+    def maximum_request_cost(
+        self, *, system_prompt: str, user_prompt: str
+    ) -> GenerationCostQuote:
+        quote = GenerationCostQuote(
+            provider=_FAKE_PROVIDER,
+            model=_FAKE_MODEL,
+            maximum_input_tokens=(
+                len(system_prompt.encode("utf-8"))
+                + len(user_prompt.encode("utf-8"))
+                + 128
+            ),
+            maximum_output_tokens=512,
+            input_usd_per_million_tokens=Decimal("1"),
+            output_usd_per_million_tokens=Decimal("1"),
+            pricing_revision=_FAKE_PRICING_REVISION,
+        )
+        self.last_quote = quote
+        if self.quote_barrier is not None:
+            self.quote_barrier.wait(timeout=10)
+        return quote
+
+    def generate_json(
+        self, *, system_prompt: str, user_prompt: str, temperature: float = 0.1
+    ) -> GenerationResult:
+        self.calls += 1
+        if self.on_call is not None:
+            self.on_call()
+        if self.error is not None:
+            raise self.error
+        content = self.content_factory(user_prompt)
+        return GenerationResult(
+            content=content,
+            model=self.model,
+            usage=GenerationUsage(
+                input_tokens=100,
+                output_tokens=self.output_tokens,
+                estimated_cost_usd=Decimal("0.0002"),
+            ),
+            elapsed_seconds=0.01,
+            request_id=f"fake-request-{self.calls}",
+        )
+
+
+def _content_from_prompt(
+    user_prompt: str,
+    *,
+    kind: str | None = None,
+    confidence_band: str | None = None,
+    omit_contrary: bool = False,
+    malformed: bool = False,
+) -> dict[str, Any]:
+    prompt = json.loads(user_prompt)
+    pack = prompt["evidence_pack"]
+    evidence_refs: list[str] = []
+    contrary_refs: list[str] = []
+    context_refs: list[str] = []
+    case_refs: list[str] = []
+    for case in pack["cases"]:
+        case_refs.extend(
+            [
+                case["evaluation"]["reference_id"],
+                case["outcome"]["reference_id"],
+            ]
+        )
+        for evidence in case["evidence"]:
+            reference = evidence["reference_id"]
+            if evidence["stance"] == "challenges":
+                contrary_refs.append(reference)
+            elif evidence["stance"] == "supports":
+                evidence_refs.append(reference)
+            else:
+                context_refs.append(reference)
+    if malformed:
+        return {"not_a_distillation": True}
+    if omit_contrary:
+        evidence_refs.extend(contrary_refs)
+        contrary_refs = []
+    single_case = pack["case_count"] == 1
+    return {
+        "kind": kind or ("practice" if single_case else "pattern"),
+        "title": "A bounded source-ingestion practice",
+        "statement": "Preserve source evidence before drawing a conclusion.",
+        "body": (
+            "Record the observed result, retain its source references, and "
+            "separate the observation from any explanation. This candidate "
+            "does not claim that the task caused the result."
+        ),
+        "applicability": {
+            "task_class": "ingest_source",
+            "situation": "A configured source is captured and recorded as an Outcome.",
+            "conditions": ["The source and Task belong to the same Team."],
+        },
+        "preconditions": ["A recorded Outcome and corresponding Evaluation exist."],
+        "assumptions": ["The configured source identity was correct."],
+        "limitations": ["Independent source changes may explain part of the result."],
+        "non_applicability": ["Tasks without a validated source record."],
+        "failure_modes": ["A changed source may invalidate the observed content."],
+        "known_counterexamples": (
+            ["A contrary evidence link is preserved for review."]
+            if contrary_refs
+            else ["No counterexample was observed in the available evidence basis."]
+        ),
+        "missing_information": ["Long-term transfer has not been evaluated."],
+        "uncertainty": ["The evidence does not establish causation."],
+        "confidence": 0.25,
+        "confidence_band": confidence_band or ("low" if single_case else "moderate"),
+        "supporting_evidence_refs": sorted(set(case_refs + evidence_refs)),
+        "contrary_evidence_refs": (
+            [] if omit_contrary else sorted(set(contrary_refs))
+        ),
+        "context_evidence_refs": sorted(set(context_refs)),
+    }
+
+
+def _provider(
+    *,
+    kind: str | None = None,
+    confidence_band: str | None = None,
+    omit_contrary: bool = False,
+    malformed: bool = False,
+    on_call: Callable[[], None] | None = None,
+    error: Exception | None = None,
+    output_tokens: int = 100,
+    model: str = _FAKE_MODEL,
+) -> _FakeDistillationProvider:
+    return _FakeDistillationProvider(
+        lambda prompt: _content_from_prompt(
+            prompt,
+            kind=kind,
+            confidence_band=confidence_band,
+            omit_contrary=omit_contrary,
+            malformed=malformed,
+        ),
+        on_call=on_call,
+        error=error,
+        output_tokens=output_tokens,
+        model=model,
+    )
+
+
+def _distiller(session_factory, snapshot_store, provider):
+    return ExperienceDistiller(
+        session_factory,
+        snapshot_store,
+        provider,
+        TaskGenerationCostService(session_factory),
+    )
+
+
+def test_single_case_proposes_only_narrow_practice_and_replays(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    provider = _provider()
+    distiller = _distiller(session_factory, snapshot_store, provider)
+
+    pack = distiller.build_evidence_pack(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    assert pack.case_count == 1
+    assert len(pack.basis_hash) == len("sha256:") + 64
+
+    result = distiller.propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    assert result.status == "proposed"
+    assert result.generation_charge_id is not None
+    assert not result.replayed
+    assert provider.calls == 1
+
+    observation = TerminalObservation(
+        task_id=fixture.distillation_task_id,
+        attempt=1,
+        result_category="success_learning_change_proposed",
+        observed_at=datetime.now(timezone.utc),
+        learning_change_id=result.learning_change_id,
+    )
+    assert (
+        TaskRuntime(session_factory, snapshot_store).finalize(observation).status
+        == "done"
+    )
+
+    replay = distiller.propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    assert replay.learning_change_id == result.learning_change_id
+    assert replay.evidence_basis_hash == result.evidence_basis_hash
+    assert replay.replayed
+    assert provider.calls == 1
+
+    with session_factory() as session:
+        change = session.get(LearningChange, result.learning_change_id)
+        assert change is not None
+        assert change.status == "proposed"
+        assert change.target_kind == "knowledge_item"
+        assert change.target_id is None
+        assert change.operation == "create"
+        assert change.proposed_state["kind"] == "practice"
+        assert change.proposed_state["confidence_band"] == "low"
+        assert len(change.evidence_basis) == 1
+        assert session.scalar(
+            select(KnowledgeItem.id).where(
+                KnowledgeItem.team_id == fixture.team_id
+            )
+        ) is None
+        team_policy = session.get(TeamPolicy, fixture.policy_id)
+        assert team_policy is not None and team_policy.rules == {"unchanged": True}
+        charge = session.get(TaskGenerationCharge, result.generation_charge_id)
+        assert charge is not None
+        assert charge.operation == EXPERIENCE_DISTILLATION_OPERATION
+        assert charge.status == "reconciled"
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == fixture.distillation_task_id,
+                Event.type == "learning_change_proposed",
+            )
+        ) is not None
+
+
+def test_reservation_is_committed_before_provider_call(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    seen: list[str] = []
+
+    def inspect_reservation() -> None:
+        with session_factory() as session:
+            charges = list(
+                session.scalars(
+                    select(TaskGenerationCharge).where(
+                        TaskGenerationCharge.task_id == fixture.distillation_task_id,
+                        TaskGenerationCharge.operation
+                        == EXPERIENCE_DISTILLATION_OPERATION,
+                    )
+                )
+            )
+            assert len(charges) == 1
+            assert charges[0].status == "reserved"
+            assert session.scalar(
+                select(Event.id).where(
+                    Event.task_id == fixture.distillation_task_id,
+                    Event.type == "generation_cost_reserved",
+                )
+            ) is not None
+            seen.append("reserved")
+
+    provider = _provider(on_call=inspect_reservation)
+    result = _distiller(session_factory, snapshot_store, provider).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    assert result.status == "proposed"
+    assert seen == ["reserved"]
+
+
+def test_one_case_cannot_propose_pattern(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    provider = _provider(kind="pattern", confidence_band="moderate")
+    with pytest.raises(
+        ExperienceDistillerError,
+        match="single_case_requires_low_confidence_practice",
+    ):
+        _distiller(session_factory, snapshot_store, provider).propose(
+            fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+        )
+    with session_factory() as session:
+        assert session.scalar(
+            select(LearningChange.id).where(
+                LearningChange.proposed_by_task_id == fixture.distillation_task_id
+            )
+        ) is None
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == fixture.distillation_task_id
+            )
+        )
+        assert charge is not None and charge.status == "reconciled"
+
+
+def test_unobserved_task_class_is_rejected(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+
+    def overgeneralized_content(prompt: str) -> dict[str, Any]:
+        content = _content_from_prompt(prompt)
+        content["applicability"]["task_class"] = "all_team_work"
+        return content
+
+    provider = _FakeDistillationProvider(overgeneralized_content)
+    with pytest.raises(
+        ExperienceDistillerError, match="distillation_task_class_not_observed"
+    ):
+        _distiller(session_factory, snapshot_store, provider).propose(
+            fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+        )
+    with session_factory() as session:
+        assert session.scalar(
+            select(LearningChange.id).where(
+                LearningChange.proposed_by_task_id == fixture.distillation_task_id
+            )
+        ) is None
+
+
+def test_two_independent_outcomes_allow_cross_case_pattern(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(2, False)
+    provider = _provider()
+    distiller = _distiller(session_factory, snapshot_store, provider)
+    pack = distiller.build_evidence_pack(
+        fixture.distillation_task_id,
+        [fixture.cases[1].evaluation_id, fixture.cases[0].evaluation_id],
+    )
+    assert pack.case_count == 2
+    assert len(
+        {case["source_task"]["task_id"] for case in pack.document["cases"]}
+    ) == 2
+    result = distiller.propose(
+        fixture.distillation_task_id,
+        [fixture.cases[1].evaluation_id, fixture.cases[0].evaluation_id],
+    )
+    with session_factory() as session:
+        change = session.get(LearningChange, result.learning_change_id)
+        assert change is not None
+        assert change.proposed_state["kind"] == "pattern"
+        assert change.proposed_state["confidence_band"] == "moderate"
+        assert len(change.evidence_basis) == 2
+
+
+def test_evidence_pack_hash_is_order_independent(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(2, False)
+    distiller = _distiller(session_factory, snapshot_store, _provider())
+    forward = distiller.build_evidence_pack(
+        fixture.distillation_task_id,
+        [fixture.cases[0].evaluation_id, fixture.cases[1].evaluation_id],
+    )
+    reverse = distiller.build_evidence_pack(
+        fixture.distillation_task_id,
+        [fixture.cases[1].evaluation_id, fixture.cases[0].evaluation_id],
+    )
+    assert forward.basis_hash == reverse.basis_hash
+    assert forward.document == reverse.document
+    assert forward.evidence_basis == reverse.evidence_basis
+
+
+def test_contrary_evidence_must_be_retained(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, True)
+    provider = _provider(omit_contrary=True)
+    with pytest.raises(
+        ExperienceDistillerError, match="contrary_evidence_not_preserved"
+    ):
+        _distiller(session_factory, snapshot_store, provider).propose(
+            fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+        )
+    with session_factory() as session:
+        assert session.scalar(
+            select(LearningChange.id).where(
+                LearningChange.proposed_by_task_id == fixture.distillation_task_id
+            )
+        ) is None
+
+
+def test_mention_evidence_is_retained_as_context_reference(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False, True)
+    result = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    with session_factory() as session:
+        change = session.get(LearningChange, result.learning_change_id)
+        assert change is not None
+        mention = next(
+            link for link in change.evidence_basis[0]["evidence_links"]
+            if link["stance"] == "mentions"
+        )
+        reference = f"evidence_link:{mention['reference_key']}"
+        state = change.proposed_state
+        assert reference in state["context_evidence_refs"]
+        assert reference not in state["supporting_evidence_refs"]
+        assert reference not in state["contrary_evidence_refs"]
+
+
+def test_changed_evidence_during_provider_call_invalidates_proposal(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+
+    def mutate_evidence() -> None:
+        with session_factory.begin() as session:
+            link = session.scalar(
+                select(EvidenceLink).where(
+                    EvidenceLink.subject_id == fixture.cases[0].evaluation_id
+                )
+            )
+            assert link is not None
+            link.stance = "challenges"
+
+    provider = _provider(on_call=mutate_evidence)
+    with pytest.raises(
+        ExperienceDistillerError, match="evidence_link_integrity_mismatch"
+    ):
+        _distiller(session_factory, snapshot_store, provider).propose(
+            fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+        )
+    with session_factory() as session:
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == fixture.distillation_task_id
+            )
+        )
+        assert charge is not None and charge.status == "reconciled"
+        assert session.scalar(
+            select(LearningChange.id).where(
+                LearningChange.proposed_by_task_id == fixture.distillation_task_id
+            )
+        ) is None
+
+
+def test_provider_model_mismatch_marks_cost_unknown_and_blocks_proposal(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    provider = _provider(model="unexpected-model")
+    with pytest.raises(
+        ExperienceDistillerError, match="provider_model_mismatch"
+    ):
+        _distiller(session_factory, snapshot_store, provider).propose(
+            fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+        )
+    with session_factory() as session:
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == fixture.distillation_task_id
+            )
+        )
+        assert charge is not None and charge.status == "unknown"
+        assert session.scalar(
+            select(LearningChange.id).where(
+                LearningChange.proposed_by_task_id == fixture.distillation_task_id
+            )
+        ) is None
+
+
+def test_tampered_evidence_link_is_rejected(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    with session_factory.begin() as session:
+        link = session.scalar(
+            select(EvidenceLink).where(
+                EvidenceLink.subject_id == fixture.cases[0].evaluation_id
+            )
+        )
+        assert link is not None
+        link.stance = "challenges"
+    distiller = _distiller(session_factory, snapshot_store, _provider())
+    with pytest.raises(
+        ExperienceDistillerError, match="evidence_link_integrity_mismatch"
+    ):
+        distiller.build_evidence_pack(
+            fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+        )
+
+
+def test_provider_failure_marks_cost_unknown_and_creates_no_proposal(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    provider = _provider(error=RuntimeError("network unavailable"))
+    with pytest.raises(ExperienceDistillerError, match="provider_call_failed"):
+        _distiller(session_factory, snapshot_store, provider).propose(
+            fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+        )
+    with session_factory() as session:
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == fixture.distillation_task_id
+            )
+        )
+        assert charge is not None and charge.status == "unknown"
+        assert session.scalar(select(LearningChange.id)) is None
+
+
+def test_usage_overrun_blocks_learning_change(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    provider = _provider(output_tokens=513)
+    with pytest.raises(ExperienceDistillerError, match="generation_cost_overrun"):
+        _distiller(session_factory, snapshot_store, provider).propose(
+            fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+        )
+    with session_factory() as session:
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == fixture.distillation_task_id
+            )
+        )
+        assert charge is not None and charge.status == "overrun"
+        assert session.scalar(select(LearningChange.id)) is None
+
+
+def test_malformed_model_output_is_rejected_after_cost_reconciliation(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    provider = _provider(malformed=True)
+    with pytest.raises(
+        ExperienceDistillerError, match="distillation_proposal_schema_invalid"
+    ):
+        _distiller(session_factory, snapshot_store, provider).propose(
+            fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+        )
+    with session_factory() as session:
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == fixture.distillation_task_id
+            )
+        )
+        assert charge is not None and charge.status == "reconciled"
+        assert session.scalar(select(LearningChange.id)) is None
+
+
+def test_taskruntime_requires_typed_proposal_and_reconciled_charge(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    with pytest.raises(
+        TaskNotFinalizable,
+        match="learning_change_task_requires_learning_change_result",
+    ):
+        TaskRuntime(session_factory, snapshot_store).finalize(
+            TerminalObservation(
+                task_id=fixture.distillation_task_id,
+                attempt=1,
+                result_category="success_no_change",
+                observed_at=datetime.now(timezone.utc),
+            )
+        )
+    with session_factory() as session:
+        task = session.get(Task, fixture.distillation_task_id)
+        assert task is not None and task.status == "running"
+
+    result = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    terminal = TerminalObservation(
+        task_id=fixture.distillation_task_id,
+        attempt=1,
+        result_category="success_learning_change_proposed",
+        observed_at=datetime.now(timezone.utc),
+        learning_change_id=result.learning_change_id,
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    assert runtime.finalize(terminal).status == "done"
+    assert runtime.finalize(terminal).replayed
+
+
+def test_cross_team_or_missing_evaluation_is_rejected_before_provider(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    foreign_fixture = distillation_fixture(1, False)
+    provider = _provider()
+    distiller = _distiller(session_factory, snapshot_store, provider)
+    for evaluation_id in (uuid4(), foreign_fixture.cases[0].evaluation_id):
+        with pytest.raises(
+            ExperienceDistillerError,
+            match="recorded_evaluation_not_found_for_team",
+        ):
+            distiller.propose(fixture.distillation_task_id, [evaluation_id])
+    assert provider.calls == 0
+
+def test_concurrent_duplicate_proposals_reserve_and_commit_exactly_once(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    provider = _provider()
+    provider.quote_barrier = Barrier(2)
+    distiller = _distiller(session_factory, snapshot_store, provider)
+
+    def propose_once():
+        try:
+            return distiller.propose(
+                fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+            )
+        except ExperienceDistillerError as error:
+            return error.reason
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: propose_once(), range(2)))
+
+    successes = [item for item in results if not isinstance(item, str)]
+    failures = [item for item in results if isinstance(item, str)]
+    assert len(successes) == 1
+    assert failures == ["generation_attempt_already_reserved_or_recorded"]
+    assert provider.calls == 1
+
+    with session_factory() as session:
+        changes = list(
+            session.scalars(
+                select(LearningChange).where(
+                    LearningChange.proposed_by_task_id == fixture.distillation_task_id
+                )
+            )
+        )
+        charges = list(
+            session.scalars(
+                select(TaskGenerationCharge).where(
+                    TaskGenerationCharge.task_id == fixture.distillation_task_id
+                )
+            )
+        )
+        events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == fixture.distillation_task_id,
+                    Event.type == "learning_change_proposed",
+                )
+            )
+        )
+        assert len(changes) == 1
+        assert len(charges) == 1
+        assert len(events) == 1
+
