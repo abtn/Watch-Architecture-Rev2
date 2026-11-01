@@ -20,6 +20,7 @@ from core.models import (
     Event,
     EvidenceLink,
     Outcome,
+    Signal,
     Task,
     Team,
     TeamPolicy,
@@ -240,6 +241,89 @@ def test_evaluation_write_scopes_are_enforced(session_factory, snapshot_store,
     with pytest.raises(EvaluationValidationError,
         match="evaluation_write_scope_missing"):
         _propose(EvaluationService(session_factory, snapshot_store), evaluation_context)
+
+
+def test_evaluation_task_cannot_finalize_as_no_change(
+    session_factory, snapshot_store, evaluation_context
+):
+    observation = TerminalObservation(
+        task_id=evaluation_context["task_id"],
+        attempt=1,
+        result_category="success_no_change",
+        observed_at=datetime.now(timezone.utc),
+    )
+    with pytest.raises(
+        TaskNotFinalizable,
+        match="evaluation_task_requires_evaluation_result",
+    ):
+        TaskRuntime(session_factory, snapshot_store).finalize(observation)
+    with session_factory() as session:
+        task = session.get(Task, evaluation_context["task_id"])
+        assert task is not None and task.status == "running"
+
+
+def test_changed_evidence_link_is_rejected_before_recording(
+    session_factory, snapshot_store, evaluation_context
+):
+    service = EvaluationService(session_factory, snapshot_store)
+    proposed = _propose(service, evaluation_context)
+    with session_factory.begin() as session:
+        link = session.scalar(
+            select(EvidenceLink).where(
+                EvidenceLink.subject_id == proposed.evaluation_id
+            )
+        )
+        assert link is not None
+        link.stance = "challenges"
+    with pytest.raises(
+        EvaluationValidationError,
+        match="evidence_link_integrity_mismatch",
+    ):
+        service.record(evaluation_context["task_id"], proposed.evaluation_id)
+
+
+def test_signal_evidence_from_another_domain_is_rejected(
+    session_factory, snapshot_store, evaluation_context
+):
+    signal_id = uuid4()
+    signal_content = b"Signal evidence from another domain."
+    signal_ref, signal_hash = snapshot_store.put(signal_content)
+    with session_factory.begin() as session:
+        session.add(
+            Signal(
+                id=signal_id,
+                domain="another_domain",
+                source_type="web",
+                origin_url=f"https://example.test/{signal_id}",
+                fetched_at=datetime.now(timezone.utc),
+                content_hash=signal_hash,
+                snapshot_ref=signal_ref,
+            )
+        )
+    base = _draft(evaluation_context)
+    invalid = base.model_copy(update={
+        "evidence": [
+            *base.evidence,
+            EvaluationEvidence(
+                source_kind="signal",
+                signal_id=signal_id,
+                stance="challenges",
+            ),
+        ]
+    })
+    try:
+        with pytest.raises(
+            EvaluationValidationError,
+            match="evidence_signal_team_domain_mismatch",
+        ):
+            _propose(
+                EvaluationService(session_factory, snapshot_store),
+                evaluation_context,
+                invalid,
+            )
+    finally:
+        with session_factory.begin() as session:
+            session.execute(delete(Signal).where(Signal.id == signal_id))
 
 
 def test_checkpoint_one_schema_constraints_exist(session_factory):
