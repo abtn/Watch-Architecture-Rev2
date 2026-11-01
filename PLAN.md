@@ -19,7 +19,7 @@ The supplied project ZIP has no Git metadata. Before taking repository action, v
 
 ## Next actionable step
 
-**Next actionable step:** sync `r6f-checkpoint-3-operator-learning-commit` from `main`, review the initial Checkpoint 3 path, and close its trusted-Operator and TaskRuntime entry contracts before implementation. Checkpoint 3 is the only newly authorized R6-F work; do not begin Checkpoint 4 or R6-G. R6-F checkpoints are: Evaluation/canonical learning foundation (complete); ExperienceDistiller/proposed LearningChange (complete); Operator review/canonical commit (open); Team Experience projection/later-Task retrieval (gated).
+**Next actionable step:** review [the Checkpoint 3 Operator Task and trusted-identity audit](docs/development/r6-f-checkpoint-3-operator-boundary-audit.md) and identify the authenticated API/CLI caller boundary. The audit found no in-repository manual Task creator or trusted Operator identity adapter; do not implement the production approval path until that boundary (or an explicitly authorized thin caller adapter) is defined. Checkpoint 3 remains the only authorized R6-F work; Checkpoint 4 and R6-G remain gated.
 
 ## Milestone overview
 
