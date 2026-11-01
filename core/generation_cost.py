@@ -23,7 +23,14 @@ from core.generation import (
 from core.models import Event, Task, TaskGenerationCharge
 from core.objectives import ObjectiveService
 
-_OPERATION = "strategy_proposal"
+_STRATEGY_OPERATION = "strategy_proposal"
+_EXPERIENCE_OPERATION = "experience_distillation"
+_EXPERIENCE_FAKE_PROVIDER = "watch_test_fake"
+_EXPERIENCE_FAKE_MODEL = "watch-r6f-distillation-fake"
+_EXPERIENCE_FAKE_PRICING_REVISION = "watch-r6f-fake-price-v1"
+_EXPERIENCE_FAKE_INPUT_RATE = Decimal("1")
+_EXPERIENCE_FAKE_OUTPUT_RATE = Decimal("1")
+_EXPERIENCE_FAKE_MAX_OUTPUT_TOKENS = 512
 _COST_DIVISOR = Decimal(1_000_000)
 
 
@@ -43,6 +50,7 @@ class GenerationCostReservation:
     reserved_cost_usd: Decimal
     provider: str
     model: str
+    operation: str = _STRATEGY_OPERATION
 
 
 @dataclass(frozen=True)
@@ -69,8 +77,10 @@ class TaskGenerationCostService:
         self,
         task_id: UUID,
         quote: GenerationCostQuote,
+        *,
+        operation: str = _STRATEGY_OPERATION,
     ) -> GenerationCostReservation:
-        self._validate_quote(quote)
+        self._validate_quote(quote, operation)
         reserved_cost = quote.maximum_cost_usd
         if not reserved_cost.is_finite() or reserved_cost <= 0:
             raise TaskGenerationCostError("generation_cost_quote_invalid")
@@ -79,13 +89,17 @@ class TaskGenerationCostService:
             task = ObjectiveService._lock_task(session, task_id)
             if task is None:
                 raise TaskGenerationCostError("task_not_found")
-            if task.task_type != "propose_strategy":
+            expected_scope = {
+                _STRATEGY_OPERATION: ("propose_strategy", []),
+                _EXPERIENCE_OPERATION: ("propose_learning_change", ["LearningChange"]),
+            }.get(operation)
+            if expected_scope is None or task.task_type != expected_scope[0]:
                 raise TaskGenerationCostError("generation_task_scope_violation")
             if task.status != "running":
                 raise TaskGenerationCostError("task_not_running")
             if task.attempt_count < 1:
                 raise TaskGenerationCostError("task_attempt_not_admitted")
-            if task.allowed_writes != []:
+            if task.allowed_writes != expected_scope[1]:
                 raise TaskGenerationCostError(
                     "generation_task_write_scope_violation"
                 )
@@ -95,7 +109,7 @@ class TaskGenerationCostService:
                 select(TaskGenerationCharge).where(
                     TaskGenerationCharge.task_id == task.id,
                     TaskGenerationCharge.attempt_count == task.attempt_count,
-                    TaskGenerationCharge.operation == _OPERATION,
+                    TaskGenerationCharge.operation == operation,
                 )
             )
             if prior_attempt is not None:
@@ -126,7 +140,7 @@ class TaskGenerationCostService:
                 id=uuid4(),
                 task_id=task.id,
                 attempt_count=task.attempt_count,
-                operation=_OPERATION,
+                operation=operation,
                 provider=quote.provider,
                 model=quote.model,
                 pricing_revision=quote.pricing_revision,
@@ -169,6 +183,7 @@ class TaskGenerationCostService:
                 reserved_cost_usd=charge.reserved_cost_usd,
                 provider=charge.provider,
                 model=charge.model,
+                operation=charge.operation,
             )
 
     def mark_unknown(
@@ -308,25 +323,57 @@ class TaskGenerationCostService:
         return result
 
     @staticmethod
-    def _validate_quote(quote: GenerationCostQuote) -> None:
+    def _validate_quote(quote: GenerationCostQuote, operation: str) -> None:
+        if not isinstance(quote, GenerationCostQuote):
+            raise TaskGenerationCostError("generation_cost_quote_invalid")
         if (
-            not isinstance(quote, GenerationCostQuote)
-            or not isinstance(quote.provider, str)
-            or quote.provider != "cloudflare_workers_ai"
-            or quote.model != DEFAULT_MODEL
-            or quote.pricing_revision != CLOUDFLARE_PRICING_REVISION
+            not isinstance(quote.provider, str)
+            or not isinstance(quote.model, str)
+            or not isinstance(quote.pricing_revision, str)
             or isinstance(quote.maximum_input_tokens, bool)
             or not isinstance(quote.maximum_input_tokens, int)
             or quote.maximum_input_tokens < 0
             or isinstance(quote.maximum_output_tokens, bool)
             or not isinstance(quote.maximum_output_tokens, int)
-            or not 1 <= quote.maximum_output_tokens <= DEFAULT_MAX_OUTPUT_TOKENS
+            or not isinstance(quote.input_usd_per_million_tokens, Decimal)
+            or not isinstance(quote.output_usd_per_million_tokens, Decimal)
+            or not quote.input_usd_per_million_tokens.is_finite()
+            or not quote.output_usd_per_million_tokens.is_finite()
+        ):
+            raise TaskGenerationCostError("generation_cost_quote_invalid")
+        if operation == _STRATEGY_OPERATION:
+            valid_card = (
+                quote.provider == "cloudflare_workers_ai"
+                and quote.model == DEFAULT_MODEL
+                and quote.pricing_revision == CLOUDFLARE_PRICING_REVISION
+                and quote.input_usd_per_million_tokens
+                == INPUT_USD_PER_MILLION_TOKENS
+                and quote.output_usd_per_million_tokens
+                == OUTPUT_USD_PER_MILLION_TOKENS
+                and 1 <= quote.maximum_output_tokens <= DEFAULT_MAX_OUTPUT_TOKENS
+            )
+            maximum_output = DEFAULT_MAX_OUTPUT_TOKENS
+        elif operation == _EXPERIENCE_OPERATION:
+            # This synthetic rate card exists only for deterministic CI fakes.
+            # ADR-0031 does not authorize a production R6-F provider/model.
+            valid_card = (
+                quote.provider == _EXPERIENCE_FAKE_PROVIDER
+                and quote.model == _EXPERIENCE_FAKE_MODEL
+                and quote.pricing_revision == _EXPERIENCE_FAKE_PRICING_REVISION
+                and quote.input_usd_per_million_tokens == _EXPERIENCE_FAKE_INPUT_RATE
+                and quote.output_usd_per_million_tokens == _EXPERIENCE_FAKE_OUTPUT_RATE
+                and 1
+                <= quote.maximum_output_tokens
+                <= _EXPERIENCE_FAKE_MAX_OUTPUT_TOKENS
+            )
+            maximum_output = _EXPERIENCE_FAKE_MAX_OUTPUT_TOKENS
+        else:
+            raise TaskGenerationCostError("generation_operation_not_authorized")
+        if (
+            quote.maximum_output_tokens > maximum_output
             or quote.maximum_input_tokens + quote.maximum_output_tokens
             > MAX_MODEL_CONTEXT_TOKENS
-            or quote.input_usd_per_million_tokens
-            != INPUT_USD_PER_MILLION_TOKENS
-            or quote.output_usd_per_million_tokens
-            != OUTPUT_USD_PER_MILLION_TOKENS
+            or not valid_card
         ):
             raise TaskGenerationCostError("generation_cost_quote_invalid")
 
@@ -384,7 +431,7 @@ class TaskGenerationCostService:
             )
             .with_for_update()
         )
-        if charge is None:
+        if charge is None or charge.operation != reservation.operation:
             raise TaskGenerationCostError("generation_charge_not_found")
         return charge
 

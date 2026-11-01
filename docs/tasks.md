@@ -170,11 +170,13 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Task completion:** only a recorded or rejected Evaluation may be reported to `TaskRuntime`, using `success_evaluation_recorded` or `success_evaluation_rejected` with its Evaluation ID. TaskRuntime verifies the Evaluation's Team, creating and resolving Task, final status, and write scope before terminal finalization.
 - **Not permitted:** mutation of Outcome, KnowledgeItem, LearningChange, or TeamPolicy; changing Task lifecycle directly; committing a LearningChange; or treating a successful Task as proof of causation.
 - **Failure:** invalid, stale, cross-Team, mismatched-hash, or invalid-quote evidence leaves no Evaluation or EvidenceLink. A disposition conflict cannot overwrite the first decision.
-### `propose_learning_change` — model worker
-- **Purpose:** convert recorded Evaluations into a proposed Team-memory change.
-- **Reads:** one or more recorded Evaluations (same Team), the exact current target KnowledgeItem/TeamPolicy version, supporting evidence.
-- **Writes:** LearningChange (`status="proposed"`), Event. **Nothing else** (INV-12).
-- **Validation:** basis Evaluations exist and belong to the Team; target version recorded exactly; proposed state matches operation; policy proposals flagged as requiring approval.
+### `propose_learning_change` — model worker (R6-F Checkpoint 2)
+- **Purpose:** distill bounded, durable Team experience into one proposed KnowledgeItem creation; it does not commit learning.
+- **Reads:** explicit IDs of one or more recorded Evaluations from the same Team; each Evaluation's terminal `task_execution` Outcome, terminal source Task Event, Evaluation-scoped EvidenceLinks, canonical Outcome/Signal Snapshots and hashes, and available Objective/Plan/Action/Context provenance.
+- **Writes:** exactly one `LearningChange` with `target_kind="knowledge_item"`, `target_id=NULL`, `operation="create"`, and `status="proposed"`; one `learning_change_proposed` Event; the separate `experience_distillation` Task cost charge and its accounting Events. The Task's worker write scope is exactly `["LearningChange"]`. **No KnowledgeItem, TeamPolicy, Task, Snapshot, or projection write is granted to the worker** (INV-12); application-managed TaskRuntime/ledger effects remain Kernel side effects.
+- **Validation:** all records and references are same-Team/domain as applicable; Outcome/Evaluation terminal Events, proposal hashes, EvidenceLink reference keys, Snapshot hashes, and quotes are revalidated; one case permits only a narrow low-confidence `practice`; `pattern`, `method`, or `playbook` requires at least two recorded Evaluations tied to distinct source Task IDs. Supporting, challenging, and mentioning links must retain their respective stance. The exact deterministic evidence basis/hash is recomputed after provider return before the proposal is stored. Model references outside the supplied evidence pack, stale or altered evidence, malformed output, unknown usage, or cost overrun cannot yield a proposal.
+- **Provider boundary:** the provider is dependency-injected. Only a synthetic deterministic test card is allowed in this checkpoint; ADR-0031 authorizes Cloudflare for R6-E only. No production R6-F provider/model call is authorized until the separate provider decision is accepted.
+- **Not permitted:** approval/rejection, KnowledgeItem create/revise/retire, TeamPolicy mutation, indexing, retrieval publication, new dispatcher, or a second runtime. Those belong to later checkpoints and remain outside this Task's grants.
 ### `approve_learning_change` — Operator via API
 - **Purpose:** run the learning commit service on a proposal.
 - **Writes:** LearningChange status; KnowledgeItem or TeamPolicy new version (on acceptance); Event.
@@ -532,6 +534,6 @@ Starting points, tuned during M2; per-Task values may override downward, never u
 | `activate_team` | 0 | 0 | — |
 
 
-### R6-F Checkpoint 1 authority boundary
+### R6-F Checkpoint 1–2 authority boundary
 
-For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeItem writes plus exact application-managed Events; it has **no TeamPolicy write grant**. The legacy `seed_knowledge` row remains a separately documented Task type but is not implemented by R6-F Checkpoint 1. Evaluation worker output cannot set its own status: trusted application service code validates and records/rejects the proposal. TaskRuntime remains the sole owner of Task lifecycle transitions.
+For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeItem writes plus exact application-managed Events; it has **no TeamPolicy write grant**. The legacy `seed_knowledge` row remains a separately documented Task type but is not implemented by R6-F. Evaluation worker output cannot set its own status: trusted application service code validates and records/rejects the proposal. ExperienceDistiller output likewise remains an untrusted candidate; Checkpoint 2 can create only a proposed LearningChange for a KnowledgeItem creation, while approval and canonical commit stay in Checkpoint 3. TaskRuntime remains the sole owner of Task lifecycle transitions.

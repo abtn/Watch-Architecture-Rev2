@@ -2,11 +2,11 @@
 
 ## Status, scope, and authority
 
-**Planning status:** Step 0 is established on branch `r6f-experience-distillation`, based on `main` at `702e662f` (2026-11-01). This is the detailed R6-F implementation plan. `PLAN.md` remains the sole authority for current milestone status and implementation authorization.
+**Current implementation status:** Checkpoint 1 is merged and verified (PR #29, merge commit `9a0ba491`); Checkpoint 2 is implemented on branch `r6f-checkpoint-2-experience-distiller` and awaits PR review/hosted CI and operator-local verification. This is the detailed R6-F implementation plan. `PLAN.md` remains the sole authority for current milestone status and implementation authorization.
 
-**Step 0 boundary:** create the branch, reconcile R6-E closeout status, and establish the implementation and verification plan. Step 0 changes no application code, schema, migration, runtime behavior, provider configuration, or Task scope. It does not begin Step 1. R6-F implementation starts only after a separate explicit operator instruction.
+**Step 0 historical boundary:** the original Step 0 created the planning branch, reconciled R6-E closeout status, and established this implementation/verification plan without application code or schema changes. Step 1 was subsequently authorized, implemented, merged, and locally verified. Step 2 is separately authorized by the current operator request.
 
-**Predecessor:** R6-E is closed following PR #28's merge on 2026-11-01 (merge commit `3130e70fd25a35a73034ea412ef8a5af11eba17a`). The current observed `main` head is `702e662f108390c9ccbc5cde27f0d65b2e7f00e0`. The Cloudflare provider remains outside automatic Task dispatch.
+**Predecessor:** R6-E is closed following PR #28's merge on 2026-11-01 (merge commit `3130e70fd25a35a73034ea412ef8a5af11eba17a`). R6-F Checkpoint 1 then merged as PR #29 at `9a0ba491dd13121178ac1e109d9e95a796bf1502`; hosted CI and operator-local disposable-PostgreSQL checks passed, including 526 full-suite tests. Cloudflare Workers AI remains authorized for R6-E only and is not an approved R6-F provider.
 
 **Governing contracts:**
 - [ADR-0028 — RAG-backed Knowledge Cores](../decisions/ADR-0028-rag-backed-knowledge-cores.md): canonical-vs-projection boundary, Team Experience Core, PostgreSQL hybrid retrieval, scope, freshness, provenance, and bounded Context.
@@ -108,19 +108,32 @@ R6-F should be divided into four checkpoints. They follow distinct authority bou
    - contrary/conflicting cases must be included or their omission due to bounded selection must be visible in the proposal basis.
 4. Define a strict typed proposal schema requiring kind, title, statement, body, applicability, preconditions/task class, assumptions, limitations, non-applicability, failure modes, missing information, uncertainty, known counterexamples, supporting/contrary references, and deterministic evidence-basis hash.
 5. Implement `ExperienceDistiller` (suggested module: `core/experience_distiller.py`) as a provider-facing proposal producer. Follow `StrategyProposer` patterns where useful, but do not couple distillation to Strategy acceptance or Plan creation. Treat all model output as untrusted.
-6. Persist only a proposed LearningChange through the authorized proposal path. Malformed, unsupported, stale, cross-Team, incomplete, cost-rejected, or overgeneralized output must not create a usable proposal. This service must not create, revise, activate, or index a KnowledgeItem.
-7. Reuse `TaskGenerationCostService` with a distinct operation, recommended as `experience_distillation`. Reserve the maximum possible charge before a real provider call, pin provider/model/pricing revision, reconcile usage, and fail closed for unknown usage, model mismatch, or overrun.
-8. Use deterministic fake providers in CI and unit tests. No real provider/model call is permitted until the separate R6-F provider decision in §4 is resolved and explicitly approved.
+6. Persist only a proposed LearningChange through the authorized proposal path. This checkpoint accepts only a KnowledgeItem create proposal with a null target ID. Malformed, unsupported, stale, cross-Team, incomplete, cost-rejected, or overgeneralized output must not create a usable proposal. This service must not create, revise, activate, or index a KnowledgeItem.
+7. Reuse `TaskGenerationCostService` with the distinct `experience_distillation` operation. Reserve the maximum possible charge before the injected provider call, pin provider/model/pricing revision, reconcile usage, and fail closed for unknown usage, model mismatch, or overrun. In this checkpoint only a synthetic CI/test card is accepted; it is not a production rate card.
+8. Use deterministic fake providers in CI and unit tests. No real provider/model call is permitted until the separate R6-F provider decision in §4 is resolved and explicitly approved. ADR-0031 does not extend the R6-E Cloudflare selection to distillation.
 
 #### Checkpoint 2 acceptance
 
 - Evidence pack and hash are identical for identical canonical inputs and change when any selected basis record changes.
 - One-case generalization is rejected; single-case Practice stays narrow and explicitly low confidence; cross-case kinds require distinct Task IDs and recorded Evaluations.
-- Supporting/contrary evidence, uncertainty, applicability, and non-applicability survive model generation and serialization.
+- Every explicitly selected Evaluation and its Outcome is represented; supporting/challenging/mention links retain their declared stance. Uncertainty, applicability, non-applicability, and the absence of observed counterexamples within the available basis are explicit.
 - Missing, stale, altered, cross-Team, unsupported, or contradictory references fail validation.
-- Fake-provider success, malformed JSON, schema failure, timeout/provider error, replay, and concurrent duplicate proposal cases are covered.
-- Maximum cost is reserved before a real provider invocation; unknown/overrun responses cannot yield a valid proposal.
+- Fake-provider success, malformed/schema-invalid output, provider error, replay after Task finalization, and concurrent duplicate proposal cases are covered.
+- The synthetic test-provider maximum is reserved before provider invocation; unknown/overrun responses cannot yield a valid proposal. No production R6-F provider is enabled.
 - No KnowledgeItem or TeamPolicy is written in this checkpoint.
+
+
+
+#### Checkpoint 2 implementation boundary and mapping
+
+The current implementation follows the explicit Evaluation-ID selection model: it does not perform a hidden top-k search for additional Evaluations. Every selected Evaluation and its primary execution Outcome is included in the basis; source and evaluator Task completion Events, Evaluation disposition Events, Snapshot references/hashes, and all EvidenceLinks are revalidated and included with their declared stance (supports, challenges, or mentions). The exact Task class must match all selected source Task types; the current checkpoint does not invent a cross-type equivalence taxonomy. "No counterexample was observed" is qualified as referring only to the available selected evidence basis. A broader candidate-selection/retrieval policy is not silently implied.
+
+- core/experience_distiller.py: bounded canonical evidence pack, deterministic complete-basis hash, strict provider output schema, reference/stance validation, stale-basis recheck, and proposed-LearningChange writer.
+- core/generation_cost.py: separate experience_distillation operation and synthetic CI/test rate card; existing Strategy accounting remains pinned to its existing Cloudflare card.
+- core/task_runtime.py: typed success_learning_change_proposed result, proposal Event and current-attempt reconciled-charge checks; no second Task runtime.
+- tests/test_experience_distiller.py: evidence provenance, one-/multi-case threshold, deterministic hash, stance preservation, reservation-before-call, unknown/overrun, malformed output, replay, concurrency, and TaskRuntime finalization tests.
+
+No migration is introduced in Checkpoint 2. The existing 0012_learning_foundation schema is reused. The provider is injected through a narrow protocol; this branch does not ship or configure a live provider adapter.
 
 ### Checkpoint 3 — Operator review and canonical learning commit
 

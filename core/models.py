@@ -530,8 +530,12 @@ class LearningChange(Base):
     target_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     operation: Mapped[str] = mapped_column(String, nullable=False)
     proposed_state: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    previous_state: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    committed_state: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    previous_state: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    committed_state: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     evidence_basis: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
     evidence_basis_hash: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="proposed",

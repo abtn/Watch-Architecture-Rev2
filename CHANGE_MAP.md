@@ -37,7 +37,7 @@ This file identifies the active source for each concern. It is an index, not a s
 
 - **RAG-backed Knowledge Cores:** ADR-0028 (Accepted for architectural principles) governs the design for Domain Knowledge Core, Team Experience Core, derived Task Context, traceable retrieval, access/status filtering, and regenerable indexes. Canonical records—not retrieval rank or embeddings—remain authoritative.
 - **LLM-assisted experience distillation:** ADR-0029 (Accepted for architectural principles) governs the design for turning durable experience into evidence-linked reusable abstractions through controlled validation and the authorized learning commit path.
-- The R6 entry gate in `docs/development/r6-entry-gate.md` records the accepted G0 decisions and preflight; R6-G0 is COMPLETE. R6-A through R6-D are complete. R6-E's Context assembly, StrategyProposer, and cost-accounting checkpoints are closed after PR #28 merged on 2026-11-01. R6-F is planned; its four-checkpoint sequence and unresolved gates are in `docs/development/r6-f-implementation-plan.md`, and Step 0 does not authorize Step 1. Current milestone status remains exclusively in PLAN.md.
+- The R6 entry gate in `docs/development/r6-entry-gate.md` records the accepted G0 decisions and preflight; R6-G0 is COMPLETE. R6-A through R6-D are complete. R6-E's Context assembly, StrategyProposer, and cost-accounting checkpoints are closed after PR #28 merged on 2026-11-01. R6-F Checkpoint 1 is merged and verified; Checkpoint 2 implements ExperienceDistiller proposal generation; Checkpoints 3–4 remain gated. Its four-checkpoint sequence and unresolved gates are in `docs/development/r6-f-implementation-plan.md`. Current milestone status remains exclusively in PLAN.md.
 
 ## Revision 2 concepts
 
@@ -75,3 +75,16 @@ When two relevant sources disagree, stop before the disputed change. Report the 
 | Verification | `tests/test_evaluations.py`; Checkpoint 1 section in `docs/testing.md` |
 
 This checkpoint does not implement ExperienceDistiller, LearningChange proposal/approval commits, TeamPolicy mutation, KnowledgeItem embeddings, or Team Experience indexing.
+
+## R6-F Checkpoint 2 implementation map
+
+| Concept | Authority / implementation |
+|---|---|
+| Bounded evidence pack and complete evidence-basis hash | core/experience_distiller.py; recorded Evaluations, terminal Task Events/Outcomes, Evaluation EvidenceLinks, immutable Snapshots, and available Objective/Plan/Action/Context provenance |
+| Distillation candidate schema and reference checks | DistilledExperienceDraft, strict Pydantic validation, allowed-reference set, case-count threshold, stance-preserving citation lists |
+| Proposed LearningChange only | ExperienceDistiller.propose; target kind knowledge_item, operation create, null target ID, status proposed; no canonical KnowledgeItem write |
+| Cost reservation and terminal fencing | core/generation_cost.py distinct experience_distillation operation; core/task_runtime.py requires one exact proposal Event and a reconciled current-attempt charge |
+| Tests | tests/test_experience_distiller.py, tests/test_generation_cost.py, tests/test_evaluations.py |
+| Verification | Checkpoint 2 section in docs/testing.md; no migration beyond 0012_learning_foundation |
+
+Checkpoint 2 does not implement Operator approval/rejection, KnowledgeItem commit, TeamPolicy mutation, live provider selection, Team Experience embeddings/indexing, or later-Task retrieval.

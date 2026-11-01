@@ -167,6 +167,27 @@ For each check state:
 Do not describe disposable database setup as an independent milestone exit criterion unless the milestone explicitly says it is one.
 
 
+
+## R6-F Checkpoint 2 — ExperienceDistiller and proposed LearningChange
+
+Checkpoint 2 reuses migration head `0012_learning_foundation`; it adds no migration. The new focused tests exercise the evidence-pack and proposal path through a deterministic injected provider. Do not configure Cloudflare or another live provider for these tests: ADR-0031 authorizes Cloudflare for R6-E only, and a separate R6-F provider decision remains required.
+
+Run:
+
+```bash
+uv run alembic upgrade head
+uv run alembic heads
+uv run pytest tests/test_experience_distiller.py tests/test_generation_cost.py tests/test_evaluations.py
+uv run ruff check core tests migrations
+uv run mypy core
+uv run pytest -q
+git diff --check origin/main...HEAD
+```
+
+Use a fresh disposable PostgreSQL database even though this checkpoint has no new migration. Confirm the single head remains `0012_learning_foundation`. The Checkpoint 2 tests cover deterministic and bounded canonical evidence packs; terminal source Task/Outcome and Evaluation provenance; one-case Practice versus distinct-Task multi-case abstraction; supporting/challenging/mention stance retention; stale/mutated evidence both before and during a provider call; supporting/challenging/mention stance classification; cross-Team/missing references; reservation-before-provider, provider failure/model mismatch, invalid output, unknown/overrun costs, replay after finalization, concurrent duplicate calls, and typed TaskRuntime completion. Verify that a proposed LearningChange is the only Team Experience-domain write: no KnowledgeItem, TeamPolicy, or retrieval projection is created.
+
+The disposable PostgreSQL test procedure must bind both `DATABASE_URL` and `TEST_DATABASE_URL` to the disposable instance, restore both variables afterward, and stop only the container it created. Never run these checks against the persistent `watch` database. Report actual command output; hosted CI does not replace the operator-local check.
+
 ## R6-F Checkpoint 1 — Evaluation and canonical learning schema
 
 Checkpoint 1 adds `0012_learning_foundation`, Evaluation/EvidenceLink persistence and services, and canonical KnowledgeItem/LearningChange schema foundations. It also adds typed Evaluation terminal result categories to the existing TaskRuntime.
