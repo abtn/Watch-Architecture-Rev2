@@ -188,6 +188,25 @@ Use a fresh disposable PostgreSQL database even though this checkpoint has no ne
 
 The disposable PostgreSQL test procedure must bind both `DATABASE_URL` and `TEST_DATABASE_URL` to the disposable instance, restore both variables afterward, and stop only the container it created. Never run these checks against the persistent `watch` database. Report actual command output; hosted CI does not replace the operator-local check.
 
+## R6-F Checkpoint 3 — Operator review and canonical learning commit
+
+Checkpoint 3 is authorized/open; implementation and verification are pending. The initial path uses the existing `approve_learning_change` Task and the `0012_learning_foundation` schema unless an integrity audit proves a migration is required. Do not infer that TaskRuntime/Operator API wiring exists merely because the Task type and columns are documented.
+
+Before running implementation tests:
+- Confirm the exact trusted application boundary that supplies the stable Operator identity. Tests may inject a fake trusted identity provider; they must also prove that a raw caller/model-supplied string cannot authorize a decision.
+- Confirm the approval Task is created/admitted/finalized through the existing TaskRuntime path and `committed_by_task_id` references that same-Team Task.
+- Use a fresh disposable PostgreSQL database. Never use the persistent `watch` database.
+- Keep Cloudflare and all live generation providers out of Checkpoint 3. Approval/rejection is deterministic application logic.
+
+Expected focused coverage (add the files as the implementation is built):
+- `tests/test_learning_commit.py`: create acceptance; rejection without KnowledgeItem mutation; schema/state validation; evidence-basis/hash/reference revalidation; cross-Team and stale-target rejection; version and previous/committed-state preservation; operator identity and TeamPolicy exclusion.
+- `tests/test_learning_commit_concurrency.py`: Task/LearningChange/target locking, duplicate replay, competing accept/reject, and injected transaction failures with no partial LearningChange/KnowledgeItem/Event writes.
+- `tests/test_learning_commit_task_runtime.py`: trusted Operator Task attribution, write-scope enforcement, typed accepted/rejected finalization, and TaskRuntime-only lifecycle changes.
+
+For the eventual full verification, apply `uv run alembic upgrade head`, confirm exactly one head at `0012_learning_foundation` unless a justified migration is added, run the focused tests, `uv run ruff check core tests migrations`, `uv run mypy core`, `uv run pytest -q`, and `git diff --check origin/main...HEAD`. Verify that acceptance commits the canonical KnowledgeItem and decision Event atomically; rejection changes only the LearningChange disposition and Event; replay cannot duplicate a version; and TeamPolicy, unrelated Tasks, Snapshots, and retrieval projections remain unchanged.
+
+D7 (`review_after`) is not resolved by Checkpoint 3. Do not invent a review interval or treat NULL as perpetual validity. No retrieval-eligibility claim is part of this checkpoint.
+
 ## R6-F Checkpoint 1 — Evaluation and canonical learning schema
 
 Checkpoint 1 adds `0012_learning_foundation`, Evaluation/EvidenceLink persistence and services, and canonical KnowledgeItem/LearningChange schema foundations. It also adds typed Evaluation terminal result categories to the existing TaskRuntime.

@@ -2,11 +2,11 @@
 
 ## Status, scope, and authority
 
-**Current implementation status:** Checkpoint 1 is merged and verified (PR #29, merge commit `9a0ba491`); Checkpoint 2 is implemented on branch `r6f-checkpoint-2-experience-distiller` and awaits PR review/hosted CI and operator-local verification. This is the detailed R6-F implementation plan. `PLAN.md` remains the sole authority for current milestone status and implementation authorization.
+**Current implementation status:** Checkpoints 1–2 are merged and verified (PR #29 at `9a0ba491`; PR #30 merge commit `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0`). Checkpoint 3 is OPEN under explicit operator authorization dated 2026-11-01; its initial documentation/technical path is on `r6f-checkpoint-3-operator-learning-commit`. This branch-opening change is documentation-only: no Checkpoint 3 application code or migration is included. Checkpoint 4 remains gated. `PLAN.md` remains the sole authority for current milestone status and implementation authorization.
 
-**Step 0 historical boundary:** the original Step 0 created the planning branch, reconciled R6-E closeout status, and established this implementation/verification plan without application code or schema changes. Step 1 was subsequently authorized, implemented, merged, and locally verified. Step 2 is separately authorized by the current operator request.
+**Historical boundaries:** Original Step 0 created the planning branch and established this plan without application changes. Step 1/Checkpoint 1 and Step 2/Checkpoint 2 were separately authorized, implemented, merged, and locally verified. Checkpoint 3 is separately authorized by the operator's explicit instruction on 2026-11-01. This authorization does not extend to Checkpoint 4 or R6-G.
 
-**Predecessor:** R6-E is closed following PR #28's merge on 2026-11-01 (merge commit `3130e70fd25a35a73034ea412ef8a5af11eba17a`). R6-F Checkpoint 1 then merged as PR #29 at `9a0ba491dd13121178ac1e109d9e95a796bf1502`; hosted CI and operator-local disposable-PostgreSQL checks passed, including 526 full-suite tests. Cloudflare Workers AI remains authorized for R6-E only and is not an approved R6-F provider.
+**Predecessor:** R6-E is closed following PR #28's merge on 2026-11-01 (merge commit `3130e70fd25a35a73034ea412ef8a5af11eba17a`). R6-F Checkpoint 1 merged as PR #29 at `9a0ba491dd13121178ac1e109d9e95a796bf1502`; hosted CI and operator-local disposable-PostgreSQL checks passed, including 526 full-suite tests. Checkpoint 2 merged as PR #30 at `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0` from implementation head `d6b8d07562c72e8ffa7989f24396ea1e73d45442`; hosted CI run `41315770806` passed. Operator-local verification passed fresh disposable-PostgreSQL migration to the single head `0012_learning_foundation`, 36 focused tests, Ruff, mypy (25 source files), and 543 full-suite tests; the corrected head also passed `git diff --check`. Cloudflare Workers AI remains authorized for R6-E only and is not an approved R6-F provider.
 
 **Governing contracts:**
 - [ADR-0028 — RAG-backed Knowledge Cores](../decisions/ADR-0028-rag-backed-knowledge-cores.md): canonical-vs-projection boundary, Team Experience Core, PostgreSQL hybrid retrieval, scope, freshness, provenance, and bounded Context.
@@ -135,7 +135,13 @@ The current implementation follows the explicit Evaluation-ID selection model: i
 
 No migration is introduced in Checkpoint 2. The existing 0012_learning_foundation schema is reused. The provider is injected through a narrow protocol; this branch does not ship or configure a live provider adapter.
 
+### Checkpoint 2 completion record — 2026-11-01
+
+PR #30 merged to `main` at `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0` (implementation head `d6b8d07562c72e8ffa7989f24396ea1e73d45442`). Hosted CI run [41315770806](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41315770806) passed on the corrected head. Operator-local verification used the disposable container `watch-r6f-step2-pg`, database `watch_ci`, and port `55457`; migration reached the single head `0012_learning_foundation`, 36 focused tests passed, Ruff passed, mypy passed on 25 source files, and the full suite passed with 543 tests. The disposable container was removed and the database environment variables were restored. Two surplus EOF newlines were then removed from `CHANGE_MAP.md` and `tests/test_experience_distiller.py`; after syncing those whitespace-only commits, `git diff --check origin/main...HEAD` passed. Checkpoint 2 is CLOSED. No live R6-F provider was used or authorized.
+
 ### Checkpoint 3 — Operator review and canonical learning commit
+
+**Status and authorization (2026-11-01): OPEN.** The operator explicitly authorized Checkpoint 3. The initial path is on `r6f-checkpoint-3-operator-learning-commit`, based on the Checkpoint 2 merge commit. This opening change updates planning/authority/testing documents only; implementation and migration work have not started.
 
 **Purpose:** provide the only R6-F path that creates, revises, or retires canonical Team Experience.
 
@@ -149,6 +155,22 @@ No migration is introduced in Checkpoint 2. The existing 0012_learning_foundatio
 6. Narrow `approve_learning_change` to KnowledgeItem/LearningChange plus exact application-managed Events. **No R6-F approval path writes TeamPolicy.** Manual seeding is excluded unless separately approved and shown indispensable.
 7. Decide and document `review_after` policy before making expiry-based retrieval eligibility operational. Do not invent an interval or silently treat a nullable timestamp as permanent validity.
 
+#### Initial Checkpoint 3 implementation sequence
+
+The first implementation path must proceed in this order; do not begin by writing the commit service before the caller and Task authority are pinned.
+
+1. **Preflight the Operator Task path.** Confirm how the trusted application/API boundary creates an ordinary pending `approve_learning_change` Task, how that Task is admitted by `TaskRuntime.admit`, and how it is finalized by `TaskRuntime.finalize`. `LearningChange.committed_by_task_id` must reference that same-Team approval Task. Do not insert a running Task, mutate Task status directly, or add a second dispatcher/runtime. If no existing Operator Task-creation path exists, define and test only the smallest caller path that uses the existing Task lifecycle.
+2. **Close the trusted-identity contract (D8).** The commit service must receive a stable Operator identity obtained from a trusted application boundary, not a raw string supplied by a model or untrusted request field. Keep authentication outside the learning service; do not invent a dashboard or general authentication subsystem. Until a real trusted boundary is wired, the service may be exercised only through an explicit test/fake boundary and must not be represented as a production-authenticated API.
+3. **Audit the existing schema before proposing a migration.** `0012_learning_foundation` already stores LearningChange operation/status, evidence basis/hash, previous/committed state, operator ID, committing Task ID, and KnowledgeItem status/version/review date. Verify that its constraints and indexes actually support the selected transitions. Add a migration only for a demonstrated integrity gap; do not add a new table or migration merely because Checkpoint 3 has started.
+4. **Implement acceptance and rejection as one application-controlled service boundary.** Require a running same-Team `approve_learning_change` Task with its exact write scopes and a trusted Operator identity. Lock records in a deterministic order; revalidate the LearningChange disposition, complete evidence basis/hash and source references, Team ownership, operation/target/version preconditions, and authorization immediately before commit.
+5. **Make the decision atomic.** Acceptance must commit the appropriate KnowledgeItem state/version, LearningChange disposition/history/operator/task metadata, and exactly one decision Event in one transaction. Rejection must commit the LearningChange rejection/reason/operator/task metadata and one rejection Event without changing or creating a KnowledgeItem. No R6-F path may write TeamPolicy.
+6. **Preserve exact replay and concurrency semantics.** A replay of the same decision through the original approval Task returns the existing disposition. A different Task or contradictory decision cannot overwrite it. Concurrent approvals, changed evidence, missing/cross-Team references, stale target versions, or an unauthorized actor fail closed without partial writes.
+7. **Extend TaskRuntime narrowly.** Add typed terminal result categories for accepted/rejected LearningChange decisions only if needed by the actual caller. TaskRuntime remains the sole owner of Task lifecycle Events, Outcomes, and terminal status; business decision Events remain atomic with the LearningChange/KnowledgeItem transaction.
+8. **Test the trust and failure boundaries.** Include untrusted/raw identity rejection, wrong-Team/wrong-Task/wrong-scope rejection, create/revise/retire state transitions, stale and changed evidence, duplicate/replay, concurrent decisions, and injected transaction failures. Assert that TeamPolicy, unrelated Tasks, Snapshots, and retrieval projections remain unchanged.
+
+**Scope note:** Checkpoint 2's current `ExperienceDistiller` emits only `operation="create"` proposals. The initial end-to-end approval/rejection path must therefore use those real create proposals. The existing schema and Checkpoint 3 target also describe `revise` and `retire`; add their service transitions only against a validated LearningChange proposal contract and explicit target-version preconditions. Do not create a new proposal generator, expose an ad-hoc mutation endpoint, or revive the legacy `seed_knowledge` path to manufacture them. Resolve whether revise/retire must be production-reachable before Checkpoint 3 is declared complete.
+
+**Review-date guard:** D7 remains open. Do not invent a `review_after` interval or interpret NULL as permanent validity. Checkpoint 3 may commit canonical state without enabling retrieval; Checkpoint 4 must remain blocked from expiry-sensitive retrieval until review-date semantics are explicitly resolved.
 #### Checkpoint 3 acceptance
 
 - Explicit operator approval and rejection are durable, attributable, and auditable.
@@ -184,7 +206,7 @@ No migration is introduced in Checkpoint 2. The existing 0012_learning_foundatio
 
 ## 4. Decisions and design questions to close before implementation
 
-These are architecture decisions, not minor coding details. Resolve them against the cited authorities before Checkpoint 1 migration or Checkpoint 2 provider calls.
+These are architecture decisions, not minor coding details. Resolve each remaining decision before the implementation step it governs; Checkpoints 1 and 2 are complete.
 
 | ID | Decision required | Current issue | Recommended resolution / guard |
 |---|---|---|---|
@@ -195,8 +217,9 @@ These are architecture decisions, not minor coding details. Resolve them against
 | D5 | Team Experience projection shape | `knowledge_chunks.signal_id` is mandatory and represents Signal-derived Domain Knowledge. | Prefer a distinct `team_experience_chunks` projection table while sharing embedding, chunking, FTS, and pgvector infrastructure. Do not weaken the Signal projection FK to fit two logical cores into an unsuitable schema. |
 | D6 | R6-F generation provider/model | ADR-0031 authorizes Cloudflare Llama 3.1 8B FP8 for R6-E only and explicitly defers R6-F use. | Use deterministic fakes in tests. Before real requests, obtain explicit provider/model, data-handling, token/cost, and rate-card approval; update/extend the applicable ADR. Do not infer authorization from R6-E credentials/configuration. |
 | D7 | Review/expiry semantics | ADR-0029 makes `review_after` part of retrieval eligibility, but interval/default and who advances a due item to `needs_review` are not pinned. | Agree interval source, timezone, due boundary, null semantics, and transition owner before enabling expiry filtering. No invented default; absent a rule, keep expiry behavior gated/fail closed. |
-| D8 | Operator authorization boundary | There is no full API/dashboard authentication system in the repository. | Require identity from a trusted caller and persist it. Do not claim arbitrary input authenticates an operator or build unrelated authentication infrastructure in R6-F. |
+| D8 | Operator authorization boundary | There is no full API/dashboard authentication system in the repository, while the schema requires a durable `operator_id` and committing Task. | **Checkpoint 3 entry contract:** the learning service accepts a stable Operator principal only from a trusted application boundary/protocol; a raw caller-supplied string or model field is not proof of authority. Persist the canonical subject ID. Keep general authentication/dashboard work out of scope. Until a real trusted boundary is connected, do not expose the operation as a production-authenticated API. |
 | D9 | Evaluation generation approach | Evaluations are fallible and evaluators may be biased. | Choose the first-slice evaluator source (rule, trusted human input, or separately approved model proposal). Evaluator cannot self-record or self-approve. Do not add self-modifying evaluation procedures. |
+| D10 | Reachability of revise/retire LearningChanges | Checkpoint 2 currently produces only `operation="create"`, while Checkpoint 3's target acceptance includes create/revise/retire version transitions. | **Open for Checkpoint 3 closure:** build the real initial path around create proposals. Do not add an unapproved proposal producer or manual seed route. Decide whether revise/retire transitions must be end-to-end reachable in this checkpoint or remain service-level contracts awaiting a later authorized proposal source; tests must not imply an unavailable production path exists. |
 
 ## 5. Cross-cutting implementation rules
 

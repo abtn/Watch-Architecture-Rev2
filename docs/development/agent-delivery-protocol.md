@@ -17,9 +17,13 @@ milestone status.
   required verification. The current branch contains only the initial provider
   adapter/smoke checkpoint; do not report R6-E complete until all remaining
   acceptance criteria and checks pass.
-- **R6-F and R6-G remain outside this authorization.** No work may advance into
-  experience distillation or the integrated R6 exit gate without separate
-  operator authorization.
+- **R6-F Checkpoints 1–2 are complete.** The operator explicitly authorized
+  **R6-F Checkpoint 3 — Operator review and canonical learning commit** on
+  2026-11-01. Work may proceed through Checkpoint 3 design closure, implementation,
+  tests, and required verification only. This does not authorize Checkpoint 4,
+  R6-G, a production R6-F generation provider, or any TeamPolicy mutation.
+- **R6-G remains outside this authorization.** The integrated R6 exit gate still
+  requires a separate explicit operator decision.
 
 ## Automatic advancement
 

@@ -177,11 +177,15 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Validation:** all records and references are same-Team/domain as applicable; Outcome/Evaluation terminal Events, proposal hashes, EvidenceLink reference keys, Snapshot hashes, and quotes are revalidated; one case permits only a narrow low-confidence `practice`; `pattern`, `method`, or `playbook` requires at least two recorded Evaluations tied to distinct source Task IDs. Supporting, challenging, and mentioning links must retain their respective stance. The exact deterministic evidence basis/hash is recomputed after provider return before the proposal is stored. Model references outside the supplied evidence pack, stale or altered evidence, malformed output, unknown usage, or cost overrun cannot yield a proposal.
 - **Provider boundary:** the provider is dependency-injected. Only a synthetic deterministic test card is allowed in this checkpoint; ADR-0031 authorizes Cloudflare for R6-E only. No production R6-F provider/model call is authorized until the separate provider decision is accepted.
 - **Not permitted:** approval/rejection, KnowledgeItem create/revise/retire, TeamPolicy mutation, indexing, retrieval publication, new dispatcher, or a second runtime. Those belong to later checkpoints and remain outside this Task's grants.
-### `approve_learning_change` — Operator via API
-- **Purpose:** run the learning commit service on a proposal.
-- **Writes:** LearningChange status; KnowledgeItem or TeamPolicy new version (on acceptance); Event.
-- **Validation:** full F6 commit-service checklist: evaluation basis, evidence present, target version unchanged since proposal, proposed state schema-valid, Operator approval identity recorded in the Event payload.
-- **Rejection:** recorded with reason; the proposal is never silently edited.
+### `approve_learning_change` — trusted Operator via application/API boundary (R6-F Checkpoint 3)
+- **Purpose:** explicitly accept or reject one proposed LearningChange through the only R6-F canonical learning-commit path.
+- **Writes:** LearningChange disposition/history; KnowledgeItem create/revise/retire state on acceptance; one exact Task-attributed decision Event. **No TeamPolicy write is permitted in R6-F.**
+- **Authority:** the service requires a stable Operator identity supplied by a trusted application boundary. A raw request string, worker/model field, or proposal content is not authentication. Persist the canonical identity in `LearningChange.operator_id` and the decision Event. The repository does not gain a general authentication subsystem as part of this Task.
+- **Task lifecycle:** the decision is attributed to a same-Team `approve_learning_change` Task through `committed_by_task_id`. The Task must use the ordinary TaskRuntime admission/finalization path; no direct Task status/attempt/Event writes, second runtime, or general dispatcher is permitted. If the current API cannot create/admit this Task through the existing lifecycle, resolve the narrow caller path before enabling the service.
+- **Validation:** lock and revalidate the proposed LearningChange, complete evidence-basis hash and every reference, Team ownership, exact source hashes/quotes, operation, expected target version/status, write scope, trusted Operator identity, and replay/concurrency preconditions immediately before commit.
+- **Acceptance:** commit the KnowledgeItem state/version, LearningChange `accepted` disposition, previous/committed state, operator/task identity, timestamp, and acceptance Event atomically.
+- **Rejection:** commit the LearningChange `rejected` disposition, reason, operator/task identity, timestamp, and rejection Event atomically without creating or mutating a KnowledgeItem. The proposal is never silently edited.
+- **Replay:** the original approval Task may replay the same decision exactly; a different Task or contradictory decision cannot overwrite the first disposition.
 ### `seed_knowledge` — Operator via API
 - **Purpose:** explicit `manual_seed` creation of additional KnowledgeItems or a revised TeamPolicy outside the setup flow.
 - **Writes:** LearningChange (`basis_kind="manual_seed"`, committed immediately), target entity, Event.
@@ -534,6 +538,6 @@ Starting points, tuned during M2; per-Task values may override downward, never u
 | `activate_team` | 0 | 0 | — |
 
 
-### R6-F Checkpoint 1–2 authority boundary
+### R6-F Checkpoint 1–3 authority boundary
 
-For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeItem writes plus exact application-managed Events; it has **no TeamPolicy write grant**. The legacy `seed_knowledge` row remains a separately documented Task type but is not implemented by R6-F. Evaluation worker output cannot set its own status: trusted application service code validates and records/rejects the proposal. ExperienceDistiller output likewise remains an untrusted candidate; Checkpoint 2 can create only a proposed LearningChange for a KnowledgeItem creation, while approval and canonical commit stay in Checkpoint 3. TaskRuntime remains the sole owner of Task lifecycle transitions.
+For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeItem writes plus exact application-managed Events; it has **no TeamPolicy write grant**. The legacy `seed_knowledge` row remains a separately documented Task type but is not implemented by R6-F. Evaluation worker output cannot set its own status: trusted application service code validates and records/rejects the proposal. ExperienceDistiller output likewise remains an untrusted candidate; Checkpoint 2 creates only proposed LearningChanges for KnowledgeItem creation. Checkpoint 3 performs explicit Operator review and canonical commit through a trusted application identity boundary and an ordinary same-Team approval Task; TaskRuntime remains the sole owner of Task lifecycle transitions. Checkpoint 4 alone handles Team Experience indexing/retrieval.

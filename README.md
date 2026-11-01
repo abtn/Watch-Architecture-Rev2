@@ -38,14 +38,14 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 
 **R6 continuation**
 
-- **R6-F — Checkpoint 1 complete; Checkpoint 2 in implementation:** PR #29 merged at `9a0ba491`; hosted CI and local disposable-PostgreSQL checks passed (11 Evaluation tests, Ruff, mypy, and 526 full-suite tests). The current branch implements the evidence-pack and ExperienceDistiller proposal path, with provider-injected fake-only coverage and typed LearningChange Task completion. R6-F has no approved production provider; Checkpoint 3 Operator commit and Checkpoint 4 Team Experience projection remain gated.
+- **R6-F — Checkpoints 1–2 complete; Checkpoint 3 open:** PR #29 merged at `9a0ba491`; PR #30 merged at `61be8db` (implementation head `d6b8d07`). Checkpoint 2 hosted CI run [41315770806](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41315770806) passed; local disposable-PostgreSQL verification passed 36 focused tests, Ruff, mypy, and 543 full-suite tests. The operator authorized Checkpoint 3 on 2026-11-01; its initial documentation/technical path is on `r6f-checkpoint-3-operator-learning-commit`. No Checkpoint 3 code/schema change has been made yet. R6-F has no approved production provider; Checkpoint 4 Team Experience projection and R6-G remain gated.
 - **R6-G — later integration gate:** exercise the complete knowledge-grounded loop, full verification, and explicit R6 exit approval.
 
 ## Future plan
 
 Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for current milestone status.
 
-- **R6 next:** review hosted CI and complete operator-local disposable-PostgreSQL verification for R6-F Checkpoint 2 before beginning Checkpoint 3; R6-G remains the integrated vertical slice and formal exit gate.
+- **R6 next:** sync and review `r6f-checkpoint-3-operator-learning-commit`, close the trusted-Operator and TaskRuntime entry contracts, then implement the narrow approval/rejection and canonical commit path. Do not start Checkpoint 4 or R6-G; no production R6-F provider is authorized.
 - **R7 — Distillation quality and knowledge lifecycle:** cross-case evaluation of abstractions, contradictory evidence and counterexamples, transferability tests, retrieval quality, review/expiry, staleness detection, supersession, and retirement — always preserving explicit provenance, canonical authority, and controlled commits.
 - **R8 — Multi-domain pressure test:** exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge stays outside the Kernel.
 - **R9 — Agent-assisted production workflow:** codified task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.
