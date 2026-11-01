@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from core.models import Event, Outcome, PlanAction, Task, Team, TeamPolicy
+from core.models import Evaluation, Event, Outcome, PlanAction, Task, Team, TeamPolicy
 from core.objectives import ObjectiveService, TaskNotFound
 from core.policy import InvalidPolicyError, daily_task_quota
 from core.snapshot_store import SnapshotStore
@@ -17,7 +17,10 @@ from core.state_assessment import _canonical_json, _timestamp
 _TERMINAL_EVENTS = ("task_completed", "task_failed")
 _RETRY_EVENTS = ("task_attempt_failed", "task_retry_scheduled")
 _TERMINAL_STATUSES = frozenset({"done", "failed"})
-_SUCCESS_CATEGORIES = frozenset({"success_signal_created", "success_no_change"})
+_EVALUATION_SUCCESS_CATEGORIES = frozenset({"success_evaluation_recorded",
+    "success_evaluation_rejected"})
+_SUCCESS_CATEGORIES = frozenset({"success_signal_created",
+    "success_no_change"}) | _EVALUATION_SUCCESS_CATEGORIES
 _RESULT_CATEGORIES = _SUCCESS_CATEGORIES | {"terminal_failure"}
 
 # ADR-0030 §2: a `running` Task whose latest `task_started` Event is older than
@@ -57,11 +60,13 @@ class TerminalObservation:
     task_id: UUID
     attempt: int
     result_category: Literal[
-        "success_signal_created", "success_no_change", "terminal_failure"
+        "success_signal_created", "success_no_change", "success_evaluation_recorded",
+        "success_evaluation_rejected", "terminal_failure"
     ]
     observed_at: datetime
     signals: tuple[SignalEvidence, ...] = ()
     failure_reason: str | None = None
+    evaluation_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -310,6 +315,18 @@ class TaskRuntime:
                 raise TaskNotFinalizable("task_not_running")
             if observation.attempt != task.attempt_count:
                 raise TaskNotFinalizable("stale_attempt")
+            if (
+                task.task_type == "evaluate_outcome"
+                and observation.result_category in _SUCCESS_CATEGORIES
+                and observation.result_category not in _EVALUATION_SUCCESS_CATEGORIES
+            ):
+                raise TaskNotFinalizable(
+                    "evaluation_task_requires_evaluation_result"
+                )
+            if observation.result_category in _EVALUATION_SUCCESS_CATEGORIES:
+                self._validate_evaluation_result(session, task, observation)
+            elif observation.evaluation_id is not None:
+                raise TaskNotFinalizable("evaluation_id_not_allowed")
 
             outcome = Outcome(
                 id=uuid4(),
@@ -348,6 +365,7 @@ class TaskRuntime:
                         "outcome_id": str(outcome.id),
                         "observation_snapshot_ref": snapshot_ref,
                         "observation_hash": observation_hash,
+                        **({"evaluation_id": str(observation.evaluation_id)} if observation.evaluation_id is not None else {}),  # noqa: E501
                     },
                 )
                 for event_type in event_types
@@ -645,6 +663,22 @@ class TaskRuntime:
         )
 
     @staticmethod
+    def _validate_evaluation_result(session: Session, task: Task,
+        observation: TerminalObservation) -> None:
+        if task.task_type != "evaluate_outcome":
+            raise TaskNotFinalizable("evaluation_result_wrong_task_type")
+        if not {"Evaluation", "EvidenceLink"}.issubset(set(task.allowed_writes)):
+            raise TaskNotFinalizable("evaluation_result_write_scope_missing")
+        expected_status = "recorded" if observation.result_category == "success_evaluation_recorded" else "rejected"  # noqa: E501
+        evaluation = session.scalar(select(Evaluation).where(
+            Evaluation.id == observation.evaluation_id,
+                Evaluation.team_id == task.team_id
+        ))
+        if (evaluation is None or evaluation.created_by_task_id != task.id
+            or evaluation.resolved_by_task_id != task.id or evaluation.status != expected_status):  # noqa: E501
+            raise TaskNotFinalizable("evaluation_not_recorded")
+
+    @staticmethod
     def _validate_failure(failure: FailureObservation) -> None:
         if failure.observed_at.tzinfo is None or (
             failure.observed_at.utcoffset() is None
@@ -685,10 +719,19 @@ class TaskRuntime:
             if observation.result_category == "success_signal_created":
                 if not observation.signals:
                     raise TaskNotFinalizable("signal_evidence_required")
-            elif observation.signals:
-                raise TaskNotFinalizable("signal_evidence_not_allowed")
+                if observation.evaluation_id is not None:
+                    raise TaskNotFinalizable("evaluation_id_not_allowed")
+            elif observation.result_category in _EVALUATION_SUCCESS_CATEGORIES:
+                if observation.evaluation_id is None:
+                    raise TaskNotFinalizable("evaluation_id_required")
+                if observation.signals:
+                    raise TaskNotFinalizable("signal_evidence_not_allowed")
+            elif observation.signals or observation.evaluation_id is not None:
+                raise TaskNotFinalizable("terminal_evidence_not_allowed")
             return
 
+        if observation.evaluation_id is not None:
+            raise TaskNotFinalizable("evaluation_id_not_allowed")
         if not observation.failure_reason or not observation.failure_reason.strip():
             raise TaskNotFinalizable("failure_reason_required")
         if observation.signals:
@@ -696,7 +739,7 @@ class TaskRuntime:
 
     @staticmethod
     def _observation_payload(observation: TerminalObservation) -> dict[str, Any]:
-        return {
+        payload = {
             "attempt": observation.attempt,
             "failure_reason": observation.failure_reason,
             "observed_at": _timestamp(observation.observed_at),
@@ -710,6 +753,9 @@ class TaskRuntime:
                 for evidence in observation.signals
             ],
         }
+        if observation.evaluation_id is not None:
+            payload["evaluation_id"] = str(observation.evaluation_id)
+        return payload
 
     def _store_snapshot(self, content: bytes) -> tuple[str, str]:
         if self._snapshot_store is None:
@@ -761,7 +807,7 @@ class TaskRuntime:
         """Return the committed terminal result, or reject a conflict."""
         if prior.observation_snapshot_ref is None:
             raise TaskNotFinalizable("recorded_terminal_outcome_corrupt")
-        stored = self._snapshot_store.read(prior.observation_snapshot_ref)  # type: ignore[union-attr]
+        stored = self._snapshot_store.read(prior.observation_snapshot_ref)  # type: ignore[union-attr]  # noqa: E501
         if _canonical_json(payload).encode("utf-8") != stored:
             raise TaskNotFinalizable("task_outcome_conflict")
 

@@ -34,18 +34,18 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 - **R6-B (complete, PR #14):** the first working execution path — `TaskDispatcher` and `RestrictedFetcher` run one configured-source `ingest_source` Task end to end through the Kernel with startup recovery and policy-authorized source identity.
 - **R6-C (complete, PR #16):** deterministic, read-only `ExecutionAssessmentBuilder` that rebuilds Plan intent and Task attempt history from durable records, validates Outcome/Snapshot/Event/Signal consistency, and hashes the canonical result. It adds no migration and no write path.
 - **R6-D (complete; PRs #22 and #24):** provider-neutral embeddings, the `knowledge_chunks` projection, idempotent Signal indexing, snapshot/hash verification, model-readiness polling, and current-policy-scoped PostgreSQL hybrid retrieval. The operator verified local LM Studio BGE-M3 integration against a disposable PostgreSQL database using model ID `text-embedding-bge-m3`, 1,024-dimensional vectors, and the explicit `WATCH_EMBEDDING_REVISION=metadata-sha256:e8ffcf172118d67251eccbf45916e407b7e0537deef08f70bbd62e86518e9c69` pin.
-- **R6-E (implementation and verification complete; PR #28 ready to merge):** all three checkpoints are implemented — bounded Task Context assembly with immutable Snapshot/manifest, a Context-bound model-backed `StrategyProposer`, and Task-attributed generation cost reservation/reconciliation. Step 1 passed 12 focused tests and the full suite; Step 2 passed 30 focused tests and the 501-test full suite; Step 3 passed 43 focused tests, Ruff, mypy, the full suite, and `git diff --check` on disposable PostgreSQL at `0011_task_generation_cost`. Hosted CI passed fresh migrations, Ruff, mypy, and 515 tests in [run 41279796198](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41279796198). PR #28 is open and unmerged; formal phase closeout follows merge. The Cloudflare provider remains outside automatic Task dispatch.
+- **R6-E (complete; PR #28 merged 2026-11-01):** all three checkpoints are integrated — bounded Task Context assembly with immutable Snapshot/manifest, a Context-bound model-backed `StrategyProposer`, and Task-attributed generation cost reservation/reconciliation. Operator verification passed all three checkpoints; Step 3 passed 43 focused tests, Ruff, mypy, the full suite, and `git diff --check` on disposable PostgreSQL at `0011_task_generation_cost`. Hosted CI passed fresh migrations, Ruff, mypy, and 515 tests in [run 41279796198](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41279796198). The provider remains outside automatic Task dispatch and is not authorized for R6-F distillation.
 
 **R6 continuation**
 
-- **R6-F — next planned slice:** the first evidence-linked experience-distillation path, committed only through the authorized learning path. Its scope and exit criteria are in the [R6 entry gate](docs/development/r6-entry-gate.md).
+- **R6-F — Checkpoint 1 implemented; PR and verification pending:** the branch now contains migration `0012_learning_foundation`, Evaluation/EvidenceLink persistence and service logic, LearningChange/KnowledgeItem schema foundations, and typed Evaluation finalization through TaskRuntime. D1–D4 are resolved in the [implementation plan](docs/development/r6-f-implementation-plan.md); later provider, review-expiry, and projection decisions remain gated.
 - **R6-G — later integration gate:** exercise the complete knowledge-grounded loop, full verification, and explicit R6 exit approval.
 
 ## Future plan
 
 Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for current milestone status.
 
-- **R6 next:** complete the R6-E merge/closeout, then proceed to R6-F's evidence-linked experience-distillation path; R6-G remains the integrated vertical slice and formal exit gate.
+- **R6 next:** finish hosted and operator-local verification for R6-F Checkpoint 1 before beginning Checkpoint 2; R6-G remains the integrated vertical slice and formal exit gate.
 - **R7 — Distillation quality and knowledge lifecycle:** cross-case evaluation of abstractions, contradictory evidence and counterexamples, transferability tests, retrieval quality, review/expiry, staleness detection, supersession, and retirement — always preserving explicit provenance, canonical authority, and controlled commits.
 - **R8 — Multi-domain pressure test:** exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge stays outside the Kernel.
 - **R9 — Agent-assisted production workflow:** codified task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.
@@ -58,6 +58,7 @@ Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for curre
 - [`AGENTS.md`](AGENTS.md) — instructions for coding agents.
 - [`docs/development/agent-delivery-protocol.md`](docs/development/agent-delivery-protocol.md) — standing delivery authorization, automatic advancement, and merge conditions.
 - [`docs/development/local-embeddings.md`](docs/development/local-embeddings.md) — local LM Studio / BGE-M3 embedding API setup and smoke gate.
+- [`docs/development/r6-f-implementation-plan.md`](docs/development/r6-f-implementation-plan.md) — detailed R6-F technical checkpoints, open design decisions, and verification gates.
 - [`CHANGE_MAP.md`](CHANGE_MAP.md) — authority map for concepts.
 - [`docs/control-model.md`](docs/control-model.md) — Objective, StateAssessment, Strategy, Plan, and the dual-entry model.
 - [`docs/architecture.md`](docs/architecture.md) — general/original architecture for concepts not replaced by Revision 2.

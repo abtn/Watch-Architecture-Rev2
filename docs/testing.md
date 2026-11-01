@@ -131,6 +131,19 @@ and rollback/recovery when the reconciliation Event write fails. The real
 Cloudflare API smoke is separate from this deterministic test suite and is not
 required for CI.
 
+## R6-F planned verification
+
+R6-F is divided into four checkpoints. Each requires focused tests, applicable full-suite/static checks, and disposable-PostgreSQL verification for migrations, transaction atomicity, constraints, locking, and replay. The detailed acceptance matrix is in [the R6-F implementation plan](development/r6-f-implementation-plan.md).
+
+| Checkpoint | Required proof |
+|---|---|
+| 1 — Evaluation and canonical learning foundation | Fresh migration from the preceding head with one Alembic head; Evaluation lifecycle; Team/Outcome/Signal/Snapshot/hash/quote validation; multi-record evidence representation; Task scope and TaskRuntime result fencing; rollback and database constraints. |
+| 2 — ExperienceDistiller and LearningChange proposal | Deterministic evidence pack/hash; fake-provider valid/invalid/malformed/error cases; one-case Practice and distinct-Task cross-case threshold; contrary evidence and uncertainty preservation; stale/cross-Team reference rejection; reservation-before-call and unknown/overrun cost behavior; proposal replay. |
+| 3 — Operator approval and canonical commit | Trusted Operator identity; approve/reject; KnowledgeItem create/revise/retire versioning; stale-target and concurrent-approval rejection; atomic rollback; exact replay; proof TeamPolicy cannot be changed. |
+| 4 — Team Experience projection and retrieval | Current-version/status/Team/review filtering; index failure without canonical rollback; stale exclusion and idempotent rebuild; exact Context manifest provenance; global eight-passage/8,000-character bound; later-Task reuse. |
+
+Use deterministic fake providers in CI. ADR-0031 selects a provider for R6-E only; separate R6-F provider/model approval is required before any production distillation request. Never use the persistent `watch` database for these checks.
+
 ## Automated CI
 
 `.github/workflows/ci.yml` runs the verification chain on every push to `main` and `r6a-step1-schema-outcome` and on every pull request. It provisions a disposable `pgvector/pgvector:pg16` service container, installs the locked dependency set with `uv sync --locked`, applies `alembic upgrade head` to a fresh database, asserts exactly one migration head and that the database is at that head, then runs `ruff check core tests migrations`, `mypy core`, and `pytest -q`.
@@ -152,3 +165,22 @@ For each check state:
 - whether verification is freshly run or only recorded in an existing document.
 
 Do not describe disposable database setup as an independent milestone exit criterion unless the milestone explicitly says it is one.
+
+
+## R6-F Checkpoint 1 — Evaluation and canonical learning schema
+
+Checkpoint 1 adds `0012_learning_foundation`, Evaluation/EvidenceLink persistence and services, and canonical KnowledgeItem/LearningChange schema foundations. It also adds typed Evaluation terminal result categories to the existing TaskRuntime.
+
+Run the focused checks first:
+
+```bash
+uv run alembic upgrade head
+uv run alembic heads
+uv run pytest tests/test_evaluations.py
+uv run ruff check core/evaluations.py core/models.py core/task_runtime.py tests/test_evaluations.py migrations/versions/0012_learning_foundation.py
+uv run mypy core
+uv run pytest -q
+git diff --check
+```
+
+Use a fresh disposable PostgreSQL database. Confirm one Alembic head and a successful upgrade from `0011_task_generation_cost`; never use the persistent `watch` database. The Evaluation tests cover same-Team Outcome references, domain-scoped Signal references, exact Snapshot/hash/quote validation, evaluator identity/revision, proposal idempotency, recorded/rejected dispositions, Task write scope, and TaskRuntime terminal finalization. This checkpoint deliberately does not implement ExperienceDistiller, LearningChange proposal/approval writes, KnowledgeItem commits, or Team Experience indexing.

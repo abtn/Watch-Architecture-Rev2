@@ -338,6 +338,7 @@ class TaskGenerationCharge(Base):
 class Outcome(Base):
     __tablename__ = "outcomes"
     __table_args__ = (
+        UniqueConstraint("id", "team_id", name="uq_outcomes_id_team"),
         ForeignKeyConstraint(
             ["recorded_by_task_id", "team_id"],
             ["tasks.id", "tasks.team_id"],
@@ -474,3 +475,264 @@ class KnowledgeChunk(Base):
     indexed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+class LearningChange(Base):
+    """Evidence-backed proposal or durable learning disposition."""
+    __tablename__ = "learning_changes"
+    __table_args__ = (
+        ForeignKeyConstraint(["proposed_by_task_id", "team_id"], ["tasks.id",
+            "tasks.team_id"], name="fk_learning_changes_proposed_task_team"),
+        ForeignKeyConstraint(["committed_by_task_id", "team_id"], ["tasks.id",
+            "tasks.team_id"], name="fk_learning_changes_committed_task_team"),
+        UniqueConstraint("id", "team_id", name="uq_learning_changes_id_team"),
+        UniqueConstraint("proposed_by_task_id", "idempotency_key",
+            name="uq_learning_changes_task_idempotency"),
+        CheckConstraint("target_kind = 'knowledge_item'",
+            name="ck_learning_changes_target_kind"),
+        CheckConstraint("operation IN ('create', 'revise', 'retire')",
+            name="ck_learning_changes_operation"),
+        CheckConstraint("(operation = 'create' AND target_id IS NULL) "
+            "OR (operation IN ('revise', 'retire') AND "
+            "target_id IS NOT NULL)", name="ck_learning_changes_target_state"),
+        CheckConstraint("status IN ('proposed', 'accepted', 'rejected')",
+            name="ck_learning_changes_status"),
+        CheckConstraint("evidence_basis_hash ~ '^sha256:[0-9a-f]{64}$'",
+            name="ck_learning_changes_evidence_basis_hash"),
+        CheckConstraint("length(idempotency_key) > 0 AND "
+            "jsonb_typeof(proposed_state) = 'object' AND "
+            "jsonb_typeof(evidence_basis) = 'array'",
+            name="ck_learning_changes_payload_shape"),
+        CheckConstraint(
+            "(status = 'proposed' AND "
+                "committed_by_task_id IS NULL AND operator_id "
+                "IS NULL AND committed_at IS NULL AND "
+                "committed_state IS NULL) OR "
+            "(status = 'accepted' AND "
+                "committed_by_task_id IS NOT NULL AND "
+                "operator_id IS NOT NULL AND "
+                "length(operator_id) > 0 AND committed_at IS "
+                "NOT NULL AND committed_state IS NOT NULL) OR "
+                ""
+            "(status = 'rejected' AND "
+                "committed_by_task_id IS NOT NULL AND "
+                "operator_id IS NOT NULL AND "
+                "length(operator_id) > 0 AND committed_at IS "
+                "NOT NULL AND committed_state IS NULL AND "
+                "decision_reason IS NOT NULL AND "
+                "length(decision_reason) > 0)",
+            name="ck_learning_changes_disposition",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True),
+        ForeignKey("teams.id"), nullable=False)
+    target_kind: Mapped[str] = mapped_column(String, nullable=False)
+    target_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    operation: Mapped[str] = mapped_column(String, nullable=False)
+    proposed_state: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    previous_state: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    committed_state: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    evidence_basis: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    evidence_basis_hash: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="proposed",
+        server_default="proposed")
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    proposed_by_task_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True),
+        nullable=False)
+    committed_by_task_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True),
+        nullable=True)
+    operator_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+        nullable=False, server_default=func.now())
+    committed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True),
+        nullable=True)
+
+
+class KnowledgeItem(Base):
+    """Canonical versioned Team Experience; embeddings belong in projections."""
+    __tablename__ = "knowledge_items"
+    __table_args__ = (
+        ForeignKeyConstraint(["origin_learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_knowledge_items_origin_learning_change_team"),
+        CheckConstraint("kind IN ('practice', 'pattern', 'method', 'playbook')",
+            name="ck_knowledge_items_kind"),
+        CheckConstraint("status IN ('active', 'needs_review', 'retired')",
+            name="ck_knowledge_items_status"),
+        CheckConstraint("version >= 1 AND confidence >= 0 AND confidence <= 1",
+            name="ck_knowledge_items_version_confidence"),
+        CheckConstraint("length(title) > 0 AND length(statement) > 0 "
+            "AND length(body) > 0", name="ck_knowledge_items_content"),
+        CheckConstraint(
+            "jsonb_typeof(applicability) = 'object' AND "
+                "jsonb_typeof(preconditions) = 'array' AND "
+            "jsonb_typeof(assumptions) = 'array' AND "
+                "jsonb_typeof(limitations) = 'array' AND "
+            "jsonb_typeof(non_applicability) = 'array' "
+                "AND jsonb_typeof(failure_modes) = 'array' "
+                "AND "
+            "jsonb_typeof(known_counterexamples) = "
+                "'array' AND "
+                "jsonb_typeof(missing_information) = 'array' "
+                "AND "
+            "jsonb_typeof(uncertainty) = 'array'",
+            name="ck_knowledge_items_payload_shape",
+        ),
+        UniqueConstraint("id", "team_id", name="uq_knowledge_items_id_team"),
+        Index("ix_knowledge_items_team_status", "team_id", "status"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True),
+        ForeignKey("teams.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    applicability: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    preconditions: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    assumptions: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    limitations: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    non_applicability: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    failure_modes: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    known_counterexamples: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    missing_information: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    uncertainty: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(4, 3), nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="active",
+        server_default="active")
+    version: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
+    last_validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # noqa: E501
+    review_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True),
+        nullable=True)
+    origin_learning_change_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True),
+        nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+        nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+        nullable=False, server_default=func.now())
+
+
+class Evaluation(Base):
+    """An attributable assessment of one immutable Outcome."""
+    __tablename__ = "evaluations"
+    __table_args__ = (
+        ForeignKeyConstraint(["outcome_id", "team_id"], ["outcomes.id",
+            "outcomes.team_id"], name="fk_evaluations_outcome_team"),
+        ForeignKeyConstraint(["created_by_task_id", "team_id"], ["tasks.id",
+            "tasks.team_id"], name="fk_evaluations_created_task_team"),
+        ForeignKeyConstraint(["resolved_by_task_id", "team_id"], ["tasks.id",
+            "tasks.team_id"], name="fk_evaluations_resolved_task_team"),
+        CheckConstraint("conclusion IN ('worked', 'mixed', 'failed', "
+            "'inconclusive')", name="ck_evaluations_conclusion"),
+        CheckConstraint("evaluator_kind IN ('rule', 'human', 'model')",
+            name="ck_evaluations_evaluator_kind"),
+        CheckConstraint("status IN ('proposed', 'recorded', 'rejected')",
+            name="ck_evaluations_status"),
+        CheckConstraint("length(evaluator_identity) > 0 AND "
+            "length(evaluator_revision) > 0 AND "
+            "length(idempotency_key) > 0 AND "
+            "proposal_hash ~ '^sha256:[0-9a-f]{64}$' AND "
+            "jsonb_typeof(findings) = 'object'", name="ck_evaluations_payload"),
+        CheckConstraint(
+            "(status = 'proposed' AND resolved_by_task_id "
+                "IS NULL AND resolved_at IS NULL AND "
+                "rejection_reason IS NULL) OR "
+            "(status = 'recorded' AND resolved_by_task_id "
+                "IS NOT NULL AND resolved_at IS NOT NULL AND "
+                "rejection_reason IS NULL) OR "
+            "(status = 'rejected' AND resolved_by_task_id "
+                "IS NOT NULL AND resolved_at IS NOT NULL AND "
+                "rejection_reason IS NOT NULL AND "
+                "length(rejection_reason) > 0)",
+            name="ck_evaluations_disposition",
+        ),
+        UniqueConstraint("id", "team_id", name="uq_evaluations_id_team"),
+        UniqueConstraint("created_by_task_id", "idempotency_key",
+            name="uq_evaluations_task_idempotency"),
+        Index("ix_evaluations_team_outcome_status", "team_id", "outcome_id", "status"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True),
+        ForeignKey("teams.id"), nullable=False)
+    outcome_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    conclusion: Mapped[str] = mapped_column(String, nullable=False)
+    findings: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    evaluator_kind: Mapped[str] = mapped_column(String, nullable=False)
+    evaluator_identity: Mapped[str] = mapped_column(String(255), nullable=False)
+    evaluator_revision: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="proposed",
+        server_default="proposed")
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    proposal_hash: Mapped[str] = mapped_column(String, nullable=False)
+    created_by_task_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    resolved_by_task_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True),
+        nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+        nullable=False, server_default=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True),
+        nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class EvidenceLink(Base):
+    """Evaluation-scoped link to a same-Team Outcome or domain Signal."""
+    __tablename__ = "evidence_links"
+    __table_args__ = (
+        ForeignKeyConstraint(["subject_id", "team_id"], ["evaluations.id",
+            "evaluations.team_id"], name="fk_evidence_links_evaluation_team"),
+        ForeignKeyConstraint(["outcome_id", "team_id"], ["outcomes.id",
+            "outcomes.team_id"], name="fk_evidence_links_outcome_team"),
+        CheckConstraint("subject_kind = 'evaluation'",
+            name="ck_evidence_links_subject_kind"),
+        CheckConstraint(
+            "(source_kind = 'outcome' AND outcome_id IS "
+                "NOT NULL AND signal_id IS NULL) OR "
+            "(source_kind = 'signal' AND signal_id IS NOT NULL AND outcome_id IS NULL)",
+            name="ck_evidence_links_source",
+        ),
+        CheckConstraint("stance IN ('supports', 'challenges', 'mentions')",
+            name="ck_evidence_links_stance"),
+        CheckConstraint(
+            "(snapshot_ref IS NULL AND snapshot_hash IS NULL) OR "
+            "(snapshot_ref IS NOT NULL AND snapshot_hash "
+                "IS NOT NULL AND snapshot_ref ~ "
+                "'^snap://sha256/[0-9a-f]{64}$' "
+            "AND snapshot_hash ~ '^sha256:[0-9a-f]{64}$' "
+                "AND split_part(snapshot_ref, '/', 4) = "
+                "split_part(snapshot_hash, ':', 2))",
+            name="ck_evidence_links_snapshot_pair",
+        ),
+        CheckConstraint(
+            "(quote_text IS NULL AND quote_start IS NULL AND quote_end IS NULL) OR "
+            "(quote_text IS NOT NULL AND quote_start IS "
+                "NOT NULL AND quote_end IS NOT NULL AND "
+                "quote_start >= 0 AND quote_end > "
+                "quote_start)",
+            name="ck_evidence_links_quote_offsets",
+        ),
+        CheckConstraint("length(reference_key) > 0",
+            name="ck_evidence_links_reference_key"),
+        UniqueConstraint("subject_id", "reference_key",
+            name="uq_evidence_links_subject_reference"),
+        Index("ix_evidence_links_team_source", "team_id", "source_kind",
+            "outcome_id", "signal_id"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True),
+        ForeignKey("teams.id"), nullable=False)
+    subject_kind: Mapped[str] = mapped_column(String, nullable=False)
+    subject_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    source_kind: Mapped[str] = mapped_column(String, nullable=False)
+    outcome_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    signal_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    snapshot_ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    snapshot_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    stance: Mapped[str] = mapped_column(String, nullable=False)
+    quote_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quote_start: Mapped[int | None] = mapped_column(nullable=True)
+    quote_end: Mapped[int | None] = mapped_column(nullable=True)
+    reference_key: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+        nullable=False, server_default=func.now())
+
