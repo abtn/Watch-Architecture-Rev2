@@ -88,4 +88,3 @@ This checkpoint does not implement ExperienceDistiller, LearningChange proposal/
 | Verification | Checkpoint 2 section in docs/testing.md; no migration beyond 0012_learning_foundation |
 
 Checkpoint 2 does not implement Operator approval/rejection, KnowledgeItem commit, TeamPolicy mutation, live provider selection, Team Experience embeddings/indexing, or later-Task retrieval.
-
