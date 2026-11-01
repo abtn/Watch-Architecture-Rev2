@@ -154,9 +154,9 @@ def test_request_creates_one_pending_task_and_one_attributed_event(
 ) -> None:
     principal = _principal(approval_context.team_id)
     request = _request(approval_context.learning_change_id)
-    result = OperatorApplicationAdapter(session_factory).request_learning_change_decision(
-        principal, request
-    )
+    result = OperatorApplicationAdapter(
+        session_factory
+    ).request_learning_change_decision(principal, request)
 
     assert result.team_id == approval_context.team_id
     assert result.status == "pending"

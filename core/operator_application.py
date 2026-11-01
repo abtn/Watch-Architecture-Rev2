@@ -435,7 +435,9 @@ def _verify_existing_request(
     if payload.get("idempotency_key_hash") != idempotency_key_hash:
         raise OperatorTaskRequestCorrupt("approval_request_key_hash_mismatch")
     if payload.get("request_fingerprint") != request_fingerprint:
-        raise OperatorTaskRequestConflict("idempotency_key_reused_with_different_request")
+        raise OperatorTaskRequestConflict(
+            "idempotency_key_reused_with_different_request"
+        )
 
     policy_version = payload.get("policy_version")
     if (
