@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from core.models import Event, LearningChange, Task, Team, TeamPolicy
 from core.operator_application import (
     InvalidOperatorPrincipal,
+    OperatorApplicationError,
     LearningChangeDecisionRequest,
     LearningChangeNotApprovable,
     OperatorApplicationAdapter,

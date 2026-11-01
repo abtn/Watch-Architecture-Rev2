@@ -12,7 +12,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
-from uuid import UUID, uuid5
+from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -256,7 +256,7 @@ class OperatorApplicationAdapter:
 
             session.add(
                 Event(
-                    id=__import__("uuid").uuid4(),
+                    id=uuid4(),
                     task_id=task_id,
                     type=_REQUEST_EVENT_TYPE,
                     payload=event_payload,
