@@ -9,13 +9,17 @@ milestone status.
 
 - The operator has authorized continued work through **R6-A, R6-B, and R6-C**
   without separate approval for every checkpoint.
-- Within those milestones the agent may implement bounded changes, correct
-  defects revealed by tests or review, run focused and full verification against
-  a positively identified disposable database, create one local commit per
-  accepted checkpoint or coherent infrastructure change, and push feature
-  branches and create/update pull requests.
-- **R6-D and R6-E remain outside this authorization.** Provider-selection and
-  architecture decisions for those slices require separate explicit approval.
+- **R6-D is complete.** The operator explicitly selected Cloudflare Workers AI
+  `@cf/meta/llama-3.1-8b-instruct-fp8` and authorized **R6-E** on 2026-10-30
+  (ADR-0031). R6-E may proceed through bounded Context assembly, immutable
+  Context Snapshot/manifest, the model-backed StrategyProposer, strict
+  application validation, Task-level usage reservation/reconciliation, and
+  required verification. The current branch contains only the initial provider
+  adapter/smoke checkpoint; do not report R6-E complete until all remaining
+  acceptance criteria and checks pass.
+- **R6-F and R6-G remain outside this authorization.** No work may advance into
+  experience distillation or the integrated R6 exit gate without separate
+  operator authorization.
 
 ## Automatic advancement
 

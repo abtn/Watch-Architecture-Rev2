@@ -4,6 +4,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
 
@@ -12,7 +13,19 @@ from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, sessionmaker
 
-from core.models import Event, Objective, Task, Team, TeamPolicy
+from core.context_assembly import (
+    CONTEXT_MANIFEST_VERSION,
+    CONTEXT_SCHEMA_VERSION,
+    AssembledTaskContext,
+)
+from core.models import (
+    Event,
+    Objective,
+    Task,
+    TaskGenerationCharge,
+    Team,
+    TeamPolicy,
+)
 from core.objectives import ObjectiveService, TaskNotFound
 from core.state_assessment import (
     StateAssessment,
@@ -54,12 +67,43 @@ class StrategyService:
                 conflict_reason="concurrent_state_conflict",
             )
 
+    def submit_from_context(
+        self,
+        task_id: UUID,
+        proposal: Any,
+        context: AssembledTaskContext,
+        *,
+        generation_charge_id: UUID | None = None,
+    ) -> StrategyResult:
+        """Submit a generated proposal bound to its exact immutable Task Context."""
+        try:
+            return self._submit(
+                task_id,
+                proposal,
+                context.assessment,
+                context=context,
+                generation_charge_id=generation_charge_id,
+            )
+        except DBAPIError as error:
+            if getattr(error.orig, "sqlstate", None) not in {"40001", "40P01"}:
+                raise
+            return self._submit(
+                task_id,
+                proposal,
+                context.assessment,
+                context=context,
+                generation_charge_id=generation_charge_id,
+                conflict_reason="concurrent_state_conflict",
+            )
+
     def _submit(
         self,
         task_id: UUID,
         proposal: Any,
         assessment: StateAssessment,
         *,
+        context: AssembledTaskContext | None = None,
+        generation_charge_id: UUID | None = None,
         conflict_reason: str | None = None,
     ) -> StrategyResult:
         try:
@@ -73,9 +117,24 @@ class StrategyService:
         except (TypeError, ValueError, ValidationError):
             raw, canonical = None, "null"
         assessment_payload = json.loads(json.dumps(asdict(assessment), default=str))
+        context_provenance = (
+            {
+                "event_id": str(context.event_id),
+                "snapshot_ref": context.snapshot_ref,
+                "content_hash": context.content_hash,
+            }
+            if context is not None
+            else None
+        )
         identity = {
             "proposal_json": canonical,
             "assessment": assessment_payload,
+            "context_provenance": context_provenance,
+            "generation_charge_id": (
+                str(generation_charge_id)
+                if generation_charge_id is not None
+                else None
+            ),
         }
         with self._session_factory.begin() as session:
             if conflict_reason is None:
@@ -100,9 +159,32 @@ class StrategyService:
                 .limit(1)
             )
             scope_reason = self._validate_scope(session, task)
+            context_reason = self._validate_context(
+                session, task, assessment, context
+            )
+            charge_reason = (
+                self._validate_generation_charge(
+                    session,
+                    task,
+                    generation_charge_id,
+                    allow_prior_attempt=(
+                        prior is not None
+                        and prior.payload.get("generation_charge_id")
+                        == (
+                            str(generation_charge_id)
+                            if generation_charge_id is not None
+                            else None
+                        )
+                    ),
+                )
+                if context is not None and context_reason is None
+                else None
+            )
             if (
                 prior is not None
                 and scope_reason is None
+                and context_reason is None
+                and charge_reason is None
                 and all(
                     prior.payload.get(key) == value for key, value in identity.items()
                 )
@@ -120,6 +202,8 @@ class StrategyService:
                 )
             reason = (
                 scope_reason
+                or context_reason
+                or charge_reason
                 or conflict_reason
                 or (
                     "task_outcome_conflict"
@@ -146,6 +230,200 @@ class StrategyService:
             )
             session.flush()
             return StrategyResult(reason is None, reason, event.id)
+
+
+    @staticmethod
+    def _validate_context(
+        session: Session,
+        task: Task,
+        assessment: StateAssessment,
+        context: AssembledTaskContext | None,
+    ) -> str | None:
+        """Verify the Task's one immutable Context and its exact assessment link."""
+        context_events = list(
+            session.scalars(
+                select(Event)
+                .where(
+                    Event.task_id == task.id,
+                    Event.type == "context_assembled",
+                )
+                .order_by(Event.created_at, Event.id)
+            )
+        )
+        if context is None:
+            return "context_required" if context_events else None
+        if len(context_events) != 1:
+            return (
+                "context_manifest_missing"
+                if not context_events
+                else "context_manifest_ambiguous"
+            )
+
+        event = context_events[0]
+        if (
+            context.task_id != task.id
+            or context.event_id != event.id
+            or event.task_id != task.id
+            or event.type != "context_assembled"
+        ):
+            return "context_task_mismatch"
+
+        if not isinstance(context.document, dict) or not isinstance(
+            context.manifest, dict
+        ):
+            return "context_document_invalid"
+        document = context.document
+        manifest = context.manifest
+        if (
+            document.get("schema_version") != CONTEXT_SCHEMA_VERSION
+            or document.get("manifest") != manifest
+            or manifest.get("schema_version") != CONTEXT_MANIFEST_VERSION
+        ):
+            return "context_schema_mismatch"
+
+        try:
+            canonical_bytes = _canonical_json(document).encode("utf-8")
+            digest = hashlib.sha256(canonical_bytes).hexdigest()
+            expected_timestamp = datetime.fromisoformat(
+                assessment.created_at.replace("Z", "+00:00")
+            )
+        except (TypeError, ValueError):
+            return "context_document_invalid"
+        if (
+            context.content_hash != f"sha256:{digest}"
+            or context.snapshot_ref != f"snap://sha256/{digest}"
+        ):
+            return "context_snapshot_hash_mismatch"
+
+        expected_assessment = json.loads(
+            json.dumps(asdict(assessment), default=str, allow_nan=False)
+        )
+        if context.assessment != assessment or document.get(
+            "assessment"
+        ) != expected_assessment:
+            return "context_assessment_mismatch"
+
+        task_document = document.get("task")
+        team_document = document.get("team")
+        objective_document = document.get("objective")
+        policy_document = document.get("policy")
+        if (
+            not isinstance(task_document, dict)
+            or not isinstance(team_document, dict)
+            or not isinstance(objective_document, dict)
+            or not isinstance(policy_document, dict)
+        ):
+            return "context_scope_mismatch"
+        if (
+            task.objective_id is None
+            or task_document.get("id") != str(task.id)
+            or task_document.get("team_id") != str(task.team_id)
+            or task_document.get("task_type") != "propose_strategy"
+            or task_document.get("objective_id") != str(task.objective_id)
+            or task_document.get("policy_version") != task.policy_version
+            or task_document.get("budget") != task.budget
+            or team_document.get("id") != str(task.team_id)
+            or objective_document.get("id") != str(task.objective_id)
+            or objective_document.get("id") != str(assessment.objective.id)
+            or objective_document.get("statement") != assessment.objective.statement
+            or team_document.get("domain") != assessment.team.domain
+            or policy_document.get("version") != task.policy_version
+            or manifest.get("task_id") != str(task.id)
+            or manifest.get("team_id") != str(task.team_id)
+            or manifest.get("objective_id") != str(task.objective_id)
+            or manifest.get("policy_version") != task.policy_version
+            or manifest.get("assessment_basis_sha256") != assessment.basis.sha256
+            or manifest.get("assembled_at") != assessment.created_at
+        ):
+            return "context_scope_mismatch"
+
+        policy = session.scalar(
+            select(TeamPolicy).where(
+                TeamPolicy.team_id == task.team_id,
+                TeamPolicy.version == task.policy_version,
+            )
+        )
+        if policy is None or policy_document.get("rules") != policy.rules:
+            return "context_policy_mismatch"
+
+        expected_event_payload = {
+            "schema_version": CONTEXT_MANIFEST_VERSION,
+            "snapshot_ref": context.snapshot_ref,
+            "content_hash": context.content_hash,
+            "manifest": manifest,
+        }
+        if (
+            event.payload != expected_event_payload
+            or event.created_at != expected_timestamp
+        ):
+            return "context_manifest_event_mismatch"
+        return None
+
+    @staticmethod
+    def _validate_generation_charge(
+        session: Session,
+        task: Task,
+        generation_charge_id: UUID | None,
+        *,
+        allow_prior_attempt: bool = False,
+    ) -> str | None:
+        """Require this attempt's reconciled provider charge before acceptance."""
+        if generation_charge_id is None:
+            return "generation_charge_required"
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.id == generation_charge_id,
+                TaskGenerationCharge.task_id == task.id,
+            )
+        )
+        if charge is None:
+            return "generation_charge_not_found"
+        if charge.attempt_count > task.attempt_count or (
+            charge.attempt_count != task.attempt_count and not allow_prior_attempt
+        ):
+            return "generation_charge_attempt_mismatch"
+        if (
+            charge.operation != "strategy_proposal"
+            or charge.status != "reconciled"
+            or charge.accounted_cost_usd is None
+            or charge.input_tokens is None
+            or charge.output_tokens is None
+        ):
+            return "generation_charge_not_reconciled"
+
+        if not isinstance(task.budget, dict):
+            return "invalid_task_budget"
+        raw_limit = task.budget.get("max_cost_usd")
+        if isinstance(raw_limit, bool) or not isinstance(
+            raw_limit, (int, float, Decimal)
+        ):
+            return "invalid_task_budget"
+        try:
+            limit = Decimal(str(raw_limit))
+        except (InvalidOperation, ValueError):
+            return "invalid_task_budget"
+        if not limit.is_finite() or limit < 0:
+            return "invalid_task_budget"
+
+        charges = list(
+            session.scalars(
+                select(TaskGenerationCharge).where(
+                    TaskGenerationCharge.task_id == task.id
+                )
+            )
+        )
+        accounted = sum(
+            (
+                item.accounted_cost_usd
+                if item.accounted_cost_usd is not None
+                else item.reserved_cost_usd
+                for item in charges
+            ),
+            start=Decimal("0"),
+        )
+        if accounted > limit:
+            return "task_generation_budget_exhausted"
+        return None
 
     @staticmethod
     def _validate_scope(session: Session, task: Task) -> str | None:

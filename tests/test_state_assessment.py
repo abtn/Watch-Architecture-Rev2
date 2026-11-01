@@ -385,3 +385,71 @@ def test_authoritative_objective_change_changes_assessment_basis(
     assert before.objective.status == "draft"
     assert after.objective.status == "active"
     assert before.basis.sha256 != after.basis.sha256
+
+
+
+def test_operational_task_events_do_not_change_assessment_basis(
+    session_factory: sessionmaker[Session],
+    objective_prerequisites: ObjectivePrerequisites,
+) -> None:
+    p = objective_prerequisites
+    objective_id = _create_objective(session_factory, p)
+    fixed_time = datetime(2026, 10, 31, 12, 0, tzinfo=timezone.utc)
+    operational_event_ids = tuple(uuid4() for _ in range(12))
+
+    with session_factory.begin() as session:
+        task = session.get(Task, p.transition_task_id)
+        assert task is not None
+        task.objective_id = objective_id
+
+    builder = _builder(session_factory)
+    before = builder.build(objective_id, created_at=fixed_time)
+    try:
+        with session_factory.begin() as session:
+            session.add_all(
+                [
+                    Event(
+                        id=event_id,
+                        task_id=p.transition_task_id,
+                        type=event_type,
+                        payload={"operation": event_type},
+                        created_at=fixed_time,
+                    )
+                    for event_id, event_type in zip(
+                        operational_event_ids,
+                        (
+                            "context_assembled",
+                            "strategy_proposal_accepted",
+                            "strategy_proposal_rejected",
+                            "generation_cost_reserved",
+                            "generation_cost_reconciled",
+                            "generation_cost_unknown",
+                            "generation_cost_overrun",
+                            "task_started",
+                            "task_attempt_failed",
+                            "task_retry_scheduled",
+                            "task_completed",
+                            "task_failed",
+                        ),
+                        strict=True,
+                    )
+                ]
+            )
+
+        after = builder.build(objective_id, created_at=fixed_time)
+
+        assert before.basis.sha256 == after.basis.sha256
+        assert not set(operational_event_ids).intersection(after.basis.event_ids)
+        assert all(
+            event.id not in set(operational_event_ids) for event in after.events
+        )
+        # Projection exclusion must not delete the durable audit records.
+        with session_factory() as session:
+            assert session.scalar(
+                select(func.count())
+                .select_from(Event)
+                .where(Event.id.in_(operational_event_ids))
+            ) == 12
+    finally:
+        with session_factory.begin() as session:
+            session.execute(delete(Event).where(Event.id.in_(operational_event_ids)))

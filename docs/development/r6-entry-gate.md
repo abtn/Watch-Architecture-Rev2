@@ -5,9 +5,10 @@
 - **R6-G0 design decisions: RECORDED.** The operator explicitly requested resolution of the remaining G0 decisions on 2026-10-25. The accepted records are ADR-0025, ADR-0026, ADR-0028, ADR-0029, and ADR-0030.
 **Current milestone status:** see [PLAN.md](../../PLAN.md). This document defines gate decisions and acceptance criteria rather than duplicating the current milestone table. The original G0 preflight and authorization record below is retained as historical evidence.
 - **ADR-0027 remains Proposed.** Its Task-start quota semantics are separate; this decision record neither accepts that ADR nor changes quota behavior.
+- **R6-E provider/model decision: ACCEPTED 2026-10-30.** ADR-0031 records Cloudflare Workers AI `@cf/meta/llama-3.1-8b-instruct-fp8`. The three R6-E implementation checkpoints and operator verification are complete on `r6e-cloudflare-llama31-provider`; PR #28 is open and ready to merge but is not yet merged. Formal R6-E closeout follows merge; see PLAN.md for the verification record. R6-F is the next planned slice and has its scope below; R6-G remains the later integrated exit gate.
 - Git baselines: PR #8 merge commit `44c0944720600f8a1d4018d4eb39424a9660168e` is the historical baseline for the original decision set; PR #9 merge commit `f9207156533b6944d320a6adfff42963f7e1e17c` is the verified current `main` baseline. Neither is evidence of the operator's local branch, HEAD, worktree, or database state; the verified local state is recorded in the preflight record below.
 - R5 remains formally closed. Its immutable Plan, prerequisite, provenance, lifecycle, completion-precondition, and single-runtime constraints remain mandatory.
-- Implementation boundaries: TaskRuntime remains the lifecycle authority; TaskDispatcher executes one configured-source `ingest_source` Task through the restricted fetcher and IngestionService. `Outcome` is canonical terminal evidence, and `ExecutionAssessmentBuilder` reconstructs it read-only. Persistent Evaluation/KnowledgeItem/LearningChange records, RAG Context assembly, and experience distillation remain unimplemented. Current milestone status is maintained only in PLAN.md.
+- **Implementation boundaries:** TaskRuntime remains the lifecycle authority; TaskDispatcher executes one configured-source `ingest_source` Task through the restricted fetcher and IngestionService. `Outcome` is canonical terminal evidence, and `ExecutionAssessmentBuilder` reconstructs it read-only. R6-E has delivered bounded RAG Context assembly and the model-backed StrategyProposer. Persistent Evaluation/KnowledgeItem/LearningChange records and the experience-distillation/publication path remain for R6-F. Current milestone status is maintained only in PLAN.md.
 
 ## 1. Revised R6 purpose
 
@@ -128,11 +129,31 @@ Implement the minimal canonical knowledge selection and a regenerable retrieval 
 
 **Exit:** tests prove relevant retrieval, Team/domain isolation, status/access filtering, traceable source references, stale-index rejection after a canonical change, and index rebuild/replay. No retrieval-only assertion can commit a fact or lesson.
 
-### R6-E — Task Context assembly and StrategyProposer
+### R6-E — Task Context assembly, StrategyProposer, and cost accounting
 
-Assemble a bounded Context from RAG candidates resolved to current canonical records plus Objective, StateAssessment, policy constraints, and permitted task information. Record sufficient source/version provenance for later explanation. Use a fake proposer in tests and the G0-approved production-provider boundary. Submit the proposal through existing Strategy validation; only an accepted proposal may materialize a Plan.
+R6-E is delivered in three separately verified checkpoints. Each checkpoint must be committed to the existing R6-E branch and pass hosted CI before the operator syncs and runs local verification. Do not begin the next checkpoint until the operator confirms the previous local verification.
 
-**Exit:** tests cover source attribution, conflicting/uncertain evidence, context limits, model-output rejection, provider failure, and no Plan for a rejected proposal.
+#### Step 1 — Context assembly
+
+Assemble a bounded Context from current, authorized Domain Knowledge Signal passages plus the same-Team active Objective, exact StateAssessment, pinned TeamPolicy, and Task budget. Persist the exact canonical Context bytes as one immutable content-addressed Snapshot and one Task-attributed `context_assembled` Event with a versioned manifest containing the selected canonical Signal/Snapshot references and hashes, logical core, query hash, chunk IDs, retrieval configuration, and embedding identity. A replay must reuse the exact original Snapshot/Event; changed content must reject rather than replace it. The operational manifest Event must not mutate the domain-state assessment basis.
+
+**Exit:** deterministic tests cover current-policy authorization, canonical Signal/Snapshot/hash and chunk verification, 8-passage/8,000-character bounds, manifest completeness, immutable replay/conflict, Task write scope, and assessment-basis stability. No generation provider call occurs in this step.
+
+#### Step 2 — StrategyProposer
+
+Use the existing generation-provider boundary to turn the assembled Context into one strictly typed StrategyProposal. Keep the producer free of write authority; submit its result through the existing StrategyService validation and durable acceptance/rejection audit. Invalid, incomplete, malformed, unsupported, or stale output must be rejected; provider errors must not create a Plan.
+
+**Exit:** deterministic fake-provider tests cover valid and invalid proposals, exact Context/assessment provenance, provider failure, replay/conflict, and proof that only StrategyService can accept. Production generation remains disabled until Step 3 supplies enforceable Task spend reservation/reconciliation.
+
+#### Step 3 — Task cost accounting
+
+Add a durable Task-attributed reservation/usage ledger. Reserve the maximum possible request charge before provider invocation, reconcile against provider-reported usage/cost afterwards, and prevent concurrent or repeated calls from exceeding Task `max_cost_usd`. Failed calls and ambiguous/missing usage must remain accounted for conservatively and fail closed; retries must not bypass the reservation.
+
+Before the HTTP request, compute a quote for the exact system/user prompt using UTF-8 byte lengths plus 128 message-framing tokens, the configured output cap (at most 1,024 tokens), the selected model's pinned rate card, and its 32K context ceiling. Under a Task-row lock, reserve the maximum quote only if the sum of all prior reconciled costs and unresolved reservations plus this charge remains within the Task's `max_cost_usd`. Persist one unique Task/attempt/operation charge and its reservation Event before invoking the provider. Never retry a provider request inside one Task attempt.
+
+On trustworthy usage, recompute cost from the rates persisted with the reservation and reconcile the charge. A response whose actual model differs from the reserved model, whose usage is missing/malformed, or whose reconciliation is uncertain cannot produce a Strategy; an unresolved call retains its full reservation. Usage exceeding the quoted token or cost bounds is persisted as an overrun at no less than the reserved amount and also cannot produce a Strategy. A new ordinary TaskRuntime attempt may make a new call only if its own maximum reservation fits on top of all prior Task charges. StrategyService must require the exact current-attempt charge to be `reconciled` before accepting a Context-backed proposal. These accounting records and Task lifecycle protocol Events remain auditable but do not mutate the Objective-domain StateAssessment basis; current Task status remains projected separately.
+
+**Exit:** deterministic tests cover atomic reservation, cap enforcement under concurrent reservation, provider success/failure/model mismatch, missing/invalid usage, overrun, one-call-per-attempt fencing, retry after an unknown charge, exact replay, accepted-Strategy charge provenance, no-charge rejection, and reconciliation rollback/recovery. Only after Steps 1–3 pass may the production Task path call the generation provider.
 
 ### R6-F — First experience-distillation path
 
@@ -176,7 +197,7 @@ Run required focused and full-suite tests, Ruff, mypy, and applicable disposable
 - [x] First deterministic acceptance fixture and success, rejection, failure, and replay contract recorded above.
 - [x] **Before implementation:** verify actual local branch, HEAD, merge status, worktree, current migrations, and disposable PostgreSQL database using `AGENTS.md`. The remote branch or a documentation export is not local preflight evidence. **Satisfied 2026-10-25 — see the preflight record below.**
 
-**Gate status:** all design decisions requested for G0 are recorded and the local preflight is documented, so **R6-G0 is COMPLETE as of 2026-10-25**. Completing G0 did not itself authorize implementation; **R6-A required a separate explicit operator instruction, which was subsequently given.** **R6-A is now COMPLETE and merged to `main` by PR #12** (merge commit `ebbc48d`): checkpoints 1/2A/2B/2C are delivered and the R6-A lifecycle scope is covered end to end. ADR-0027 remains Proposed, and the embedding/generation provider choices remain staged to before R6-D and before R6-E.
+**Gate status:** all design decisions requested for G0 are recorded and the local preflight is documented, so **R6-G0 is COMPLETE as of 2026-10-25**. Completing G0 did not itself authorize implementation; **R6-A required a separate explicit operator instruction, which was subsequently given.** **R6-A is COMPLETE and merged to `main` by PR #12** (merge commit `ebbc48d`). ADR-0027 remains Proposed. R6-D uses local LM Studio BGE-M3; R6-E's Cloudflare Workers AI Llama 3.1 8B FP8 provider is selected in ADR-0031, and all three R6-E checkpoints are operator/hosted verified. PR #28 remains open pending merge and formal R6-E closeout. R6-F is the next planned slice; R6-G remains the later integrated exit gate.
 
 ## 7. R6-G0 local preflight record — 2026-10-25
 
