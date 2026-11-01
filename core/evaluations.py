@@ -278,8 +278,8 @@ class EvaluationService:
             source = session.get(Outcome, evidence.outcome_id)
             if source is None or source.team_id != team.id:
                 raise EvaluationValidationError("evidence_outcome_team_mismatch")
-            source_ref, source_hash = source.observation_snapshot_ref,
-                source.observation_hash
+            source_ref = source.observation_snapshot_ref
+            source_hash = source.observation_hash
             outcome_id, signal_id = str(source.id), None
         else:
             source = session.get(Signal, evidence.signal_id)
