@@ -38,14 +38,14 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 
 **R6 continuation**
 
-- **R6-F — planned; Step 0 only:** branch `r6f-experience-distillation` and the detailed [four-checkpoint implementation plan](docs/development/r6-f-implementation-plan.md) are established. Implementation has not started; provider, evidence-basis, Evaluation, Task-runtime, and review-policy decisions remain explicit gates.
+- **R6-F — Checkpoint 1 implemented; PR and verification pending:** the branch now contains migration `0012_learning_foundation`, Evaluation/EvidenceLink persistence and service logic, LearningChange/KnowledgeItem schema foundations, and typed Evaluation finalization through TaskRuntime. D1–D4 are resolved in the [implementation plan](docs/development/r6-f-implementation-plan.md); later provider, review-expiry, and projection decisions remain gated.
 - **R6-G — later integration gate:** exercise the complete knowledge-grounded loop, full verification, and explicit R6 exit approval.
 
 ## Future plan
 
 Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for current milestone status.
 
-- **R6 next:** implement the four R6-F checkpoints after Step 0 is reviewed and the Step 1 design questions are resolved; R6-G remains the integrated vertical slice and formal exit gate.
+- **R6 next:** finish hosted and operator-local verification for R6-F Checkpoint 1 before beginning Checkpoint 2; R6-G remains the integrated vertical slice and formal exit gate.
 - **R7 — Distillation quality and knowledge lifecycle:** cross-case evaluation of abstractions, contradictory evidence and counterexamples, transferability tests, retrieval quality, review/expiry, staleness detection, supersession, and retirement — always preserving explicit provenance, canonical authority, and controlled commits.
 - **R8 — Multi-domain pressure test:** exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge stays outside the Kernel.
 - **R9 — Agent-assisted production workflow:** codified task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.

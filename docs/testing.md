@@ -165,3 +165,22 @@ For each check state:
 - whether verification is freshly run or only recorded in an existing document.
 
 Do not describe disposable database setup as an independent milestone exit criterion unless the milestone explicitly says it is one.
+
+
+## R6-F Checkpoint 1 — Evaluation and canonical learning schema
+
+Checkpoint 1 adds `0012_learning_foundation`, Evaluation/EvidenceLink persistence and services, and canonical KnowledgeItem/LearningChange schema foundations. It also adds typed Evaluation terminal result categories to the existing TaskRuntime.
+
+Run the focused checks first:
+
+```bash
+uv run alembic upgrade head
+uv run alembic heads
+uv run pytest tests/test_evaluations.py
+uv run ruff check core/evaluations.py core/models.py core/task_runtime.py tests/test_evaluations.py migrations/versions/0012_learning_foundation.py
+uv run mypy core
+uv run pytest -q
+git diff --check
+```
+
+Use a fresh disposable PostgreSQL database. Confirm one Alembic head and a successful upgrade from `0011_task_generation_cost`; never use the persistent `watch` database. The Evaluation tests cover same-Team Outcome references, domain-scoped Signal references, exact Snapshot/hash/quote validation, evaluator identity/revision, proposal idempotency, recorded/rejected dispositions, Task write scope, and TaskRuntime terminal finalization. This checkpoint deliberately does not implement ExperienceDistiller, LearningChange proposal/approval writes, KnowledgeItem commits, or Team Experience indexing.

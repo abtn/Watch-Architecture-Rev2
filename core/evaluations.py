@@ -111,6 +111,8 @@ class EvaluationService:
             raise EvaluationValidationError("invalid_evaluator_kind")
         if not evaluator_identity.strip() or not evaluator_revision.strip():
             raise EvaluationValidationError("evaluator_identity_and_revision_required")
+        if len(evaluator_identity.strip()) > 255 or len(evaluator_revision.strip()) > 255:
+            raise EvaluationValidationError("evaluator_identity_or_revision_too_long")
         with self._session_factory.begin() as session:
             task, team = self._require_task(session, task_id)
             outcome = session.get(Outcome, draft.outcome_id)
@@ -189,6 +191,8 @@ class EvaluationService:
             )))
             if not links:
                 raise EvaluationValidationError("evaluation_evidence_required")
+            if not any(link.source_kind == "outcome" and link.outcome_id == evaluation.outcome_id for link in links):
+                raise EvaluationValidationError("primary_outcome_evidence_required")
             for link in links:
                 self._revalidate_link(session, team, link)
             evaluation.status = "recorded"

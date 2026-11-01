@@ -498,7 +498,7 @@ class LearningChange(Base):
         ),
     )
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-    team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False)
     target_kind: Mapped[str] = mapped_column(String, nullable=False)
     target_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     operation: Mapped[str] = mapped_column(String, nullable=False)

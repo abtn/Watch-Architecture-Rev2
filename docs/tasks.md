@@ -162,10 +162,14 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Writes:** Outcome (+observation Snapshot +hash where an observation exists), Event.
 - **Validation:** predictions are two Outcomes — `prediction_registered` (`expected` validated against the fixed schema: resolution condition, `check_by`, `predicted_band`; observation fields null, permitted for this type only) and `prediction_check` (observation filled; `expected.registered_outcome_id` names the registration). Delivery outcomes on an Artifact with an open policy-required Consultation are rejected. Subject polymorphism validated.
 ### `evaluate_outcome` — model worker, rule, or human
-- **Purpose:** assess an Outcome and the work that produced it.
-- **Reads:** Outcome, subject, related Hypotheses/EvidenceLinks, `expected` for prediction checks.
-- **Writes:** Evaluation; EvidenceLinks with `subject_kind="evaluation"`; Event.
-- **Validation:** Outcome belongs to the Team; conclusion vocabulary; quote checks on new links (INV-04). Mechanical deadline checks may run as `evaluator_kind="rule"` with no model calls.
+
+- **Purpose:** assess one immutable Outcome without rewriting the observation.
+- **Reads:** the target Outcome, its source Task, related same-Team Outcomes, domain-matching Signals, and immutable Snapshots referenced by those records.
+- **Writes:** one Evaluation proposal and its Evaluation-scoped EvidenceLinks, plus the narrowly scoped Events `evaluation_proposed`, `evaluation_recorded`, or `evaluation_rejected`. The lifecycle is `proposed → recorded or rejected`; the worker supplies draft findings and evidence only. Trusted application code supplies evaluator kind, stable identity, and revision, validates the proposal, and alone changes its disposition.
+- **Validation:** the target Outcome and Outcome evidence belong to the Task's Team; Signal evidence matches the Team's Domain; Snapshot references and hashes match the canonical source; quoted spans match exact UTF-8-decoded Snapshot text at supplied character offsets. The primary Outcome must appear as an evidence link. Idempotency is scoped to the creating Task.
+- **Task completion:** only a recorded or rejected Evaluation may be reported to `TaskRuntime`, using `success_evaluation_recorded` or `success_evaluation_rejected` with its Evaluation ID. TaskRuntime verifies the Evaluation's Team, creating and resolving Task, final status, and write scope before terminal finalization.
+- **Not permitted:** mutation of Outcome, KnowledgeItem, LearningChange, or TeamPolicy; changing Task lifecycle directly; committing a LearningChange; or treating a successful Task as proof of causation.
+- **Failure:** invalid, stale, cross-Team, mismatched-hash, or invalid-quote evidence leaves no Evaluation or EvidenceLink. A disposition conflict cannot overwrite the first decision.
 ### `propose_learning_change` — model worker
 - **Purpose:** convert recorded Evaluations into a proposed Team-memory change.
 - **Reads:** one or more recorded Evaluations (same Team), the exact current target KnowledgeItem/TeamPolicy version, supporting evidence.
@@ -255,7 +259,7 @@ side effect in footnote ¹; footnote ¹ grants no worker Snapshot permission.
 | `record_outcome` | — | — | — | — | — | — | — | — | W | — | — | — | — | — | — | — | K | K⁸ | K |
 | `evaluate_outcome` | — | — | — | — | — | W⁹ | — | — | — | W | — | — | — | — | — | — | K | — | K |
 | `propose_learning_change` | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | — | K | — | K |
-| `approve_learning_change` | — | — | — | — | — | — | — | — | — | — | W | W | W | — | — | — | K | — | K |
+| `approve_learning_change` | — | — | — | — | — | — | — | — | — | — | W | — | W | — | — | — | K | — | K |
 | `seed_knowledge` | — | — | — | — | — | — | — | — | — | — | W | W | W | — | — | — | K | — | K |
 | `request_consultation` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W¹⁰ | — | K | K¹¹ | K |
 | `answer_consultation` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W¹² | — | K²² | K¹³ | K |
@@ -526,3 +530,8 @@ Starting points, tuned during M2; per-Task values may override downward, never u
 | `create_team` | 0 | 0 | — |
 | `configure_team` | 6 | 0.60 | 300 |
 | `activate_team` | 0 | 0 | — |
+
+
+### R6-F Checkpoint 1 authority boundary
+
+For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeItem writes plus exact application-managed Events; it has **no TeamPolicy write grant**. The legacy `seed_knowledge` row remains a separately documented Task type but is not implemented by R6-F Checkpoint 1. Evaluation worker output cannot set its own status: trusted application service code validates and records/rejects the proposal. TaskRuntime remains the sole owner of Task lifecycle transitions.

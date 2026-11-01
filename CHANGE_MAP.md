@@ -61,3 +61,17 @@ One dependency is recorded and unresolved: no component in the current codebase 
 ## Conflict rule
 
 When two relevant sources disagree, stop before the disputed change. Report the paths and statements in conflict and request the smallest explicit decision. Do not use an archived source, a generated text dump, or code presence to silently override an active authority.
+
+
+## R6-F Checkpoint 1 implementation map
+
+| Concept | Authority / implementation |
+|---|---|
+| Evaluation schema and typed contract | `core/models.py`, `migrations/versions/0012_learning_foundation.py`, `core/evaluations.py` |
+| Evidence ownership, Snapshot hashes, exact quotes | Evaluation service validation and Evaluation-scoped EvidenceLink constraints |
+| Evaluation Task completion | `core/task_runtime.py`; `docs/tasks.md`; existing TaskRuntime remains the sole lifecycle authority |
+| Canonical learning schema foundations | `KnowledgeItem` and `LearningChange` mappings/migration; no write service in Checkpoint 1 |
+| Multi-record LearningChange basis | `LearningChange.evidence_basis` JSONB typed collection plus SHA-256 complete-basis hash; full reference revalidation is required at Checkpoint 3 |
+| Verification | `tests/test_evaluations.py`; Checkpoint 1 section in `docs/testing.md` |
+
+This checkpoint does not implement ExperienceDistiller, LearningChange proposal/approval commits, TeamPolicy mutation, KnowledgeItem embeddings, or Team Experience indexing.
