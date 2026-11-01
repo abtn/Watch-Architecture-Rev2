@@ -6,6 +6,5 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .vscode/
-Project2text.txt
-a.txt
+.zcodeignore
 *.patch
