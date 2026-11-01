@@ -64,10 +64,13 @@ class EvaluationEvidence(BaseModel):
         if (self.snapshot_ref is None) != (self.snapshot_hash is None):
             raise ValueError("snapshot_ref_and_hash_must_be_paired")
         quote_values = (self.quote_text, self.quote_start, self.quote_end)
-        if any(value is not None for value in quote_values) and not all(value is not None for value in quote_values):
+        if (
+            any(value is not None for value in quote_values)
+            and not all(value is not None for value in quote_values)
+        ):
             raise ValueError("quote_text_and_offsets_must_be_paired")
         if self.quote_start is not None and (
-            self.quote_start < 0 or self.quote_end is None or self.quote_end <= self.quote_start
+            self.quote_start < 0 or self.quote_end is None or self.quote_end <= self.quote_start  # noqa: E501
         ):
             raise ValueError("invalid_quote_offsets")
         return self
@@ -99,7 +102,8 @@ class EvaluationResult:
 class EvaluationService:
     """Record Evaluation evidence; never mutate Outcomes or canonical knowledge."""
 
-    def __init__(self, session_factory: sessionmaker[Session], snapshot_store: SnapshotStore) -> None:
+    def __init__(self, session_factory: sessionmaker[Session],
+        snapshot_store: SnapshotStore) -> None:
         self._session_factory = session_factory
         self._snapshot_store = snapshot_store
 
@@ -111,20 +115,28 @@ class EvaluationService:
             raise EvaluationValidationError("invalid_evaluator_kind")
         if not evaluator_identity.strip() or not evaluator_revision.strip():
             raise EvaluationValidationError("evaluator_identity_and_revision_required")
-        if len(evaluator_identity.strip()) > 255 or len(evaluator_revision.strip()) > 255:
+        if (
+            len(evaluator_identity.strip()) > 255
+            or len(evaluator_revision.strip()) > 255
+        ):
             raise EvaluationValidationError("evaluator_identity_or_revision_too_long")
         with self._session_factory.begin() as session:
             task, team = self._require_task(session, task_id)
             outcome = session.get(Outcome, draft.outcome_id)
             if outcome is None or outcome.team_id != team.id:
                 raise EvaluationValidationError("outcome_not_owned_by_task_team")
-            normalized = [self._normalize_evidence(session, team, item) for item in draft.evidence]
-            if not any(item["source_kind"] == "outcome" and item["outcome_id"] == str(draft.outcome_id) for item in normalized):
+            normalized = [self._normalize_evidence(session, team,
+                item) for item in draft.evidence]
+            if (
+                not any(item["source_kind"] == "outcome"
+                and item["outcome_id"] == str(draft.outcome_id) for item in normalized)
+            ):
                 raise EvaluationValidationError("primary_outcome_evidence_required")
             normalized.sort(key=lambda item: item["reference_key"])
             payload = {
                 "team_id": str(team.id), "outcome_id": str(outcome.id),
-                "conclusion": draft.conclusion, "findings": draft.findings.model_dump(mode="json"),
+                "conclusion": draft.conclusion,
+                    "findings": draft.findings.model_dump(mode="json"),
                 "evidence": normalized, "evaluator_kind": evaluator_kind,
                 "evaluator_identity": evaluator_identity.strip(),
                 "evaluator_revision": evaluator_revision.strip(),
@@ -141,8 +153,10 @@ class EvaluationService:
                 return EvaluationResult(prior.id, prior.status, replayed=True)
             evaluation = Evaluation(
                 id=uuid4(), team_id=team.id, outcome_id=outcome.id,
-                conclusion=draft.conclusion, findings=draft.findings.model_dump(mode="json"),
-                evaluator_kind=evaluator_kind, evaluator_identity=evaluator_identity.strip(),
+                conclusion=draft.conclusion,
+                    findings=draft.findings.model_dump(mode="json"),
+                evaluator_kind=evaluator_kind,
+                    evaluator_identity=evaluator_identity.strip(),
                 evaluator_revision=evaluator_revision.strip(), status="proposed",
                 idempotency_key=draft.idempotency_key, proposal_hash=proposal_hash,
                 created_by_task_id=task.id,
@@ -155,7 +169,8 @@ class EvaluationService:
                     subject_id=evaluation.id, source_kind=item["source_kind"],
                     outcome_id=UUID(item["outcome_id"]) if item["outcome_id"] else None,
                     signal_id=UUID(item["signal_id"]) if item["signal_id"] else None,
-                    snapshot_ref=item["snapshot_ref"], snapshot_hash=item["snapshot_hash"],
+                    snapshot_ref=item["snapshot_ref"],
+                        snapshot_hash=item["snapshot_hash"],
                     stance=item["stance"], quote_text=item["quote_text"],
                     quote_start=item["quote_start"], quote_end=item["quote_end"],
                     reference_key=item["reference_key"],
@@ -177,7 +192,10 @@ class EvaluationService:
                 raise EvaluationValidationError("evaluation_not_found_for_team")
             if evaluation.created_by_task_id != task.id:
                 raise EvaluationValidationError("evaluation_task_mismatch")
-            if evaluation.status == "recorded" and evaluation.resolved_by_task_id == task.id:
+            if (
+                evaluation.status == "recorded"
+                and evaluation.resolved_by_task_id == task.id
+            ):
                 return EvaluationResult(evaluation.id, "recorded", replayed=True)
             if evaluation.status != "proposed":
                 raise EvaluationConflict("evaluation_already_dispositioned")
@@ -191,7 +209,10 @@ class EvaluationService:
             )))
             if not links:
                 raise EvaluationValidationError("evaluation_evidence_required")
-            if not any(link.source_kind == "outcome" and link.outcome_id == evaluation.outcome_id for link in links):
+            if (
+                not any(link.source_kind == "outcome"
+                and link.outcome_id == evaluation.outcome_id for link in links)
+            ):
                 raise EvaluationValidationError("primary_outcome_evidence_required")
             for link in links:
                 self._revalidate_link(session, team, link)
@@ -205,7 +226,8 @@ class EvaluationService:
             session.flush()
             return EvaluationResult(evaluation.id, "recorded")
 
-    def reject(self, task_id: UUID, evaluation_id: UUID, *, reason: str) -> EvaluationResult:
+    def reject(self, task_id: UUID, evaluation_id: UUID, *,
+        reason: str) -> EvaluationResult:
         if not reason.strip():
             raise EvaluationValidationError("rejection_reason_required")
         with self._session_factory.begin() as session:
@@ -217,7 +239,7 @@ class EvaluationService:
                 raise EvaluationValidationError("evaluation_not_found_for_team")
             if evaluation.created_by_task_id != task.id:
                 raise EvaluationValidationError("evaluation_task_mismatch")
-            if (evaluation.status == "rejected" and evaluation.resolved_by_task_id == task.id
+            if (evaluation.status == "rejected" and evaluation.resolved_by_task_id == task.id  # noqa: E501
                 and evaluation.rejection_reason == reason.strip()):
                 return EvaluationResult(evaluation.id, "rejected", replayed=True)
             if evaluation.status != "proposed":
@@ -227,7 +249,8 @@ class EvaluationService:
             evaluation.resolved_at = datetime.now(timezone.utc)
             evaluation.rejection_reason = reason.strip()
             ObjectiveService._add_event(session, task.id, "evaluation_rejected", {
-                "evaluation_id": str(evaluation.id), "outcome_id": str(evaluation.outcome_id),
+                "evaluation_id": str(evaluation.id),
+                    "outcome_id": str(evaluation.outcome_id),
                 "reason": reason.strip(),
             })
             session.flush()
@@ -249,12 +272,14 @@ class EvaluationService:
             raise EvaluationValidationError("team_not_active")
         return task, team
 
-    def _normalize_evidence(self, session: Session, team: Team, evidence: EvaluationEvidence) -> dict[str, Any]:
+    def _normalize_evidence(self, session: Session, team: Team,
+        evidence: EvaluationEvidence) -> dict[str, Any]:
         if evidence.source_kind == "outcome":
             source = session.get(Outcome, evidence.outcome_id)
             if source is None or source.team_id != team.id:
                 raise EvaluationValidationError("evidence_outcome_team_mismatch")
-            source_ref, source_hash = source.observation_snapshot_ref, source.observation_hash
+            source_ref, source_hash = source.observation_snapshot_ref,
+                source.observation_hash
             outcome_id, signal_id = str(source.id), None
         else:
             source = session.get(Signal, evidence.signal_id)
@@ -268,7 +293,8 @@ class EvaluationService:
             raise EvaluationValidationError("source_snapshot_reference_mismatch")
         snapshot_ref, snapshot_hash = source_ref, source_hash
         if snapshot_ref is not None and snapshot_hash is not None:
-            self._verify_snapshot(snapshot_ref, snapshot_hash, evidence.quote_text, evidence.quote_start, evidence.quote_end)
+            self._verify_snapshot(snapshot_ref, snapshot_hash, evidence.quote_text,
+                evidence.quote_start, evidence.quote_end)
         elif evidence.quote_text is not None:
             raise EvaluationValidationError("quote_snapshot_required")
         item = {
@@ -281,27 +307,36 @@ class EvaluationService:
         item["reference_key"] = _sha256_json(item)
         return item
 
-    def _revalidate_link(self, session: Session, team: Team, link: EvidenceLink) -> None:
+    def _revalidate_link(self, session: Session, team: Team,
+        link: EvidenceLink) -> None:
         if link.source_kind == "outcome":
             source = session.get(Outcome, link.outcome_id)
             if source is None or source.team_id != team.id:
                 raise EvaluationValidationError("evidence_outcome_team_mismatch")
-            if link.snapshot_ref != source.observation_snapshot_ref or link.snapshot_hash != source.observation_hash:
+            if (
+                link.snapshot_ref != source.observation_snapshot_ref
+                or link.snapshot_hash != source.observation_hash
+            ):
                 raise EvaluationValidationError("source_snapshot_reference_mismatch")
         elif link.source_kind == "signal":
             source = session.get(Signal, link.signal_id)
             if source is None or source.domain != team.domain:
                 raise EvaluationValidationError("evidence_signal_team_domain_mismatch")
-            if link.snapshot_ref != source.snapshot_ref or link.snapshot_hash != source.content_hash:
+            if (
+                link.snapshot_ref != source.snapshot_ref
+                or link.snapshot_hash != source.content_hash
+            ):
                 raise EvaluationValidationError("source_snapshot_reference_mismatch")
         else:
             raise EvaluationValidationError("unsupported_evidence_source_kind")
         if link.snapshot_ref is not None and link.snapshot_hash is not None:
-            self._verify_snapshot(link.snapshot_ref, link.snapshot_hash, link.quote_text, link.quote_start, link.quote_end)
+            self._verify_snapshot(link.snapshot_ref, link.snapshot_hash,
+                link.quote_text, link.quote_start, link.quote_end)
         elif link.quote_text is not None:
             raise EvaluationValidationError("quote_snapshot_required")
 
-    def _verify_snapshot(self, reference: str, expected_hash: str, quote: str | None, start: int | None, end: int | None) -> None:
+    def _verify_snapshot(self, reference: str, expected_hash: str,
+        quote: str | None, start: int | None, end: int | None) -> None:
         try:
             content = self._snapshot_store.read(reference)
         except SnapshotIntegrityError as error:
@@ -318,5 +353,6 @@ class EvaluationService:
 
 
 def _sha256_json(value: dict[str, Any]) -> str:
-    raw = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
+    raw = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",",
+        ":"), default=str).encode("utf-8")
     return "sha256:" + hashlib.sha256(raw).hexdigest()

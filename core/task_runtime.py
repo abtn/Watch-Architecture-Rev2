@@ -17,8 +17,10 @@ from core.state_assessment import _canonical_json, _timestamp
 _TERMINAL_EVENTS = ("task_completed", "task_failed")
 _RETRY_EVENTS = ("task_attempt_failed", "task_retry_scheduled")
 _TERMINAL_STATUSES = frozenset({"done", "failed"})
-_EVALUATION_SUCCESS_CATEGORIES = frozenset({"success_evaluation_recorded", "success_evaluation_rejected"})
-_SUCCESS_CATEGORIES = frozenset({"success_signal_created", "success_no_change"}) | _EVALUATION_SUCCESS_CATEGORIES
+_EVALUATION_SUCCESS_CATEGORIES = frozenset({"success_evaluation_recorded",
+    "success_evaluation_rejected"})
+_SUCCESS_CATEGORIES = frozenset({"success_signal_created",
+    "success_no_change"}) | _EVALUATION_SUCCESS_CATEGORIES
 _RESULT_CATEGORIES = _SUCCESS_CATEGORIES | {"terminal_failure"}
 
 # ADR-0030 §2: a `running` Task whose latest `task_started` Event is older than
@@ -355,7 +357,7 @@ class TaskRuntime:
                         "outcome_id": str(outcome.id),
                         "observation_snapshot_ref": snapshot_ref,
                         "observation_hash": observation_hash,
-                        **({"evaluation_id": str(observation.evaluation_id)} if observation.evaluation_id is not None else {}),
+                        **({"evaluation_id": str(observation.evaluation_id)} if observation.evaluation_id is not None else {}),  # noqa: E501
                     },
                 )
                 for event_type in event_types
@@ -653,17 +655,19 @@ class TaskRuntime:
         )
 
     @staticmethod
-    def _validate_evaluation_result(session: Session, task: Task, observation: TerminalObservation) -> None:
+    def _validate_evaluation_result(session: Session, task: Task,
+        observation: TerminalObservation) -> None:
         if task.task_type != "evaluate_outcome":
             raise TaskNotFinalizable("evaluation_result_wrong_task_type")
         if not {"Evaluation", "EvidenceLink"}.issubset(set(task.allowed_writes)):
             raise TaskNotFinalizable("evaluation_result_write_scope_missing")
-        expected_status = "recorded" if observation.result_category == "success_evaluation_recorded" else "rejected"
+        expected_status = "recorded" if observation.result_category == "success_evaluation_recorded" else "rejected"  # noqa: E501
         evaluation = session.scalar(select(Evaluation).where(
-            Evaluation.id == observation.evaluation_id, Evaluation.team_id == task.team_id
+            Evaluation.id == observation.evaluation_id,
+                Evaluation.team_id == task.team_id
         ))
         if (evaluation is None or evaluation.created_by_task_id != task.id
-            or evaluation.resolved_by_task_id != task.id or evaluation.status != expected_status):
+            or evaluation.resolved_by_task_id != task.id or evaluation.status != expected_status):  # noqa: E501
             raise TaskNotFinalizable("evaluation_not_recorded")
 
     @staticmethod
@@ -795,7 +799,7 @@ class TaskRuntime:
         """Return the committed terminal result, or reject a conflict."""
         if prior.observation_snapshot_ref is None:
             raise TaskNotFinalizable("recorded_terminal_outcome_corrupt")
-        stored = self._snapshot_store.read(prior.observation_snapshot_ref)  # type: ignore[union-attr]
+        stored = self._snapshot_store.read(prior.observation_snapshot_ref)  # type: ignore[union-attr]  # noqa: E501
         if _canonical_json(payload).encode("utf-8") != stored:
             raise TaskNotFinalizable("task_outcome_conflict")
 
