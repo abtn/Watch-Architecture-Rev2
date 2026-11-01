@@ -5,8 +5,8 @@ Revises: 0011_task_generation_cost
 """
 from typing import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0012_learning_foundation"
