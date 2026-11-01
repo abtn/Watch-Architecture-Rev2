@@ -248,14 +248,17 @@ INV-01, INV-11.
 Operator seeding, outcome recording, and approvals are durable writes. Making `Event.task_id` nullable for "human" actions would create two attribution schemes and a validation bypass.
 
 ## Decision
-Operators act through manual task types — `manual_signal_ingest`, `record_outcome`, `approve_learning_change`, `seed_knowledge` — created by the API. Operator identity is recorded in the Event payload. Every durable write, human or machine, traces to a Task.
+Operators act through manual Task types — including `manual_signal_ingest`, `record_outcome`, `approve_learning_change`, and `seed_knowledge` — created by application code. A host application authenticates and authorizes the Operator, then invokes an in-repository application adapter with a trusted principal context. The adapter creates an ordinary pending Task; it does not authenticate arbitrary request fields.
+
+The host is the authentication root. The repository does not require a separately deployed Watch API/CLI, login system, token middleware, or Operator user store. The host-provided identity must be stable and namespaced (issuer + subject); it is recorded with the Task-attributed decision Event. Every durable write, human or machine, traces to a Task.
 
 ## Alternatives considered
 - **Nullable task_id + separate actor columns everywhere** — rejected: two attribution models to maintain, and operator writes would skip task validation.
 - **Direct operator writes outside the task system** — rejected: the exact bypass INV-02 exists to prevent.
+- **A separate Watch API/CLI authentication stack for each deployment** — rejected for this boundary: the host already owns human authentication; Watch accepts that trusted in-process context rather than duplicating it.
 
 ## Consequences
-Uniform provenance and uniform validation. Cost: trivial ceremony for operators (an API call is a Task).
+Uniform provenance and uniform validation. The host owns authentication and Team/action authorization; Watch owns Task creation, scope validation, and canonical commit. The adapter is an application integration seam, not a public endpoint. A Python principal object is not cryptographic proof and must arrive only through the host-controlled call path.
 
 ## Invariants
 INV-02, INV-12, INV-13, INV-14.

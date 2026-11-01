@@ -1,107 +1,135 @@
-# R6-F Checkpoint 3 — Operator Task and Trusted Identity Audit
+# R6-F Checkpoint 3 — Operator Task and Trusted Identity Boundary Audit
 
-**Audit status:** completed from the repository at Checkpoint 2 merge commit `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0` and the documentation-only Checkpoint 3 branch.
+**Audit status:** design audit complete; the host-invoked application adapter is now an explicit Checkpoint 3 deliverable.  
+**Audit snapshot:** Checkpoint 2 merge `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0`; pre-audit branch head `cc87ada69e30e9ce1cfa66d6ca39d3f400d1d06b`.  
+**Audit date:** 2026-11-01.  
+**Implementation status:** documentation/design only. No application code or migration changes here; adapter, approval service, and TaskRuntime result path remain to be implemented and tested.
 
-**Audit date:** 2026-11-01.
+## 1. Decision and executive findings
 
-**Implementation status:** no application code or migration changed by this audit.
-**Conclusion:** the repository has a usable Task lifecycle service, but does not currently provide a production creation/caller path for an Operator approval Task or a trusted Operator identity boundary. Checkpoint 3 implementation must not claim a production approval route until these are supplied or explicitly built as a narrow application adapter.
+The operator clarified that there is no separate deployed Watch API/CLI with authentication. Checkpoint 3 must include a thin in-repository application adapter that receives an authenticated Operator identity from its host.
 
-## 1. Executive findings
+**Decision:** include that adapter. The host application owns authentication and authorization and invokes the adapter in-process with a trusted, typed principal context. Watch does not add a deployed API, CLI, login/session/token subsystem, or authentication middleware.
 
-| Area | Finding | Status |
+`Host authentication + Team/action authorization → in-repository Operator adapter → pending approve_learning_change Task + request Event → TaskRuntime.admit → LearningChange commit service → atomic canonical decision + decision Event → TaskRuntime.finalize → host response`
+
+| Area | Finding | Checkpoint 3 disposition |
 |---|---|---|
-| Manual Operator Task creation | ADR-0011 and `docs/tasks.md` describe API/CLI-created manual Tasks, but this repository has no API/CLI package or generic production Task-creation service. The only production `Task(...)` constructor found in `core/` is Plan materialization in `core/plans.py`; it creates Plan-linked Action Tasks with `allowed_writes=["Signal"]`. | **Missing** |
-| Task admission | `TaskRuntime.admit(task_id)` can admit a pre-existing pending same-Team Task after policy, status, attempt, prerequisite, quota, and budget checks. It does not create the Task and does not establish the actor who requested it. | **Available, but only after creation** |
-| Approval Task execution | `TaskDispatcher` intentionally supports only `ingest_source`. It rejects other Task types before admission. No Operator approval executor/caller is present. | **Missing** |
-| Approval finalization | `TaskRuntime` has a typed result only for `success_learning_change_proposed`; its LearningChange validator is specific to `propose_learning_change`. There are no accepted/rejected approval result categories or matching validation. | **Missing** |
-| Trusted Operator identity | No User/Operator principal model, auth middleware, API, or CLI identity adapter was found. Existing `operator_id` use is a caller-supplied string, not an authenticated principal. | **Missing** |
-| Durable approval intent/replay | The Task ORM has no `input_refs`, approval target field, or manual-request idempotency key. The approval Task therefore needs a durable association to its LearningChange and a stable replay identity. | **Unresolved** |
-| Operator Task timing/recovery | TaskRuntime requires a positive `deadline_seconds` value in every Task budget, while the documented approval Task has no enforced deadline. Interrupted-task recovery scans all running Tasks and applies a 60-second stale threshold. | **Contract mismatch to resolve** |
+| Host boundary | No deployed Watch API/CLI or authentication subsystem exists here. | Host supplies authenticated principal and has authorized Team/action. |
+| Application adapter | No in-repository manual approval Task creator exists. | Required deliverable: narrow in-process adapter, proposed `core/operator_application.py`. |
+| Task creation | PlanService is the only production Task-row creation path found; it creates Plan-linked ingestion Tasks. | Adapter creates only a pending ordinary approval Task and request Event, atomically. |
+| Task lifecycle | `TaskRuntime.admit` and `finalize` exist; admission does not validate type-to-write-scope mapping. | Reuse both; add strict approval-specific checks. |
+| Approval execution | `TaskDispatcher` intentionally supports only `ingest_source`. | Run synchronously via adapter; do not extend dispatcher. |
+| Trusted identity | Existing `operator_id` strings are attribution fields, not authenticated principals. | Accept typed host principal; persist stable issuer/subject, never request/model strings. |
+| Target and replay | Task has no `input_refs` or request-key column; Event's `(task_id,type)` index is non-unique. | Host idempotency UUID resolves the same Task; request Event stores a fingerprint. Add schema only if tests prove a gap. |
+| Recovery | Every stale running Task is considered interrupted after 60 seconds. | Human decision precedes Task creation; execution is synchronous. Replay must survive recovery and commit/finalize crash window. |
+| Budget | Admission requires positive `deadline_seconds`; approval Task spec documents no model/tool deadline. | Permit no-deadline budget for this synchronous Task type only; preserve 60-second stale recovery and prove replay. |
 
-## 2. Task creation: design exists, implementation does not
+## 2. Existing repository facts
 
-**Normative intent.** ADR-0011 says Operator actions such as `approve_learning_change` are manual Tasks created by an API, with Operator identity recorded in Event payloads. `docs/tasks.md` likewise lists API/CLI as the creation source for manual Operator Tasks.
+### 2.1 No deployed authentication surface
 
-**Repository reality.**
+The repository contains the domain core and tests, not a running Watch API/CLI host. ADR-0011's earlier "created by the API" wording describes intended integration, not an existing deployed component.
 
-- The repository tree at the audited commit contains `core/`, `migrations/`, `tests/`, and documentation, but no `api/`, `app/`, `web/`, or `cli/` package.
-- `pyproject.toml` declares SQLAlchemy, Alembic, psycopg, and Pydantic; no HTTP framework, authentication dependency, or CLI framework is configured.
-- The only production `Task(...)` constructor found in `core/` is `PlanService` materialization in `core/plans.py`. It creates pending Plan Action Tasks with `allowed_writes=["Signal"]` and the ingestion budget. It is not a manual Task factory.
-- The ORM `Task` model stores task type, Team, status, policy version, scopes, budget, and optional Objective/Plan links. It does not store the documented `input_refs`, an Operator identity, the approval target, or a general request idempotency key.
+Do not add FastAPI routes, command-line authentication, credentials, sessions, token verification, user tables, or a standalone service merely for Checkpoint 3. The host is the authentication root.
 
-**Consequence.** There is currently no production operation that creates a pending `approve_learning_change` Task, durably identifies which LearningChange it is deciding, and attributes the request to a trusted Operator. Tests that insert a Task row directly prove service behavior under fixtures; they do not provide this production caller.
+### 2.2 Task creation and lifecycle
 
-## 3. What the existing TaskRuntime can and cannot do
+- The only production Task-row construction path found is Plan materialization in `core/plans.py`. It creates pending Plan-linked Tasks with `allowed_writes=["Signal"]`; it is not an Operator Task factory.
+- `TaskRuntime.admit(task_id)` locks and admits a pre-existing pending Task, validates active Team, pinned TeamPolicy version, budget shape, attempt limit, prerequisites, and daily quota, then increments the attempt and emits `task_started`.
+- Admission is generic. It does not prove that `task_type` and `allowed_writes` agree. Adapter and decision service must enforce exact approval type and grants.
+- `TaskRuntime.finalize` owns terminal Task status, terminal Events, and terminal `task_execution` Outcome. Current typed success categories include proposal and Evaluation results, not accepted/rejected LearningChange decisions.
+- `TaskDispatcher` supports only `ingest_source`; its recovery entrypoint calls the existing runtime. Do not turn it into an Operator dispatcher.
 
-### Available behavior
+### 2.3 Persistence
 
-`TaskRuntime.admit(task_id)` is an appropriate lifecycle boundary **after** an authorized caller has created the pending Task. It locks the Task and checks pending status, maximum starts, Plan prerequisites, active Team (with the documented setup exceptions), matching TeamPolicy version, budget shape, and configured daily Task-start quota. It then atomically increments the attempt, changes `pending → running`, and records `task_started`.
+Migration `0012_learning_foundation` stores LearningChange operation/target, proposal state, evidence basis/hash, disposition, previous/committed state, rejection reason, operator ID, committing Task ID, and timestamps. KnowledgeItem is canonical/versioned; composite foreign keys enforce same-Team proposing/committing Task references.
 
-The approval operation should reuse this lifecycle authority. It must not set Task status, attempt count, or lifecycle Events directly.
+It does **not** add Task `input_refs`, approval-target or generic request-key columns, unique request Event constraint, Operator table/issuer foreign key, or database proof that `committed_by_task_id` is an admitted approval Task with exact scope. Application code owns those semantic checks.
 
-### Important constraints
+## 3. Trusted host principal contract (D8)
 
-1. **Task-type and write-scope validation are operation-specific.** Admission is generic; it does not establish that a Task's `allowed_writes` match its `task_type`. The approval service must require the exact `approve_learning_change` type, same Team, running current attempt, matching policy version, and exactly the authorized KnowledgeItem/LearningChange write set. It must reject extra grants and all TeamPolicy writes.
-2. **The current finalizer cannot report an approval decision.** `TerminalObservation` currently allows `success_learning_change_proposed`, not accepted/rejected approval results. The only LearningChange-specific finalizer validator requires `task_type="propose_learning_change"`, exact `allowed_writes=["LearningChange"]`, a still-proposed create operation, the proposal Event, and reconciled distillation cost. A separate approval validator/result path is required.
-3. **A rejection is a successfully executed Operator decision.** The approval Task should complete as a successful Task with a typed rejected-decision result; it must not be conflated with Task execution failure. The LearningChange status itself remains `rejected`.
-4. **The existing transaction pattern is reusable.** Ingestion commits its business result independently and atomically, then TaskRuntime finalizes the Task/Outcome. A crash between those commits is handled by replaying the existing business result. Checkpoint 3 should follow the same pattern: atomically commit LearningChange + KnowledgeItem (if accepted) + one decision Event, then finalize the approval Task. Replaying the same Task must return the recorded decision and allow TaskRuntime finalization without creating another version.
-5. **The dispatcher is not the Operator runner.** `TaskDispatcher` filters for `ingest_source` and rejects every other type. Do not broaden it into a general dispatcher for this purpose. The approval should be a synchronous application/API operation that calls the existing TaskRuntime and the narrow learning commit service.
+**Host application:** authenticate the Operator; authorize the principal for target Team and exact `approve_learning_change` action; pass a typed in-process principal containing stable issuer/subject and Team/action authorization context; invoke the adapter only from a host-controlled call path. Never construct principal context from request-body fields, model output, or client-controlled `operator_id`.
 
-## 4. Trusted identity: existing fields are attribution, not authentication
+**Watch adapter:** accept typed context, not a bare actor string; validate non-empty stable issuer/subject and persisted length without truncation; require exact Team/action authorization; canonicalize namespaced issuer + subject and persist it in `LearningChange.operator_id` and decision Event.
 
-- `ObjectiveService.create` and `ObjectiveService.transition` accept `operator_id: str | None` from their caller and copy it into Event payloads. They do not resolve, authenticate, or authorize that identity. Tests pass literal strings such as `"operator-1"`; this proves payload attribution only.
-- `LearningChange.operator_id` is a nullable `String(255)`. Database constraints require a non-empty value for accepted/rejected changes, but there is no User/Operator foreign key or issuer/subject relation.
-- `LearningChange.committed_by_task_id` has a composite same-Team foreign key to Task. That protects Team consistency; it does not enforce that the referenced Task has type `approve_learning_change`, was running at commit time, or was admitted through TaskRuntime.
-- No auth package, principal type, session/token middleware, or API/CLI boundary exists in this repository.
+A small frozen `TrustedOperatorPrincipal` with issuer/subject plus host authorization context is sufficient. A Python dataclass/protocol is **not** a cryptographic credential or unforgeable within a process. Trust comes from host-controlled call site/composition root. Do not expose the adapter directly to untrusted network input. Fake principal/authorizer tests prove Watch's contract, not that a production host authenticated a person.
 
-**Required trust contract.** The learning service must not accept a bare `operator_id` as proof of authority. A trusted host application boundary must authenticate the caller and pass a stable principal subject to the service through an explicit trusted-caller interface. The service persists that canonical subject in `LearningChange.operator_id` and the decision Event. A test fake may exercise this boundary in unit tests, but must not be described as a production authentication provider. Building a general authentication system is not implied by Checkpoint 3.
+Use stable issuer + subject, not display name/email. `LearningChange.operator_id` is `String(255)`; reject overlong canonical identities rather than truncating/aliasing. Widen only if a real host identity requires it.
 
-## 5. Durable Task intent and replay requirement
+### 3.1 Existing raw-string methods are not trusted boundaries
 
-The ORM Task has no input-reference or approval-target field. The manual approval request therefore needs a durable, same-Team link between its Task and the `learning_change_id` it is deciding. Passing the ID only as transient API request data is insufficient for restart/retry recovery.
+`ObjectiveService.create` and `transition` accept `operator_id: str | None` and copy it into Event payloads. Test values such as `"operator-1"` prove attribution only, not authentication/authorization. Do not copy that signature into the approval adapter. This audit does not refactor unrelated Objective methods.
 
-The API caller must also avoid creating a new approval Task every time the same approval request is retried. The same decision must be recoverable against the original Task identity, or the request must have a durable idempotency key that resolves to that Task. The current Task schema has no generic manual-request idempotency key. The audit does not prescribe a new column: a Task-attributed creation/request Event with a validated, uniqueness-enforced key may suffice, or a minimal schema addition may be justified after inspecting the existing Event constraints. Do not silently assume a request body is durable.
+## 4. In-repository application adapter
 
-## 6. Deadline and interrupted-task recovery mismatch
+Proposed module: `core/operator_application.py`. It is an in-process application integration seam, not deployed API/CLI.
 
-- The documented `approve_learning_change` budget has zero tool calls and zero model cost, with no enforced deadline.
-- `TaskRuntime.admit` currently requires every Task budget to include a positive integer `deadline_seconds`; it rejects a missing, null, or zero value.
-- `TaskRuntime.recover_interrupted` discovers every `running` Task, not only ingestion Tasks, and treats a current attempt older than 60 seconds as interrupted. `TaskDispatcher` exposes `recover_interrupted()` as its startup recovery entrypoint; when host startup calls it, the global scan runs.
-- A manual approval must not wait for a human inside a running Task. The intended action is initiated only after the Operator has decided, then runs synchronously. Nevertheless, a crash after the canonical decision Event but before TaskRuntime finalization requires same-Task replay. If generic recovery has returned that Task to pending, the API caller must re-admit the same Task and replay the decision. The ingestion dispatcher will not execute it.
+Expose one narrow synchronous operation, conceptually:
 
-Before implementation, decide whether the approval path is strictly short-lived and compatible with the 60-second global recovery, or whether a narrowly scoped recovery-policy change is needed. Also reconcile the no-deadline Task specification with admission's positive `deadline_seconds` requirement. Do not invent a sentinel value or silently impose a timeout.
+`decide_learning_change(principal: TrustedOperatorPrincipal, request: LearningChangeDecisionRequest) -> LearningChangeDecisionResult`
 
-## 7. Recommended narrow execution contract
+Request carries Team, LearningChange, decision, rejection reason when rejecting, and host-generated idempotency UUID; it does not carry authoritative actor identity.
 
-Subject to the missing trusted caller being identified, the safest in-repository service sequence is:
+The adapter validates principal/authorization; loads target and derives/validates its Team; resolves or atomically creates one pending approval Task + request Event; calls `TaskRuntime.admit`; invokes `LearningCommitService` with same Task/attempt/principal/target/decision; then calls `TaskRuntime.finalize` with typed result. Never insert a running Task or mutate Task lifecycle fields/events directly. No worker, model, dispatcher, or background queue. Authentication remains in host; commit validation remains in Watch.
 
-1. The host API/CLI authenticates the Operator. It supplies a stable principal subject through the trusted application boundary; no model or request-body field can choose that identity.
-2. The application creates one pending `approve_learning_change` Task for the same Team and current TeamPolicy version, with no Plan/Action link, an exact KnowledgeItem + LearningChange write grant, zero tools, zero model cost, and durable target/idempotency reference.
-3. The same application flow calls `TaskRuntime.admit(task_id)`.
-4. A narrow learning commit service locks the Task and LearningChange, verifies the trusted principal, exact Task/type/scope/policy/team, and revalidates the complete evidence basis/hash, all referenced records, target operation/version/status, and replay/concurrency preconditions.
-5. Acceptance atomically writes the canonical KnowledgeItem state/version, LearningChange accepted disposition/history/operator/task metadata, and one decision Event. Rejection atomically writes the LearningChange rejected disposition/reason/operator/task metadata and one decision Event without changing/creating a KnowledgeItem. No TeamPolicy write is permitted.
-6. The caller invokes `TaskRuntime.finalize` with a typed accepted/rejected decision result. Runtime validation proves the same Task/Team, committed_by_task_id, operator identity, decision Event, and final LearningChange disposition. Same-Task replay returns the existing decision and does not duplicate a KnowledgeItem version.
-7. The API returns the durable decision. It does not add this Task to `TaskDispatcher` or wait for a later worker.
+## 5. Approval Task and idempotency (D12)
 
-This is a core-service/caller contract, not evidence that the external API exists. Do not expose it as a production-authenticated route until the trusted caller is connected.
+Create a pending Task with `task_type="approve_learning_change"`, target Team/current policy version, no Objective/Plan/Action links, exact `allowed_writes=["LearningChange", "KnowledgeItem"]`, zero tools/cost, and no Plan prerequisites. Event writes are exact application-managed effects, not worker grants. Creator inserts initial pending row only; TaskRuntime owns subsequent lifecycle.
 
-## 8. Decisions required before Checkpoint 3 implementation
+The host supplies one opaque idempotency UUID per decision and reuses it for every retry. Derive deterministic Task UUID (UUIDv5, fixed application namespace) from Team + approval Task type + request UUID. Insert Task and one `operator_task_requested` Event in the same transaction. Event records target LearningChange ID, decision, canonical host identity, current policy version, and deterministic request fingerprint (including rejection reason); store hash of key/fingerprint.
 
-| Decision | Current audit result | Required closure |
-|---|---|---|
-| Trusted caller location | No API/CLI/auth adapter exists in this repository; ADR-0011 describes one conceptually. | Identify the external authenticated application boundary, or explicitly authorize a thin in-repository caller adapter whose identity is still supplied by a trusted host. |
-| Manual Task creator | No production manual Task factory exists. | Define the single creation operation and its transaction with target reference and idempotency protection. |
-| Durable approval target | Task ORM lacks input_refs/learning_change_id. | Pin a Task-attributed creation Event or minimal schema representation, plus same-Team and replay checks. |
-| TaskRuntime decision result | Only distiller proposal result exists. | Add typed accepted/rejected approval result categories and strict finalizer validation. |
-| Task execution/recovery | Dispatcher supports ingestion only; recovery scans all running Tasks after 60 seconds. | Keep Operator execution synchronous; test crash/replay and resolve the deadline/recovery contract. |
-| Revision/retirement proposal source | ExperienceDistiller currently emits create only. | Retain D10: do not add a seed/bypass path; decide reachability before claiming full create/revise/retire acceptance. |
-| Review-date semantics | `review_after` policy is not pinned. | Retain D7; no expiry/retrieval claim in Checkpoint 3. |
+On retry, same key maps to same Task primary key. Require exactly one matching request Event and identical Team/target/decision/actor/fingerprint. Same request replays; same key with changed content/identity conflicts. Different key may create another Task, but only one decision can win the locked LearningChange transition. Task primary-key uniqueness is the race boundary; Task/Event insert is atomic. PostgreSQL tests must cover duplicate creation and missing/multiple/corrupted request Events. Event index is not a uniqueness constraint.
 
-## 9. Audit conclusion and next action
+This avoids premature generic Task schema changes. Add a minimal migration only if restart/concurrency tests demonstrate an integrity gap.
 
-**The audit is complete; production approval implementation is not yet unblocked.** The TaskRuntime can be reused, but Task creation and trusted Operator identity must come from a real authenticated application boundary. The codebase currently contains only the domain core, not that boundary.
+## 6. Canonical decision and TaskRuntime
 
-The next required decision is whether the trusted API/CLI/authentication adapter already exists outside this repository and can call the core, or whether Checkpoint 3 should include a thin in-repository manual-task application adapter. Either option must preserve the trust boundary: the core must never treat an arbitrary string as proof of Operator identity.
+Lock approval Task, LearningChange, and target KnowledgeItem deterministically. Recheck exact Task type/status/current attempt/same Team/current policy/no Plan links/scope; host authorization and canonical actor must match request Event. Revalidate proposed status, operation/target, full evidence hash, source/evaluator Tasks, Outcomes, Evaluations, EvidenceLinks, Snapshot hashes/quotes, Team ownership, and target version/status.
 
-No application code, schema migration, provider configuration, TeamPolicy grant, dispatcher extension, or Checkpoint 4 work is authorized by this audit.
+**Accept:** for the real Checkpoint 2 create proposal, atomically create KnowledgeItem and write LearningChange accepted state/history, operator ID, Task ID, timestamp, and one decision Event.
+
+**Reject:** atomically write LearningChange rejected state, non-empty reason, operator ID, Task ID, timestamp, and one rejection Event; do not create or mutate KnowledgeItem.
+
+No TeamPolicy writes. Model output cannot choose actor or disposition.
+
+Add narrow typed accepted/rejected LearningChange terminal results. Include LearningChange ID, decision, canonical operator identity (or equivalent typed object); finalizer checks committed LearningChange and matching decision Event against same-Team approval Task/current attempt. Rejection is a **successful Operator decision**: Task ends `done`, LearningChange ends `rejected`; it is not a failed execution.
+
+Business decision transaction and TaskRuntime finalization remain separate, as in existing business-commit/replay pattern. Decision Event is atomic with LearningChange/KnowledgeItem; TaskRuntime alone writes terminal Task Event, Outcome, status, and completed timestamp.
+
+### 6.1 Crash/recovery and budget (D11)
+
+The human decides before adapter invocation; a Task must never wait in `running` for a person. A crash after canonical decision but before TaskRuntime finalization must resolve the same Task from the same host key, replay the decision without another KnowledgeItem/version, and finish through TaskRuntime. If 60-second recovery returned Task to pending, re-admit same Task; attempt fencing rejects older in-flight attempts.
+
+Keep generic `recover_interrupted()` unchanged unless tests prove a conflict. Admission currently requires positive `deadline_seconds`, but approval spec has no model/tool deadline. Permit no-deadline budget for `approve_learning_change` only. Retain generic 60-second stale-running recovery; it is orphan recovery, not time for a human decision. Do not invent a fake deadline or weaken other Task types.
+
+## 7. Reachability and remaining gates
+
+Checkpoint 2 ExperienceDistiller emits only `operation="create"` proposals. First end-to-end approval/rejection consumes those real proposals. Schema also describes revise/retire, but no Checkpoint 2 proposal source emits them. D10 remains open: do not manufacture proposals through `seed_knowledge`, ad-hoc endpoint, or direct fixtures and claim production reachability. Decide whether Checkpoint 3 needs an authorized proposal source or those transitions remain deferred.
+
+D7 (`review_after`) remains open. Checkpoint 3 may commit canonical state but cannot claim retrieval eligibility or define review interval. Checkpoint 4 remains gated.
+
+## 8. Implementation and verification sequence
+
+1. Add host principal/authorization contract and `OperatorApplicationAdapter`; no routes, CLI, login, token verifier, user table, or deployed service.
+2. Add atomic pending Task + request Event creation, deterministic request mapping, same-request replay/conflict.
+3. Add narrow decision service for real create proposals, full evidence revalidation, atomic accept/reject.
+4. Extend TaskRuntime with typed accepted/rejected results and approval-specific Task/decision/Event validation. Allow no-deadline budget for this Task type only.
+5. Test host context provenance, raw/model identity rejection, wrong Team/action, exact scope, same-key duplicate/concurrency, changed payload conflict, accept/reject, evidence tampering, stale target, and rollback.
+6. Test rejection-as-done, result/task mismatch, stale attempts, crash after decision commit, recovery to pending, same-Task replay/finalize, and stale-attempt fencing.
+7. Verify whether a migration is necessary; preferred design adds none unless tests prove an integrity gap.
+8. Run focused tests, Ruff, mypy, full suite, disposable PostgreSQL locking/rollback/recovery tests, and `git diff --check`. No live R6-F provider.
+
+## 9. Decision register
+
+| Decision | Audit outcome |
+|---|---|
+| D8 — trusted Operator boundary | **Direction resolved by operator instruction:** host authenticates/authorizes and calls thin in-repository adapter with typed principal context. No separate Watch API/CLI or auth subsystem. Real host integration still required before claiming a deployed authenticated flow. |
+| D11 — deadline/recovery | **Implementation contract resolved:** synchronous post-decision Task, no human wait, no-deadline budget for this Task type only, generic 60-second stale recovery preserved, same-Task replay mandatory. |
+| D12 — target/idempotency | **Preferred design resolved for implementation:** host idempotency UUID → deterministic approval Task UUID; atomic request Event stores target/fingerprint. Revisit schema only if PostgreSQL tests expose an integrity gap. |
+| D10 — revise/retire reachability | **Open:** Checkpoint 2 emits create only; no seed/bypass path. |
+| D7 — review date | **Open:** no review interval or retrieval eligibility semantics. |
+
+**Audit conclusion:** the external API/CLI blocker is removed. Next coding step is the in-repository adapter and Task-creation tests; canonical decision code follows after that narrow boundary is green.
+
+No production code, schema migration, provider, dispatcher extension, TeamPolicy grant, Checkpoint 4 work, or R6-G work is included in this audit update.

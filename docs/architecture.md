@@ -77,7 +77,7 @@ Humans enter the loop through three channels, all of which pass the same validat
 |---|---|---|
 | Human as worker | `operator_update` Task | The expert's own hypotheses, evidence, and confidence judgments enter world memory with identical validation to a model worker |
 | Loop requests opinion | `Consultation` + `request_consultation` / `answer_consultation` | The answer is an immutable hashed snapshot, citable as evidence (`source_kind="consultation"`); waiting happens between Tasks, never inside one (ADR-0020) |
-| Human administers | `seed_knowledge`, `record_outcome`, `manual_signal_ingest`, `approve_learning_change`, `create_team`, `activate_team` | Durable writes with Task provenance and identity in Event payloads (ADR-0011) |
+| Human administers | Manual Operator Task types, created through a host-invoked in-repository application adapter | The host authenticates and authorizes the Operator, then passes a trusted principal context; Watch creates an ordinary Task and applies the same scope/commit gates. No separate deployed Watch API/CLI or Watch-owned authentication system is implied (ADR-0011). Checkpoint 3 implements this adapter first for `approve_learning_change`. |
 
 ## 3. Entity reference
 

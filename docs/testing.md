@@ -188,24 +188,30 @@ Use a fresh disposable PostgreSQL database even though this checkpoint has no ne
 
 The disposable PostgreSQL test procedure must bind both `DATABASE_URL` and `TEST_DATABASE_URL` to the disposable instance, restore both variables afterward, and stop only the container it created. Never run these checks against the persistent `watch` database. Report actual command output; hosted CI does not replace the operator-local check.
 
-## R6-F Checkpoint 3 — Operator review and canonical learning commit
+## R6-F Checkpoint 3 — Host-invoked Operator adapter and canonical learning commit
 
-Checkpoint 3 is authorized/open; implementation and verification are pending. The initial path uses the existing `approve_learning_change` Task and the `0012_learning_foundation` schema unless an integrity audit proves a migration is required. Do not infer that TaskRuntime/Operator API wiring exists merely because the Task type and columns are documented.
+Checkpoint 3 includes a thin in-repository adapter invoked in-process by a host application. The host authenticates and authorizes the Operator; Watch adds no deployed API/CLI or authentication subsystem. Fake principals/authorizers test the contract, not production authentication.
 
-Before running implementation tests:
-- Confirm the exact trusted application boundary that supplies the stable Operator identity. Tests may inject a fake trusted identity provider; they must also prove that a raw caller/model-supplied string cannot authorize a decision.
-- Confirm the approval Task is created/admitted/finalized through the existing TaskRuntime path and `committed_by_task_id` references that same-Team Task.
-- Use a fresh disposable PostgreSQL database. Never use the persistent `watch` database.
-- Keep Cloudflare and all live generation providers out of Checkpoint 3. Approval/rejection is deterministic application logic.
+Before implementation tests, prove:
+- typed stable issuer/subject principal; no bare caller/model `operator_id`, display name, or email as authority;
+- host authorization for exact Team and `approve_learning_change` action; wrong Team/action or missing/invalid context fails closed;
+- atomic pending ordinary approval Task and request Event creation; no Plan links; exact `["LearningChange", "KnowledgeItem"]` scope; zero tools/cost; no direct lifecycle writes;
+- host idempotency UUID maps to one deterministic Task ID; same key/same payload replays; same key/changed payload conflicts;
+- synchronous post-decision execution, no human wait while `running`; TaskRuntime remains lifecycle authority and TaskDispatcher remains ingestion-only.
 
-Expected focused coverage (add the files as the implementation is built):
-- `tests/test_learning_commit.py`: create acceptance; rejection without KnowledgeItem mutation; schema/state validation; evidence-basis/hash/reference revalidation; cross-Team and stale-target rejection; version and previous/committed-state preservation; operator identity and TeamPolicy exclusion.
-- `tests/test_learning_commit_concurrency.py`: Task/LearningChange/target locking, duplicate replay, competing accept/reject, and injected transaction failures with no partial LearningChange/KnowledgeItem/Event writes.
-- `tests/test_learning_commit_task_runtime.py`: trusted Operator Task attribution, write-scope enforcement, typed accepted/rejected finalization, and TaskRuntime-only lifecycle changes.
+Expected focused coverage:
+- `tests/test_operator_application.py`: host principal, raw/model identity rejection, authorization, Team/action mismatch, same-key replay/conflict, concurrent Task creation, request Event integrity, policy pin, exact Task shape.
+- `tests/test_learning_commit.py`: accept real Checkpoint 2 create proposals; reject without KnowledgeItem mutation; revalidate evidence hash/references; cross-Team/stale target; version/history; actor/Task attribution; TeamPolicy exclusion.
+- `tests/test_learning_commit_concurrency.py`: Task/LearningChange/target locking, duplicate replay, competing accept/reject, transaction failure with no partial LearningChange/KnowledgeItem/Event.
+- `tests/test_learning_commit_task_runtime.py`: typed accepted/rejected results, rejection-as-`done`, exact scope/Team/current-attempt, TaskRuntime-only lifecycle, crash after decision commit, recovery to pending, same-Task replay/finalization, stale old-attempt rejection.
 
-For the eventual full verification, apply `uv run alembic upgrade head`, confirm exactly one head at `0012_learning_foundation` unless a justified migration is added, run the focused tests, `uv run ruff check core tests migrations`, `uv run mypy core`, `uv run pytest -q`, and `git diff --check origin/main...HEAD`. Verify that acceptance commits the canonical KnowledgeItem and decision Event atomically; rejection changes only the LearningChange disposition and Event; replay cannot duplicate a version; and TeamPolicy, unrelated Tasks, Snapshots, and retrieval projections remain unchanged.
+Use PostgreSQL for duplicate creation races, locks, rollback, and interrupted recovery. Assert TeamPolicy, unrelated Tasks, Snapshots, and retrieval projections remain unchanged.
 
-D7 (`review_after`) is not resolved by Checkpoint 3. Do not invent a review interval or treat NULL as perpetual validity. No retrieval-eligibility claim is part of this checkpoint.
+`TaskRuntime.admit` currently rejects missing `deadline_seconds`, while the approval Task spec documents no model/tool deadline. Add a narrowly allowlisted no-deadline budget for `approve_learning_change` only. Preserve generic 60-second stale-running recovery; it is crash recovery, not time for a human decision.
+
+For full verification: `uv run alembic upgrade head`, exactly one head at `0012_learning_foundation` unless tests justify a migration, focused tests, `uv run ruff check core tests migrations`, `uv run mypy core`, `uv run pytest -q`, and `git diff --check origin/main...HEAD`. Never use persistent `watch`; no live generation provider.
+
+D10 remains open: Checkpoint 2 emits create proposals only; do not manufacture revise/retire through `seed_knowledge` or a bypass. D7 (`review_after`) remains open; Checkpoint 3 does not set review intervals or retrieval eligibility.
 
 ## R6-F Checkpoint 1 — Evaluation and canonical learning schema
 
