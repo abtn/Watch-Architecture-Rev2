@@ -111,7 +111,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 `embedding_model` are projections and are not generated or required by K1.
 ### `manual_signal_ingest` — Operator via host-invoked application adapter
 - **Purpose:** admit externally obtained material with provenance.
-- **Writes:** same as `ingest_source`; the API/CLI call creates the Task so provenance is uniform.
+- **Writes:** same as `ingest_source`. A host application authenticates/authorizes the Operator and invokes the in-repository manual-Task adapter; the adapter creates the ordinary Task. This caller is not implemented by the current R6-F slice, which first supplies the adapter for `approve_learning_change`.
 - **Validation:** same as `ingest_source`.
 ### `triage_signal` — deterministic
 - **Purpose:** disposition a Signal for the Team; enqueue follow-up work.
@@ -189,7 +189,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Replay:** same host idempotency UUID and identical request return the same Task and decision. Reuse with changed actor/target/decision/reason conflicts. Crash after decision commit replays through the original Task; no duplicate KnowledgeItem/version.
 - **Not permitted:** raw-string authentication, model-selected actor/disposition, direct Task lifecycle writes, second runtime, general dispatcher, seed/bypass path, or TeamPolicy mutation.
 
-### `seed_knowledge` — Operator via API
+### `seed_knowledge` — legacy Operator Task via host application (excluded from R6-F)
 - **Purpose:** explicit `manual_seed` creation of additional KnowledgeItems or a revised TeamPolicy outside the setup flow.
 - **Writes:** LearningChange (`basis_kind="manual_seed"`, committed immediately), target entity, Event.
 - **Validation:** same schema and version checks as F6 minus the Evaluation basis.
@@ -217,7 +217,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Commit:** Revalidate expected state and atomically commit the transition with an attributable Event sufficient to reconstruct it. Rejected operations leave Objective unchanged and produce an auditable rejection Event with a stable reason/category.
 - **Concurrency:** stale/conflicting transitions reject under INV-13 rather than silently overwrite. A same-Task retry cannot double-commit a matching successful transition. The database mechanism, exact retry identity, and reuse of rejection Events remain open.
 - **Boundary:** R2 implements the Objective operations in its milestone; additional Objective mutation semantics remain subject to later design. Triggers initiate mutations through ordinary Tasks, not a parallel write path.
-### `create_team` — Operator via API/CLI
+### `create_team` — Operator via host application integration (not implemented in Checkpoint 3)
 - **Purpose:** create a Shell team for a new subject (F7).
 - **Writes:** Team (`status="configuring"`), subject-brief Snapshot (+hash, referenced from the Event payload and by the subsequent TeamDraft), Event.
 - **Validation:** unique team key; Domain may be any pack key including `generalist`; brief is freeform prose stored immutably.
@@ -227,7 +227,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Writes:** TeamDraft (`status="draft"`, config Snapshot + hash, `advisor_notes` citing the samples), Event.
 - **Validation:** proposed policy validates against the JSON Schema; vocabulary conforms to the pack's structure; candidate sources marked unverified; draft revision current.
 - **Failure:** invalid model output → draft discarded with reason; Task failed.
-### `activate_team` — Operator via API
+### `activate_team` — Operator via host application integration (not implemented in Checkpoint 3)
 - **Purpose:** review, edit, and activate the team (F7).
 - **Writes:** TeamPolicy v1; starter Threads (through the normal commit path); Team `configuring → active`; TeamDraft `approved` (config re-snapshotted if the Operator edited it); Event with operator identity.
 - **Validation:** policy against JSON Schema; vocabulary within pack structure; pack-contract conformance; draft revision current (optimistic check, INV-13); operator identity in Event payload.

@@ -1,8 +1,8 @@
 # R6-F Checkpoint 3 — Operator Task and Trusted Identity Boundary Audit
 
-**Audit status:** design audit complete; the host-invoked application adapter is now an explicit Checkpoint 3 deliverable.  
-**Audit snapshot:** Checkpoint 2 merge `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0`; pre-audit branch head `cc87ada69e30e9ce1cfa66d6ca39d3f400d1d06b`.  
-**Audit date:** 2026-11-01.  
+**Audit status:** design audit complete; the host-invoked application adapter is now an explicit Checkpoint 3 deliverable.
+**Audit snapshot:** Checkpoint 2 merge `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0`; pre-audit branch head `cc87ada69e30e9ce1cfa66d6ca39d3f400d1d06b`.
+**Audit date:** 2026-11-01.
 **Implementation status:** documentation/design only. No application code or migration changes here; adapter, approval service, and TaskRuntime result path remain to be implemented and tested.
 
 ## 1. Decision and executive findings
@@ -125,8 +125,8 @@ D7 (`review_after`) remains open. Checkpoint 3 may commit canonical state but ca
 | Decision | Audit outcome |
 |---|---|
 | D8 — trusted Operator boundary | **Direction resolved by operator instruction:** host authenticates/authorizes and calls thin in-repository adapter with typed principal context. No separate Watch API/CLI or auth subsystem. Real host integration still required before claiming a deployed authenticated flow. |
-| D11 — deadline/recovery | **Implementation contract resolved:** synchronous post-decision Task, no human wait, no-deadline budget for this Task type only, generic 60-second stale recovery preserved, same-Task replay mandatory. |
-| D12 — target/idempotency | **Preferred design resolved for implementation:** host idempotency UUID → deterministic approval Task UUID; atomic request Event stores target/fingerprint. Revisit schema only if PostgreSQL tests expose an integrity gap. |
+| D11 — deadline/recovery | **Recommended implementation contract:** synchronous post-decision Task, no human wait, no-deadline budget for this Task type only, generic 60-second stale recovery preserved, same-Task replay mandatory. Validate this narrowly in TaskRuntime and PostgreSQL tests; it is not a new global recovery policy. |
+| D12 — target/idempotency | **Preferred implementation design:** host idempotency UUID → deterministic approval Task UUID; atomic request Event stores target/fingerprint. Revisit schema only if PostgreSQL tests expose an integrity gap. |
 | D10 — revise/retire reachability | **Open:** Checkpoint 2 emits create only; no seed/bypass path. |
 | D7 — review date | **Open:** no review interval or retrieval eligibility semantics. |
 
