@@ -936,4 +936,3 @@ def test_concurrent_duplicate_proposals_reserve_and_commit_exactly_once(
         assert len(changes) == 1
         assert len(charges) == 1
         assert len(events) == 1
-
