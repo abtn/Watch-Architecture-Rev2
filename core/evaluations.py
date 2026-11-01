@@ -275,18 +275,19 @@ class EvaluationService:
     def _normalize_evidence(self, session: Session, team: Team,
         evidence: EvaluationEvidence) -> dict[str, Any]:
         if evidence.source_kind == "outcome":
-            source = session.get(Outcome, evidence.outcome_id)
-            if source is None or source.team_id != team.id:
+            outcome_source = session.get(Outcome, evidence.outcome_id)
+            if outcome_source is None or outcome_source.team_id != team.id:
                 raise EvaluationValidationError("evidence_outcome_team_mismatch")
-            source_ref = source.observation_snapshot_ref
-            source_hash = source.observation_hash
-            outcome_id, signal_id = str(source.id), None
+            source_ref = outcome_source.observation_snapshot_ref
+            source_hash = outcome_source.observation_hash
+            outcome_id, signal_id = str(outcome_source.id), None
         else:
-            source = session.get(Signal, evidence.signal_id)
-            if source is None or source.domain != team.domain:
+            signal_source = session.get(Signal, evidence.signal_id)
+            if signal_source is None or signal_source.domain != team.domain:
                 raise EvaluationValidationError("evidence_signal_team_domain_mismatch")
-            source_ref, source_hash = source.snapshot_ref, source.content_hash
-            outcome_id, signal_id = None, str(source.id)
+            source_ref = signal_source.snapshot_ref
+            source_hash = signal_source.content_hash
+            outcome_id, signal_id = None, str(signal_source.id)
         if evidence.snapshot_ref is not None and (
             evidence.snapshot_ref != source_ref or evidence.snapshot_hash != source_hash
         ):
@@ -310,21 +311,21 @@ class EvaluationService:
     def _revalidate_link(self, session: Session, team: Team,
         link: EvidenceLink) -> None:
         if link.source_kind == "outcome":
-            source = session.get(Outcome, link.outcome_id)
-            if source is None or source.team_id != team.id:
+            outcome_source = session.get(Outcome, link.outcome_id)
+            if outcome_source is None or outcome_source.team_id != team.id:
                 raise EvaluationValidationError("evidence_outcome_team_mismatch")
             if (
-                link.snapshot_ref != source.observation_snapshot_ref
-                or link.snapshot_hash != source.observation_hash
+                link.snapshot_ref != outcome_source.observation_snapshot_ref
+                or link.snapshot_hash != outcome_source.observation_hash
             ):
                 raise EvaluationValidationError("source_snapshot_reference_mismatch")
         elif link.source_kind == "signal":
-            source = session.get(Signal, link.signal_id)
-            if source is None or source.domain != team.domain:
+            signal_source = session.get(Signal, link.signal_id)
+            if signal_source is None or signal_source.domain != team.domain:
                 raise EvaluationValidationError("evidence_signal_team_domain_mismatch")
             if (
-                link.snapshot_ref != source.snapshot_ref
-                or link.snapshot_hash != source.content_hash
+                link.snapshot_ref != signal_source.snapshot_ref
+                or link.snapshot_hash != signal_source.content_hash
             ):
                 raise EvaluationValidationError("source_snapshot_reference_mismatch")
         else:
