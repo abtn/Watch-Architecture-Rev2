@@ -2,7 +2,7 @@
 
 ## Status, scope, and authority
 
-**Current implementation status:** Checkpoints 1–2 are merged and verified (PR #29 at `9a0ba491`; PR #30 merge commit `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0`). Checkpoint 3 is OPEN under explicit operator authorization dated 2026-11-01. The audit resolves the integration direction: Checkpoint 3 includes a thin in-repository adapter invoked in-process by a host that authenticates and authorizes the Operator. No separate deployed Watch API/CLI is to be created. The adapter, approval service, and TaskRuntime changes remain unimplemented; their contract is recorded in [the audit report](r6-f-checkpoint-3-operator-boundary-audit.md). This documentation update changes no application code or migration. Checkpoint 4 remains gated. `PLAN.md` remains the sole authority for current milestone status and implementation authorization.
+**Current implementation status:** Checkpoints 1–2 are merged and verified (PR #29 at `9a0ba491`; PR #30 merge commit `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0`). Checkpoint 3 is OPEN under explicit operator authorization dated 2026-11-01. The first implementation increment is on draft [PR #31](https://github.com/abtn/Watch-Architecture-Rev2/pull/31): typed host principal/authorization contract, in-repository `OperatorApplicationAdapter`, and atomic pending approval-Task/request-Event creation with idempotent replay. Hosted CI run [41323276394](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41323276394) passed fresh PostgreSQL migrations to the single head `0012_learning_foundation`, Ruff, mypy, and 557 tests. Operator-local disposable-PostgreSQL verification is pending. This increment does not admit/finalize Tasks or commit LearningChanges. The following decision service and TaskRuntime work remain. No deployed Watch API/CLI or Watch-owned authentication subsystem is planned. Checkpoint 4 remains gated. `PLAN.md` remains the sole authority for current milestone status and implementation authorization.
 
 **Historical boundaries:** Original Step 0 created the planning branch and established this plan without application changes. Step 1/Checkpoint 1 and Step 2/Checkpoint 2 were separately authorized, implemented, merged, and locally verified. Checkpoint 3 is separately authorized by the operator's explicit instruction on 2026-11-01. This authorization does not extend to Checkpoint 4 or R6-G.
 
@@ -141,7 +141,7 @@ PR #30 merged to `main` at `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0` (implement
 
 ### Checkpoint 3 — Operator review and canonical learning commit
 
-**Status and authorization (2026-11-01): OPEN.** The operator explicitly authorized Checkpoint 3. The initial path is on `r6f-checkpoint-3-operator-learning-commit`, based on the Checkpoint 2 merge commit. This opening change updates planning/authority/testing documents only; implementation and migration work have not started.
+**Status and authorization (2026-11-01): OPEN.** The operator explicitly authorized Checkpoint 3. Its first implementation increment is draft PR #31, based on Checkpoint 2 merge commit `61be8db`. It adds the host-principal adapter and pending approval-Task/request-Event creation only; it does not yet admit/finalize the Task or commit a LearningChange. Hosted CI passed (557 tests); operator-local disposable-PostgreSQL verification is pending. No schema migration was required by this increment.
 
 **Purpose:** provide the only R6-F path that creates, revises, or retires canonical Team Experience.
 

@@ -10,15 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current R6 design direction (architectural principles accepted; phase status in PLAN.md)
 
-R6-G0 and R6-A through R6-E are complete. PR #28 merged on 2026-11-01; R6-E's three checkpoints — bounded Task Context assembly, Context-bound model-backed StrategyProposer, and Task-attributed generation cost reservation/reconciliation — are integrated and operator/hosted verified. Cloudflare Workers AI Llama 3.1 8B FP8 is authorized for R6-E only and remains outside automatic Task dispatch. R6-F Checkpoint 1 is implemented on `r6f-experience-distillation`: migration `0012_learning_foundation`, Evaluation/EvidenceLink models and service, canonical learning schema foundations, and typed Evaluation TaskRuntime finalization. Hosted CI and operator-local database verification are pending; Checkpoints 2–4 remain unstarted. D1–D4 are resolved in the [four-checkpoint implementation plan](docs/development/r6-f-implementation-plan.md); later provider/review/projection decisions remain gated. R6-G remains the integrated exit gate. ADR-0027 remains Proposed. See [`PLAN.md`](PLAN.md) for the authoritative current status.
-
-For these decisions, read:
-- [R6 entry gate](docs/development/r6-entry-gate.md) — accepted G0 decisions and scoped R6-A through R6-G acceptance criteria.
-- [R6-F implementation plan](docs/development/r6-f-implementation-plan.md) — four technical checkpoints, open design decisions, and verification gates.
-- [R6-G0 Decision Record](docs/development/r6-g0-decision-proposals.md) — accepted G0 defaults and deliberately staged provider choices.
-- [ADR-0028](docs/decisions/ADR-0028-rag-backed-knowledge-cores.md) — accepted RAG and Knowledge Core principles; implementation remains gated.
-- [ADR-0029](docs/decisions/ADR-0029-llm-assisted-experience-distillation.md) — accepted distillation contract; implementation remains gated.
-- [ADR-0030](docs/decisions/ADR-0030-r6-bounded-execution-source-safety-outcome.md) — accepted Task lifecycle, source-fetch safety, and terminal Outcome contract.
+R6-G0 and R6-A through R6-E are complete. R6-F Checkpoints 1–2 are merged and verified. Checkpoint 3 is authorized/open. Draft [PR #31](https://github.com/abtn/Watch-Architecture-Rev2/pull/31) implements its first increment: a host-invoked adapter with a typed host principal, exact Team/action grant checks, atomic pending approval-Task creation, and durable same-request replay/conflict handling. Hosted CI run [41323276394](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41323276394) passed migrations, Ruff, mypy, and the 557-test suite. Operator-local disposable-PostgreSQL verification remains pending. Approval-specific TaskRuntime admission, canonical LearningChange decision, and terminal finalization are not yet implemented. The host owns authentication; no separate deployed Watch API/CLI or Watch authentication subsystem is planned. Checkpoint 4 and R6-G remain gated. ADR-0031 authorizes Cloudflare for R6-E only; no production R6-F provider is approved. See [PLAN.md](PLAN.md) for authoritative current status.
 
 ## Open the smallest relevant set of documents
 

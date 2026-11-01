@@ -89,7 +89,7 @@ This checkpoint does not implement ExperienceDistiller, LearningChange proposal/
 
 Checkpoint 2 is closed by PR #30 (merge commit `61be8db`). It does not implement Operator approval/rejection, KnowledgeItem commit, TeamPolicy mutation, live provider selection, Team Experience embeddings/indexing, or later-Task retrieval.
 
-| R6-F Checkpoint 3 Operator Task and trusted identity boundary | [docs/development/r6-f-checkpoint-3-operator-boundary-audit.md](docs/development/r6-f-checkpoint-3-operator-boundary-audit.md), proposed `core/operator_application.py`, `core/task_runtime.py`, `core/models.py`, ADR-0011, `docs/tasks.md` | Checkpoint 3 adds a thin in-repository synchronous adapter called in-process by the host with its authenticated/authorized principal. The adapter creates an ordinary pending approval Task, then composes TaskRuntime and the decision service. No deployed Watch API/CLI, authentication subsystem, ingestion-dispatcher extension, or second runtime. See D8/D11/D12 in the audit. |
+| R6-F Checkpoint 3 Operator Task and trusted identity boundary | [docs/development/r6-f-checkpoint-3-operator-boundary-audit.md](docs/development/r6-f-checkpoint-3-operator-boundary-audit.md), `core/operator_application.py`, `tests/test_operator_application.py`, `core/task_runtime.py`, `core/models.py`, ADR-0011, `docs/tasks.md` | Draft PR #31 implements the host-invoked typed-principal adapter and atomic pending approval-Task/request-Event creation with deterministic replay. Hosted CI passed 557 tests; operator-local verification is pending. This increment does not yet admit/finalize the Task or make the canonical LearningChange decision. No deployed Watch API/CLI, auth subsystem, TaskDispatcher expansion, or second runtime. See D8/D11/D12 in the audit. |
 
 ## R6-F Checkpoint 3 initial implementation map
 
@@ -102,4 +102,4 @@ Checkpoint 2 is closed by PR #30 (merge commit `61be8db`). It does not implement
 | Authority boundary | `approve_learning_change` may write LearningChange and KnowledgeItem plus exact application-managed Events; no TeamPolicy grant, seed path, new dispatcher, or second runtime |
 | Verification | Checkpoint 3 section in `docs/testing.md`; schema re-use is preferred, with migration only for a demonstrated integrity gap |
 
-The initial Checkpoint 3 vertical path consumes real Checkpoint 2 `create` proposals. Revision/retirement proposal reachability is an explicit design question; no manual-seed or ad-hoc proposal path is introduced.
+The initial Checkpoint 3 path consumes real Checkpoint 2 `create` proposals. The first host-adapter/request-Task increment is implemented on draft PR #31; approval TaskRuntime admission, canonical decision commit, and terminal finalization remain. Revision/retirement proposal reachability is an explicit design question; no manual-seed or ad-hoc proposal path is introduced.

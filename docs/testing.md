@@ -192,15 +192,24 @@ The disposable PostgreSQL test procedure must bind both `DATABASE_URL` and `TEST
 
 Checkpoint 3 includes a thin in-repository adapter invoked in-process by a host application. The host authenticates and authorizes the Operator; Watch adds no deployed API/CLI or authentication subsystem. Fake principals/authorizers test the contract, not production authentication.
 
-Before implementation tests, prove:
+**First implementation increment (draft PR #31):** `core/operator_application.py` and `tests/test_operator_application.py` implement the typed host-principal boundary and atomic pending Task/request-Event creation with deterministic same-request replay. Hosted CI run [41323276394](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41323276394) passed fresh migrations to `0012_learning_foundation`, Ruff, mypy, and 557 full-suite tests. Operator-local disposable-PostgreSQL verification is pending. No migration was introduced. The increment intentionally does not call `TaskRuntime.admit`, execute the decision service, or call `TaskRuntime.finalize`.
+
+The tests prove:
 - typed stable issuer/subject principal; no bare caller/model `operator_id`, display name, or email as authority;
 - host authorization for exact Team and `approve_learning_change` action; wrong Team/action or missing/invalid context fails closed;
 - atomic pending ordinary approval Task and request Event creation; no Plan links; exact `["LearningChange", "KnowledgeItem"]` scope; zero tools/cost; no direct lifecycle writes;
 - host idempotency UUID maps to one deterministic Task ID; same key/same payload replays; same key/changed payload conflicts;
 - synchronous post-decision execution, no human wait while `running`; TaskRuntime remains lifecycle authority and TaskDispatcher remains ingestion-only.
 
-Expected focused coverage:
-- `tests/test_operator_application.py`: host principal, raw/model identity rejection, authorization, Team/action mismatch, same-key replay/conflict, concurrent Task creation, request Event integrity, policy pin, exact Task shape.
+Implemented focused coverage in `tests/test_operator_application.py`:
+- host principal shape and rejection of a raw string; stable issuer/subject validation;
+- Team/action grants, active Team, and proposed create-only LearningChange eligibility;
+- exact pending Task shape, latest policy pin, no Task lifecycle mutation, and one request Event;
+- same-key replay after policy advances; same-key changed actor/decision conflicts;
+- missing/modified/duplicate request Event corruption rejection;
+- concurrent identical requests create exactly one Task and one request Event.
+
+Run the focused test with `uv run pytest tests/test_operator_application.py -q`.
 - `tests/test_learning_commit.py`: accept real Checkpoint 2 create proposals; reject without KnowledgeItem mutation; revalidate evidence hash/references; cross-Team/stale target; version/history; actor/Task attribution; TeamPolicy exclusion.
 - `tests/test_learning_commit_concurrency.py`: Task/LearningChange/target locking, duplicate replay, competing accept/reject, transaction failure with no partial LearningChange/KnowledgeItem/Event.
 - `tests/test_learning_commit_task_runtime.py`: typed accepted/rejected results, rejection-as-`done`, exact scope/Team/current-attempt, TaskRuntime-only lifecycle, crash after decision commit, recovery to pending, same-Task replay/finalization, stale old-attempt rejection.
