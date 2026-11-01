@@ -8,12 +8,12 @@ Watch is a persistent, evidence-oriented team system. **Model intelligence is te
 
 Reactive and deliberative work converge on the same ordinary Task runtime. Tasks, Events, and committed records describe what actually happened; Plans describe intended work.
 
-## Current R6 design direction (architectural principles accepted; implementation gated)
+## Current R6 design direction (architectural principles accepted; phase status in PLAN.md)
 
-R6-G0 design decisions are recorded and the local preflight is verified, so **R6-G0 is COMPLETE as of 2026-10-25**. **R6-A is COMPLETE — merged to `main` by PR #12** (merge commit `ebbc48d`); see [`PLAN.md`](PLAN.md) for the authoritative milestone status. The accepted target uses RAG-backed Domain Knowledge and Team Experience cores, ordinary Task execution, terminal Outcomes, and review-controlled LLM-assisted distillation through the authorized learning path. ADR-0025/0026/0028/0029/0030 are accepted; ADR-0027 remains Proposed. The R6-D embedding API/model choice is recorded in ADR-0028; generation provider selection remains gated until R6-E.
+R6-G0 and R6-A through R6-D are complete. R6-E's three checkpoints — bounded Task Context assembly, Context-bound model-backed StrategyProposer, and Task-attributed generation cost reservation/reconciliation — are implemented and operator/hosted verified. PR #28 is open, ready to merge, and not yet merged; formal R6-E closeout follows merge. Cloudflare Workers AI Llama 3.1 8B FP8 is selected in ADR-0031. The provider remains outside automatic Task dispatch. R6-F's first experience-distillation path is the next planned slice; R6-G remains the integrated exit gate. ADR-0027 remains Proposed. See [`PLAN.md`](PLAN.md) for the authoritative current status.
 
 For these decisions, read:
-- [R6 entry gate](docs/development/r6-entry-gate.md) — resolved G0 decisions and the future R6-A through R6-G sequence.
+- [R6 entry gate](docs/development/r6-entry-gate.md) — accepted G0 decisions and scoped R6-A through R6-G acceptance criteria.
 - [R6-G0 Decision Record](docs/development/r6-g0-decision-proposals.md) — accepted G0 defaults and deliberately staged provider choices.
 - [ADR-0028](docs/decisions/ADR-0028-rag-backed-knowledge-cores.md) — accepted RAG and Knowledge Core principles; implementation remains gated.
 - [ADR-0029](docs/decisions/ADR-0029-llm-assisted-experience-distillation.md) — accepted distillation contract; implementation remains gated.
