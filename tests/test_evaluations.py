@@ -8,8 +8,13 @@ import pytest
 from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from core.evaluations import EvaluationDraft, EvaluationEvidence,
-    EvaluationFindings, EvaluationService, EvaluationValidationError
+from core.evaluations import (
+    EvaluationDraft,
+    EvaluationEvidence,
+    EvaluationFindings,
+    EvaluationService,
+    EvaluationValidationError,
+)
 from core.models import (
     Evaluation,
     Event,
