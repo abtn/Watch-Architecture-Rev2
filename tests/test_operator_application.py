@@ -15,10 +15,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from core.models import Event, LearningChange, Task, Team, TeamPolicy
 from core.operator_application import (
     InvalidOperatorPrincipal,
-    OperatorApplicationError,
     LearningChangeDecisionRequest,
     LearningChangeNotApprovable,
     OperatorApplicationAdapter,
+    OperatorApplicationError,
     OperatorGrant,
     OperatorNotAuthorized,
     OperatorTaskRequestConflict,
@@ -179,13 +179,11 @@ def test_request_creates_one_pending_task_and_one_attributed_event(
 
         events = list(
             session.scalars(
-                select(Event).where(
-                    Event.task_id == result.task_id,
-                    Event.type == "operator_task_requested",
-                )
+                select(Event).where(Event.task_id == result.task_id)
             )
         )
         assert len(events) == 1
+        assert events[0].type == "operator_task_requested"
         assert events[0].payload["operation"] == "approve_learning_change"
         assert events[0].payload["learning_change_id"] == str(
             approval_context.learning_change_id
