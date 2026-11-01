@@ -1,8 +1,10 @@
 # R6-F Checkpoint 3 — Operator Task and Trusted Identity Audit
 
-**Audit status:** completed from the repository at Checkpoint 2 merge commit `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0` and the documentation-only Checkpoint 3 branch.  
-**Audit date:** 2026-11-01.  
-**Implementation status:** no application code or migration changed by this audit.  
+**Audit status:** completed from the repository at Checkpoint 2 merge commit `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0` and the documentation-only Checkpoint 3 branch.
+
+**Audit date:** 2026-11-01.
+
+**Implementation status:** no application code or migration changed by this audit.
 **Conclusion:** the repository has a usable Task lifecycle service, but does not currently provide a production creation/caller path for an Operator approval Task or a trusted Operator identity boundary. Checkpoint 3 implementation must not claim a production approval route until these are supplied or explicitly built as a narrow application adapter.
 
 ## 1. Executive findings
@@ -65,7 +67,7 @@ The API caller must also avoid creating a new approval Task every time the same 
 
 - The documented `approve_learning_change` budget has zero tool calls and zero model cost, with no enforced deadline.
 - `TaskRuntime.admit` currently requires every Task budget to include a positive integer `deadline_seconds`; it rejects a missing, null, or zero value.
-- `TaskRuntime.recover_interrupted` discovers every `running` Task, not only ingestion Tasks, and treats a current attempt older than 60 seconds as interrupted. `TaskDispatcher.recover_interrupted()` invokes that global scan at dispatcher startup.
+- `TaskRuntime.recover_interrupted` discovers every `running` Task, not only ingestion Tasks, and treats a current attempt older than 60 seconds as interrupted. `TaskDispatcher` exposes `recover_interrupted()` as its startup recovery entrypoint; when host startup calls it, the global scan runs.
 - A manual approval must not wait for a human inside a running Task. The intended action is initiated only after the Operator has decided, then runs synchronously. Nevertheless, a crash after the canonical decision Event but before TaskRuntime finalization requires same-Task replay. If generic recovery has returned that Task to pending, the API caller must re-admit the same Task and replay the decision. The ingestion dispatcher will not execute it.
 
 Before implementation, decide whether the approval path is strictly short-lived and compatible with the 60-second global recovery, or whether a narrowly scoped recovery-policy change is needed. Also reconcile the no-deadline Task specification with admission's positive `deadline_seconds` requirement. Do not invent a sentinel value or silently impose a timeout.
