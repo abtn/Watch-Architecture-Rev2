@@ -26,7 +26,6 @@ from core.models import (
     TeamExperienceChunk,
     TeamPolicy,
 )
-from core.policy import knowledge_item_review_interval_days
 from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
 from core.vector_type import serialize_vector, validate_vector
