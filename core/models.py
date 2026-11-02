@@ -40,6 +40,10 @@ class TeamPolicy(Base):
     __tablename__ = "team_policies"
     __table_args__ = (
         UniqueConstraint("team_id", "version", name="uq_team_policies_team_version"),
+        CheckConstraint(
+            "schema_version IN (1, 2)",
+            name="ck_team_policies_schema_version",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
