@@ -675,6 +675,7 @@ class TaskContextAssembler:
             or index_state.item_content_hash != current_hash
             or index_state.origin_learning_change_id
             != item.origin_learning_change_id
+            or index_state.embedding_space_key != passage.embedding_space_key
             or index_state.chunk_count <= passage.chunk_index
         ):
             raise TaskContextError("team_experience_index_not_published")
