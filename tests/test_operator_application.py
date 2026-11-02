@@ -13,7 +13,6 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.models import Event, LearningChange, Task, Team, TeamPolicy
-from core.task_runtime import TaskNotEligible, TaskRuntime
 from core.operator_application import (
     InvalidOperatorPrincipal,
     LearningChangeDecisionRequest,
@@ -26,6 +25,7 @@ from core.operator_application import (
     OperatorTaskRequestCorrupt,
     TrustedOperatorPrincipal,
 )
+from core.task_runtime import TaskNotEligible, TaskRuntime
 
 
 @dataclass(frozen=True)
