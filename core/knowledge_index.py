@@ -122,10 +122,10 @@ class IndexingResult:
 
 @dataclass(frozen=True)
 class RetrievedPassage:
-    signal_id: UUID
-    source_url: str
-    source_type: str
-    snapshot_ref: str
+    signal_id: UUID | None
+    source_url: str | None
+    source_type: str | None
+    snapshot_ref: str | None
     content_hash: str
     chunk_id: UUID
     chunk_index: int
@@ -141,6 +141,10 @@ class RetrievedPassage:
     embedding_configuration: str
     embedding_dimensions: int
     truncated: bool = False
+    logical_core: str = "domain_knowledge"
+    knowledge_item_id: UUID | None = None
+    knowledge_item_version: int | None = None
+    origin_learning_change_id: UUID | None = None
 
 
 class SignalIndexer:
@@ -732,6 +736,178 @@ class HybridKnowledgeRetriever:
         if not isinstance(query, str) or not query.strip():
             return ()
 
+        query_batch = self._embedding_provider.embed([query.strip()])
+        if len(query_batch.vectors) != 1:
+            raise KnowledgeIndexError("query_embedding_count_mismatch")
+        try:
+            query_vector = validate_vector(
+                query_batch.vectors[0], query_batch.space.dimensions
+            )
+        except ValueError as error:
+            raise KnowledgeIndexError(error.args[0]) from error
+
+        now_utc = datetime.now(timezone.utc)
+        domain_ranked: list[tuple[float, dict[str, Any]]] = []
+        experience_verified: list[tuple[float, dict[str, Any]]] = []
+
+        with self._session_factory() as session:
+            with session.begin():
+                session.connection(
+                    execution_options={"isolation_level": "REPEATABLE READ"}
+                )
+                team = session.get(Team, team_id)
+                if team is None or team.status != "active" or not team.domain.strip():
+                    return ()
+                policy = session.scalar(
+                    select(TeamPolicy)
+                    .where(TeamPolicy.team_id == team_id)
+                    .order_by(TeamPolicy.version.desc())
+                    .limit(1)
+                )
+                if policy is None:
+                    return ()
+
+                embedding_parameters: dict[str, Any] = {
+                    "embedding_space_key": query_batch.space.key,
+                    "embedding_provider": query_batch.space.provider,
+                    "embedding_model": query_batch.space.model,
+                    "embedding_revision": query_batch.space.revision,
+                    "embedding_configuration": query_batch.space.configuration,
+                    "embedding_dimensions": query_batch.space.dimensions,
+                    "chunking_version": CHUNKING_VERSION,
+                    "query": query.strip(),
+                    "query_vector": serialize_vector(query_vector),
+                }
+
+                allowed_sources = self._allowed_sources(policy.rules)
+                if allowed_sources:
+                    scope_clause, scope_params = _source_predicate(allowed_sources)
+                    domain_parameters = {
+                        **embedding_parameters,
+                        **scope_params,
+                        "domain": team.domain,
+                        "candidate_limit": LEXICAL_CANDIDATE_LIMIT,
+                    }
+                    domain_where = (
+                        "c.embedding_space_key = :embedding_space_key "
+                        "AND c.embedding_provider = :embedding_provider "
+                        "AND c.embedding_model = :embedding_model "
+                        "AND c.embedding_revision = :embedding_revision "
+                        "AND c.embedding_configuration = :embedding_configuration "
+                        "AND c.embedding_dimensions = :embedding_dimensions "
+                        "AND c.chunking_version = :chunking_version "
+                        "AND s.domain = :domain "
+                        "AND c.source_snapshot_ref = s.snapshot_ref "
+                        "AND c.source_content_hash = s.content_hash "
+                        f"AND {scope_clause}"
+                    )
+                    projection = _candidate_select()
+                    lexical_rows = session.execute(
+                        text(
+                            f"{projection} WHERE {domain_where} "
+                            "AND to_tsvector('simple', c.chunk_text) "
+                            "@@ plainto_tsquery('simple', :query) "
+                            "ORDER BY ts_rank_cd(to_tsvector('simple', c.chunk_text), "
+                            "plainto_tsquery('simple', :query)) DESC, "
+                            "c.signal_id, c.chunk_index, c.id "
+                            "LIMIT :candidate_limit"
+                        ),
+                        domain_parameters,
+                    ).mappings().all()
+                    domain_parameters["candidate_limit"] = VECTOR_CANDIDATE_LIMIT
+                    vector_rows = session.execute(
+                        text(
+                            f"{projection} WHERE {domain_where} "
+                            "ORDER BY c.embedding <=> CAST(:query_vector AS vector), "
+                            "c.signal_id, c.chunk_index, c.id "
+                            "LIMIT :candidate_limit"
+                        ),
+                        domain_parameters,
+                    ).mappings().all()
+                    domain_ranked = _rank_candidate_rows(
+                        lexical_rows, vector_rows, "domain_knowledge"
+                    )
+
+                experience_where = (
+                    "c.team_id = :team_id "
+                    "AND i.team_id = :team_id "
+                    "AND i.status = 'active' "
+                    "AND i.review_after IS NOT NULL "
+                    "AND i.review_after > :now_utc "
+                    "AND i.version = c.item_version "
+                    "AND i.origin_learning_change_id = c.origin_learning_change_id "
+                    "AND lc.id = i.origin_learning_change_id "
+                    "AND lc.team_id = i.team_id "
+                    "AND lc.status = 'accepted' "
+                    "AND lc.target_kind = 'knowledge_item' "
+                    "AND lc.target_id IS NULL "
+                    "AND lc.operation = 'create' "
+                    "AND c.embedding_space_key = :embedding_space_key "
+                    "AND c.embedding_provider = :embedding_provider "
+                    "AND c.embedding_model = :embedding_model "
+                    "AND c.embedding_revision = :embedding_revision "
+                    "AND c.embedding_configuration = :embedding_configuration "
+                    "AND c.embedding_dimensions = :embedding_dimensions "
+                    "AND c.chunking_version = :chunking_version"
+                )
+                experience_projection = (
+                    "SELECT c.id AS chunk_id, "
+                    "c.knowledge_item_id, c.team_id, c.item_version, "
+                    "c.item_content_hash, c.origin_learning_change_id, "
+                    "c.chunk_index, c.chunk_text, c.chunk_hash, c.chunking_version, "
+                    "c.embedding_provider, c.embedding_model, c.embedding_revision, "
+                    "c.embedding_configuration, c.embedding_dimensions, "
+                    "c.embedding_space_key, 'team_experience' AS logical_core "
+                    "FROM team_experience_chunks AS c "
+                    "JOIN knowledge_items AS i "
+                    "ON i.id = c.knowledge_item_id AND i.team_id = c.team_id "
+                    "JOIN learning_changes AS lc "
+                    "ON lc.id = i.origin_learning_change_id AND lc.team_id = i.team_id"
+                )
+                experience_parameters = {
+                    **embedding_parameters,
+                    "team_id": team_id,
+                    "now_utc": now_utc,
+                    "candidate_limit": LEXICAL_CANDIDATE_LIMIT,
+                }
+                experience_lexical = session.execute(
+                    text(
+                        f"{experience_projection} WHERE {experience_where} "
+                        "AND to_tsvector('simple', c.chunk_text) "
+                        "@@ plainto_tsquery('simple', :query) "
+                        "ORDER BY ts_rank_cd(to_tsvector('simple', c.chunk_text), "
+                        "plainto_tsquery('simple', :query)) DESC, "
+                        "c.knowledge_item_id, c.item_version, c.chunk_index, c.id "
+                        "LIMIT :candidate_limit"
+                    ),
+                    experience_parameters,
+                ).mappings().all()
+                experience_parameters["candidate_limit"] = VECTOR_CANDIDATE_LIMIT
+                experience_vector = session.execute(
+                    text(
+                        f"{experience_projection} WHERE {experience_where} "
+                        "ORDER BY c.embedding <=> CAST(:query_vector AS vector), "
+                        "c.knowledge_item_id, c.item_version, c.chunk_index, c.id "
+                        "LIMIT :candidate_limit"
+                    ),
+                    experience_parameters,
+                ).mappings().all()
+                experience_ranked = _rank_candidate_rows(
+                    experience_lexical, experience_vector, "team_experience"
+                )
+                experience_verified = self._verify_experience_candidates(
+                    session, experience_ranked, query_batch.space, now_utc
+                )
+
+        domain_verified = self._verify_candidates(domain_ranked, query_batch.space)
+        combined = domain_verified + experience_verified
+        combined.sort(key=_ranked_candidate_sort_key)
+        return _bound_passages(combined)
+
+
+        if not isinstance(query, str) or not query.strip():
+            return ()
+
         # Embedding calls happen outside database transactions. The returned space
         # travels with the vectors, so a model revision can never be silently mixed.
         query_batch = self._embedding_provider.embed([query.strip()])
@@ -882,6 +1058,76 @@ class HybridKnowledgeRetriever:
                 allowed.add((origin_url, source_type))
         return allowed
 
+    def _verify_experience_candidates(
+        self,
+        session: Session,
+        ranked: list[tuple[float, dict[str, Any]]],
+        query_space: EmbeddingSpace,
+        now: datetime,
+    ) -> list[tuple[float, dict[str, Any]]]:
+        verified: list[tuple[float, dict[str, Any]]] = []
+        text_cache: dict[UUID, tuple[str, ...] | None] = {}
+        for score, candidate in ranked:
+            row = candidate["row"]
+            if (
+                row["chunking_version"] != CHUNKING_VERSION
+                or row["embedding_space_key"] != query_space.key
+                or row["chunk_hash"] != text_hash(row["chunk_text"])
+            ):
+                continue
+            try:
+                recorded_space = EmbeddingSpace(
+                    provider=row["embedding_provider"],
+                    model=row["embedding_model"],
+                    revision=row["embedding_revision"],
+                    dimensions=row["embedding_dimensions"],
+                    configuration=row["embedding_configuration"],
+                )
+            except (TypeError, ValueError):
+                continue
+            if recorded_space.key != row["embedding_space_key"]:
+                continue
+
+            item = session.get(KnowledgeItem, row["knowledge_item_id"])
+            if (
+                item is None
+                or item.team_id != row["team_id"]
+                or item.team_id != row["team_id"]
+                or item.version != row["item_version"]
+                or item.origin_learning_change_id != row["origin_learning_change_id"]
+                or not _review_date_is_eligible(item, now)
+            ):
+                continue
+            learning_change = session.get(
+                LearningChange, item.origin_learning_change_id
+            )
+            if (
+                learning_change is None
+                or not _accepted_learning_change_is_canonical(
+                    session, item, learning_change
+                )
+                or knowledge_item_content_hash(item) != row["item_content_hash"]
+            ):
+                continue
+
+            if item.id not in text_cache:
+                try:
+                    text_cache[item.id] = chunk_source_text(
+                        knowledge_item_text(item).encode("utf-8")
+                    )
+                except KnowledgeIndexError:
+                    text_cache[item.id] = None
+            chunks = text_cache[item.id]
+            if chunks is None:
+                continue
+            index = row["chunk_index"]
+            if index < 0 or index >= len(chunks) or chunks[index] != row["chunk_text"]:
+                continue
+
+            candidate["score"] = score
+            verified.append((score, candidate))
+        return verified
+
     def _verify_candidates(
         self,
         ranked: list[tuple[float, dict[str, Any]]],
@@ -951,6 +1197,59 @@ def _candidate_select() -> str:
     )
 
 
+def _rank_candidate_rows(
+    lexical_rows: Any,
+    vector_rows: Any,
+    logical_core: str,
+) -> list[tuple[float, dict[str, Any]]]:
+    candidates: dict[UUID, dict[str, Any]] = {}
+    for rank, row in enumerate(lexical_rows, start=1):
+        record = dict(row)
+        record["logical_core"] = logical_core
+        candidates[record["chunk_id"]] = {
+            "row": record,
+            "lexical_rank": rank,
+            "vector_rank": None,
+        }
+    for rank, row in enumerate(vector_rows, start=1):
+        record = dict(row)
+        record["logical_core"] = logical_core
+        existing = candidates.get(record["chunk_id"])
+        if existing is None:
+            candidates[record["chunk_id"]] = {
+                "row": record,
+                "lexical_rank": None,
+                "vector_rank": rank,
+            }
+        else:
+            existing["vector_rank"] = rank
+
+    ranked: list[tuple[float, dict[str, Any]]] = []
+    for candidate in candidates.values():
+        lexical_rank = candidate["lexical_rank"]
+        vector_rank = candidate["vector_rank"]
+        score = 0.0
+        if lexical_rank is not None:
+            score += 1.0 / (RECIPROCAL_RANK_FUSION_K + lexical_rank)
+        if vector_rank is not None:
+            score += 1.0 / (RECIPROCAL_RANK_FUSION_K + vector_rank)
+        ranked.append((score, candidate))
+    ranked.sort(key=_ranked_candidate_sort_key)
+    return ranked
+
+
+def _ranked_candidate_sort_key(item: tuple[float, dict[str, Any]]) -> tuple[Any, ...]:
+    row = item[1]["row"]
+    record_id = row.get("signal_id") or row.get("knowledge_item_id")
+    return (
+        -item[0],
+        row.get("logical_core", "domain_knowledge"),
+        str(record_id),
+        row["chunk_index"],
+        str(row["chunk_id"]),
+    )
+
+
 def _source_predicate(
     allowed_sources: set[tuple[str, str]],
 ) -> tuple[str, dict[str, str]]:
@@ -987,11 +1286,12 @@ def _bound_passages(
             break
         passages.append(
             RetrievedPassage(
-                signal_id=row["signal_id"],
-                source_url=row["source_url"],
-                source_type=row["source_type"],
-                snapshot_ref=row["source_snapshot_ref"],
-                content_hash=row["source_content_hash"],
+                signal_id=row.get("signal_id"),
+                source_url=row.get("source_url"),
+                source_type=row.get("source_type"),
+                snapshot_ref=row.get("source_snapshot_ref"),
+                content_hash=row.get("source_content_hash")
+                or row.get("item_content_hash"),
                 chunk_id=row["chunk_id"],
                 chunk_index=row["chunk_index"],
                 text=passage_text,
@@ -1006,6 +1306,10 @@ def _bound_passages(
                 embedding_configuration=row["embedding_configuration"],
                 embedding_dimensions=row["embedding_dimensions"],
                 truncated=truncated,
+                logical_core=row.get("logical_core", "domain_knowledge"),
+                knowledge_item_id=row.get("knowledge_item_id"),
+                knowledge_item_version=row.get("item_version"),
+                origin_learning_change_id=row.get("origin_learning_change_id"),
             )
         )
         total_characters += len(passage_text)
