@@ -253,6 +253,8 @@ class TaskRuntime:
             attempt = admission.attempt_count
             observed_at = datetime.now(timezone.utc)
 
+        if attempt is None or observed_at is None:
+            raise TaskNotFinalizable("knowledge_review_observation_missing")
         return self.finalize(
             TerminalObservation(
                 task_id=task_id,
