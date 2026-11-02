@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import dataclasses
+import datetime
+import decimal
 import hashlib
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from decimal import Decimal
-from typing import Literal
-from uuid import UUID, uuid4
+import json
+import typing
+import uuid
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -40,7 +41,7 @@ from core.task_runtime import (
 )
 
 
-Decision = Literal["accept", "reject"]
+Decision = typing.Literal["accept", "reject"]
 _DECISION_EVENT_TYPES = ("learning_change_accepted", "learning_change_rejected")
 _REQUEST_EVENT_TYPE = "operator_task_requested"
 _TASK_TYPE = "approve_learning_change"
@@ -59,15 +60,15 @@ class LearningCommitCorrupt(LearningCommitError):
     """Durable decision, proposal, or Task evidence is inconsistent."""
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class LearningCommitResult:
-    task_id: UUID
+    task_id: uuid.UUID
     attempt_count: int
-    learning_change_id: UUID
+    learning_change_id: uuid.UUID
     decision: Decision
     status: str
     operator_id: str
-    knowledge_item_id: UUID | None
+    knowledge_item_id: uuid.UUID | None
     committed_at: datetime
     replayed: bool = False
 
@@ -143,7 +144,7 @@ class LearningCommitService:
 
             learning_change_id_value = request_payload.get("learning_change_id")
             try:
-                learning_change_id = UUID(learning_change_id_value)
+                learning_change_id = uuid.UUID(learning_change_id_value)
             except (TypeError, ValueError) as error:
                 raise LearningCommitCorrupt(
                     "operator_request_target_invalid"
@@ -274,7 +275,7 @@ class LearningCommitService:
             self._validate_proposer_terminal(
                 session, learning_change, pack.task_id
             )
-            committed_at = datetime.now(timezone.utc)
+            committed_at = datetime.datetime.now(datetime.timezone.utc)
 
             knowledge_item_id: UUID | None = None
             committed_state: dict[str, object] | None = None
@@ -292,9 +293,9 @@ class LearningCommitService:
                         "knowledge_item_exists_for_uncommitted_learning_change"
                     )
 
-                knowledge_item_id = uuid4()
-                confidence = Decimal(str(draft.confidence)).quantize(
-                    Decimal("0.001")
+                knowledge_item_id = uuid.uuid4()
+                confidence = decimal.Decimal(str(draft.confidence)).quantize(
+                    decimal.Decimal("0.001")
                 )
                 applicability = draft.applicability.model_dump(mode="json")
                 committed_state = {
