@@ -103,6 +103,72 @@ def upgrade() -> None:
         "team_experience_chunks",
         ["team_id", "embedding_space_key", "knowledge_item_id"],
     )
+    op.create_table(
+        "team_experience_index_state",
+        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("knowledge_item_id", sa.Uuid(), nullable=False),
+        sa.Column("team_id", sa.Uuid(), nullable=False),
+        sa.Column("item_version", sa.Integer(), nullable=False),
+        sa.Column("item_content_hash", sa.String(), nullable=False),
+        sa.Column("origin_learning_change_id", sa.Uuid(), nullable=False),
+        sa.Column("status", sa.String(), nullable=False),
+        sa.Column("embedding_space_key", sa.String(), nullable=True),
+        sa.Column(
+            "chunk_count", sa.Integer(), nullable=False, server_default="0"
+        ),
+        sa.Column(
+            "attempt_count", sa.Integer(), nullable=False, server_default="0"
+        ),
+        sa.Column("last_error_kind", sa.String(), nullable=True),
+        sa.Column("last_attempt_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("indexed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.ForeignKeyConstraint(
+            ["knowledge_item_id", "team_id"],
+            ["knowledge_items.id", "knowledge_items.team_id"],
+            name="fk_team_experience_index_state_item_team",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["origin_learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_team_experience_index_state_learning_change_team",
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "knowledge_item_id",
+            "team_id",
+            name="uq_team_experience_index_state_item_team",
+        ),
+        sa.CheckConstraint(
+            "status IN ('stale', 'published', 'ineligible')",
+            name="ck_team_experience_index_state_status",
+        ),
+        sa.CheckConstraint(
+            "item_version > 0 AND attempt_count >= 0 AND chunk_count >= 0",
+            name="ck_team_experience_index_state_counts",
+        ),
+        sa.CheckConstraint(
+            "item_content_hash ~ '^sha256:[0-9a-f]{64}$'",
+            name="ck_team_experience_index_state_item_hash",
+        ),
+        sa.CheckConstraint(
+            "embedding_space_key IS NULL OR "
+            "embedding_space_key ~ '^sha256:[0-9a-f]{64}$'",
+            name="ck_team_experience_index_state_space_key",
+        ),
+    )
+    op.create_index(
+        "ix_team_experience_index_state_team_status",
+        "team_experience_index_state",
+        ["team_id", "status", "knowledge_item_id"],
+    )
+
     op.execute(
         "CREATE INDEX ix_team_experience_chunks_fts "
         "ON team_experience_chunks USING gin "
@@ -124,6 +190,17 @@ def downgrade() -> None:
         raise RuntimeError(
             "Cannot downgrade after a TeamPolicy has opted into schema v2"
         )
+    if connection.scalar(
+        sa.text("SELECT EXISTS (SELECT 1 FROM team_experience_index_state)")
+    ):
+        raise RuntimeError(
+            "Cannot downgrade while Team Experience index state rows exist"
+        )
+    op.drop_index(
+        "ix_team_experience_index_state_team_status",
+        table_name="team_experience_index_state",
+    )
+    op.drop_table("team_experience_index_state")
     op.drop_index("ix_team_experience_chunks_fts", table_name="team_experience_chunks")
     op.drop_index(
         "ix_team_experience_chunks_team_space_item",
