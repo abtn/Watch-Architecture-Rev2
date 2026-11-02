@@ -69,7 +69,7 @@ Expose one narrow synchronous operation, conceptually:
 
 `decide_learning_change(principal: TrustedOperatorPrincipal, request: LearningChangeDecisionRequest) -> LearningChangeDecisionResult`
 
-Request carries Team, LearningChange, decision, rejection reason when rejecting, and host-generated idempotency UUID; it does not carry authoritative actor identity.
+Request carries the LearningChange ID, decision, rejection reason when rejecting, and host-generated idempotency UUID; the adapter derives Team from the locked LearningChange rather than trusting a caller-supplied Team. It does not carry authoritative actor identity.
 
 The adapter validates principal/authorization; loads target and derives/validates its Team; resolves or atomically creates one pending approval Task + request Event; calls `TaskRuntime.admit`; invokes `LearningCommitService` with same Task/attempt/principal/target/decision; then calls `TaskRuntime.finalize` with typed result. Never insert a running Task or mutate Task lifecycle fields/events directly. No worker, model, dispatcher, or background queue. Authentication remains in host; commit validation remains in Watch.
 
@@ -116,10 +116,10 @@ D7 (`review_after`) remains open. Checkpoint 3 may commit canonical state but ca
 3. **Implemented on current draft PR #31 head; local verification pending:** TaskRuntime approval-only admission guard, exact Task shape and request Event/fingerprint/target validation, and no-deadline budget exception. Generic Task deadline validation, daily quota, and 60-second interrupted recovery are unchanged.
 4. **Next:** add the narrow decision service for real create proposals, full evidence revalidation, and atomic accept/reject.
 5. **Remaining TaskRuntime work:** typed accepted/rejected terminal results and validation of committed decision/Event against the approval Task and current attempt.
-5. Test host context provenance, raw/model identity rejection, wrong Team/action, exact scope, same-key duplicate/concurrency, changed payload conflict, accept/reject, evidence tampering, stale target, and rollback.
-6. Test rejection-as-done, result/task mismatch, stale attempts, crash after decision commit, recovery to pending, same-Task replay/finalize, and stale-attempt fencing.
-7. Verify whether a migration is necessary; preferred design adds none unless tests prove an integrity gap.
-8. Run focused tests, Ruff, mypy, full suite, disposable PostgreSQL locking/rollback/recovery tests, and `git diff --check`. No live R6-F provider.
+6. Test host context provenance, raw/model identity rejection, wrong Team/action, exact scope, same-key duplicate/concurrency, changed payload conflict, accept/reject, evidence tampering, stale target, and rollback.
+7. Test rejection-as-done, result/task mismatch, stale attempts, crash after decision commit, recovery to pending, same-Task replay/finalize, and stale-attempt fencing.
+8. Verify whether a migration is necessary; preferred design adds none unless tests prove an integrity gap.
+9. Run focused tests, Ruff, mypy, full suite, disposable PostgreSQL locking/rollback/recovery tests, and `git diff --check`. No live R6-F provider.
 
 ## 9. Decision register
 

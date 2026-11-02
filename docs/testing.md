@@ -201,7 +201,7 @@ The tests prove:
 - host authorization for exact Team and `approve_learning_change` action; wrong Team/action or missing/invalid context fails closed;
 - atomic pending ordinary approval Task and request Event creation; no Plan links; exact `["LearningChange", "KnowledgeItem"]` scope; zero tools/cost; no direct lifecycle writes;
 - host idempotency UUID maps to one deterministic Task ID; same key/same payload replays; same key/changed payload conflicts;
-- synchronous post-decision execution, no human wait while `running`; TaskRuntime remains lifecycle authority and TaskDispatcher remains ingestion-only.
+- TaskRuntime remains the only lifecycle authority and TaskDispatcher remains ingestion-only; the synchronous decision caller/service is a remaining implementation step.
 
 Implemented focused coverage in `tests/test_operator_application.py`:
 - host principal shape and rejection of a raw string; stable issuer/subject validation;
@@ -210,6 +210,9 @@ Implemented focused coverage in `tests/test_operator_application.py`:
 - same-key replay after policy advances; same-key changed actor/decision conflicts;
 - missing/modified/duplicate request Event corruption rejection;
 - concurrent identical requests create exactly one Task and one request Event.
+- valid no-deadline approval Task admission through TaskRuntime, with exactly one start Event and attempt increment;
+- malformed scope/budget/attempt limit, missing request Event, and identity/fingerprint tampering are rejected before any start side effect;
+- ordinary Task types still fail admission when `deadline_seconds` is missing.
 
 Run the focused test with `uv run pytest tests/test_operator_application.py -q`.
 - `tests/test_learning_commit.py`: accept real Checkpoint 2 create proposals; reject without KnowledgeItem mutation; revalidate evidence hash/references; cross-Team/stale target; version/history; actor/Task attribution; TeamPolicy exclusion.
