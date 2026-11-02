@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from typing import Any
 from uuid import UUID, uuid4
@@ -13,7 +14,18 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.embeddings import EmbeddingBatch, EmbeddingProvider, EmbeddingSpace
-from core.models import KnowledgeChunk, Signal, Team, TeamPolicy
+from core.models import (
+    Event,
+    KnowledgeChunk,
+    KnowledgeItem,
+    LearningChange,
+    Outcome,
+    Signal,
+    Task,
+    Team,
+    TeamExperienceChunk,
+    TeamPolicy,
+)
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
 from core.vector_type import serialize_vector, validate_vector
 
@@ -312,6 +324,370 @@ class _SignalSource:
     origin_url: str
     content_hash: str
     snapshot_ref: str
+
+
+@dataclass(frozen=True)
+class TeamExperienceIndexingResult:
+    knowledge_item_id: UUID
+    outcome: str
+    chunk_count: int
+    embedding_space_key: str | None
+    item_content_hash: str | None
+
+
+def _knowledge_item_state(item: KnowledgeItem) -> dict[str, Any]:
+    """Use the canonical acceptance-state reconstruction for integrity checks."""
+    from core.learning_commit import LearningCommitService
+
+    return LearningCommitService._knowledge_item_state(item)
+
+
+def knowledge_item_committed_state_matches(
+    item: KnowledgeItem, learning_change: LearningChange
+) -> bool:
+    """Compare immutable content/provenance while allowing lifecycle status changes."""
+    committed = learning_change.committed_state
+    if not isinstance(committed, dict):
+        return False
+    current = _knowledge_item_state(item)
+    for field in ("status", "last_validated_at"):
+        current.pop(field, None)
+        committed = dict(committed)
+        committed.pop(field, None)
+    return current == committed
+
+
+def knowledge_item_content_hash(item: KnowledgeItem) -> str:
+    """Hash the complete canonical item identity/content, not mutable review status."""
+    from core.state_assessment import _canonical_json
+
+    state = _knowledge_item_state(item)
+    state.pop("status", None)
+    state.pop("last_validated_at", None)
+    return content_hash(_canonical_json(state).encode("utf-8"))
+
+
+def knowledge_item_text(item: KnowledgeItem) -> str:
+    """Create a deterministic, readable embedding document from canonical fields."""
+    from core.state_assessment import _canonical_json
+
+    sections = [
+        f"Knowledge item: {item.title}",
+        f"Kind: {item.kind}",
+        f"Statement: {item.statement}",
+        f"Body: {item.body}",
+        f"Applicability: {_canonical_json(item.applicability)}",
+        f"Preconditions: {_canonical_json(item.preconditions)}",
+        f"Assumptions: {_canonical_json(item.assumptions)}",
+        f"Limitations: {_canonical_json(item.limitations)}",
+        f"Non-applicability: {_canonical_json(item.non_applicability)}",
+        f"Failure modes: {_canonical_json(item.failure_modes)}",
+        f"Known counterexamples: {_canonical_json(item.known_counterexamples)}",
+        f"Missing information: {_canonical_json(item.missing_information)}",
+        f"Uncertainty: {_canonical_json(item.uncertainty)}",
+    ]
+    return "\\n".join(sections)
+
+
+def _review_date_is_eligible(item: KnowledgeItem, now: datetime) -> bool:
+    review_after = item.review_after
+    return (
+        item.status == "active"
+        and review_after is not None
+        and review_after.tzinfo is not None
+        and review_after.utcoffset() == timedelta(0)
+        and review_after > now
+    )
+
+
+def _accepted_learning_change_is_canonical(
+    session: Session, item: KnowledgeItem, learning_change: LearningChange
+) -> bool:
+    if (
+        learning_change.id != item.origin_learning_change_id
+        or learning_change.team_id != item.team_id
+        or learning_change.target_kind != "knowledge_item"
+        or learning_change.target_id is not None
+        or learning_change.operation != "create"
+        or learning_change.status != "accepted"
+        or learning_change.committed_by_task_id is None
+        or learning_change.committed_at is None
+        or not knowledge_item_committed_state_matches(item, learning_change)
+    ):
+        return False
+
+    approval_task = session.get(Task, learning_change.committed_by_task_id)
+    if (
+        approval_task is None
+        or approval_task.team_id != item.team_id
+        or approval_task.task_type != "approve_learning_change"
+        or approval_task.status != "done"
+        or approval_task.completed_at is None
+        or approval_task.attempt_count < 1
+    ):
+        return False
+
+    decision_events = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == approval_task.id,
+                Event.type == "learning_change_accepted",
+            )
+        )
+    )
+    if len(decision_events) != 1:
+        return False
+    decision = decision_events[0].payload
+    if (
+        not isinstance(decision, dict)
+        or decision.get("learning_change_id") != str(learning_change.id)
+        or decision.get("decision") != "accept"
+        or decision.get("approval_task_id") != str(approval_task.id)
+        or decision.get("operator_id") != learning_change.operator_id
+        or decision.get("knowledge_item_id") != str(item.id)
+        or decision.get("knowledge_item_version") != item.version
+        or decision.get("committed_at") != learning_change.committed_at.isoformat()
+    ):
+        return False
+
+    outcomes = list(
+        session.scalars(
+            select(Outcome).where(
+                Outcome.recorded_by_task_id == approval_task.id,
+                Outcome.outcome_type == "task_execution",
+            )
+        )
+    )
+    completed_events = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == approval_task.id,
+                Event.type == "task_completed",
+            )
+        )
+    )
+    return (
+        len(outcomes) == 1
+        and outcomes[0].team_id == item.team_id
+        and outcomes[0].subject_kind == "task"
+        and outcomes[0].subject_id == approval_task.id
+        and len(completed_events) == 1
+        and completed_events[0].payload.get("to_status") == "done"
+        and completed_events[0].payload.get("result_category")
+        == "success_learning_change_accepted"
+        and completed_events[0].payload.get("learning_change_id")
+        == str(learning_change.id)
+        and completed_events[0].payload.get("outcome_id") == str(outcomes[0].id)
+    )
+
+
+class TeamExperienceIndexer:
+    """Build a separate rebuildable projection from accepted canonical Team Experience."""
+
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        embedding_provider: EmbeddingProvider,
+    ) -> None:
+        self._session_factory = session_factory
+        self._embedding_provider = embedding_provider
+
+    def index_knowledge_item(
+        self, knowledge_item_id: UUID, *, now: datetime | None = None
+    ) -> TeamExperienceIndexingResult:
+        reference_time = now or datetime.now(timezone.utc)
+        if reference_time.tzinfo is None or reference_time.utcoffset() is None:
+            raise KnowledgeIndexError("review_reference_time_not_timezone_aware")
+        reference_time = reference_time.astimezone(timezone.utc)
+
+        source = self._load_item(knowledge_item_id)
+        if source is None:
+            return TeamExperienceIndexingResult(
+                knowledge_item_id, "missing", 0, None, None
+            )
+        item, learning_change = source
+        if not _accepted_learning_change_is_canonical(
+            self._session_factory(), item, learning_change
+        ):
+            raise KnowledgeIndexError("knowledge_item_canonical_state_invalid")
+        item_hash = knowledge_item_content_hash(item)
+
+        if not _review_date_is_eligible(item, reference_time):
+            with self._session_factory.begin() as session:
+                session.execute(
+                    delete(TeamExperienceChunk).where(
+                        TeamExperienceChunk.knowledge_item_id == knowledge_item_id
+                    )
+                )
+            return TeamExperienceIndexingResult(
+                knowledge_item_id, "ineligible", 0, None, item_hash
+            )
+
+        raw_text = knowledge_item_text(item).encode("utf-8")
+        chunks = chunk_source_text(raw_text)
+        space = self._embedding_provider.current_space()
+        if self._projection_matches(item, item_hash, chunks, space):
+            return TeamExperienceIndexingResult(
+                knowledge_item_id, "unchanged", len(chunks), space.key, item_hash
+            )
+
+        batch = self._embedding_provider.embed(chunks)
+        SignalIndexer._validate_batch(batch, chunks)
+        if self._embedding_provider.current_space().key != batch.space.key:
+            raise KnowledgeIndexError("embedding_space_changed_during_indexing")
+
+        rows = [
+            TeamExperienceChunk(
+                id=uuid4(),
+                knowledge_item_id=item.id,
+                team_id=item.team_id,
+                item_version=item.version,
+                item_content_hash=item_hash,
+                origin_learning_change_id=item.origin_learning_change_id,
+                chunk_index=index,
+                chunk_text=chunk,
+                chunk_hash=text_hash(chunk),
+                chunking_version=CHUNKING_VERSION,
+                embedding=list(vector),
+                embedding_provider=batch.space.provider,
+                embedding_model=batch.space.model,
+                embedding_revision=batch.space.revision,
+                embedding_configuration=batch.space.configuration,
+                embedding_dimensions=batch.space.dimensions,
+                embedding_space_key=batch.space.key,
+            )
+            for index, (chunk, vector) in enumerate(zip(chunks, batch.vectors))
+        ]
+
+        with self._session_factory.begin() as session:
+            current_item = session.scalar(
+                select(KnowledgeItem)
+                .where(KnowledgeItem.id == knowledge_item_id)
+                .with_for_update()
+            )
+            if current_item is None:
+                raise KnowledgeIndexError("knowledge_item_disappeared_during_indexing")
+            current_change = session.get(
+                LearningChange, current_item.origin_learning_change_id
+            )
+            if current_change is None or not _accepted_learning_change_is_canonical(
+                session, current_item, current_change
+            ):
+                raise KnowledgeIndexError("knowledge_item_changed_during_indexing")
+            if not _review_date_is_eligible(
+                current_item, datetime.now(timezone.utc)
+            ):
+                session.execute(
+                    delete(TeamExperienceChunk).where(
+                        TeamExperienceChunk.knowledge_item_id == knowledge_item_id
+                    )
+                )
+                return TeamExperienceIndexingResult(
+                    knowledge_item_id, "ineligible", 0, None, item_hash
+                )
+            if (
+                current_item.version != item.version
+                or knowledge_item_content_hash(current_item) != item_hash
+                or current_item.origin_learning_change_id
+                != item.origin_learning_change_id
+            ):
+                raise KnowledgeIndexError("knowledge_item_changed_during_indexing")
+
+            session.execute(
+                delete(TeamExperienceChunk).where(
+                    TeamExperienceChunk.knowledge_item_id == knowledge_item_id
+                )
+            )
+            session.add_all(rows)
+            session.flush()
+
+        return TeamExperienceIndexingResult(
+            knowledge_item_id, "indexed", len(rows), batch.space.key, item_hash
+        )
+
+    def rebuild_all(self, *, now: datetime | None = None) -> tuple[TeamExperienceIndexingResult, ...]:
+        reference_time = now or datetime.now(timezone.utc)
+        with self._session_factory() as session:
+            item_ids = set(
+                session.scalars(
+                    select(KnowledgeItem.id).where(
+                        KnowledgeItem.status == "active",
+                        KnowledgeItem.review_after.is_not(None),
+                        KnowledgeItem.review_after > reference_time,
+                    )
+                ).all()
+            )
+            item_ids.update(
+                session.scalars(
+                    select(TeamExperienceChunk.knowledge_item_id).distinct()
+                ).all()
+            )
+        return tuple(
+            self.index_knowledge_item(item_id, now=reference_time)
+            for item_id in sorted(item_ids, key=str)
+        )
+
+    def _load_item(
+        self, knowledge_item_id: UUID
+    ) -> tuple[KnowledgeItem, LearningChange] | None:
+        with self._session_factory() as session:
+            item = session.get(KnowledgeItem, knowledge_item_id)
+            if item is None:
+                return None
+            learning_change = session.get(
+                LearningChange, item.origin_learning_change_id
+            )
+            if learning_change is None:
+                raise KnowledgeIndexError("knowledge_item_origin_missing")
+            return item, learning_change
+
+    def _projection_matches(
+        self,
+        item: KnowledgeItem,
+        item_hash: str,
+        chunks: tuple[str, ...],
+        space: EmbeddingSpace,
+    ) -> bool:
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(
+                    TeamExperienceChunk.chunk_index,
+                    TeamExperienceChunk.chunk_text,
+                    TeamExperienceChunk.chunk_hash,
+                    TeamExperienceChunk.item_version,
+                    TeamExperienceChunk.item_content_hash,
+                    TeamExperienceChunk.origin_learning_change_id,
+                    TeamExperienceChunk.chunking_version,
+                    TeamExperienceChunk.embedding_provider,
+                    TeamExperienceChunk.embedding_model,
+                    TeamExperienceChunk.embedding_revision,
+                    TeamExperienceChunk.embedding_configuration,
+                    TeamExperienceChunk.embedding_dimensions,
+                    TeamExperienceChunk.embedding_space_key,
+                )
+                .where(TeamExperienceChunk.knowledge_item_id == item.id)
+                .order_by(TeamExperienceChunk.chunk_index)
+            ).mappings().all()
+        if len(rows) != len(chunks):
+            return False
+        for index, (row, chunk) in enumerate(zip(rows, chunks)):
+            if (
+                row["chunk_index"] != index
+                or row["chunk_text"] != chunk
+                or row["chunk_hash"] != text_hash(chunk)
+                or row["item_version"] != item.version
+                or row["item_content_hash"] != item_hash
+                or row["origin_learning_change_id"] != item.origin_learning_change_id
+                or row["chunking_version"] != CHUNKING_VERSION
+                or row["embedding_provider"] != space.provider
+                or row["embedding_model"] != space.model
+                or row["embedding_revision"] != space.revision
+                or row["embedding_configuration"] != space.configuration
+                or row["embedding_dimensions"] != space.dimensions
+                or row["embedding_space_key"] != space.key
+            ):
+                return False
+        return True
 
 
 class HybridKnowledgeRetriever:
