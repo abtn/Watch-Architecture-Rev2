@@ -351,10 +351,15 @@ class OperatorApplicationAdapter:
         commit = LearningCommitService(
             self._session_factory, self._snapshot_store
         ).decide(request_result.task_id, attempt, principal)
-        result_category = (
+        result_category: Literal[
+            "success_learning_change_accepted", "success_learning_change_rejected"
+        ] = (
             "success_learning_change_accepted"
             if commit.decision == "accept"
             else "success_learning_change_rejected"
+        )
+        learning_change_status: Literal["accepted", "rejected"] = (
+            "accepted" if commit.decision == "accept" else "rejected"
         )
         finalization = task_runtime.finalize(
             TerminalObservation(
@@ -376,7 +381,7 @@ class OperatorApplicationAdapter:
             attempt_count=finalization.attempt_count,
             learning_change_id=commit.learning_change_id,
             decision=commit.decision,
-            learning_change_status=commit.status,
+            learning_change_status=learning_change_status,
             task_status="done",
             operator_id=commit.operator_id,
             knowledge_item_id=commit.knowledge_item_id,

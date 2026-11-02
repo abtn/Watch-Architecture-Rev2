@@ -879,7 +879,10 @@ class TaskRuntime:
                     self._committed_operator_decision_observation(session, task)
                 )
 
-            if operator_observation is None and task.attempt_count < task.max_attempts:
+            if (
+                operator_observation is None
+                and task.attempt_count < task.max_attempts
+            ):
                 disposition = self._retry_disposition(
                     session, task.id, task.attempt_count
                 )
@@ -1003,7 +1006,9 @@ class TaskRuntime:
 
         if learning_change.committed_at is None:
             raise TaskNotFinalizable("learning_change_decision_timestamp_missing")
-        result_category = (
+        result_category: Literal[
+            "success_learning_change_accepted", "success_learning_change_rejected"
+        ] = (
             "success_learning_change_accepted"
             if learning_change.status == "accepted"
             else "success_learning_change_rejected"
