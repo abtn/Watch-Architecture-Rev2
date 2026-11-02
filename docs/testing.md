@@ -202,7 +202,7 @@ Checkpoint 3 includes a thin in-repository adapter invoked in-process by a host 
 
 **Hosted and operator-local verification passed on final head `581ad1853a81d77b2a4fc41abe349ccc53dbe6d2`:** [hosted CI run 41458560005](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41458560005) passed fresh PostgreSQL migration/head checks, Ruff, mypy (27 source files), and 577 tests. The operator's local run passed fresh disposable PostgreSQL migration and one Alembic head at `0012_learning_foundation`, 83 focused tests across `test_experience_distiller.py`, `test_operator_application.py`, and `test_task_runtime.py`, Ruff, mypy (27 source files), **577 full-suite tests**, and `git diff --check`. The worktree remained clean, only the created disposable container was removed, and both database environment variables were restored.
 
-**Formal closure boundary:** the create-only approval lifecycle is implemented and verified. Checkpoint 3 remains open only for D10's explicit decision on whether revise/retire LearningChanges must be end-to-end reachable here or may remain deferred until an authorized proposal source exists. D7 review-date semantics remain open for the later retrieval checkpoint.
+**Formal closure boundary:** the create-only approval lifecycle is implemented and verified. D10 was resolved by explicit operator decision on 2026-11-02: revise/retire proposal production and commitment are deferred beyond Checkpoint 3; they are not part of its acceptance criteria. Formal Checkpoint 3 closeout requires PR #31's documentation CI, review, and merge. D7 review-date semantics remain open for the later retrieval checkpoint.
 
 The tests prove:
 - typed stable issuer/subject principal; no bare caller/model `operator_id`, display name, or email as authority;
@@ -233,7 +233,7 @@ The no-deadline admission path for `approve_learning_change` is implemented and 
 
 For full verification: `uv run alembic upgrade head`, exactly one head at `0012_learning_foundation` unless tests justify a migration, focused tests, `uv run ruff check core tests migrations`, `uv run mypy core`, `uv run pytest -q`, and `git diff --check origin/main...HEAD`. Never use persistent `watch`; no live generation provider.
 
-D10 remains open: Checkpoint 2 emits create proposals only; do not manufacture revise/retire through `seed_knowledge` or a bypass. D7 (`review_after`) remains open; Checkpoint 3 does not set review intervals or retrieval eligibility.
+D10 is resolved (2026-11-02): Checkpoint 3 is create-only. Revise/retire proposal production and commitment are deferred beyond this checkpoint until a separately authorized knowledge-lifecycle scope defines a genuine proposal source and the required version/history/concurrency/recovery/projection semantics. Do not manufacture revise/retire through `seed_knowledge`, direct fixtures, database writes, or a bypass. D7 (`review_after`) remains open; Checkpoint 3 does not set review intervals or retrieval eligibility.
 
 ## R6-F Checkpoint 1 — Evaluation and canonical learning schema
 
