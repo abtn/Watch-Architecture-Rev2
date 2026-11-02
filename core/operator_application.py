@@ -120,11 +120,12 @@ class OperatorDecisionResult:
 
 
 class OperatorApplicationAdapter:
-    """Create/replay pending Operator Tasks through a trusted host boundary.
+    """Run trusted Operator decisions through the ordinary Task lifecycle.
 
-    This first Checkpoint 3 slice creates only the durable pending Task and
-    request Event. Admission, the canonical LearningChange decision, and
-    TaskRuntime finalization are separate implementation slices.
+    Request creation is available without a SnapshotStore for host-side
+    idempotent Task setup. The synchronous `decide_learning_change` path
+    requires the configured SnapshotStore and composes TaskRuntime admission,
+    canonical decision commit, and TaskRuntime terminal finalization.
     """
 
     def __init__(

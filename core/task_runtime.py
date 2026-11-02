@@ -177,10 +177,12 @@ class InterruptedTask:
 class RecoveryResult:
     """What one `recover_interrupted()` call actually changed.
 
-    `retried` and `failed` name the Tasks this call transitioned; `skipped`
-    names candidates another operation had already advanced past. `inconsistent`
-    names `running` Tasks whose current attempt has no usable `task_started`
-    Event; they are reported, never mutated.
+    `retried`, `failed`, and `completed` name Tasks this call transitioned;
+    `skipped` names candidates another operation had already advanced past.
+    `inconsistent` names `running` Tasks whose current attempt has no usable
+    `task_started` Event; they are reported, never mutated. A completed Operator
+    Task means recovery found its already committed LearningChange decision and
+    finalized it through the ordinary TaskRuntime path.
     """
 
     retried: tuple[UUID, ...] = ()

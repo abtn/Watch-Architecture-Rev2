@@ -19,7 +19,7 @@ So Watch is not simply a chatbot with memory or a universal expert. It is a reus
 
 A Plan is intended work, not execution truth. Tasks and Events record execution. Derived assessments do not become authority merely because a model produced them.
 
-## Current state (snapshot 2026-11-01)
+## Current state (snapshot 2026-11-02)
 
 [`PLAN.md`](PLAN.md) is the single source of current milestone status; the summary below is a convenience snapshot, not an authority record.
 
@@ -38,14 +38,14 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 
 **R6 continuation**
 
-- **R6-F — Checkpoints 1–2 complete; Checkpoint 3 open:** PR #29 and PR #30 are merged. Checkpoint 3 was authorized on 2026-11-01. Draft [PR #31](https://github.com/abtn/Watch-Architecture-Rev2/pull/31) now contains the host-invoked typed-principal adapter, atomic pending approval-Task/request-Event creation, strict no-deadline approval-specific TaskRuntime admission, and a canonical create-only accept/reject `LearningCommitService`. The adapter/request-Task slice was locally verified on `2619eda` (14 focused, 557 full-suite tests, migrations, Ruff, mypy, and diff check). The admission slice was locally verified on `96bbddec` (54 focused, 565 full-suite tests, migrations, Ruff, mypy, and diff check). The decision-service code head `2327e88` passed hosted CI run [41407266283](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41407266283): fresh PostgreSQL migration/head checks, Ruff, mypy (27 source files), and 572 tests. Local verification of the current decision-service head is pending. TaskRuntime typed terminal finalization and adapter orchestration remain; the approval Task is not yet finalized by this increment. The host owns authentication; no separate Watch API/CLI/authentication stack. Checkpoint 4 and R6-G remain gated; no production R6-F provider is authorized.
+- **R6-F — Checkpoints 1–2 complete; Checkpoint 3 open:** PR #29 and PR #30 are merged. Checkpoint 3 was authorized on 2026-11-01. Draft [PR #31](https://github.com/abtn/Watch-Architecture-Rev2/pull/31) now contains the typed host-principal adapter, atomic pending approval-Task/request-Event creation, approval-specific no-deadline admission, create-only canonical LearningChange commit, typed TaskRuntime accepted/rejected terminalization, synchronous `admit → decide → finalize` orchestration, and committed-decision recovery. The request/Task and admission increments were locally verified on `2619eda` and `96bbddec`; the decision-service increment was locally verified on `bddd1e9` (78 focused Checkpoint 3 tests, 572 full-suite tests, fresh disposable migrations, Ruff, mypy, and diff check). Finalization/orchestration code head `1c21b60` passed hosted CI run [41457072927](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41457072927): fresh PostgreSQL migration/head checks, Ruff, mypy (27 source files), and **577 tests**. Operator-local verification of this final increment is pending. The host owns authentication; no separate Watch API/CLI/authentication stack. Checkpoint 4 and R6-G remain gated; no production R6-F provider is authorized.
 - **R6-G — later integration gate:** exercise the complete knowledge-grounded loop, full verification, and explicit R6 exit approval.
 
 ## Future plan
 
 Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for current milestone status.
 
-- **R6 next:** complete operator-local disposable-PostgreSQL verification of the current PR #31 decision-service head, then add typed accepted/rejected TaskRuntime terminal finalization and synchronous adapter orchestration. Do not start Checkpoint 4 or R6-G; no production R6-F provider is authorized.
+- **R6 next:** complete operator-local disposable-PostgreSQL verification of the finalization/orchestration and committed-decision recovery path on PR #31. Do not start Checkpoint 4 or R6-G; no production R6-F provider is authorized.
 - **R7 — Distillation quality and knowledge lifecycle:** cross-case evaluation of abstractions, contradictory evidence and counterexamples, transferability tests, retrieval quality, review/expiry, staleness detection, supersession, and retirement — always preserving explicit provenance, canonical authority, and controlled commits.
 - **R8 — Multi-domain pressure test:** exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge stays outside the Kernel.
 - **R9 — Agent-assisted production workflow:** codified task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.
