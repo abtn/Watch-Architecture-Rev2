@@ -69,7 +69,7 @@ class LearningCommitResult:
     status: str
     operator_id: str
     knowledge_item_id: uuid.UUID | None
-    committed_at: datetime
+    committed_at: datetime.datetime
     replayed: bool = False
 
 
@@ -94,7 +94,7 @@ class LearningCommitService:
 
     def decide(
         self,
-        task_id: UUID,
+        task_id: uuid.UUID,
         attempt: int,
         principal: TrustedOperatorPrincipal,
     ) -> LearningCommitResult:
@@ -277,7 +277,7 @@ class LearningCommitService:
             )
             committed_at = datetime.datetime.now(datetime.timezone.utc)
 
-            knowledge_item_id: UUID | None = None
+            knowledge_item_id: uuid.UUID | None = None
             committed_state: dict[str, object] | None = None
             if decision == "accept":
                 prior_items = list(
@@ -293,7 +293,7 @@ class LearningCommitService:
                         "knowledge_item_exists_for_uncommitted_learning_change"
                     )
 
-                knowledge_item_id = uuid.uuid4()
+                knowledge_item_id = uuid.uuid.uuid4()
                 confidence = decimal.Decimal(str(draft.confidence)).quantize(
                     decimal.Decimal("0.001")
                 )
@@ -379,7 +379,7 @@ class LearningCommitService:
                 event_payload["reason"] = rejection_reason
 
             decision_event = Event(
-                id=uuid4(),
+                id=uuid.uuid4(),
                 task_id=task.id,
                 type=event_type,
                 payload=event_payload,
@@ -403,7 +403,7 @@ class LearningCommitService:
         self,
         session: Session,
         learning_change: LearningChange,
-        proposer_task_id: UUID,
+        proposer_task_id: uuid.UUID,
     ) -> None:
         proposer = session.scalar(
             select(Task).where(Task.id == proposer_task_id).with_for_update(read=True)
@@ -548,7 +548,7 @@ class LearningCommitService:
         ):
             raise LearningCommitCorrupt("learning_change_decision_event_mismatch")
 
-        item_id: UUID | None = None
+        item_id: uuid.UUID | None = None
         if recorded_decision == "accept":
             items = list(
                 session.scalars(
