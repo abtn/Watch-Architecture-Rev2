@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
-import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -166,40 +164,10 @@ class LearningCommitService:
                 or rejection_reason != rejection_reason.strip()
             ):
                 raise LearningCommitCorrupt("operator_request_reason_invalid")
+            # TaskRuntime has already validated the complete request Event,
+            # including canonical identity shape and the request fingerprint.
             stored_operator_id = request_payload.get("operator_id")
-            if not isinstance(stored_operator_id, str) or len(stored_operator_id) > 255:
-                raise LearningCommitCorrupt("operator_request_identity_invalid")
-            try:
-                stored_identity = json.loads(stored_operator_id)
-            except (TypeError, ValueError) as error:
-                raise LearningCommitCorrupt(
-                    "operator_request_identity_invalid"
-                ) from error
-            if (
-                not isinstance(stored_identity, dict)
-                or set(stored_identity) != {"iss", "sub"}
-                or any(
-                    not isinstance(stored_identity.get(field), str)
-                    or not stored_identity[field]
-                    or stored_identity[field] != stored_identity[field].strip()
-                    or any(
-                        unicodedata.category(character) == "Cc"
-                        for character in stored_identity[field]
-                    )
-                    for field in ("iss", "sub")
-                )
-            ):
-                raise LearningCommitCorrupt("operator_request_identity_invalid")
-            canonical_stored_identity = json.dumps(
-                {"iss": stored_identity["iss"], "sub": stored_identity["sub"]},
-                ensure_ascii=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            )
-            if (
-                canonical_stored_identity != stored_operator_id
-                or stored_operator_id != operator_id
-            ):
+            if stored_operator_id != operator_id:
                 raise LearningCommitError("operator_identity_mismatch")
 
             try:
