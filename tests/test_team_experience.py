@@ -25,6 +25,7 @@ from core.models import (
     Task,
     Team,
     TeamExperienceChunk,
+    TeamExperienceIndexState,
     TeamPolicy,
 )
 from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
@@ -36,6 +37,7 @@ class FakeEmbeddingProvider:
     def __init__(self, revision: str = "test-revision") -> None:
         self.revision = revision
         self.calls = 0
+        self.fail = False
 
     def current_space(self) -> EmbeddingSpace:
         return EmbeddingSpace(
@@ -48,6 +50,8 @@ class FakeEmbeddingProvider:
 
     def embed(self, texts: Sequence[str]) -> EmbeddingBatch:
         self.calls += 1
+        if self.fail:
+            raise RuntimeError("embedding service unavailable")
         vector = (1.0, 0.1, 0.1, 0.1)
         return EmbeddingBatch(
             space=self.current_space(),
@@ -459,6 +463,17 @@ def test_separate_team_experience_projection_is_idempotent_and_retrievable(
         )
     assert rows
     assert all(row.team_id == experience_env.team_id for row in rows)
+    with experience_env.session_factory() as session:
+        state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == item_id
+            )
+        )
+        assert state is not None
+        assert state.status == "published"
+        assert state.item_version == 1
+        assert state.chunk_count == len(rows)
+        assert state.attempt_count == 1
 
     retriever = HybridKnowledgeRetriever(
         experience_env.session_factory, experience_env.snapshot_store, provider
@@ -475,6 +490,56 @@ def test_separate_team_experience_projection_is_idempotent_and_retrievable(
     )
     assert sum(len(p.text) for p in passages) <= 8000
     assert len(passages) <= 8
+
+
+def test_failed_publication_records_staleness_and_rebuilds(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    item_id = experience_env.add_accepted_item()
+    provider = FakeEmbeddingProvider()
+    provider.fail = True
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+
+    with pytest.raises(RuntimeError, match="embedding service unavailable"):
+        indexer.index_knowledge_item(item_id)
+
+    with experience_env.session_factory() as session:
+        item = session.get(KnowledgeItem, item_id)
+        state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == item_id
+            )
+        )
+        learning_change = session.get(
+            LearningChange, experience_env.learning_change_ids[0]
+        )
+        assert item is not None and item.status == "active"
+        assert learning_change is not None and learning_change.status == "accepted"
+        assert state is not None
+        assert state.status == "stale"
+        assert state.last_error_kind == "RuntimeError"
+        assert state.attempt_count == 1
+        assert session.scalar(
+            select(TeamExperienceChunk.id).where(
+                TeamExperienceChunk.knowledge_item_id == item_id
+            )
+        ) is None
+
+    provider.fail = False
+    rebuilt = indexer.rebuild_all()
+    assert len(rebuilt) == 1
+    assert rebuilt[0].outcome == "indexed"
+
+    with experience_env.session_factory() as session:
+        state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == item_id
+            )
+        )
+        assert state is not None
+        assert state.status == "published"
+        assert state.last_error_kind is None
+        assert state.attempt_count == 2
 
 
 def test_unconfigured_review_date_is_not_indexed(
