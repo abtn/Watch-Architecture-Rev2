@@ -341,16 +341,20 @@ KnowledgeItem
     status: str                 # "active" | "needs_review" | "retired"
     confidence: str             # "low" | "moderate" | "high"
     version: int
-    last_validated_at: datetime
+    last_validated_at: datetime | null
     review_after: datetime | null
-    embedding: vector
-    embedding_model: str
     origin_learning_change_id: UUID
     created_at: datetime
     updated_at: datetime
 ```
 
-Team-level; may apply across many Threads. Never created automatically from a repeated Hypothesis (INV-12).
+Team-level canonical knowledge; may apply across many Threads. Never created automatically from a repeated Hypothesis (INV-12). Embeddings and chunks are not fields on this canonical record.
+
+### Team Experience projection (Checkpoint 4)
+
+The separate `team_experience_chunks` table is a rebuildable retrieval projection, not canonical knowledge. Each row is tied by composite Team foreign keys to the current source KnowledgeItem and its originating LearningChange, and records item version/content hash, chunk index/text/hash, chunking version, embedding provider/model/revision/configuration/dimensions/space key, and indexed time. The existing `knowledge_chunks.signal_id` projection remains Signal-only Domain Knowledge.
+
+The separate `team_experience_index_state` row records operational publication status (`stale`, `published`, or `ineligible`), canonical item/version/hash/origin, embedding-space key, chunk and attempt counts, last error class, and timestamps. This state is disposable operational metadata; it cannot grant eligibility. Index publication marks it `published` only in the same transaction as complete chunk replacement. Failed embedding/indexing records `stale` and leaves canonical KnowledgeItem/LearningChange unchanged. NULL-dated, due, or non-active items are `ineligible`, have no retrievable chunks, and are excluded regardless of a prior projection. Both retriever and Context assembly require matching publication state and independently revalidate canonical state.
 
 ### `LearningChange`
 
