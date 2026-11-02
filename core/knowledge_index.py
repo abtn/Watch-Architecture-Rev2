@@ -14,7 +14,6 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.embeddings import EmbeddingBatch, EmbeddingProvider, EmbeddingSpace
-from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
 from core.models import (
     Event,
     KnowledgeChunk,
@@ -27,6 +26,7 @@ from core.models import (
     TeamExperienceChunk,
     TeamPolicy,
 )
+from core.policy import knowledge_item_review_interval_days
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
 from core.vector_type import serialize_vector, validate_vector
 
@@ -634,7 +634,9 @@ class TeamExperienceIndexer:
             knowledge_item_id, "indexed", len(rows), batch.space.key, item_hash
         )
 
-    def rebuild_all(self, *, now: datetime | None = None) -> tuple[TeamExperienceIndexingResult, ...]:
+    def rebuild_all(
+        self, *, now: datetime | None = None
+    ) -> tuple[TeamExperienceIndexingResult, ...]:
         reference_time = now or datetime.now(timezone.utc)
         with self._session_factory() as session:
             item_ids = set(
@@ -1091,7 +1093,6 @@ class HybridKnowledgeRetriever:
             item = session.get(KnowledgeItem, row["knowledge_item_id"])
             if (
                 item is None
-                or item.team_id != row["team_id"]
                 or item.team_id != row["team_id"]
                 or item.version != row["item_version"]
                 or item.origin_learning_change_id != row["origin_learning_change_id"]
