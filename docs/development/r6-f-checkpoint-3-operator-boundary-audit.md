@@ -3,7 +3,7 @@
 **Audit status:** design audit complete; the host-invoked application adapter is now an explicit Checkpoint 3 deliverable.
 **Audit snapshot:** Checkpoint 2 merge `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0`; pre-audit branch head `cc87ada69e30e9ce1cfa66d6ca39d3f400d1d06b`.
 **Audit date:** 2026-11-01.
-**Implementation status (2026-11-02):** the host adapter, pending request Task/Event creation, and approval-specific no-deadline `TaskRuntime.admit` guard are implemented on draft PR #31. The adapter/request-Task slice passed operator-local disposable-PostgreSQL verification on `2619eda`; the latest admission head passed hosted CI run `41402113541` (565 tests), with latest-head operator-local verification pending. Canonical decision service and typed Task finalization remain unimplemented; no schema migration has been added.
+**Implementation status (updated 2026-11-02):** the host adapter, pending request Task/Event creation, approval-specific no-deadline admission, and create-only canonical LearningChange accept/reject service are implemented on draft PR #31. Adapter and admission slices passed operator-local disposable-PostgreSQL verification. Decision-service head `2327e88` passed hosted CI run `41407266283` (fresh migrations, Ruff, mypy, 572 tests); latest-head local verification is pending. The service rebuilds canonical evidence, commits LearningChange/KnowledgeItem/decision Event atomically, and validates exact replay state. Typed TaskRuntime finalization and adapter orchestration remain unimplemented; no migration has been added.
 
 ## 1. Decision and executive findings
 
@@ -113,9 +113,9 @@ D7 (`review_after`) remains open. Checkpoint 3 may commit canonical state but ca
 
 1. **Implemented:** add host principal/authorization contract and `OperatorApplicationAdapter`; no routes, CLI, login, token verifier, user table, or deployed service.
 2. **Implemented:** atomic pending Task + request Event creation, deterministic request mapping, same-request replay/conflict.
-3. **Implemented on current draft PR #31 head; local verification pending:** TaskRuntime approval-only admission guard, exact Task shape and request Event/fingerprint/target validation, and no-deadline budget exception. Generic Task deadline validation, daily quota, and 60-second interrupted recovery are unchanged.
-4. **Next:** add the narrow decision service for real create proposals, full evidence revalidation, and atomic accept/reject.
-5. **Remaining TaskRuntime work:** typed accepted/rejected terminal results and validation of committed decision/Event against the approval Task and current attempt.
+3. **Implemented and locally verified:** TaskRuntime approval-only admission guard, exact Task shape and request Event/fingerprint/target validation, and no-deadline budget exception. Generic Task deadline validation, daily quota, and 60-second interrupted recovery are unchanged.
+4. **Implemented on current draft PR #31 head; local verification pending:** create-only `LearningCommitService`, provider-free canonical evidence-pack reconstruction, atomic accept/reject and Task-attributed decision Event, plus exact replay checks for Event payload/timestamp, attempt-start history, and full committed KnowledgeItem state.
+5. **Remaining TaskRuntime/orchestration work:** typed accepted/rejected terminal results and validation of committed decision/Event against the approval Task and current attempt; wire the host adapter synchronously through admit → decide → finalize.
 6. Test host context provenance, raw/model identity rejection, wrong Team/action, exact scope, same-key duplicate/concurrency, changed payload conflict, accept/reject, evidence tampering, stale target, and rollback.
 7. Test rejection-as-done, result/task mismatch, stale attempts, crash after decision commit, recovery to pending, same-Task replay/finalize, and stale-attempt fencing.
 8. Verify whether a migration is necessary; preferred design adds none unless tests prove an integrity gap.
@@ -131,6 +131,6 @@ D7 (`review_after`) remains open. Checkpoint 3 may commit canonical state but ca
 | D10 — revise/retire reachability | **Open:** Checkpoint 2 emits create only; no seed/bypass path. |
 | D7 — review date | **Open:** no review interval or retrieval eligibility semantics. |
 
-**Audit conclusion (updated 2026-11-02):** the external API/CLI blocker is removed. The host adapter, pending Task/request Event creation, and approval-specific admission contract are now implemented on draft PR #31. The adapter/task-creation slice has passed operator-local verification; the latest admission increment has hosted CI green and awaits operator-local verification. The next coding step is the create-only canonical LearningChange decision service, followed by typed TaskRuntime terminal finalization and crash/replay tests.
+**Audit conclusion (updated 2026-11-02):** the external API/CLI blocker is removed. The host adapter, pending Task/request Event creation, approval-specific admission, and canonical create-only LearningChange decision service are implemented on draft PR #31. The adapter and admission slices passed operator-local verification; the current decision-service head has hosted CI green (572 tests) and awaits operator-local verification. The next coding step is typed TaskRuntime accepted/rejected terminal finalization and synchronous adapter orchestration, with crash/recovery/replay tests.
 
 No production code, schema migration, provider, dispatcher extension, TeamPolicy grant, Checkpoint 4 work, or R6-G work is included in this audit update.
