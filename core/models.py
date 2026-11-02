@@ -617,8 +617,12 @@ class TeamExperienceIndexState(Base):
     )
     status: Mapped[str] = mapped_column(String, nullable=False)
     embedding_space_key: Mapped[str | None] = mapped_column(String, nullable=True)
-    chunk_count: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
-    attempt_count: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    chunk_count: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default="0"
+    )
+    attempt_count: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default="0"
+    )
     last_error_kind: Mapped[str | None] = mapped_column(String, nullable=True)
     last_attempt_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
