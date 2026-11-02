@@ -115,7 +115,6 @@ class LearningCommitService:
                 or task.objective_id is not None
                 or task.plan_id is not None
                 or task.plan_action_id is not None
-                or task.completed_at is not None
                 or task.max_attempts != 3
                 or task.budget != {"max_tool_calls": 0, "max_cost_usd": 0.0}
             ):
