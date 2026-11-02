@@ -32,7 +32,11 @@ from core.generation import (
     GenerationUsage,
 )
 from core.generation_cost import TaskGenerationCostService
-from core.learning_commit import LearningCommitError, LearningCommitService
+from core.learning_commit import (
+    LearningCommitCorrupt,
+    LearningCommitError,
+    LearningCommitService,
+)
 from core.models import (
     Evaluation,
     Event,
@@ -1372,6 +1376,83 @@ def test_learning_commit_event_failure_rolls_back_canonical_decision(
         with database_engine.begin() as connection:
             connection.execute(text(f"DROP TRIGGER {trigger} ON events"))
             connection.execute(text(f"DROP FUNCTION {function}()"))
+        with session_factory.begin() as session:
+            committed_change_ids = list(
+                session.scalars(
+                    select(LearningChange.id).where(
+                        LearningChange.committed_by_task_id == task_id
+                    )
+                )
+            )
+            if committed_change_ids:
+                session.execute(
+                    delete(KnowledgeItem).where(
+                        KnowledgeItem.origin_learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
+                    delete(LearningChange).where(
+                        LearningChange.id.in_(committed_change_ids)
+                    )
+                )
+            session.execute(delete(Event).where(Event.task_id == task_id))
+            session.execute(delete(Task).where(Task.id == task_id))
+
+
+@pytest.mark.parametrize("tamper", ["knowledge_item", "decision_event"])
+def test_learning_commit_replay_rejects_tampered_canonical_records(
+    session_factory, snapshot_store, distillation_fixture, tamper: str
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    task_id, attempt, principal = _create_admitted_approval_task(
+        session_factory, fixture.team_id, proposal.learning_change_id
+    )
+    try:
+        result = LearningCommitService(session_factory, snapshot_store).decide(
+            task_id, attempt, principal
+        )
+        assert result.knowledge_item_id is not None
+        with session_factory.begin() as session:
+            if tamper == "knowledge_item":
+                item = session.get(KnowledgeItem, result.knowledge_item_id)
+                assert item is not None
+                item.body = "A post-commit mutation that must not replay."
+            else:
+                event = session.scalar(
+                    select(Event).where(
+                        Event.task_id == task_id,
+                        Event.type == "learning_change_accepted",
+                    )
+                )
+                assert event is not None
+                payload = dict(event.payload)
+                payload["proposal_hash"] = "sha256:" + "0" * 64
+                event.payload = payload
+
+        expected = (
+            "committed_knowledge_item_mismatch"
+            if tamper == "knowledge_item"
+            else "learning_change_decision_event_mismatch"
+        )
+        with pytest.raises(LearningCommitCorrupt, match=expected):
+            LearningCommitService(session_factory, snapshot_store).decide(
+                task_id, attempt, principal
+            )
+    finally:
         with session_factory.begin() as session:
             committed_change_ids = list(
                 session.scalars(

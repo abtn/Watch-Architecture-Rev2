@@ -490,6 +490,39 @@ class LearningCommitService:
                 "learning_change_proposer_terminal_event_invalid"
             )
 
+    @staticmethod
+    def _knowledge_item_state(item: KnowledgeItem) -> dict[str, object]:
+        """Reconstruct the exact canonical fields captured at create time."""
+        return {
+            "id": str(item.id),
+            "team_id": str(item.team_id),
+            "kind": item.kind,
+            "title": item.title,
+            "statement": item.statement,
+            "body": item.body,
+            "applicability": item.applicability,
+            "preconditions": item.preconditions,
+            "assumptions": item.assumptions,
+            "limitations": item.limitations,
+            "non_applicability": item.non_applicability,
+            "failure_modes": item.failure_modes,
+            "known_counterexamples": item.known_counterexamples,
+            "missing_information": item.missing_information,
+            "uncertainty": item.uncertainty,
+            "confidence": str(item.confidence),
+            "status": item.status,
+            "version": item.version,
+            "last_validated_at": (
+                item.last_validated_at.isoformat()
+                if item.last_validated_at is not None
+                else None
+            ),
+            "review_after": (
+                item.review_after.isoformat() if item.review_after is not None else None
+            ),
+            "origin_learning_change_id": str(item.origin_learning_change_id),
+        }
+
     def _replay_decision(
         self,
         session: Session,
@@ -511,6 +544,10 @@ class LearningCommitService:
         if (
             recorded_decision != requested_decision
             or learning_change.decision_reason != rejection_reason
+            or learning_change.previous_state is not None
+            or learning_change.target_kind != "knowledge_item"
+            or learning_change.operation != "create"
+            or learning_change.target_id is not None
         ):
             raise LearningCommitConflict("learning_change_decision_request_conflict")
 
@@ -531,20 +568,56 @@ class LearningCommitService:
             raise LearningCommitCorrupt("learning_change_decision_event_invalid")
         event = events[0]
         payload = event.payload
+        decision_attempt = payload.get("attempt_count") if isinstance(payload, dict) else None
         if (
-            not isinstance(payload, dict)
-            or payload.get("learning_change_id") != str(learning_change.id)
-            or payload.get("approval_task_id") != str(task.id)
-            or payload.get("decision") != recorded_decision
-            or payload.get("operator_id") != operator_id
-            or payload.get("evidence_basis_hash") != learning_change.evidence_basis_hash
-            or payload.get("proposal_hash")
-            != learning_change.proposed_state.get("proposal_hash")
-            or payload.get("attempt_count", 0) > task.attempt_count
-            or event.type != expected_type
+            isinstance(decision_attempt, bool)
+            or not isinstance(decision_attempt, int)
+            or decision_attempt < 1
+            or decision_attempt > task.attempt_count
         ):
             raise LearningCommitCorrupt("learning_change_decision_event_mismatch")
 
+        # A replay may happen after interrupted recovery and a later admission.
+        # Prove both the attempt that committed the decision and the currently
+        # running attempt have their own durable start Events.
+        for started_attempt in {decision_attempt, task.attempt_count}:
+            start_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == "task_started",
+                        Event.payload["attempt_count"].as_integer() == started_attempt,
+                    )
+                )
+            )
+            if (
+                len(start_events) != 1
+                or start_events[0].payload
+                != {
+                    "from_status": "pending",
+                    "to_status": "running",
+                    "attempt_count": started_attempt,
+                }
+            ):
+                raise LearningCommitCorrupt("approval_task_start_event_invalid")
+            if started_attempt == decision_attempt:
+                decision_start_event = start_events[0]
+        committed_at = learning_change.committed_at
+        if committed_at is None:
+            raise LearningCommitCorrupt("learning_change_commit_timestamp_missing")
+
+        expected_payload: dict[str, object] = {
+            "schema_version": 1,
+            "learning_change_id": str(learning_change.id),
+            "operation": "create",
+            "decision": recorded_decision,
+            "operator_id": operator_id,
+            "approval_task_id": str(task.id),
+            "attempt_count": decision_attempt,
+            "evidence_basis_hash": learning_change.evidence_basis_hash,
+            "proposal_hash": learning_change.proposed_state.get("proposal_hash"),
+            "committed_at": committed_at.isoformat(),
+        }
         item_id: uuid.UUID | None = None
         if recorded_decision == "accept":
             items = list(
@@ -561,16 +634,18 @@ class LearningCommitService:
                 )
             item = items[0]
             item_id = item.id
+            expected_payload["knowledge_item_id"] = str(item.id)
+            expected_payload["knowledge_item_version"] = 1
             if (
                 item.team_id != learning_change.team_id
-                or learning_change.committed_state is None
-                or learning_change.committed_state.get("id") != str(item.id)
-                or payload.get("knowledge_item_id") != str(item.id)
-                or learning_change.committed_state.get("version") != item.version
                 or item.version != 1
+                or learning_change.committed_state is None
+                or learning_change.committed_state
+                != self._knowledge_item_state(item)
             ):
                 raise LearningCommitCorrupt("committed_knowledge_item_mismatch")
         else:
+            expected_payload["reason"] = rejection_reason
             if learning_change.committed_state is not None or session.scalar(
                 select(KnowledgeItem.id).where(
                     KnowledgeItem.origin_learning_change_id == learning_change.id
@@ -580,9 +655,14 @@ class LearningCommitService:
                     "rejected_learning_change_has_knowledge_item"
                 )
 
-        committed_at = learning_change.committed_at
-        if committed_at is None:
-            raise LearningCommitCorrupt("learning_change_commit_timestamp_missing")
+        if (
+            event.type != expected_type
+            or payload != expected_payload
+            or event.created_at != committed_at
+            or committed_at < decision_start_event.created_at
+        ):
+            raise LearningCommitCorrupt("learning_change_decision_event_mismatch")
+
         return LearningCommitResult(
             task_id=task.id,
             attempt_count=task.attempt_count,
