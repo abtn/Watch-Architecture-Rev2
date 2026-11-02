@@ -1,6 +1,6 @@
 """Operator-reviewed canonical LearningChange decisions for R6-F."""
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: I001
 
 import dataclasses
 import datetime
@@ -96,7 +96,9 @@ class LearningCommitService:
         if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
             raise LearningCommitError("invalid_attempt")
         try:
-            operator_id = core.operator_application._canonical_operator_identity(principal)
+            operator_id = (
+                core.operator_application._canonical_operator_identity(principal)
+            )
         except (TypeError, ValueError) as error:
             raise LearningCommitError("trusted_operator_principal_invalid") from error
 
