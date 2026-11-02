@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.models import Event, LearningChange, Task, Team, TeamPolicy
+from core.snapshot_store import SnapshotStore
 
 _APPROVAL_ACTION = "approve_learning_change"
 _APPROVAL_TASK_TYPE = "approve_learning_change"
@@ -100,6 +101,24 @@ class OperatorTaskRequestResult:
     replayed: bool
 
 
+@dataclass(frozen=True)
+class OperatorDecisionResult:
+    """The canonical LearningChange decision and its finalized ordinary Task."""
+
+    task_id: UUID
+    team_id: UUID
+    attempt_count: int
+    learning_change_id: UUID
+    decision: Literal["accept", "reject"]
+    learning_change_status: Literal["accepted", "rejected"]
+    task_status: Literal["done"]
+    operator_id: str
+    knowledge_item_id: UUID | None
+    committed_at: datetime
+    outcome_id: UUID
+    replayed: bool = False
+
+
 class OperatorApplicationAdapter:
     """Create/replay pending Operator Tasks through a trusted host boundary.
 
@@ -108,8 +127,13 @@ class OperatorApplicationAdapter:
     TaskRuntime finalization are separate implementation slices.
     """
 
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        snapshot_store: SnapshotStore | None = None,
+    ) -> None:
         self._session_factory = session_factory
+        self._snapshot_store = snapshot_store
 
     def request_learning_change_decision(
         self,
@@ -271,6 +295,99 @@ class OperatorApplicationAdapter:
                 status="pending",
                 replayed=False,
             )
+
+    def decide_learning_change(
+        self,
+        principal: TrustedOperatorPrincipal,
+        request: LearningChangeDecisionRequest,
+    ) -> OperatorDecisionResult:
+        """Run request creation, admission, decision, and Task finalization.
+
+        A running Task is resumed rather than admitted a second time. A pending
+        Task is admitted through TaskRuntime. Replays after recovery or after a
+        lost response resolve through the same deterministic Task and decision
+        records; this method never writes Task lifecycle state directly.
+        """
+        if self._snapshot_store is None:
+            raise OperatorApplicationError(
+                "snapshot_store_required_for_decision_execution"
+            )
+
+        request_result = self.request_learning_change_decision(principal, request)
+
+        # Import at call time to keep the application boundary below the
+        # learning-commit module without creating a module-import cycle.
+        from core.learning_commit import LearningCommitService
+        from core.task_runtime import TaskNotEligible, TaskRuntime, TerminalObservation
+
+        task_runtime = TaskRuntime(self._session_factory, self._snapshot_store)
+        with self._session_factory() as session:
+            task = session.get(Task, request_result.task_id)
+            if task is None:
+                raise OperatorTaskRequestCorrupt("approval_task_disappeared")
+            task_status = task.status
+            attempt = task.attempt_count
+
+        if task_status == "pending":
+            try:
+                admission = task_runtime.admit(request_result.task_id)
+                attempt = admission.attempt_count
+            except TaskNotEligible as error:
+                # A concurrent caller may have won admission. Continue only
+                # when the authoritative row now proves an active/final Task.
+                if str(error) != "task_not_pending":
+                    raise
+                with self._session_factory() as session:
+                    task = session.get(Task, request_result.task_id)
+                    if task is None or task.status not in {"running", "done"}:
+                        raise OperatorApplicationError(
+                            "approval_task_admission_race_lost"
+                        ) from error
+                    task_status = task.status
+                    attempt = task.attempt_count
+        elif task_status not in {"running", "done"}:
+            raise OperatorApplicationError("approval_task_not_executable")
+
+        commit = LearningCommitService(
+            self._session_factory, self._snapshot_store
+        ).decide(request_result.task_id, attempt, principal)
+        result_category = (
+            "success_learning_change_accepted"
+            if commit.decision == "accept"
+            else "success_learning_change_rejected"
+        )
+        finalization = task_runtime.finalize(
+            TerminalObservation(
+                task_id=commit.task_id,
+                attempt=commit.attempt_count,
+                result_category=result_category,
+                observed_at=commit.committed_at,
+                learning_change_id=commit.learning_change_id,
+            )
+        )
+        if finalization.status != "done":
+            raise OperatorApplicationError(
+                "approval_task_did_not_finalize_successfully"
+            )
+
+        return OperatorDecisionResult(
+            task_id=commit.task_id,
+            team_id=request_result.team_id,
+            attempt_count=finalization.attempt_count,
+            learning_change_id=commit.learning_change_id,
+            decision=commit.decision,
+            learning_change_status=commit.status,
+            task_status="done",
+            operator_id=commit.operator_id,
+            knowledge_item_id=commit.knowledge_item_id,
+            committed_at=commit.committed_at,
+            outcome_id=finalization.outcome_id,
+            replayed=(
+                request_result.replayed
+                or commit.replayed
+                or finalization.replayed
+            ),
+        )
 
 
 def _validate_request(

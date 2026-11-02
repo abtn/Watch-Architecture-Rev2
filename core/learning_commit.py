@@ -108,7 +108,8 @@ class LearningCommitService:
                 raise TaskNotFound(f"Task {task_id} does not exist")
             if (
                 task.task_type != _TASK_TYPE
-                or task.status != "running"
+                or task.status not in {"running", "done"}
+                or (task.completed_at is not None and task.status != "done")
                 or task.attempt_count != attempt
                 or task.allowed_writes != _ALLOWED_WRITES
                 or task.objective_id is not None
@@ -121,7 +122,9 @@ class LearningCommitService:
                 raise LearningCommitError("approval_task_not_eligible")
 
             try:
-                TaskRuntime._validate_operator_admission(session, task)
+                TaskRuntime._validate_operator_admission(
+                    session, task, allow_completed=task.status == "done"
+                )
             except TaskNotEligible as error:
                 raise LearningCommitCorrupt(str(error)) from error
 
@@ -194,6 +197,10 @@ class LearningCommitService:
                     decision,
                     operator_id,
                     rejection_reason,
+                )
+            if task.status == "done":
+                raise LearningCommitCorrupt(
+                    "approval_task_completed_without_learning_decision"
                 )
             if learning_change.status != "proposed":
                 raise LearningCommitConflict("learning_change_not_proposed")

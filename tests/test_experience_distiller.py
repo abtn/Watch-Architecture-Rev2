@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from threading import Barrier
 from typing import Any, Callable, Iterator
@@ -1402,6 +1402,403 @@ def test_learning_commit_event_failure_rolls_back_canonical_decision(
 
 
 @pytest.mark.parametrize("tamper", ["knowledge_item", "decision_event"])
+def _cleanup_operator_decision_task(
+    session_factory: sessionmaker[Session], task_id: UUID
+) -> None:
+    with session_factory.begin() as session:
+        change_ids = list(
+            session.scalars(
+                select(LearningChange.id).where(
+                    LearningChange.committed_by_task_id == task_id
+                )
+            )
+        )
+        if change_ids:
+            session.execute(
+                delete(KnowledgeItem).where(
+                    KnowledgeItem.origin_learning_change_id.in_(change_ids)
+                )
+            )
+            session.execute(
+                delete(LearningChange).where(LearningChange.id.in_(change_ids))
+            )
+        session.execute(
+            delete(Outcome).where(Outcome.recorded_by_task_id == task_id)
+        )
+        session.execute(delete(Event).where(Event.task_id == task_id))
+        session.execute(delete(Task).where(Task.id == task_id))
+
+
+@pytest.mark.parametrize("decision", ["accept", "reject"])
+def test_operator_adapter_decides_and_finalizes_the_same_task(
+    session_factory, snapshot_store, distillation_fixture, decision: str
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    principal = _approval_principal(fixture.team_id)
+    request = LearningChangeDecisionRequest(
+        learning_change_id=proposal.learning_change_id,
+        decision=decision,  # type: ignore[arg-type]
+        idempotency_key=uuid4(),
+        rejection_reason=(
+            "The evidence does not justify retaining this practice."
+            if decision == "reject"
+            else None
+        ),
+    )
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    result = adapter.decide_learning_change(principal, request)
+    expected_status = "accepted" if decision == "accept" else "rejected"
+
+    assert result.decision == decision
+    assert result.learning_change_status == expected_status
+    assert result.task_status == "done"
+    assert result.attempt_count == 1
+    assert result.outcome_id is not None
+    assert not result.replayed
+
+    with session_factory() as session:
+        task = session.get(Task, result.task_id)
+        change = session.get(LearningChange, proposal.learning_change_id)
+        outcomes = list(
+            session.scalars(
+                select(Outcome).where(
+                    Outcome.recorded_by_task_id == result.task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+        )
+        completed = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == result.task_id,
+                    Event.type == "task_completed",
+                )
+            )
+        )
+        assert task is not None and task.status == "done"
+        assert change is not None and change.status == expected_status
+        assert len(outcomes) == 1
+        assert len(completed) == 1
+        assert completed[0].payload["result_category"] == (
+            "success_learning_change_accepted"
+            if decision == "accept"
+            else "success_learning_change_rejected"
+        )
+        if decision == "accept":
+            assert result.knowledge_item_id is not None
+            assert session.get(KnowledgeItem, result.knowledge_item_id) is not None
+        else:
+            assert result.knowledge_item_id is None
+            assert session.scalar(
+                select(KnowledgeItem.id).where(
+                    KnowledgeItem.origin_learning_change_id == change.id
+                )
+            ) is None
+
+    replay = adapter.decide_learning_change(principal, request)
+    assert replay.replayed
+    assert replay.task_id == result.task_id
+    assert replay.outcome_id == result.outcome_id
+
+    _cleanup_operator_decision_task(session_factory, result.task_id)
+
+
+def test_operator_recovery_finalizes_a_committed_decision_after_crash(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    monkeypatch,
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    principal = _approval_principal(fixture.team_id)
+    request = LearningChangeDecisionRequest(
+        learning_change_id=proposal.learning_change_id,
+        decision="accept",
+        idempotency_key=uuid4(),
+    )
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    request_result = adapter.request_learning_change_decision(principal, request)
+    captured: list[TerminalObservation] = []
+
+    def crash_before_finalize(
+        runtime: TaskRuntime, observation: TerminalObservation
+    ):
+        captured.append(observation)
+        raise RuntimeError("simulated process loss after decision commit")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(TaskRuntime, "finalize", crash_before_finalize)
+        with pytest.raises(RuntimeError, match="simulated process loss"):
+            adapter.decide_learning_change(principal, request)
+
+    assert captured and captured[0].task_id == request_result.task_id
+    with session_factory() as session:
+        task = session.get(Task, request_result.task_id)
+        change = session.get(LearningChange, proposal.learning_change_id)
+        assert task is not None and task.status == "running"
+        assert change is not None and change.status == "accepted"
+        assert session.scalar(
+            select(Outcome.id).where(
+                Outcome.recorded_by_task_id == request_result.task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) is None
+
+    now = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        start = session.scalar(
+            select(Event).where(
+                Event.task_id == request_result.task_id,
+                Event.type == "task_started",
+            )
+        )
+        assert start is not None
+        start.created_at = now - timedelta(seconds=61)
+
+    recovery = TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+        now=now
+    )
+    assert recovery.completed == (request_result.task_id,)
+    assert recovery.retried == ()
+    with session_factory() as session:
+        task = session.get(Task, request_result.task_id)
+        assert task is not None and task.status == "done"
+        assert task.attempt_count == 1
+        assert session.scalar(
+            select(Outcome.id).where(
+                Outcome.recorded_by_task_id == request_result.task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) is not None
+
+    replay = adapter.decide_learning_change(principal, request)
+    assert replay.replayed and replay.task_status == "done"
+    _cleanup_operator_decision_task(session_factory, request_result.task_id)
+
+
+def test_operator_recovery_retries_predecision_crash_then_reuses_same_task(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    monkeypatch,
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    principal = _approval_principal(fixture.team_id)
+    request = LearningChangeDecisionRequest(
+        learning_change_id=proposal.learning_change_id,
+        decision="reject",
+        idempotency_key=uuid4(),
+        rejection_reason="The current evidence is insufficient.",
+    )
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    captured_task_ids: list[UUID] = []
+
+    def crash_before_decision(
+        service: LearningCommitService,
+        task_id: UUID,
+        attempt: int,
+        trusted_principal: TrustedOperatorPrincipal,
+    ):
+        captured_task_ids.append(task_id)
+        raise RuntimeError("simulated process loss before decision commit")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(LearningCommitService, "decide", crash_before_decision)
+        with pytest.raises(RuntimeError, match="before decision commit"):
+            adapter.decide_learning_change(principal, request)
+
+    assert len(captured_task_ids) == 1
+    task_id = captured_task_ids[0]
+    with session_factory() as session:
+        task = session.get(Task, task_id)
+        change = session.get(LearningChange, proposal.learning_change_id)
+        assert task is not None and task.status == "running"
+        assert change is not None and change.status == "proposed"
+
+    now = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        start = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "task_started",
+            )
+        )
+        assert start is not None
+        start.created_at = now - timedelta(seconds=61)
+
+    recovery = TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+        now=now
+    )
+    assert recovery.retried == (task_id,)
+    assert recovery.completed == ()
+
+    result = adapter.decide_learning_change(principal, request)
+    assert result.task_id == task_id
+    assert result.decision == "reject"
+    assert result.learning_change_status == "rejected"
+    assert result.task_status == "done"
+    assert result.attempt_count == 2
+
+    with session_factory() as session:
+        task = session.get(Task, task_id)
+        assert task is not None and task.status == "done"
+        assert task.attempt_count == 2
+        starts = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task_id,
+                    Event.type == "task_started",
+                )
+            )
+        )
+        retries = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task_id,
+                    Event.type == "task_retry_scheduled",
+                )
+            )
+        )
+        decision = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "learning_change_rejected",
+            )
+        )
+        assert len(starts) == 2
+        assert len(retries) == 1
+        assert decision is not None
+        assert decision.payload["attempt_count"] == 2
+
+    _cleanup_operator_decision_task(session_factory, task_id)
+
+
+def test_operator_terminal_result_is_fenced_and_must_match_decision(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    principal = _approval_principal(fixture.team_id)
+    request = LearningChangeDecisionRequest(
+        learning_change_id=proposal.learning_change_id,
+        decision="accept",
+        idempotency_key=uuid4(),
+    )
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    task_request = adapter.request_learning_change_decision(principal, request)
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    runtime.admit(task_request.task_id)
+
+    stale_start = datetime.now(timezone.utc) - timedelta(seconds=61)
+    with session_factory.begin() as session:
+        start = session.scalar(
+            select(Event).where(
+                Event.task_id == task_request.task_id,
+                Event.type == "task_started",
+            )
+        )
+        assert start is not None
+        start.created_at = stale_start
+    recovered = runtime.recover_interrupted(now=datetime.now(timezone.utc))
+    assert recovered.retried == (task_request.task_id,)
+
+    second = runtime.admit(task_request.task_id)
+    commit = LearningCommitService(session_factory, snapshot_store).decide(
+        task_request.task_id, second.attempt_count, principal
+    )
+    stale_observation = TerminalObservation(
+        task_id=task_request.task_id,
+        attempt=1,
+        result_category="success_learning_change_accepted",
+        observed_at=commit.committed_at,
+        learning_change_id=commit.learning_change_id,
+    )
+    with pytest.raises(TaskNotFinalizable, match="stale_attempt"):
+        runtime.finalize(stale_observation)
+
+    wrong_observation = TerminalObservation(
+        task_id=task_request.task_id,
+        attempt=second.attempt_count,
+        result_category="success_learning_change_rejected",
+        observed_at=commit.committed_at,
+        learning_change_id=commit.learning_change_id,
+    )
+    with pytest.raises(
+        TaskNotFinalizable, match="learning_change_decision_result_mismatch"
+    ):
+        runtime.finalize(wrong_observation)
+
+    terminal = runtime.finalize(
+        TerminalObservation(
+            task_id=task_request.task_id,
+            attempt=second.attempt_count,
+            result_category="success_learning_change_accepted",
+            observed_at=commit.committed_at,
+            learning_change_id=commit.learning_change_id,
+        )
+    )
+    assert terminal.status == "done"
+    with session_factory() as session:
+        task = session.get(Task, task_request.task_id)
+        assert task is not None and task.status == "done"
+        assert task.attempt_count == 2
+        assert session.scalar(
+            select(Outcome.id).where(
+                Outcome.recorded_by_task_id == task_request.task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) is not None
+
+    _cleanup_operator_decision_task(session_factory, task_request.task_id)
+
+
 def test_learning_commit_replay_rejects_tampered_canonical_records(
     session_factory, snapshot_store, distillation_fixture, tamper: str
 ):

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from core.models import (
     Evaluation,
     Event,
+    KnowledgeItem,
     LearningChange,
     Outcome,
     PlanAction,
@@ -32,10 +33,25 @@ _RETRY_EVENTS = ("task_attempt_failed", "task_retry_scheduled")
 _TERMINAL_STATUSES = frozenset({"done", "failed"})
 _EVALUATION_SUCCESS_CATEGORIES = frozenset({"success_evaluation_recorded",
     "success_evaluation_rejected"})
-_LEARNING_CHANGE_SUCCESS_CATEGORIES = frozenset({"success_learning_change_proposed"})
-_SUCCESS_CATEGORIES = (frozenset({"success_signal_created",
-    "success_no_change"}) | _EVALUATION_SUCCESS_CATEGORIES
-    | _LEARNING_CHANGE_SUCCESS_CATEGORIES)
+_LEARNING_CHANGE_SUCCESS_CATEGORIES = frozenset(
+    {"success_learning_change_proposed"}
+)
+_LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES = frozenset(
+    {
+        "success_learning_change_accepted",
+        "success_learning_change_rejected",
+    }
+)
+_OPERATOR_DECISION_EVENT_TYPES = (
+    "learning_change_accepted",
+    "learning_change_rejected",
+)
+_SUCCESS_CATEGORIES = (
+    frozenset({"success_signal_created", "success_no_change"})
+    | _EVALUATION_SUCCESS_CATEGORIES
+    | _LEARNING_CHANGE_SUCCESS_CATEGORIES
+    | _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES
+)
 _RESULT_CATEGORIES = _SUCCESS_CATEGORIES | {"terminal_failure"}
 
 # ADR-0030 §2: a `running` Task whose latest `task_started` Event is older than
@@ -82,6 +98,7 @@ class TerminalObservation:
     result_category: Literal[
         "success_signal_created", "success_no_change", "success_evaluation_recorded",
         "success_evaluation_rejected", "success_learning_change_proposed",
+        "success_learning_change_accepted", "success_learning_change_rejected",
         "terminal_failure"
     ]
     observed_at: datetime
@@ -170,6 +187,7 @@ class RecoveryResult:
     failed: tuple[UUID, ...] = ()
     skipped: tuple[UUID, ...] = ()
     inconsistent: tuple[UUID, ...] = ()
+    completed: tuple[UUID, ...] = ()
 
 
 class TaskRuntime:
@@ -317,7 +335,9 @@ class TaskRuntime:
             return AdmissionResult(task.id, task.attempt_count, event.id)
 
     @staticmethod
-    def _validate_operator_admission(session: Session, task: Task) -> None:
+    def _validate_operator_admission(
+        session: Session, task: Task, *, allow_completed: bool = False
+    ) -> None:
         """Fail closed unless this is an intact, no-deadline approval Task."""
         if (
             task.objective_id is not None
@@ -325,7 +345,7 @@ class TaskRuntime:
             or task.plan_action_id is not None
             or task.allowed_writes != _OPERATOR_ALLOWED_WRITES
             or task.max_attempts != _OPERATOR_MAX_ATTEMPTS
-            or task.completed_at is not None
+            or (task.completed_at is not None and not allow_completed)
             or not isinstance(task.budget, dict)
             or set(task.budget) != {"max_tool_calls", "max_cost_usd"}
         ):
@@ -507,6 +527,28 @@ class TaskRuntime:
             task = ObjectiveService._lock_task(session, observation.task_id)
             if task is None:
                 raise TaskNotFound(f"Task {observation.task_id} does not exist")
+
+            if (
+                observation.result_category
+                in _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES
+            ):
+                self._validate_learning_change_decision_result(
+                    session,
+                    task,
+                    observation,
+                    allow_completed=task.status == "done",
+                )
+            elif task.task_type == _OPERATOR_TASK_TYPE:
+                if observation.result_category in _SUCCESS_CATEGORIES:
+                    raise TaskNotFinalizable(
+                        "operator_task_requires_learning_change_decision"
+                    )
+                if self._committed_operator_decision_observation(
+                    session, task
+                ) is not None:
+                    raise TaskNotFinalizable(
+                        "operator_decision_requires_success_finalization"
+                    )
 
             prior = self._prior_terminal(session, task.id)
             if prior is not None:
@@ -733,6 +775,7 @@ class TaskRuntime:
         failed: list[UUID] = []
         skipped: list[UUID] = []
         inconsistent: list[UUID] = []
+        completed: list[UUID] = []
 
         for candidate in self._interrupted_candidates(reference):
             if candidate.started_at is None:
@@ -749,6 +792,8 @@ class TaskRuntime:
                 failed.append(candidate.task_id)
             elif outcome == "inconsistent":
                 inconsistent.append(candidate.task_id)
+            elif outcome == "completed":
+                completed.append(candidate.task_id)
             else:
                 skipped.append(candidate.task_id)
 
@@ -757,6 +802,7 @@ class TaskRuntime:
             failed=tuple(failed),
             skipped=tuple(skipped),
             inconsistent=tuple(inconsistent),
+            completed=tuple(completed),
         )
 
     def _interrupted_candidates(self, reference: datetime) -> list[InterruptedTask]:
@@ -804,11 +850,12 @@ class TaskRuntime:
     ) -> str:
         """Recheck one candidate under the Task-row lock and recover it.
 
-        Returns ``"retried"``, ``"failed"``, ``"inconsistent"``, or
-        ``"skipped"``. The decision transaction is released before any terminal
-        finalization, because writing the observation Snapshot must not happen
-        inside an open database transaction.
+        A previously committed Operator decision is finalized before considering
+        retry limits. Other interrupted Tasks retain the ordinary retry/failure
+        behavior. Snapshot writes and terminal commits happen after releasing
+        the discovery/decision transaction.
         """
+        operator_observation: TerminalObservation | None = None
         with self._session_factory.begin() as session:
             task = ObjectiveService._lock_task(session, candidate.task_id)
             if task is None:
@@ -827,7 +874,12 @@ class TaskRuntime:
             if reference - started_at <= _INTERRUPTION_AGE:
                 return "skipped"
 
-            if task.attempt_count < task.max_attempts:
+            if task.task_type == _OPERATOR_TASK_TYPE:
+                operator_observation = (
+                    self._committed_operator_decision_observation(session, task)
+                )
+
+            if operator_observation is None and task.attempt_count < task.max_attempts:
                 disposition = self._retry_disposition(
                     session, task.id, task.attempt_count
                 )
@@ -853,6 +905,15 @@ class TaskRuntime:
             attempt = task.attempt_count
             observed_at = started_at
 
+        if operator_observation is not None:
+            try:
+                self.finalize(operator_observation)
+            except TaskNotFinalizable as error:
+                if str(error) in _SKIPPED_FINALIZATION_REASONS:
+                    return "skipped"
+                raise
+            return "completed"
+
         # Attempts are exhausted: resolve through the single terminal path.
         # `observed_at` is the durable current-attempt start, so repeated or
         # concurrent recovery derives the same canonical observation and
@@ -873,6 +934,91 @@ class TaskRuntime:
                 return "skipped"
             raise
         return "failed"
+
+    @staticmethod
+    def _committed_operator_decision_observation(
+        session: Session, task: Task
+    ) -> TerminalObservation | None:
+        """Build the canonical terminal observation after an Operator commit."""
+        if task.task_type != _OPERATOR_TASK_TYPE:
+            return None
+        try:
+            TaskRuntime._validate_operator_admission(session, task)
+        except TaskNotEligible as error:
+            raise TaskNotFinalizable(
+                "operator_task_request_event_invalid"
+            ) from error
+
+        request_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == _OPERATOR_REQUEST_EVENT_TYPE,
+                )
+            )
+        )
+        if len(request_events) != 1 or not isinstance(
+            request_events[0].payload, dict
+        ):
+            raise TaskNotFinalizable("operator_task_request_event_invalid")
+        request_payload = request_events[0].payload
+        try:
+            learning_change_id = UUID(request_payload.get("learning_change_id"))
+        except (TypeError, ValueError) as error:
+            raise TaskNotFinalizable(
+                "operator_task_request_target_invalid"
+            ) from error
+
+        learning_change = session.scalar(
+            select(LearningChange)
+            .where(
+                LearningChange.id == learning_change_id,
+                LearningChange.team_id == task.team_id,
+            )
+            .with_for_update()
+        )
+        if learning_change is None:
+            raise TaskNotFinalizable("learning_change_not_found_for_task_team")
+
+        decision_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type.in_(_OPERATOR_DECISION_EVENT_TYPES),
+                )
+            )
+        )
+        if learning_change.status == "proposed":
+            if (
+                decision_events
+                or learning_change.committed_by_task_id is not None
+                or learning_change.operator_id is not None
+                or learning_change.committed_at is not None
+                or learning_change.committed_state is not None
+            ):
+                raise TaskNotFinalizable("learning_change_decision_state_mismatch")
+            return None
+        if learning_change.status not in {"accepted", "rejected"}:
+            raise TaskNotFinalizable("learning_change_decision_state_mismatch")
+
+        if learning_change.committed_at is None:
+            raise TaskNotFinalizable("learning_change_decision_timestamp_missing")
+        result_category = (
+            "success_learning_change_accepted"
+            if learning_change.status == "accepted"
+            else "success_learning_change_rejected"
+        )
+        observation = TerminalObservation(
+            task_id=task.id,
+            attempt=task.attempt_count,
+            result_category=result_category,
+            observed_at=learning_change.committed_at,
+            learning_change_id=learning_change.id,
+        )
+        TaskRuntime._validate_learning_change_decision_result(
+            session, task, observation
+        )
+        return observation
 
     @staticmethod
     def _current_attempt_start(session: Session, task: Task) -> datetime | None:
@@ -904,6 +1050,265 @@ class TaskRuntime:
         if (evaluation is None or evaluation.created_by_task_id != task.id
             or evaluation.resolved_by_task_id != task.id or evaluation.status != expected_status):  # noqa: E501
             raise TaskNotFinalizable("evaluation_not_recorded")
+
+    @staticmethod
+    def _validate_learning_change_decision_result(
+        session: Session,
+        task: Task,
+        observation: TerminalObservation,
+        *,
+        allow_completed: bool = False,
+    ) -> None:
+        """Validate a committed Operator decision before Task terminalization."""
+        if task.task_type != _OPERATOR_TASK_TYPE:
+            raise TaskNotFinalizable(
+                "learning_change_decision_result_wrong_task_type"
+            )
+        if task.status != "running" and not (
+            allow_completed and task.status == "done"
+        ):
+            raise TaskNotFinalizable("task_not_running")
+        if task.attempt_count != observation.attempt:
+            raise TaskNotFinalizable("stale_attempt")
+        if task.allowed_writes != _OPERATOR_ALLOWED_WRITES:
+            raise TaskNotFinalizable(
+                "learning_change_decision_write_scope_violation"
+            )
+        if allow_completed and task.completed_at != observation.observed_at:
+            raise TaskNotFinalizable("recorded_terminal_outcome_corrupt")
+
+        try:
+            TaskRuntime._validate_operator_admission(
+                session, task, allow_completed=allow_completed
+            )
+        except TaskNotEligible as error:
+            raise TaskNotFinalizable(
+                "operator_task_request_event_invalid"
+            ) from error
+
+        request_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == _OPERATOR_REQUEST_EVENT_TYPE,
+                )
+            )
+        )
+        if len(request_events) != 1 or not isinstance(
+            request_events[0].payload, dict
+        ):
+            raise TaskNotFinalizable("operator_task_request_event_invalid")
+        request_payload = request_events[0].payload
+
+        requested_decision = request_payload.get("decision")
+        expected_decision = (
+            "accept"
+            if observation.result_category == "success_learning_change_accepted"
+            else "reject"
+        )
+        if requested_decision != expected_decision:
+            raise TaskNotFinalizable("learning_change_decision_result_mismatch")
+        learning_change_id_value = request_payload.get("learning_change_id")
+        try:
+            learning_change_id = UUID(learning_change_id_value)
+        except (TypeError, ValueError) as error:
+            raise TaskNotFinalizable(
+                "operator_task_request_target_invalid"
+            ) from error
+        if (
+            str(learning_change_id) != learning_change_id_value
+            or observation.learning_change_id != learning_change_id
+        ):
+            raise TaskNotFinalizable("learning_change_decision_target_mismatch")
+
+        learning_change = session.scalar(
+            select(LearningChange)
+            .where(
+                LearningChange.id == learning_change_id,
+                LearningChange.team_id == task.team_id,
+            )
+            .with_for_update()
+        )
+        expected_status = "accepted" if expected_decision == "accept" else "rejected"
+        if (
+            learning_change is None
+            or learning_change.status != expected_status
+            or learning_change.committed_by_task_id != task.id
+            or learning_change.operator_id != request_payload.get("operator_id")
+            or learning_change.decision_reason != request_payload.get(
+                "rejection_reason"
+            )
+            or learning_change.previous_state is not None
+            or learning_change.target_kind != "knowledge_item"
+            or learning_change.target_id is not None
+            or learning_change.operation != "create"
+            or not isinstance(learning_change.proposed_state, dict)
+            or learning_change.committed_at is None
+            or learning_change.committed_at != observation.observed_at
+        ):
+            raise TaskNotFinalizable("learning_change_decision_state_mismatch")
+
+        evidence_basis_hash = learning_change.evidence_basis_hash
+        proposal_hash = learning_change.proposed_state.get("proposal_hash")
+        for value in (evidence_basis_hash, proposal_hash):
+            if (
+                not isinstance(value, str)
+                or len(value) != 71
+                or not value.startswith("sha256:")
+                or any(character not in "0123456789abcdef" for character in value[7:])
+            ):
+                raise TaskNotFinalizable("learning_change_decision_hash_invalid")
+
+        decision_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type.in_(_OPERATOR_DECISION_EVENT_TYPES),
+                )
+            )
+        )
+        expected_event_type = (
+            "learning_change_accepted"
+            if expected_decision == "accept"
+            else "learning_change_rejected"
+        )
+        if len(decision_events) != 1:
+            raise TaskNotFinalizable("learning_change_decision_event_invalid")
+        decision_event = decision_events[0]
+        event_payload = decision_event.payload
+        if not isinstance(event_payload, dict):
+            raise TaskNotFinalizable("learning_change_decision_event_invalid")
+
+        decision_attempt = event_payload.get("attempt_count")
+        if (
+            isinstance(decision_attempt, bool)
+            or not isinstance(decision_attempt, int)
+            or decision_attempt < 1
+            or decision_attempt > task.attempt_count
+        ):
+            raise TaskNotFinalizable("learning_change_decision_event_mismatch")
+
+        decision_start_event: Event | None = None
+        for started_attempt in {decision_attempt, observation.attempt}:
+            start_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == "task_started",
+                        Event.payload["attempt_count"].as_integer()
+                        == started_attempt,
+                    )
+                )
+            )
+            if (
+                len(start_events) != 1
+                or start_events[0].payload
+                != {
+                    "from_status": "pending",
+                    "to_status": "running",
+                    "attempt_count": started_attempt,
+                }
+            ):
+                raise TaskNotFinalizable("approval_task_start_event_invalid")
+            if started_attempt == decision_attempt:
+                decision_start_event = start_events[0]
+
+        expected_payload: dict[str, Any] = {
+            "schema_version": 1,
+            "learning_change_id": str(learning_change.id),
+            "operation": "create",
+            "decision": expected_decision,
+            "operator_id": request_payload["operator_id"],
+            "approval_task_id": str(task.id),
+            "attempt_count": decision_attempt,
+            "evidence_basis_hash": evidence_basis_hash,
+            "proposal_hash": proposal_hash,
+            "committed_at": learning_change.committed_at.isoformat(),
+        }
+
+        if expected_decision == "accept":
+            items = list(
+                session.scalars(
+                    select(KnowledgeItem).where(
+                        KnowledgeItem.origin_learning_change_id
+                        == learning_change.id
+                    )
+                )
+            )
+            if len(items) != 1:
+                raise TaskNotFinalizable(
+                    "committed_knowledge_item_missing_or_duplicate"
+                )
+            item = items[0]
+            expected_payload["knowledge_item_id"] = str(item.id)
+            expected_payload["knowledge_item_version"] = 1
+            if (
+                learning_change.decision_reason is not None
+                or item.team_id != task.team_id
+                or item.version != 1
+                or item.status != "active"
+                or learning_change.committed_state
+                != TaskRuntime._knowledge_item_state(item)
+            ):
+                raise TaskNotFinalizable("committed_knowledge_item_mismatch")
+        else:
+            expected_payload["reason"] = request_payload.get("rejection_reason")
+            existing_item = session.scalar(
+                select(KnowledgeItem.id).where(
+                    KnowledgeItem.origin_learning_change_id == learning_change.id
+                )
+            )
+            if (
+                learning_change.committed_state is not None
+                or existing_item is not None
+                or not isinstance(request_payload.get("rejection_reason"), str)
+                or not request_payload["rejection_reason"]
+            ):
+                raise TaskNotFinalizable(
+                    "rejected_learning_change_has_knowledge_item"
+                )
+
+        if (
+            decision_event.type != expected_event_type
+            or event_payload != expected_payload
+            or decision_event.created_at != learning_change.committed_at
+            or decision_start_event is None
+            or decision_event.created_at < decision_start_event.created_at
+        ):
+            raise TaskNotFinalizable("learning_change_decision_event_mismatch")
+
+    @staticmethod
+    def _knowledge_item_state(item: KnowledgeItem) -> dict[str, Any]:
+        """Reconstruct every canonical field captured by LearningCommitService."""
+        return {
+            "id": str(item.id),
+            "team_id": str(item.team_id),
+            "kind": item.kind,
+            "title": item.title,
+            "statement": item.statement,
+            "body": item.body,
+            "applicability": item.applicability,
+            "preconditions": item.preconditions,
+            "assumptions": item.assumptions,
+            "limitations": item.limitations,
+            "non_applicability": item.non_applicability,
+            "failure_modes": item.failure_modes,
+            "known_counterexamples": item.known_counterexamples,
+            "missing_information": item.missing_information,
+            "uncertainty": item.uncertainty,
+            "confidence": str(item.confidence),
+            "status": item.status,
+            "version": item.version,
+            "last_validated_at": (
+                item.last_validated_at.isoformat()
+                if item.last_validated_at is not None
+                else None
+            ),
+            "review_after": (
+                item.review_after.isoformat() if item.review_after is not None else None
+            ),
+            "origin_learning_change_id": str(item.origin_learning_change_id),
+        }
 
     @staticmethod
     def _validate_learning_change_result(
@@ -1026,7 +1431,10 @@ class TaskRuntime:
                     raise TaskNotFinalizable("evaluation_id_required")
                 if observation.signals or observation.learning_change_id is not None:
                     raise TaskNotFinalizable("terminal_evidence_not_allowed")
-            elif observation.result_category in _LEARNING_CHANGE_SUCCESS_CATEGORIES:
+            elif observation.result_category in (
+                _LEARNING_CHANGE_SUCCESS_CATEGORIES
+                | _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES
+            ):
                 if observation.learning_change_id is None:
                     raise TaskNotFinalizable("learning_change_id_required")
                 if observation.signals or observation.evaluation_id is not None:
