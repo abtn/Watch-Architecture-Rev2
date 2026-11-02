@@ -226,7 +226,7 @@ class TaskContextAssembler:
                 json.dumps(asdict(assessment), default=str, allow_nan=False)
             )
             if document.get("assessment") != expected_assessment:
-                raise TaskContextError("context_assessment_replay_conflict")
+                raise TaskContextError("context_replay_conflict")
             return AssembledTaskContext(
                 task_id=scope.task_id,
                 snapshot_ref=reference,
