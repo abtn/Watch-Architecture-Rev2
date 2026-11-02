@@ -306,7 +306,7 @@ def distillation_fixture(
                 session.execute(delete(Event).where(Event.task_id.in_(all_task_ids)))
                 session.execute(delete(Task).where(Task.id.in_(all_task_ids)))
                 session.execute(
-                    delete(TeamPolicy).where(TeamPolicy.id == fixture.policy_id)
+                    delete(TeamPolicy).where(TeamPolicy.team_id == fixture.team_id)
                 )
                 session.execute(delete(Team).where(Team.id == fixture.team_id))
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -21,7 +22,6 @@ from core.models import (
     LearningChange,
     Outcome,
     Task,
-    TaskGenerationCharge,
     Team,
     TeamPolicy,
 )
@@ -32,7 +32,6 @@ from core.operator_application import (
     _require_team_grant,
 )
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
-from core.state_assessment import _canonical_json
 from core.task_runtime import (
     TaskNotEligible,
     TaskNotFinalizable,
@@ -194,7 +193,6 @@ class LearningCommitService:
                     decision,
                     operator_id,
                     rejection_reason,
-                    request_payload,
                 )
             if learning_change.status != "proposed":
                 raise LearningCommitConflict("learning_change_not_proposed")
@@ -451,9 +449,18 @@ class LearningCommitService:
         ):
             raise LearningCommitCorrupt("learning_change_proposer_outcome_invalid")
         try:
-            self._snapshot_store.read(outcome.observation_snapshot_ref)
+            snapshot_bytes = self._snapshot_store.read(
+                outcome.observation_snapshot_ref
+            )
         except SnapshotIntegrityError as error:
             raise LearningCommitCorrupt(str(error)) from error
+        if (
+            "sha256:" + hashlib.sha256(snapshot_bytes).hexdigest()
+            != outcome.observation_hash
+        ):
+            raise LearningCommitCorrupt(
+                "learning_change_proposer_snapshot_hash_mismatch"
+            )
 
         completed_events = list(
             session.scalars(
@@ -488,7 +495,6 @@ class LearningCommitService:
         requested_decision: Decision,
         operator_id: str,
         rejection_reason: object,
-        request_payload: dict[str, object],
     ) -> LearningCommitResult:
         if (
             learning_change.committed_by_task_id != task.id
