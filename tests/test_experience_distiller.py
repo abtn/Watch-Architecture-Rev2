@@ -273,9 +273,15 @@ def distillation_fixture(
                     Task.task_type == "approve_learning_change",
                     Task.team_id == fixture.team_id,
                 )
+                proposal_owner = (
+                    LearningChange.proposed_by_task_id
+                    == fixture.distillation_task_id
+                )
+                approval_commit = LearningChange.committed_by_task_id.in_(
+                    approval_task_ids
+                )
                 learning_change_ids = select(LearningChange.id).where(
-                    (LearningChange.proposed_by_task_id == fixture.distillation_task_id)
-                    | LearningChange.committed_by_task_id.in_(approval_task_ids)
+                    proposal_owner | approval_commit
                 )
                 session.execute(
                     delete(KnowledgeItem).where(
@@ -284,8 +290,7 @@ def distillation_fixture(
                 )
                 session.execute(
                     delete(LearningChange).where(
-                        (LearningChange.proposed_by_task_id == fixture.distillation_task_id)
-                        | LearningChange.committed_by_task_id.in_(approval_task_ids)
+                        proposal_owner | approval_commit
                     )
                 )
                 session.execute(
