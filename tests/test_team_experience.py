@@ -29,7 +29,7 @@ from core.models import (
 )
 from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
 from core.snapshot_store import SnapshotStore
-from core.task_runtime import TaskNotFinalizable, TaskRuntime
+from core.task_runtime import TaskNotFinalizable, TaskRuntime, TerminalObservation
 
 
 class FakeEmbeddingProvider:
