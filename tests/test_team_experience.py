@@ -642,16 +642,15 @@ def test_review_knowledge_task_atomically_marks_due_items_and_replays_once(
     )
     task_id = experience_env.add_review_task()
     runtime = TaskRuntime(experience_env.session_factory, experience_env.snapshot_store)
-    admission = runtime.admit(task_id)
-    observation = TerminalObservation(
-        task_id=task_id,
-        attempt=admission.attempt_count,
-        result_category="success_knowledge_reviewed",
-        observed_at=now,
+    result = runtime.complete_knowledge_review(task_id, now=now)
+    replay = runtime.finalize(
+        TerminalObservation(
+            task_id=task_id,
+            attempt=result.attempt_count,
+            result_category="success_knowledge_reviewed",
+            observed_at=now,
+        )
     )
-
-    result = runtime.finalize(observation)
-    replay = runtime.finalize(observation)
 
     assert result.status == "done"
     assert replay.replayed is True
