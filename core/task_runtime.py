@@ -233,19 +233,24 @@ class TaskRuntime:
             if not isinstance(task.budget, dict):
                 raise TaskNotEligible("invalid_task_budget")
 
-            budget_fields = (
+            for field, kind, lower_bound in (
                 ("max_tool_calls", int, 0),
                 ("max_cost_usd", (int, float), 0),
-            )
-            if task.task_type != _OPERATOR_TASK_TYPE:
-                budget_fields += (("deadline_seconds", int, 1),)
-
-            for field, kind, lower_bound in budget_fields:
+            ):
                 value = task.budget.get(field)
                 if (
                     isinstance(value, bool)
                     or not isinstance(value, kind)
                     or value < lower_bound
+                ):
+                    raise TaskNotEligible("invalid_task_budget")
+
+            if task.task_type != _OPERATOR_TASK_TYPE:
+                deadline_seconds = task.budget.get("deadline_seconds")
+                if (
+                    isinstance(deadline_seconds, bool)
+                    or not isinstance(deadline_seconds, int)
+                    or deadline_seconds < 1
                 ):
                     raise TaskNotEligible("invalid_task_budget")
 
