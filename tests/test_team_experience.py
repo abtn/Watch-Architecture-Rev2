@@ -622,15 +622,15 @@ def test_review_knowledge_task_atomically_marks_due_items_and_replays_once(
     now = datetime.now(timezone.utc)
     due_item = experience_env.add_accepted_item(
         title="Due alpha practice",
-        committed_at=now - timedelta(days=3),
-        review_interval_days=1,
+        committed_at=now - timedelta(days=40),
+        review_interval_days=30,
     )
     future_item = experience_env.add_accepted_item(
         title="Future beta practice",
         statement="A future beta rule is not due yet.",
         body="This knowledge item is not due.",
         committed_at=now - timedelta(hours=3),
-        review_interval_days=1,
+        review_interval_days=30,
     )
     task_id = experience_env.add_review_task()
     runtime = TaskRuntime(experience_env.session_factory, experience_env.snapshot_store)
