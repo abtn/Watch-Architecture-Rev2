@@ -26,14 +26,22 @@ from core.knowledge_index import (
     chunk_source_text,
     content_hash,
     text_hash,
+    knowledge_item_content_hash,
+    knowledge_item_committed_state_matches,
+    knowledge_item_text,
+    _accepted_learning_change_is_canonical,
+    _review_date_is_eligible,
 )
 from core.models import (
     Event,
     KnowledgeChunk,
+    KnowledgeItem,
+    LearningChange,
     Objective,
     Signal,
     Task,
     Team,
+    TeamExperienceChunk,
     TeamPolicy,
 )
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
@@ -43,9 +51,10 @@ from core.state_assessment import (
     _canonical_json,
 )
 
-CONTEXT_SCHEMA_VERSION = "r6e-task-context-v1"
-CONTEXT_MANIFEST_VERSION = "r6e-context-manifest-v1"
-RETRIEVAL_CONFIGURATION_VERSION = "postgres-hybrid-rrf-v1"
+CONTEXT_SCHEMA_VERSION = "r6e-task-context-v2"
+CONTEXT_MANIFEST_VERSION = "r6e-context-manifest-v2"
+LEGACY_CONTEXT_MANIFEST_VERSION = "r6e-context-manifest-v1"
+RETRIEVAL_CONFIGURATION_VERSION = "postgres-hybrid-rrf-v2"
 
 
 class TaskContextError(ValueError):
@@ -113,12 +122,121 @@ class TaskContextAssembler:
     def assemble(self, task_id: UUID) -> AssembledTaskContext:
         """Assemble the Context for a running Objective-scoped Strategy Task."""
         scope = self._load_scope(task_id)
+        prior = self._load_prior_context(scope)
+        if prior is not None:
+            return prior
         query = scope.objective_statement
         try:
             passages = self._retriever.retrieve(scope.team_id, query)
         except KnowledgeIndexError as error:
             raise TaskContextError(error.reason) from error
         return self._persist(scope, query, passages)
+
+    def _load_prior_context(
+        self, scope: _TaskContextScope
+    ) -> AssembledTaskContext | None:
+        """Replay an immutable Context before doing a new retrieval pass.
+
+        This keeps pre-Checkpoint-4 Contexts stable when the retriever gains a
+        second logical core or when the Team Experience projection is rebuilt.
+        """
+        with self._session_factory() as session:
+            events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == scope.task_id,
+                        Event.type == "context_assembled",
+                    )
+                )
+            )
+            if not events:
+                return None
+            if len(events) != 1:
+                raise TaskContextError("duplicate_context_assembled_events")
+            event = events[0]
+            payload = event.payload
+            if not isinstance(payload, dict):
+                raise TaskContextError("context_manifest_corrupt")
+            schema_version = payload.get("schema_version")
+            if schema_version not in {
+                CONTEXT_MANIFEST_VERSION,
+                LEGACY_CONTEXT_MANIFEST_VERSION,
+            }:
+                raise TaskContextError("context_manifest_version_unsupported")
+            reference = payload.get("snapshot_ref")
+            recorded_hash = payload.get("content_hash")
+            manifest = payload.get("manifest")
+            if not isinstance(reference, str) or not isinstance(manifest, dict):
+                raise TaskContextError("context_manifest_corrupt")
+            try:
+                stored_bytes = self._snapshot_store.read(reference)
+            except SnapshotIntegrityError as error:
+                raise TaskContextError("context_snapshot_integrity_failure") from error
+            actual_hash = content_hash(stored_bytes)
+            digest = actual_hash.removeprefix("sha256:")
+            if (
+                recorded_hash != actual_hash
+                or reference != f"snap://sha256/{digest}"
+                or payload
+                != {
+                    "schema_version": schema_version,
+                    "snapshot_ref": reference,
+                    "content_hash": actual_hash,
+                    "manifest": manifest,
+                }
+            ):
+                raise TaskContextError("context_snapshot_integrity_failure")
+            try:
+                document = json.loads(stored_bytes)
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise TaskContextError("context_snapshot_integrity_failure") from error
+            if (
+                not isinstance(document, dict)
+                or document.get("manifest") != manifest
+                or manifest.get("task_id") != str(scope.task_id)
+                or manifest.get("team_id") != str(scope.team_id)
+                or manifest.get("policy_version") != scope.policy_version
+            ):
+                raise TaskContextError("context_manifest_corrupt")
+            assembled_at = manifest.get("assembled_at")
+            if not isinstance(assembled_at, str):
+                raise TaskContextError("context_manifest_corrupt")
+            try:
+                assessment_time = datetime.fromisoformat(
+                    assembled_at.replace("Z", "+00:00")
+                )
+            except ValueError as error:
+                raise TaskContextError("context_manifest_corrupt") from error
+            if (
+                assessment_time.tzinfo is None
+                or assessment_time.utcoffset() is None
+            ):
+                raise TaskContextError("context_manifest_corrupt")
+            current_scope = self._scope_in_session(
+                session, scope.task_id, lock=False
+            )
+            if current_scope != scope:
+                raise TaskContextError("task_context_scope_changed")
+            assessment = self._assessments.build_in_session(
+                session,
+                scope.objective_id,
+                created_at=assessment_time,
+            )
+            expected_assessment = json.loads(
+                json.dumps(asdict(assessment), default=str, allow_nan=False)
+            )
+            if document.get("assessment") != expected_assessment:
+                raise TaskContextError("context_assessment_replay_conflict")
+            return AssembledTaskContext(
+                task_id=scope.task_id,
+                snapshot_ref=reference,
+                content_hash=actual_hash,
+                event_id=event.id,
+                manifest=manifest,
+                document=document,
+                assessment=assessment,
+                replayed=True,
+            )
 
     def verify_snapshot(self, context: AssembledTaskContext) -> None:
         """Re-read and verify the exact immutable bytes passed to a proposer."""
@@ -420,6 +538,20 @@ class TaskContextAssembler:
             if embedding_space.key != passage.embedding_space_key:
                 raise TaskContextError("embedding_identity_mismatch")
 
+            if passage.logical_core == "team_experience":
+                self._validate_team_experience_passage(
+                    session, scope, passage, datetime.now(timezone.utc)
+                )
+                continue
+            if (
+                passage.logical_core != "domain_knowledge"
+                or passage.signal_id is None
+                or passage.knowledge_item_id is not None
+                or passage.knowledge_item_version is not None
+                or passage.origin_learning_change_id is not None
+            ):
+                raise TaskContextError("invalid_retrieval_logical_core")
+
             signal = session.get(Signal, passage.signal_id)
             if (
                 signal is None
@@ -488,6 +620,89 @@ class TaskContextAssembler:
                 )
 
     @staticmethod
+    def _validate_team_experience_passage(
+        session: Session,
+        scope: _TaskContextScope,
+        passage: RetrievedPassage,
+        now_utc: datetime,
+    ) -> None:
+        if (
+            passage.signal_id is not None
+            or passage.source_url is not None
+            or passage.source_type is not None
+            or passage.snapshot_ref is not None
+            or passage.knowledge_item_id is None
+            or passage.knowledge_item_version is None
+            or passage.origin_learning_change_id is None
+        ):
+            raise TaskContextError("invalid_team_experience_provenance")
+
+        item = session.get(KnowledgeItem, passage.knowledge_item_id)
+        if (
+            item is None
+            or item.team_id != scope.team_id
+            or item.version != passage.knowledge_item_version
+            or item.origin_learning_change_id != passage.origin_learning_change_id
+            or not _review_date_is_eligible(item, now_utc)
+        ):
+            raise TaskContextError("team_experience_item_not_current_or_eligible")
+        learning_change = session.get(
+            LearningChange, item.origin_learning_change_id
+        )
+        if (
+            learning_change is None
+            or not _accepted_learning_change_is_canonical(
+                session, item, learning_change
+            )
+            or not knowledge_item_committed_state_matches(item, learning_change)
+        ):
+            raise TaskContextError("team_experience_canonical_state_invalid")
+        current_hash = knowledge_item_content_hash(item)
+        if passage.content_hash != current_hash:
+            raise TaskContextError("team_experience_content_hash_mismatch")
+
+        try:
+            chunks = chunk_source_text(
+                knowledge_item_text(item).encode("utf-8")
+            )
+        except KnowledgeIndexError as error:
+            raise TaskContextError("team_experience_text_invalid") from error
+        if (
+            passage.chunk_index < 0
+            or passage.chunk_index >= len(chunks)
+            or text_hash(chunks[passage.chunk_index]) != passage.chunk_hash
+        ):
+            raise TaskContextError("team_experience_chunk_not_current")
+        expected_text = chunks[passage.chunk_index]
+        if passage.truncated:
+            if not expected_text.startswith(passage.text):
+                raise TaskContextError("team_experience_chunk_not_current")
+        elif expected_text != passage.text:
+            raise TaskContextError("team_experience_chunk_not_current")
+
+        chunk = session.get(TeamExperienceChunk, passage.chunk_id)
+        if (
+            chunk is None
+            or chunk.knowledge_item_id != item.id
+            or chunk.team_id != item.team_id
+            or chunk.item_version != item.version
+            or chunk.item_content_hash != current_hash
+            or chunk.origin_learning_change_id != item.origin_learning_change_id
+            or chunk.chunk_index != passage.chunk_index
+            or chunk.chunk_text != expected_text
+            or chunk.chunk_hash != passage.chunk_hash
+            or chunk.chunking_version != CHUNKING_VERSION
+            or chunk.embedding_provider != passage.embedding_provider
+            or chunk.embedding_model != passage.embedding_model
+            or chunk.embedding_revision != passage.embedding_revision
+            or chunk.embedding_configuration != passage.embedding_configuration
+            or chunk.embedding_dimensions != passage.embedding_dimensions
+            or chunk.embedding_space_key != passage.embedding_space_key
+            or len(chunk.embedding) != passage.embedding_dimensions
+        ):
+            raise TaskContextError("team_experience_projection_not_current")
+
+    @staticmethod
     def _manifest(
         scope: _TaskContextScope,
         query: str,
@@ -506,32 +721,58 @@ class TaskContextAssembler:
                 "key": passage.embedding_space_key,
             }
             spaces_by_key[passage.embedding_space_key] = identity
-            selected.append(
-                {
-                    "rank": rank,
-                    "record_kind": "signal",
-                    "signal_id": str(passage.signal_id),
-                    "source_url": passage.source_url,
-                    "source_type": passage.source_type,
-                    "source_snapshot_ref": passage.snapshot_ref,
-                    "source_content_hash": passage.content_hash,
-                    "chunk_id": str(passage.chunk_id),
-                    "chunk_index": passage.chunk_index,
-                    "chunk_hash": passage.chunk_hash,
-                    "score": passage.score,
-                    "lexical_rank": passage.lexical_rank,
-                    "vector_rank": passage.vector_rank,
-                    "truncated": passage.truncated,
-                    "embedding_space_key": passage.embedding_space_key,
-                }
-            )
+            selected_entry: dict[str, Any] = {
+                "rank": rank,
+                "logical_core": passage.logical_core,
+                "record_kind": (
+                    "signal"
+                    if passage.logical_core == "domain_knowledge"
+                    else "knowledge_item"
+                ),
+                "chunk_id": str(passage.chunk_id),
+                "chunk_index": passage.chunk_index,
+                "chunk_hash": passage.chunk_hash,
+                "score": passage.score,
+                "lexical_rank": passage.lexical_rank,
+                "vector_rank": passage.vector_rank,
+                "truncated": passage.truncated,
+                "embedding_space_key": passage.embedding_space_key,
+            }
+            if passage.logical_core == "domain_knowledge":
+                selected_entry.update(
+                    {
+                        "signal_id": str(passage.signal_id),
+                        "source_url": passage.source_url,
+                        "source_type": passage.source_type,
+                        "source_snapshot_ref": passage.snapshot_ref,
+                        "source_content_hash": passage.content_hash,
+                    }
+                )
+            else:
+                selected_entry.update(
+                    {
+                        "knowledge_item_id": str(passage.knowledge_item_id),
+                        "knowledge_item_version": passage.knowledge_item_version,
+                        "knowledge_item_content_hash": passage.content_hash,
+                        "origin_learning_change_id": str(
+                            passage.origin_learning_change_id
+                        ),
+                    }
+                )
+            selected.append(selected_entry)
+        logical_cores = sorted({passage.logical_core for passage in passages})
         return {
             "schema_version": CONTEXT_MANIFEST_VERSION,
             "task_id": str(scope.task_id),
             "team_id": str(scope.team_id),
             "objective_id": str(scope.objective_id),
             "policy_version": scope.policy_version,
-            "logical_core": "domain_knowledge",
+            "logical_core": (
+                logical_cores[0]
+                if len(logical_cores) == 1
+                else "mixed" if logical_cores else "none"
+            ),
+            "logical_cores": logical_cores,
             "query_hash": content_hash(query.encode("utf-8")),
             "assessment_basis_sha256": assessment.basis.sha256,
             "assembled_at": assessment.created_at,
@@ -598,7 +839,25 @@ class TaskContextAssembler:
                         "score": passage.score,
                     }
                     for passage in passages
-                ]
+                    if passage.logical_core == "domain_knowledge"
+                ],
+                "team_experience": [
+                    {
+                        "knowledge_item_id": str(passage.knowledge_item_id),
+                        "knowledge_item_version": passage.knowledge_item_version,
+                        "content_hash": passage.content_hash,
+                        "origin_learning_change_id": str(
+                            passage.origin_learning_change_id
+                        ),
+                        "chunk_id": str(passage.chunk_id),
+                        "chunk_index": passage.chunk_index,
+                        "chunk_hash": passage.chunk_hash,
+                        "text": passage.text,
+                        "score": passage.score,
+                    }
+                    for passage in passages
+                    if passage.logical_core == "team_experience"
+                ],
             },
             "manifest": manifest,
         }
