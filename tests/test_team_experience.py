@@ -542,7 +542,9 @@ def test_failed_publication_records_staleness_and_rebuilds(
         assert state.last_error_kind == "RuntimeError"
         assert state.attempt_count == 2
         assert chunks
-        assert all(row.embedding_space_key != provider.current_space().key for row in chunks)
+        assert all(
+            row.embedding_space_key != provider.current_space().key for row in chunks
+        )
 
     retriever = HybridKnowledgeRetriever(
         experience_env.session_factory, experience_env.snapshot_store, provider
