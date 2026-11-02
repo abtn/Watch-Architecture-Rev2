@@ -26,6 +26,7 @@ from core.models import (
     TeamPolicy,
 )
 from core.objectives import ObjectiveService, TaskNotFound
+from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
 import core.operator_application
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
 from core.task_runtime import (
@@ -279,6 +280,16 @@ class LearningCommitService:
                 session, learning_change, pack.task_id
             )
             committed_at = datetime.datetime.now(datetime.timezone.utc)
+            review_after: datetime.datetime | None = None
+            if decision == "accept":
+                try:
+                    interval_days = knowledge_item_review_interval_days(
+                        current_policy.rules, current_policy.schema_version
+                    )
+                except InvalidPolicyError as error:
+                    raise LearningCommitError(str(error)) from error
+                if interval_days is not None:
+                    review_after = committed_at + datetime.timedelta(days=interval_days)
 
             knowledge_item_id: uuid.UUID | None = None
             committed_state: dict[str, object] | None = None
@@ -321,7 +332,9 @@ class LearningCommitService:
                     "status": "active",
                     "version": 1,
                     "last_validated_at": None,
-                    "review_after": None,
+                    "review_after": (
+                        review_after.isoformat() if review_after is not None else None
+                    ),
                     "origin_learning_change_id": str(learning_change.id),
                 }
                 session.add(
@@ -345,7 +358,7 @@ class LearningCommitService:
                         status="active",
                         version=1,
                         last_validated_at=None,
-                        review_after=None,
+                        review_after=review_after,
                         origin_learning_change_id=learning_change.id,
                     )
                 )
