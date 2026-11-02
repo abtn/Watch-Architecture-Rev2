@@ -155,9 +155,8 @@ class TeamExperienceEnv:
             b'{"result_category":"success_learning_change_accepted"}'
         )
 
-        with self.session_factory.begin() as session:
             session.add_all(
-                [
+
                     Task(
                         id=proposer_task_id,
                         team_id=self.team_id,
@@ -184,6 +183,9 @@ class TeamExperienceEnv:
                         budget={"max_tool_calls": 0, "max_cost_usd": 0.0},
                         completed_at=committed_time,
                     ),
+            )
+            session.flush()
+            session.add(
                     LearningChange(
                         id=learning_change_id,
                         team_id=self.team_id,
@@ -206,7 +208,9 @@ class TeamExperienceEnv:
                         operator_id=operator_id,
                         decision_reason=None,
                         committed_at=committed_time,
-                    ),
+                    )            )
+            session.flush()
+            session.add_all(
                     KnowledgeItem(
                         id=item_id,
                         team_id=self.team_id,
@@ -241,8 +245,7 @@ class TeamExperienceEnv:
                         observation_hash=snapshot_hash,
                         observed_at=committed_time,
                         recorded_by_task_id=approval_task_id,
-                    ),
-                ]
+                    ),                ]
             )
             session.flush()
             session.add_all(
