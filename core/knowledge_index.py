@@ -535,6 +535,21 @@ class TeamExperienceIndexer:
         increment_attempt: bool = False,
         now: datetime,
     ) -> None:
+        current_item = session.scalar(
+            select(KnowledgeItem)
+            .where(KnowledgeItem.id == item.id)
+            .with_for_update()
+        )
+        if current_item is None:
+            raise KnowledgeIndexError("knowledge_item_disappeared_during_index_state_update")
+        if (
+            current_item.team_id != item.team_id
+            or current_item.version != item.version
+            or current_item.origin_learning_change_id != item.origin_learning_change_id
+            or knowledge_item_content_hash(current_item) != item_hash
+        ):
+            raise KnowledgeIndexError("knowledge_item_changed_during_index_state_update")
+
         state = session.scalar(
             select(TeamExperienceIndexState)
             .where(
