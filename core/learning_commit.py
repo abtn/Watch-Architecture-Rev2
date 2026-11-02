@@ -26,11 +26,7 @@ from core.models import (
     TeamPolicy,
 )
 from core.objectives import ObjectiveService, TaskNotFound
-from core.operator_application import (
-    TrustedOperatorPrincipal,
-    _canonical_operator_identity,
-    _require_team_grant,
-)
+import core.operator_application
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
 from core.task_runtime import (
     TaskNotEligible,
@@ -95,12 +91,12 @@ class LearningCommitService:
         self,
         task_id: uuid.UUID,
         attempt: int,
-        principal: TrustedOperatorPrincipal,
+        principal: core.operator_application.TrustedOperatorPrincipal,
     ) -> LearningCommitResult:
         if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
             raise LearningCommitError("invalid_attempt")
         try:
-            operator_id = _canonical_operator_identity(principal)
+            operator_id = core.operator_application._canonical_operator_identity(principal)
         except (TypeError, ValueError) as error:
             raise LearningCommitError("trusted_operator_principal_invalid") from error
 
@@ -171,7 +167,7 @@ class LearningCommitService:
                 raise LearningCommitError("operator_identity_mismatch")
 
             try:
-                _require_team_grant(principal, task.team_id)
+                core.operator_application._require_team_grant(principal, task.team_id)
             except ValueError as error:
                 raise LearningCommitError("operator_not_authorized") from error
 
