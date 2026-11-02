@@ -3,7 +3,7 @@
 **Audit status:** design audit complete; the host-invoked application adapter is now an explicit Checkpoint 3 deliverable.
 **Audit snapshot:** Checkpoint 2 merge `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0`; pre-audit branch head `cc87ada69e30e9ce1cfa66d6ca39d3f400d1d06b`.
 **Audit date:** 2026-11-01.
-**Implementation status:** documentation/design only. No application code or migration changes here; adapter, approval service, and TaskRuntime result path remain to be implemented and tested.
+**Implementation status (2026-11-02):** the host adapter, pending request Task/Event creation, and approval-specific no-deadline `TaskRuntime.admit` guard are implemented on draft PR #31. The adapter/request-Task slice passed operator-local disposable-PostgreSQL verification on `2619eda`; the latest admission head passed hosted CI run `41402113541` (565 tests), with latest-head operator-local verification pending. Canonical decision service and typed Task finalization remain unimplemented; no schema migration has been added.
 
 ## 1. Decision and executive findings
 
@@ -16,14 +16,14 @@ The operator clarified that there is no separate deployed Watch API/CLI with aut
 | Area | Finding | Checkpoint 3 disposition |
 |---|---|---|
 | Host boundary | No deployed Watch API/CLI or authentication subsystem exists here. | Host supplies authenticated principal and has authorized Team/action. |
-| Application adapter | No in-repository manual approval Task creator exists. | Required deliverable: narrow in-process adapter, proposed `core/operator_application.py`. |
+| Application adapter | The in-repository approval Task creator is now implemented. | `core/operator_application.py` accepts a typed host principal and atomically creates/replays the pending Task plus request Event. |
 | Task creation | PlanService is the only production Task-row creation path found; it creates Plan-linked ingestion Tasks. | Adapter creates only a pending ordinary approval Task and request Event, atomically. |
-| Task lifecycle | `TaskRuntime.admit` and `finalize` exist; admission does not validate type-to-write-scope mapping. | Reuse both; add strict approval-specific checks. |
+| Task lifecycle | Generic `TaskRuntime.admit` and `finalize` exist; typed accepted/rejected LearningChange finalization is not implemented. | Approval-specific admission is implemented: exact shape, request Event/fingerprint, and same-Team create target are validated before the ordinary start transition. Typed decision finalization remains. |
 | Approval execution | `TaskDispatcher` intentionally supports only `ingest_source`. | Run synchronously via adapter; do not extend dispatcher. |
 | Trusted identity | Existing `operator_id` strings are attribution fields, not authenticated principals. | Accept typed host principal; persist stable issuer/subject, never request/model strings. |
 | Target and replay | Task has no `input_refs` or request-key column; Event's `(task_id,type)` index is non-unique. | Host idempotency UUID resolves the same Task; request Event stores a fingerprint. Add schema only if tests prove a gap. |
 | Recovery | Every stale running Task is considered interrupted after 60 seconds. | Human decision precedes Task creation; execution is synchronous. Replay must survive recovery and commit/finalize crash window. |
-| Budget | Admission requires positive `deadline_seconds`; approval Task spec documents no model/tool deadline. | Permit no-deadline budget for this synchronous Task type only; preserve 60-second stale recovery and prove replay. |
+| Budget | Generic Tasks require positive `deadline_seconds`; approval Task intentionally has no model/tool deadline. | Implemented no-deadline allowance only for a structurally valid `approve_learning_change` Task. Generic deadline checks, daily quota, and 60-second stale recovery remain unchanged. |
 
 ## 2. Existing repository facts
 
@@ -101,7 +101,7 @@ Business decision transaction and TaskRuntime finalization remain separate, as i
 
 The human decides before adapter invocation; a Task must never wait in `running` for a person. A crash after canonical decision but before TaskRuntime finalization must resolve the same Task from the same host key, replay the decision without another KnowledgeItem/version, and finish through TaskRuntime. If 60-second recovery returned Task to pending, re-admit same Task; attempt fencing rejects older in-flight attempts.
 
-Keep generic `recover_interrupted()` unchanged unless tests prove a conflict. Admission currently requires positive `deadline_seconds`, but approval spec has no model/tool deadline. Permit no-deadline budget for `approve_learning_change` only. Retain generic 60-second stale-running recovery; it is orphan recovery, not time for a human decision. Do not invent a fake deadline or weaken other Task types.
+Keep generic `recover_interrupted()` unchanged unless tests prove a conflict. The approval-specific no-deadline exception is implemented in `TaskRuntime.admit` and is bound to the exact Task shape and durable request Event. Ordinary Task types continue to require positive `deadline_seconds`. Retain generic 60-second stale-running recovery; it is orphan recovery, not time for a human decision. Do not invent a fake deadline or weaken other Task types.
 
 ## 7. Reachability and remaining gates
 
@@ -111,10 +111,11 @@ D7 (`review_after`) remains open. Checkpoint 3 may commit canonical state but ca
 
 ## 8. Implementation and verification sequence
 
-1. Add host principal/authorization contract and `OperatorApplicationAdapter`; no routes, CLI, login, token verifier, user table, or deployed service.
-2. Add atomic pending Task + request Event creation, deterministic request mapping, same-request replay/conflict.
-3. Add narrow decision service for real create proposals, full evidence revalidation, atomic accept/reject.
-4. Extend TaskRuntime with typed accepted/rejected results and approval-specific Task/decision/Event validation. Allow no-deadline budget for this Task type only.
+1. **Implemented:** add host principal/authorization contract and `OperatorApplicationAdapter`; no routes, CLI, login, token verifier, user table, or deployed service.
+2. **Implemented:** atomic pending Task + request Event creation, deterministic request mapping, same-request replay/conflict.
+3. **Implemented on current draft PR #31 head; local verification pending:** TaskRuntime approval-only admission guard, exact Task shape and request Event/fingerprint/target validation, and no-deadline budget exception. Generic Task deadline validation, daily quota, and 60-second interrupted recovery are unchanged.
+4. **Next:** add the narrow decision service for real create proposals, full evidence revalidation, and atomic accept/reject.
+5. **Remaining TaskRuntime work:** typed accepted/rejected terminal results and validation of committed decision/Event against the approval Task and current attempt.
 5. Test host context provenance, raw/model identity rejection, wrong Team/action, exact scope, same-key duplicate/concurrency, changed payload conflict, accept/reject, evidence tampering, stale target, and rollback.
 6. Test rejection-as-done, result/task mismatch, stale attempts, crash after decision commit, recovery to pending, same-Task replay/finalize, and stale-attempt fencing.
 7. Verify whether a migration is necessary; preferred design adds none unless tests prove an integrity gap.
@@ -130,6 +131,6 @@ D7 (`review_after`) remains open. Checkpoint 3 may commit canonical state but ca
 | D10 — revise/retire reachability | **Open:** Checkpoint 2 emits create only; no seed/bypass path. |
 | D7 — review date | **Open:** no review interval or retrieval eligibility semantics. |
 
-**Audit conclusion:** the external API/CLI blocker is removed. Next coding step is the in-repository adapter and Task-creation tests; canonical decision code follows after that narrow boundary is green.
+**Audit conclusion (updated 2026-11-02):** the external API/CLI blocker is removed. The host adapter, pending Task/request Event creation, and approval-specific admission contract are now implemented on draft PR #31. The adapter/task-creation slice has passed operator-local verification; the latest admission increment has hosted CI green and awaits operator-local verification. The next coding step is the create-only canonical LearningChange decision service, followed by typed TaskRuntime terminal finalization and crash/replay tests.
 
 No production code, schema migration, provider, dispatcher extension, TeamPolicy grant, Checkpoint 4 work, or R6-G work is included in this audit update.
