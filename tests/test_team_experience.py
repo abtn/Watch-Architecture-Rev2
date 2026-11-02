@@ -14,7 +14,6 @@ from core.context_assembly import TaskContextAssembler
 from core.embeddings import EmbeddingBatch, EmbeddingSpace
 from core.knowledge_index import (
     HybridKnowledgeRetriever,
-    KnowledgeIndexError,
     TeamExperienceIndexer,
 )
 from core.models import (
@@ -360,7 +359,9 @@ class TeamExperienceEnv:
             if self.task_ids:
                 session.execute(delete(Event).where(Event.task_id.in_(self.task_ids)))
                 session.execute(
-                    delete(Outcome).where(Outcome.recorded_by_task_id.in_(self.task_ids))
+                    delete(Outcome).where(
+                        Outcome.recorded_by_task_id.in_(self.task_ids)
+                    )
                 )
             if self.item_ids:
                 session.execute(
@@ -410,11 +411,15 @@ def test_review_interval_is_strictly_versioned_and_has_no_default() -> None:
             {"review": {"knowledge_item_interval_days": 30}}, 1
         )
     for invalid in (True, False, 0, -1, 1.5, "30"):
-        with pytest.raises(InvalidPolicyError, match="invalid_knowledge_item_review_interval"):
+        with pytest.raises(
+            InvalidPolicyError, match="invalid_knowledge_item_review_interval"
+        ):
             knowledge_item_review_interval_days(
                 {"review": {"knowledge_item_interval_days": invalid}}, 2
             )
-    with pytest.raises(InvalidPolicyError, match="unsupported_team_policy_schema_version"):
+    with pytest.raises(
+        InvalidPolicyError, match="unsupported_team_policy_schema_version"
+    ):
         knowledge_item_review_interval_days({}, 3)
 
 
@@ -456,7 +461,10 @@ def test_separate_team_experience_projection_is_idempotent_and_retrievable(
     assert all(p.logical_core == "team_experience" for p in passages)
     assert all(p.knowledge_item_id == item_id for p in passages)
     assert all(p.knowledge_item_version == 1 for p in passages)
-    assert all(p.origin_learning_change_id == experience_env.learning_change_ids[0] for p in passages)
+    assert all(
+        p.origin_learning_change_id == experience_env.learning_change_ids[0]
+        for p in passages
+    )
     assert sum(len(p.text) for p in passages) <= 8000
     assert len(passages) <= 8
 
@@ -534,9 +542,9 @@ def test_tampered_projection_is_discarded_by_canonical_retrieval(
 ) -> None:
     item_id = experience_env.add_accepted_item()
     provider = FakeEmbeddingProvider()
-    TeamExperienceIndexer(experience_env.session_factory, provider).index_knowledge_item(
-        item_id
-    )
+    TeamExperienceIndexer(
+        experience_env.session_factory, provider
+    ).index_knowledge_item(item_id)
     with experience_env.session_factory.begin() as session:
         chunk = session.scalar(
             select(TeamExperienceChunk).where(
@@ -679,7 +687,9 @@ def test_review_knowledge_task_rejects_a_different_success_result(
     task_id = experience_env.add_review_task()
     runtime = TaskRuntime(experience_env.session_factory, experience_env.snapshot_store)
     admission = runtime.admit(task_id)
-    with pytest.raises(TaskNotFinalizable, match="review_task_requires_knowledge_review_result"):
+    with pytest.raises(
+        TaskNotFinalizable, match="review_task_requires_knowledge_review_result"
+    ):
         runtime.finalize(
             TerminalObservation(
                 task_id=task_id,
