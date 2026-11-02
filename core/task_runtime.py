@@ -42,6 +42,7 @@ _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES = frozenset(
         "success_learning_change_rejected",
     }
 )
+_KNOWLEDGE_REVIEW_SUCCESS_CATEGORIES = frozenset({"success_knowledge_reviewed"})
 _OPERATOR_DECISION_EVENT_TYPES = (
     "learning_change_accepted",
     "learning_change_rejected",
@@ -51,6 +52,7 @@ _SUCCESS_CATEGORIES = (
     | _EVALUATION_SUCCESS_CATEGORIES
     | _LEARNING_CHANGE_SUCCESS_CATEGORIES
     | _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES
+    | _KNOWLEDGE_REVIEW_SUCCESS_CATEGORIES
 )
 _RESULT_CATEGORIES = _SUCCESS_CATEGORIES | {"terminal_failure"}
 
@@ -99,7 +101,7 @@ class TerminalObservation:
         "success_signal_created", "success_no_change", "success_evaluation_recorded",
         "success_evaluation_rejected", "success_learning_change_proposed",
         "success_learning_change_accepted", "success_learning_change_rejected",
-        "terminal_failure"
+        "success_knowledge_reviewed", "terminal_failure"
     ]
     observed_at: datetime
     signals: tuple[SignalEvidence, ...] = ()
@@ -531,6 +533,19 @@ class TaskRuntime:
                 raise TaskNotFound(f"Task {observation.task_id} does not exist")
 
             if (
+                observation.result_category == "success_knowledge_reviewed"
+                and task.task_type != "review_knowledge"
+            ):
+                raise TaskNotFinalizable("knowledge_review_result_wrong_task_type")
+
+            review_event: Event | None = None
+            if observation.result_category == "success_knowledge_reviewed":
+                review_event = self._commit_due_knowledge_reviews(
+                    session, task, observation
+                )
+                session.add(review_event)
+
+            if (
                 observation.result_category
                 in _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES
             ):
@@ -581,6 +596,15 @@ class TaskRuntime:
                 raise TaskNotFinalizable(
                     "learning_change_task_requires_learning_change_result"
                 )
+            if (
+                task.task_type == "review_knowledge"
+                and observation.result_category in _SUCCESS_CATEGORIES
+                and observation.result_category
+                not in _KNOWLEDGE_REVIEW_SUCCESS_CATEGORIES
+            ):
+                raise TaskNotFinalizable(
+                    "review_task_requires_knowledge_review_result"
+                )
             if observation.result_category in _EVALUATION_SUCCESS_CATEGORIES:
                 self._validate_evaluation_result(session, task, observation)
             elif observation.evaluation_id is not None:
@@ -613,7 +637,9 @@ class TaskRuntime:
                 if observation.result_category in _SUCCESS_CATEGORIES
                 else ("task_attempt_failed", "task_failed")
             )
-            events = [
+            events = (
+                [review_event] if review_event is not None else []
+            ) + [
                 ObjectiveService._add_event(
                     session,
                     task.id,
@@ -662,6 +688,103 @@ class TaskRuntime:
                 event_ids=tuple(event.id for event in events),
                 outcome_id=outcome.id,
             )
+
+    @staticmethod
+    def _commit_due_knowledge_reviews(
+        session: Session, task: Task, observation: TerminalObservation
+    ) -> Event:
+        """Commit due KnowledgeItem status transitions within Task finalization."""
+        budget = task.budget
+        if (
+            task.task_type != "review_knowledge"
+            or task.allowed_writes != ["KnowledgeItem"]
+            or task.objective_id is not None
+            or task.plan_id is not None
+            or task.plan_action_id is not None
+            or not isinstance(budget, dict)
+            or isinstance(budget.get("max_tool_calls"), bool)
+            or budget.get("max_tool_calls") != 0
+            or isinstance(budget.get("max_cost_usd"), bool)
+            or budget.get("max_cost_usd") != 0
+            or isinstance(budget.get("deadline_seconds"), bool)
+            or not isinstance(budget.get("deadline_seconds"), int)
+            or budget["deadline_seconds"] < 1
+        ):
+            raise TaskNotFinalizable("knowledge_review_task_shape_invalid")
+
+        team = session.scalar(
+            select(Team).where(Team.id == task.team_id).with_for_update()
+        )
+        if team is None or team.status != "active":
+            raise TaskNotFinalizable("knowledge_review_team_not_active")
+        policy = session.scalar(
+            select(TeamPolicy).where(
+                TeamPolicy.team_id == task.team_id,
+                TeamPolicy.version == task.policy_version,
+            )
+        )
+        if policy is None:
+            raise TaskNotFinalizable("knowledge_review_policy_missing")
+
+        now_utc = observation.observed_at.astimezone(timezone.utc)
+        due_items = list(
+            session.scalars(
+                select(KnowledgeItem)
+                .where(
+                    KnowledgeItem.team_id == task.team_id,
+                    KnowledgeItem.status == "active",
+                    KnowledgeItem.review_after.is_not(None),
+                    KnowledgeItem.review_after <= now_utc,
+                )
+                .order_by(KnowledgeItem.id)
+                .with_for_update()
+            )
+        )
+
+        from core.knowledge_index import _accepted_learning_change_is_canonical
+
+        reviewed: list[dict[str, Any]] = []
+        for item in due_items:
+            learning_change = session.get(
+                LearningChange, item.origin_learning_change_id
+            )
+            if learning_change is None or not _accepted_learning_change_is_canonical(
+                session, item, learning_change
+            ):
+                raise TaskNotFinalizable("knowledge_review_canonical_state_invalid")
+            review_after = item.review_after
+            if (
+                review_after is None
+                or review_after.tzinfo is None
+                or review_after.utcoffset() is None
+                or review_after.astimezone(timezone.utc) > now_utc
+            ):
+                raise TaskNotFinalizable("knowledge_review_due_boundary_changed")
+            reviewed.append(
+                {
+                    "knowledge_item_id": str(item.id),
+                    "version": item.version,
+                    "review_after": review_after.astimezone(timezone.utc).isoformat(),
+                    "origin_learning_change_id": str(item.origin_learning_change_id),
+                }
+            )
+            item.status = "needs_review"
+            item.updated_at = now_utc
+
+        return Event(
+            id=uuid4(),
+            task_id=task.id,
+            type="knowledge_items_reviewed",
+            payload={
+                "schema_version": 1,
+                "team_id": str(task.team_id),
+                "task_id": str(task.id),
+                "attempt_count": task.attempt_count,
+                "reviewed_at": now_utc.isoformat(),
+                "items": reviewed,
+            },
+            created_at=now_utc,
+        )
 
     def report_failure(self, failure: FailureObservation) -> FailureResult:
         """Record one worker-reported attempt failure.
