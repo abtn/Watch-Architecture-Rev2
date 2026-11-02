@@ -155,8 +155,9 @@ class TeamExperienceEnv:
             b'{"result_category":"success_learning_change_accepted"}'
         )
 
+        with self.session_factory.begin() as session:
             session.add_all(
-
+                [
                     Task(
                         id=proposer_task_id,
                         team_id=self.team_id,
@@ -183,34 +184,37 @@ class TeamExperienceEnv:
                         budget={"max_tool_calls": 0, "max_cost_usd": 0.0},
                         completed_at=committed_time,
                     ),
+                ]
             )
             session.flush()
             session.add(
-                    LearningChange(
-                        id=learning_change_id,
-                        team_id=self.team_id,
-                        target_kind="knowledge_item",
-                        target_id=None,
-                        operation="create",
-                        proposed_state={
-                            "kind": "practice",
-                            "proposal_hash": proposal_hash,
-                            "evidence_basis_hash": evidence_basis_hash,
-                        },
-                        previous_state=None,
-                        committed_state=committed_state,
-                        evidence_basis=[],
-                        evidence_basis_hash=evidence_basis_hash,
-                        status="accepted",
-                        idempotency_key=f"test-{learning_change_id}",
-                        proposed_by_task_id=proposer_task_id,
-                        committed_by_task_id=approval_task_id,
-                        operator_id=operator_id,
-                        decision_reason=None,
-                        committed_at=committed_time,
-                    )            )
+                LearningChange(
+                    id=learning_change_id,
+                    team_id=self.team_id,
+                    target_kind="knowledge_item",
+                    target_id=None,
+                    operation="create",
+                    proposed_state={
+                        "kind": "practice",
+                        "proposal_hash": proposal_hash,
+                        "evidence_basis_hash": evidence_basis_hash,
+                    },
+                    previous_state=None,
+                    committed_state=committed_state,
+                    evidence_basis=[],
+                    evidence_basis_hash=evidence_basis_hash,
+                    status="accepted",
+                    idempotency_key=f"test-{learning_change_id}",
+                    proposed_by_task_id=proposer_task_id,
+                    committed_by_task_id=approval_task_id,
+                    operator_id=operator_id,
+                    decision_reason=None,
+                    committed_at=committed_time,
+                )
+            )
             session.flush()
             session.add_all(
+                [
                     KnowledgeItem(
                         id=item_id,
                         team_id=self.team_id,
@@ -245,9 +249,17 @@ class TeamExperienceEnv:
                         observation_hash=snapshot_hash,
                         observed_at=committed_time,
                         recorded_by_task_id=approval_task_id,
-                    ),                ]
+                    ),
+                ]
             )
             session.flush()
+            outcome_id = session.scalar(
+                select(Outcome.id).where(
+                    Outcome.recorded_by_task_id == approval_task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+            assert outcome_id is not None
             session.add_all(
                 [
                     Event(
@@ -280,14 +292,7 @@ class TeamExperienceEnv:
                             "attempt_count": 1,
                             "result_category": "success_learning_change_accepted",
                             "failure_reason": None,
-                            "outcome_id": str(
-                                session.scalar(
-                                    select(Outcome.id).where(
-                                        Outcome.recorded_by_task_id == approval_task_id,
-                                        Outcome.outcome_type == "task_execution",
-                                    )
-                                )
-                            ),
+                            "outcome_id": str(outcome_id),
                             "observation_snapshot_ref": snapshot_ref,
                             "observation_hash": snapshot_hash,
                             "learning_change_id": str(learning_change_id),
