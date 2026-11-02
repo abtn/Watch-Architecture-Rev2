@@ -14,6 +14,7 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.embeddings import EmbeddingBatch, EmbeddingProvider, EmbeddingSpace
+from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
 from core.models import (
     Event,
     KnowledgeChunk,
@@ -427,6 +428,28 @@ def _accepted_learning_change_is_canonical(
     ):
         return False
 
+    policy = session.scalar(
+        select(TeamPolicy).where(
+            TeamPolicy.team_id == approval_task.team_id,
+            TeamPolicy.version == approval_task.policy_version,
+        )
+    )
+    if policy is None:
+        return False
+    try:
+        interval_days = knowledge_item_review_interval_days(
+            policy.rules, policy.schema_version
+        )
+    except InvalidPolicyError:
+        return False
+    expected_review_after = (
+        learning_change.committed_at + timedelta(days=interval_days)
+        if interval_days is not None
+        else None
+    )
+    if item.review_after != expected_review_after:
+        return False
+
     decision_events = list(
         session.scalars(
             select(Event).where(
@@ -506,9 +529,11 @@ class TeamExperienceIndexer:
                 knowledge_item_id, "missing", 0, None, None
             )
         item, learning_change = source
-        if not _accepted_learning_change_is_canonical(
-            self._session_factory(), item, learning_change
-        ):
+        with self._session_factory() as session:
+            canonical = _accepted_learning_change_is_canonical(
+                session, item, learning_change
+            )
+        if not canonical:
             raise KnowledgeIndexError("knowledge_item_canonical_state_invalid")
         item_hash = knowledge_item_content_hash(item)
 
