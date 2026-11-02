@@ -27,6 +27,7 @@ from core.models import (
     TeamPolicy,
 )
 from core.policy import knowledge_item_review_interval_days
+from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
 from core.vector_type import serialize_vector, validate_vector
 
@@ -509,7 +510,9 @@ def _accepted_learning_change_is_canonical(
 
 
 class TeamExperienceIndexer:
-    """Build a separate rebuildable projection from accepted canonical Team Experience."""
+    """Build a separate rebuildable projection from accepted canonical Team
+    Experience.
+    """
 
     def __init__(
         self,
