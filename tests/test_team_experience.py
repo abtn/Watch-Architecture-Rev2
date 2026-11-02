@@ -16,8 +16,6 @@ from core.knowledge_index import (
     HybridKnowledgeRetriever,
     KnowledgeIndexError,
     TeamExperienceIndexer,
-    knowledge_item_content_hash,
-    knowledge_item_text,
 )
 from core.models import (
     Event,
@@ -100,13 +98,13 @@ class TeamExperienceEnv:
         statement: str = "Use the alpha checklist before accepting a source.",
         body: str = "Alpha source reviews should preserve contrary evidence.",
         committed_at: datetime | None = None,
-        review_interval_days: int | None = None,
+        review_interval_days: int | None | object = ...,
         status: str = "active",
     ) -> UUID:
         committed_time = committed_at or datetime.now(timezone.utc)
         interval = (
             self.review_interval_days
-            if review_interval_days is None
+            if review_interval_days is ...
             else review_interval_days
         )
         review_after = (
@@ -463,35 +461,51 @@ def test_separate_team_experience_projection_is_idempotent_and_retrievable(
     assert len(passages) <= 8
 
 
-def test_unconfigured_or_due_knowledge_is_not_indexed(
+def test_unconfigured_review_date_is_not_indexed(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    with experience_env.session_factory.begin() as session:
+        policy = session.get(TeamPolicy, experience_env.policy_id)
+        assert policy is not None
+        policy.rules = {"sources": []}
+    experience_env.review_interval_days = None
+    item_id = experience_env.add_accepted_item(review_interval_days=None)
+    provider = FakeEmbeddingProvider()
+
+    result = TeamExperienceIndexer(
+        experience_env.session_factory, provider
+    ).index_knowledge_item(item_id)
+
+    assert result.outcome == "ineligible"
+    assert provider.calls == 0
+    with experience_env.session_factory() as session:
+        assert session.scalar(
+            select(TeamExperienceChunk.id).where(
+                TeamExperienceChunk.knowledge_item_id == item_id
+            )
+        ) is None
+
+
+def test_review_expired_knowledge_is_not_indexed(
     experience_env: TeamExperienceEnv,
 ) -> None:
     now = datetime.now(timezone.utc)
     item_id = experience_env.add_accepted_item(
         committed_at=now - timedelta(days=40),
-        review_interval_days=None,
-    )
-    due_item_id = experience_env.add_accepted_item(
-        title="Due alpha checklist",
-        statement="This due alpha item must not be discoverable.",
-        committed_at=now - timedelta(days=40),
         review_interval_days=30,
     )
     provider = FakeEmbeddingProvider()
-    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
 
-    null_result = indexer.index_knowledge_item(item_id, now=now)
-    due_result = indexer.index_knowledge_item(due_item_id, now=now)
+    result = TeamExperienceIndexer(
+        experience_env.session_factory, provider
+    ).index_knowledge_item(item_id, now=now)
 
-    assert null_result.outcome == "ineligible"
-    assert due_result.outcome == "ineligible"
+    assert result.outcome == "ineligible"
     assert provider.calls == 0
     with experience_env.session_factory() as session:
         assert session.scalar(
             select(TeamExperienceChunk.id).where(
-                TeamExperienceChunk.knowledge_item_id.in_(
-                    [item_id, due_item_id]
-                )
+                TeamExperienceChunk.knowledge_item_id == item_id
             )
         ) is None
 
