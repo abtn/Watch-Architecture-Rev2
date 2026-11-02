@@ -539,11 +539,6 @@ class TaskRuntime:
                 raise TaskNotFinalizable("knowledge_review_result_wrong_task_type")
 
             review_event: Event | None = None
-            if observation.result_category == "success_knowledge_reviewed":
-                review_event = self._commit_due_knowledge_reviews(
-                    session, task, observation
-                )
-                session.add(review_event)
 
             if (
                 observation.result_category
@@ -579,6 +574,11 @@ class TaskRuntime:
                 raise TaskNotFinalizable("task_not_running")
             if observation.attempt != task.attempt_count:
                 raise TaskNotFinalizable("stale_attempt")
+            if observation.result_category == "success_knowledge_reviewed":
+                review_event = self._commit_due_knowledge_reviews(
+                    session, task, observation
+                )
+                session.add(review_event)
             if (
                 task.task_type == "evaluate_outcome"
                 and observation.result_category in _SUCCESS_CATEGORIES
