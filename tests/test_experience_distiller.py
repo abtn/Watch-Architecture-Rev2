@@ -1412,7 +1412,6 @@ def test_learning_commit_event_failure_rolls_back_canonical_decision(
             session.execute(delete(Task).where(Task.id == task_id))
 
 
-@pytest.mark.parametrize("tamper", ["knowledge_item", "decision_event"])
 def _cleanup_operator_decision_task(
     session_factory: sessionmaker[Session], task_id: UUID
 ) -> None:
@@ -1810,6 +1809,7 @@ def test_operator_terminal_result_is_fenced_and_must_match_decision(
     _cleanup_operator_decision_task(session_factory, task_request.task_id)
 
 
+@pytest.mark.parametrize("tamper", ["knowledge_item", "decision_event"])
 def test_learning_commit_replay_rejects_tampered_canonical_records(
     session_factory, snapshot_store, distillation_fixture, tamper: str
 ):

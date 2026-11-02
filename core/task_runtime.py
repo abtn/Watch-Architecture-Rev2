@@ -585,7 +585,11 @@ class TaskRuntime:
                 raise TaskNotFinalizable("evaluation_id_not_allowed")
             if observation.result_category in _LEARNING_CHANGE_SUCCESS_CATEGORIES:
                 self._validate_learning_change_result(session, task, observation)
-            elif observation.learning_change_id is not None:
+            elif (
+                observation.result_category
+                not in _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES
+                and observation.learning_change_id is not None
+            ):
                 raise TaskNotFinalizable("learning_change_id_not_allowed")
 
             outcome = Outcome(
