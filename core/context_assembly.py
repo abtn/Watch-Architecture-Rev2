@@ -42,6 +42,7 @@ from core.models import (
     Task,
     Team,
     TeamExperienceChunk,
+    TeamExperienceIndexState,
     TeamPolicy,
 )
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
@@ -660,6 +661,23 @@ class TaskContextAssembler:
         current_hash = knowledge_item_content_hash(item)
         if passage.content_hash != current_hash:
             raise TaskContextError("team_experience_content_hash_mismatch")
+
+        index_state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == item.id,
+                TeamExperienceIndexState.team_id == item.team_id,
+            )
+        )
+        if (
+            index_state is None
+            or index_state.status != "published"
+            or index_state.item_version != item.version
+            or index_state.item_content_hash != current_hash
+            or index_state.origin_learning_change_id
+            != item.origin_learning_change_id
+            or index_state.chunk_count <= passage.chunk_index
+        ):
+            raise TaskContextError("team_experience_index_not_published")
 
         try:
             chunks = chunk_source_text(
