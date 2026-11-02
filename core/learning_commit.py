@@ -12,6 +12,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+import core.operator_application
 from core.experience_distiller import (
     ExperienceDistiller,
     ExperienceDistillerError,
@@ -26,7 +27,6 @@ from core.models import (
     TeamPolicy,
 )
 from core.objectives import ObjectiveService, TaskNotFound
-import core.operator_application
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
 from core.task_runtime import (
     TaskNotEligible,
