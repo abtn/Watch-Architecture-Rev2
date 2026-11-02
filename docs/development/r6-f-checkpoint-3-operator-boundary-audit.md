@@ -107,7 +107,7 @@ Keep generic `recover_interrupted()` unchanged unless tests prove a conflict. Th
 
 Checkpoint 2 ExperienceDistiller emits only `operation="create"` proposals. Checkpoint 3's verified approval/rejection path consumes those real proposals. By explicit operator decision on 2026-11-02, D10 is resolved: Checkpoint 3's acceptance scope is create-only. Revise/retire proposal production and commitment are deferred beyond Checkpoint 3 until a separately authorized knowledge-lifecycle scope supplies a genuine proposal source and defines target-version pinning, history, concurrency, replay/recovery, and projection invalidation. The schema's revise/retire vocabulary does not authorize implementation or production support. Do not use `seed_knowledge`, ad-hoc endpoints, direct fixtures, direct database mutation, or other bypasses to claim reachability. Future revise/retire decisions must retain Operator approval and canonical learning-commit authority.
 
-D7 (`review_after`) remains open. Checkpoint 3 may commit canonical state but cannot claim retrieval eligibility or define review interval. Checkpoint 4 remains gated.
+D7 (`review_after`) was resolved on 2026-11-02: the optional interval is TeamPolicy-controlled and pinned to the approval Task's policy version; timestamps and due checks use UTC; NULL and due items are ineligible for retrieval; only a deterministic `review_knowledge` Task moves `active → needs_review`. Checkpoint 3 still writes NULL dates and does not implement this policy. Date assignment, review Task execution, and retrieval enforcement remain gated Checkpoint 4 work; D7 does not authorize that checkpoint.
 
 ## 8. Implementation and verification sequence
 
