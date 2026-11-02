@@ -485,7 +485,9 @@ class LearningCommitService:
             or completed_events[0].payload.get("observation_hash")
             != outcome.observation_hash
         ):
-            raise LearningCommitCorrupt("learning_change_proposer_terminal_event_invalid")
+            raise LearningCommitCorrupt(
+                "learning_change_proposer_terminal_event_invalid"
+            )
 
     def _replay_decision(
         self,
@@ -553,7 +555,9 @@ class LearningCommitService:
                 )
             )
             if len(items) != 1:
-                raise LearningCommitCorrupt("committed_knowledge_item_missing_or_duplicate")
+                raise LearningCommitCorrupt(
+                    "committed_knowledge_item_missing_or_duplicate"
+                )
             item = items[0]
             item_id = item.id
             if (
@@ -571,7 +575,9 @@ class LearningCommitService:
                     KnowledgeItem.origin_learning_change_id == learning_change.id
                 )
             ) is not None:
-                raise LearningCommitCorrupt("rejected_learning_change_has_knowledge_item")
+                raise LearningCommitCorrupt(
+                    "rejected_learning_change_has_knowledge_item"
+                )
 
         committed_at = learning_change.committed_at
         if committed_at is None:

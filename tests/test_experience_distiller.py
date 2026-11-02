@@ -32,6 +32,7 @@ from core.generation import (
     GenerationUsage,
 )
 from core.generation_cost import TaskGenerationCostService
+from core.learning_commit import LearningCommitError, LearningCommitService
 from core.models import (
     Evaluation,
     Event,
@@ -43,12 +44,6 @@ from core.models import (
     TaskGenerationCharge,
     Team,
     TeamPolicy,
-)
-from core.learning_commit import (
-    LearningCommitConflict,
-    LearningCommitCorrupt,
-    LearningCommitError,
-    LearningCommitService,
 )
 from core.operator_application import (
     LearningChangeDecisionRequest,
@@ -988,9 +983,9 @@ def _create_admitted_approval_task(
         idempotency_key=uuid4(),
         rejection_reason=reason,
     )
-    result = OperatorApplicationAdapter(session_factory).request_learning_change_decision(
-        _approval_principal(team_id), request
-    )
+    result = OperatorApplicationAdapter(
+        session_factory
+    ).request_learning_change_decision(_approval_principal(team_id), request)
     admission = TaskRuntime(session_factory).admit(result.task_id)
     return result.task_id, admission.attempt_count, _approval_principal(team_id)
 
@@ -1154,7 +1149,9 @@ def test_learning_commit_rejects_stale_or_tampered_evidence_without_partial_stat
             assert link is not None
             link.stance = "challenges"
 
-        with pytest.raises(LearningCommitError, match="evidence_link_integrity_mismatch"):
+        with pytest.raises(
+            LearningCommitError, match="evidence_link_integrity_mismatch"
+        ):
             LearningCommitService(session_factory, snapshot_store).decide(
                 task_id, attempt, principal
             )
@@ -1170,7 +1167,9 @@ def test_learning_commit_rejects_stale_or_tampered_evidence_without_partial_stat
             assert session.scalar(
                 select(Event.id).where(
                     Event.task_id == task_id,
-                    Event.type.in_(("learning_change_accepted", "learning_change_rejected")),
+                    Event.type.in_(
+                        ("learning_change_accepted", "learning_change_rejected")
+                    ),
                 )
             ) is None
     finally:
