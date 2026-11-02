@@ -1009,6 +1009,12 @@ class HybridKnowledgeRetriever:
                     "AND lc.target_kind = 'knowledge_item' "
                     "AND lc.target_id IS NULL "
                     "AND lc.operation = 'create' "
+                    "AND st.status = 'published' "
+                    "AND st.item_version = c.item_version "
+                    "AND st.item_content_hash = c.item_content_hash "
+                    "AND st.origin_learning_change_id = c.origin_learning_change_id "
+                    "AND st.embedding_space_key = c.embedding_space_key "
+                    "AND st.chunk_count > c.chunk_index "
                     "AND c.embedding_space_key = :embedding_space_key "
                     "AND c.embedding_provider = :embedding_provider "
                     "AND c.embedding_model = :embedding_model "
@@ -1029,7 +1035,10 @@ class HybridKnowledgeRetriever:
                     "JOIN knowledge_items AS i "
                     "ON i.id = c.knowledge_item_id AND i.team_id = c.team_id "
                     "JOIN learning_changes AS lc "
-                    "ON lc.id = i.origin_learning_change_id AND lc.team_id = i.team_id"
+                    "ON lc.id = i.origin_learning_change_id AND lc.team_id = i.team_id "
+                    "JOIN team_experience_index_state AS st "
+                    "ON st.knowledge_item_id = c.knowledge_item_id "
+                    "AND st.team_id = c.team_id"
                 )
                 experience_parameters = {
                     **embedding_parameters,
@@ -1267,8 +1276,22 @@ class HybridKnowledgeRetriever:
             learning_change = session.get(
                 LearningChange, item.origin_learning_change_id
             )
+            index_state = session.scalar(
+                select(TeamExperienceIndexState).where(
+                    TeamExperienceIndexState.knowledge_item_id == item.id,
+                    TeamExperienceIndexState.team_id == item.team_id,
+                )
+            )
             if (
-                learning_change is None
+                index_state is None
+                or index_state.status != "published"
+                or index_state.item_version != item.version
+                or index_state.item_content_hash != row["item_content_hash"]
+                or index_state.origin_learning_change_id
+                != item.origin_learning_change_id
+                or index_state.embedding_space_key != query_space.key
+                or index_state.chunk_count <= row["chunk_index"]
+                or learning_change is None
                 or not _accepted_learning_change_is_canonical(
                     session, item, learning_change
                 )
