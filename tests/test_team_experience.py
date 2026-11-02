@@ -29,7 +29,7 @@ from core.models import (
 )
 from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
 from core.snapshot_store import SnapshotStore
-from core.task_runtime import TaskNotFinalizable, TaskRuntime, TerminalObservation
+from core.task_runtime import TaskNotFinalizable, TaskRuntime
 
 
 class FakeEmbeddingProvider:
@@ -650,15 +650,8 @@ def test_review_knowledge_task_atomically_marks_due_items_and_replays_once(
     )
     task_id = experience_env.add_review_task()
     runtime = TaskRuntime(experience_env.session_factory, experience_env.snapshot_store)
-    result = runtime.complete_knowledge_review(task_id, now=now)
-    replay = runtime.finalize(
-        TerminalObservation(
-            task_id=task_id,
-            attempt=result.attempt_count,
-            result_category="success_knowledge_reviewed",
-            observed_at=now,
-        )
-    )
+    result = runtime.complete_knowledge_review(task_id)
+    replay = runtime.complete_knowledge_review(task_id)
 
     assert result.status == "done"
     assert replay.replayed is True
