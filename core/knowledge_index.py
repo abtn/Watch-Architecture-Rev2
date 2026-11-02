@@ -24,6 +24,7 @@ from core.models import (
     Task,
     Team,
     TeamExperienceChunk,
+    TeamExperienceIndexState,
     TeamPolicy,
 )
 from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
@@ -521,6 +522,86 @@ class TeamExperienceIndexer:
         self._session_factory = session_factory
         self._embedding_provider = embedding_provider
 
+    @staticmethod
+    def _upsert_index_state(
+        session: Session,
+        item: KnowledgeItem,
+        item_hash: str,
+        *,
+        status: str,
+        embedding_space_key: str | None,
+        chunk_count: int | None = None,
+        error_kind: str | None = None,
+        increment_attempt: bool = False,
+        now: datetime,
+    ) -> None:
+        state = session.scalar(
+            select(TeamExperienceIndexState)
+            .where(
+                TeamExperienceIndexState.knowledge_item_id == item.id,
+                TeamExperienceIndexState.team_id == item.team_id,
+            )
+            .with_for_update()
+        )
+        if state is None:
+            state = TeamExperienceIndexState(
+                id=uuid4(),
+                knowledge_item_id=item.id,
+                team_id=item.team_id,
+                item_version=item.version,
+                item_content_hash=item_hash,
+                origin_learning_change_id=item.origin_learning_change_id,
+                status=status,
+                embedding_space_key=embedding_space_key,
+                chunk_count=0,
+                attempt_count=0,
+                last_error_kind=None,
+                last_attempt_at=None,
+                indexed_at=None,
+            )
+            session.add(state)
+        state.item_version = item.version
+        state.item_content_hash = item_hash
+        state.origin_learning_change_id = item.origin_learning_change_id
+        state.status = status
+        state.embedding_space_key = embedding_space_key
+        if chunk_count is not None:
+            state.chunk_count = chunk_count
+        state.last_error_kind = error_kind
+        if increment_attempt:
+            state.attempt_count += 1
+            state.last_attempt_at = now
+        if status == "published":
+            state.indexed_at = now
+        elif status == "ineligible":
+            state.indexed_at = None
+        state.updated_at = now
+
+    def _record_index_state(
+        self,
+        item: KnowledgeItem,
+        item_hash: str,
+        *,
+        status: str,
+        embedding_space_key: str | None,
+        chunk_count: int | None = None,
+        error_kind: str | None = None,
+        increment_attempt: bool = False,
+        now: datetime,
+    ) -> None:
+        with self._session_factory.begin() as session:
+            self._upsert_index_state(
+                session,
+                item,
+                item_hash,
+                status=status,
+                embedding_space_key=embedding_space_key,
+                chunk_count=chunk_count,
+                error_kind=error_kind,
+                increment_attempt=increment_attempt,
+                now=now,
+            )
+
     def index_knowledge_item(
         self, knowledge_item_id: UUID, *, now: datetime | None = None
     ) -> TeamExperienceIndexingResult:
@@ -550,22 +631,64 @@ class TeamExperienceIndexer:
                         TeamExperienceChunk.knowledge_item_id == knowledge_item_id
                     )
                 )
+                self._upsert_index_state(
+                    session,
+                    item,
+                    item_hash,
+                    status="ineligible",
+                    embedding_space_key=None,
+                    chunk_count=0,
+                    now=reference_time,
+                )
             return TeamExperienceIndexingResult(
                 knowledge_item_id, "ineligible", 0, None, item_hash
             )
 
-        raw_text = knowledge_item_text(item).encode("utf-8")
-        chunks = chunk_source_text(raw_text)
-        space = self._embedding_provider.current_space()
+        try:
+            raw_text = knowledge_item_text(item).encode("utf-8")
+            chunks = chunk_source_text(raw_text)
+            space = self._embedding_provider.current_space()
+        except Exception as error:
+            self._record_index_state(
+                item,
+                item_hash,
+                status="stale",
+                embedding_space_key=None,
+                error_kind=type(error).__name__,
+                increment_attempt=True,
+                now=reference_time,
+            )
+            raise
+
         if self._projection_matches(item, item_hash, chunks, space):
             return TeamExperienceIndexingResult(
                 knowledge_item_id, "unchanged", len(chunks), space.key, item_hash
             )
 
-        batch = self._embedding_provider.embed(chunks)
-        SignalIndexer._validate_batch(batch, chunks)
-        if self._embedding_provider.current_space().key != batch.space.key:
-            raise KnowledgeIndexError("embedding_space_changed_during_indexing")
+        self._record_index_state(
+            item,
+            item_hash,
+            status="stale",
+            embedding_space_key=space.key,
+            error_kind=None,
+            increment_attempt=True,
+            now=reference_time,
+        )
+        try:
+            batch = self._embedding_provider.embed(chunks)
+            SignalIndexer._validate_batch(batch, chunks)
+            if self._embedding_provider.current_space().key != batch.space.key:
+                raise KnowledgeIndexError("embedding_space_changed_during_indexing")
+        except Exception as error:
+            self._record_index_state(
+                item,
+                item_hash,
+                status="stale",
+                embedding_space_key=space.key,
+                error_kind=type(error).__name__,
+                now=datetime.now(timezone.utc),
+            )
+            raise
 
         rows = [
             TeamExperienceChunk(
@@ -613,6 +736,15 @@ class TeamExperienceIndexer:
                         TeamExperienceChunk.knowledge_item_id == knowledge_item_id
                     )
                 )
+                self._upsert_index_state(
+                    session,
+                    current_item,
+                    knowledge_item_content_hash(current_item),
+                    status="ineligible",
+                    embedding_space_key=None,
+                    chunk_count=0,
+                    now=datetime.now(timezone.utc),
+                )
                 return TeamExperienceIndexingResult(
                     knowledge_item_id, "ineligible", 0, None, item_hash
                 )
@@ -631,6 +763,16 @@ class TeamExperienceIndexer:
             )
             session.add_all(rows)
             session.flush()
+            self._upsert_index_state(
+                session,
+                current_item,
+                item_hash,
+                status="published",
+                embedding_space_key=batch.space.key,
+                chunk_count=len(rows),
+                error_kind=None,
+                now=datetime.now(timezone.utc),
+            )
 
         return TeamExperienceIndexingResult(
             knowledge_item_id, "indexed", len(rows), batch.space.key, item_hash
@@ -653,6 +795,11 @@ class TeamExperienceIndexer:
             item_ids.update(
                 session.scalars(
                     select(TeamExperienceChunk.knowledge_item_id).distinct()
+                ).all()
+            )
+            item_ids.update(
+                session.scalars(
+                    select(TeamExperienceIndexState.knowledge_item_id).distinct()
                 ).all()
             )
         return tuple(
@@ -682,6 +829,22 @@ class TeamExperienceIndexer:
         space: EmbeddingSpace,
     ) -> bool:
         with self._session_factory() as session:
+            state = session.scalar(
+                select(TeamExperienceIndexState).where(
+                    TeamExperienceIndexState.knowledge_item_id == item.id,
+                    TeamExperienceIndexState.team_id == item.team_id,
+                )
+            )
+            if (
+                state is None
+                or state.status != "published"
+                or state.item_version != item.version
+                or state.item_content_hash != item_hash
+                or state.origin_learning_change_id != item.origin_learning_change_id
+                or state.embedding_space_key != space.key
+                or state.chunk_count != len(chunks)
+            ):
+                return False
             rows = session.execute(
                 select(
                     TeamExperienceChunk.chunk_index,
