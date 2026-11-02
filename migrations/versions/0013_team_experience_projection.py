@@ -27,7 +27,7 @@ def upgrade() -> None:
     op.create_check_constraint(
         "ck_team_policies_schema_version",
         "team_policies",
-        "schema_version >= 1",
+        "schema_version IN (1, 2)",
     )
 
     op.create_table(
