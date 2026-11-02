@@ -497,9 +497,24 @@ def test_failed_publication_records_staleness_and_rebuilds(
 ) -> None:
     item_id = experience_env.add_accepted_item()
     provider = FakeEmbeddingProvider()
-    provider.fail = True
     indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+    first = indexer.index_knowledge_item(item_id)
+    assert first.outcome == "indexed"
 
+    with experience_env.session_factory() as session:
+        prior_chunks = list(
+            session.scalars(
+                select(TeamExperienceChunk).where(
+                    TeamExperienceChunk.knowledge_item_id == item_id
+                )
+            )
+        )
+    assert prior_chunks
+
+    # Force a new embedding space so the indexer must refresh the old
+    # publication. A provider failure must make old chunks undiscoverable.
+    provider.revision = "test-revision-2"
+    provider.fail = True
     with pytest.raises(RuntimeError, match="embedding service unavailable"):
         indexer.index_knowledge_item(item_id)
 
@@ -513,17 +528,26 @@ def test_failed_publication_records_staleness_and_rebuilds(
         learning_change = session.get(
             LearningChange, experience_env.learning_change_ids[0]
         )
+        chunks = list(
+            session.scalars(
+                select(TeamExperienceChunk).where(
+                    TeamExperienceChunk.knowledge_item_id == item_id
+                )
+            )
+        )
         assert item is not None and item.status == "active"
         assert learning_change is not None and learning_change.status == "accepted"
         assert state is not None
         assert state.status == "stale"
         assert state.last_error_kind == "RuntimeError"
-        assert state.attempt_count == 1
-        assert session.scalar(
-            select(TeamExperienceChunk.id).where(
-                TeamExperienceChunk.knowledge_item_id == item_id
-            )
-        ) is None
+        assert state.attempt_count == 2
+        assert chunks
+        assert all(row.embedding_space_key != provider.current_space().key for row in chunks)
+
+    retriever = HybridKnowledgeRetriever(
+        experience_env.session_factory, experience_env.snapshot_store, provider
+    )
+    assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
 
     provider.fail = False
     rebuilt = indexer.rebuild_all()
@@ -539,7 +563,12 @@ def test_failed_publication_records_staleness_and_rebuilds(
         assert state is not None
         assert state.status == "published"
         assert state.last_error_kind is None
-        assert state.attempt_count == 2
+        assert state.attempt_count == 3
+        assert state.embedding_space_key == provider.current_space().key
+
+    passages = retriever.retrieve(experience_env.team_id, "alpha practice")
+    assert passages
+    assert all(p.logical_core == "team_experience" for p in passages)
 
 
 def test_unconfigured_review_date_is_not_indexed(
