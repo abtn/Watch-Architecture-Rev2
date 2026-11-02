@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
-from hashlib import sha256
-from json import dumps, loads
 from typing import Literal
-from unicodedata import category
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -170,7 +170,7 @@ class LearningCommitService:
             if not isinstance(stored_operator_id, str) or len(stored_operator_id) > 255:
                 raise LearningCommitCorrupt("operator_request_identity_invalid")
             try:
-                stored_identity = loads(stored_operator_id)
+                stored_identity = json.loads(stored_operator_id)
             except (TypeError, ValueError) as error:
                 raise LearningCommitCorrupt(
                     "operator_request_identity_invalid"
@@ -183,14 +183,14 @@ class LearningCommitService:
                     or not stored_identity[field]
                     or stored_identity[field] != stored_identity[field].strip()
                     or any(
-                        category(character) == "Cc"
+                        unicodedata.category(character) == "Cc"
                         for character in stored_identity[field]
                     )
                     for field in ("iss", "sub")
                 )
             ):
                 raise LearningCommitCorrupt("operator_request_identity_invalid")
-            canonical_stored_identity = dumps(
+            canonical_stored_identity = json.dumps(
                 {"iss": stored_identity["iss"], "sub": stored_identity["sub"]},
                 ensure_ascii=False,
                 separators=(",", ":"),
@@ -490,7 +490,7 @@ class LearningCommitService:
         except SnapshotIntegrityError as error:
             raise LearningCommitCorrupt(str(error)) from error
         if (
-            "sha256:" + sha256(snapshot_bytes).hexdigest()
+            "sha256:" + hashlib.sha256(snapshot_bytes).hexdigest()
             != outcome.observation_hash
         ):
             raise LearningCommitCorrupt(
