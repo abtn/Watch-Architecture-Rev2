@@ -1059,6 +1059,16 @@ def test_learning_commit_accepts_real_create_proposal_atomically(
         assert replay.knowledge_item_id == result.knowledge_item_id
     finally:
         with session_factory.begin() as session:
+            committed_changes = list(
+                session.scalars(
+                    select(LearningChange).where(
+                        LearningChange.committed_by_task_id == task_id
+                    )
+                )
+            )
+            for committed_change in committed_changes:
+                committed_change.committed_by_task_id = None
+            session.flush()
             session.execute(delete(Event).where(Event.task_id == task_id))
             session.execute(delete(Task).where(Task.id == task_id))
 
@@ -1118,6 +1128,16 @@ def test_learning_commit_rejection_is_durable_without_knowledge_item(
         assert replay.replayed and replay.decision == "reject"
     finally:
         with session_factory.begin() as session:
+            committed_changes = list(
+                session.scalars(
+                    select(LearningChange).where(
+                        LearningChange.committed_by_task_id == task_id
+                    )
+                )
+            )
+            for committed_change in committed_changes:
+                committed_change.committed_by_task_id = None
+            session.flush()
             session.execute(delete(Event).where(Event.task_id == task_id))
             session.execute(delete(Task).where(Task.id == task_id))
 
@@ -1176,6 +1196,16 @@ def test_learning_commit_rejects_stale_or_tampered_evidence_without_partial_stat
             ) is None
     finally:
         with session_factory.begin() as session:
+            committed_changes = list(
+                session.scalars(
+                    select(LearningChange).where(
+                        LearningChange.committed_by_task_id == task_id
+                    )
+                )
+            )
+            for committed_change in committed_changes:
+                committed_change.committed_by_task_id = None
+            session.flush()
             session.execute(delete(Event).where(Event.task_id == task_id))
             session.execute(delete(Task).where(Task.id == task_id))
 
@@ -1229,6 +1259,16 @@ def test_learning_commit_rejects_wrong_operator_and_stale_policy(
             ) is None
     finally:
         with session_factory.begin() as session:
+            committed_changes = list(
+                session.scalars(
+                    select(LearningChange).where(
+                        LearningChange.committed_by_task_id == task_id
+                    )
+                )
+            )
+            for committed_change in committed_changes:
+                committed_change.committed_by_task_id = None
+            session.flush()
             session.execute(delete(Event).where(Event.task_id == task_id))
             session.execute(delete(Task).where(Task.id == task_id))
 
@@ -1293,5 +1333,15 @@ def test_learning_commit_event_failure_rolls_back_canonical_decision(
             connection.execute(text(f"DROP TRIGGER {trigger} ON events"))
             connection.execute(text(f"DROP FUNCTION {function}()"))
         with session_factory.begin() as session:
+            committed_changes = list(
+                session.scalars(
+                    select(LearningChange).where(
+                        LearningChange.committed_by_task_id == task_id
+                    )
+                )
+            )
+            for committed_change in committed_changes:
+                committed_change.committed_by_task_id = None
+            session.flush()
             session.execute(delete(Event).where(Event.task_id == task_id))
             session.execute(delete(Task).where(Task.id == task_id))
