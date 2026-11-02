@@ -13,6 +13,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.models import Event, LearningChange, Task, Team, TeamPolicy
+from core.task_runtime import TaskNotEligible, TaskRuntime
 from core.operator_application import (
     InvalidOperatorPrincipal,
     LearningChangeDecisionRequest,
@@ -482,3 +483,137 @@ def test_concurrent_identical_requests_create_one_task_and_request_event(
                 Event.type == "operator_task_requested",
             )
         ) == 1
+
+
+def test_task_runtime_admits_valid_operator_task_without_deadline(
+    session_factory: sessionmaker[Session],
+    approval_context: ApprovalContext,
+) -> None:
+    request_result = OperatorApplicationAdapter(
+        session_factory
+    ).request_learning_change_decision(
+        _principal(approval_context.team_id),
+        _request(approval_context.learning_change_id),
+    )
+
+    result = TaskRuntime(session_factory).admit(request_result.task_id)
+
+    assert result.task_id == request_result.task_id
+    assert result.attempt_count == 1
+    with session_factory() as session:
+        task = session.get(Task, request_result.task_id)
+        assert task is not None
+        assert task.status == "running"
+        assert task.attempt_count == 1
+        assert task.budget == {"max_tool_calls": 0, "max_cost_usd": 0.0}
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == task.id,
+                Event.type == "operator_task_requested",
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == task.id,
+                Event.type == "task_started",
+            )
+        ) == 1
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["scope", "nonzero_tools", "deadline", "attempt_limit"],
+)
+def test_task_runtime_rejects_malformed_operator_task_before_start(
+    session_factory: sessionmaker[Session],
+    approval_context: ApprovalContext,
+    mutation: str,
+) -> None:
+    request_result = OperatorApplicationAdapter(
+        session_factory
+    ).request_learning_change_decision(
+        _principal(approval_context.team_id),
+        _request(approval_context.learning_change_id),
+    )
+    with session_factory.begin() as session:
+        task = session.get(Task, request_result.task_id)
+        assert task is not None
+        if mutation == "scope":
+            task.allowed_writes = ["LearningChange"]
+        elif mutation == "nonzero_tools":
+            task.budget = {"max_tool_calls": 1, "max_cost_usd": 0.0}
+        elif mutation == "deadline":
+            task.budget = {
+                "max_tool_calls": 0,
+                "max_cost_usd": 0.0,
+                "deadline_seconds": 30,
+            }
+        else:
+            task.max_attempts = 4
+
+    with pytest.raises(TaskNotEligible, match="operator_task_shape_invalid"):
+        TaskRuntime(session_factory).admit(request_result.task_id)
+
+    with session_factory() as session:
+        task = session.get(Task, request_result.task_id)
+        assert task is not None
+        assert task.status == "pending"
+        assert task.attempt_count == 0
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == task.id,
+                Event.type == "task_started",
+            )
+        ) == 0
+
+
+def test_task_runtime_rejects_operator_task_without_request_event(
+    session_factory: sessionmaker[Session],
+    approval_context: ApprovalContext,
+) -> None:
+    request_result = OperatorApplicationAdapter(
+        session_factory
+    ).request_learning_change_decision(
+        _principal(approval_context.team_id),
+        _request(approval_context.learning_change_id),
+    )
+    with session_factory.begin() as session:
+        session.execute(
+            delete(Event).where(
+                Event.task_id == request_result.task_id,
+                Event.type == "operator_task_requested",
+            )
+        )
+
+    with pytest.raises(
+        TaskNotEligible, match="operator_task_request_event_invalid"
+    ):
+        TaskRuntime(session_factory).admit(request_result.task_id)
+
+
+def test_task_runtime_rejects_operator_request_event_identity_tampering(
+    session_factory: sessionmaker[Session],
+    approval_context: ApprovalContext,
+) -> None:
+    request_result = OperatorApplicationAdapter(
+        session_factory
+    ).request_learning_change_decision(
+        _principal(approval_context.team_id),
+        _request(approval_context.learning_change_id),
+    )
+    with session_factory.begin() as session:
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == request_result.task_id,
+                Event.type == "operator_task_requested",
+            )
+        )
+        assert event is not None
+        payload = dict(event.payload)
+        payload["operator_id"] = '{"iss":"https://host.example/identity","sub":"operator-43"}'
+        event.payload = payload
+
+    with pytest.raises(
+        TaskNotEligible, match="operator_task_request_fingerprint_invalid"
+    ):
+        TaskRuntime(session_factory).admit(request_result.task_id)

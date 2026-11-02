@@ -1,5 +1,8 @@
 """Application-controlled Task admission, failure reporting, and finalization."""
 
+import hashlib
+import json
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
@@ -46,6 +49,11 @@ _INTERRUPTION_REASON = "interrupted_execution"
 # startup. These are the finalization reasons that describe a lost race rather
 # than recorded-state corruption; corruption and conflicts propagate unchanged.
 _SKIPPED_FINALIZATION_REASONS = frozenset({"stale_attempt", "task_not_running"})
+
+_OPERATOR_TASK_TYPE = "approve_learning_change"
+_OPERATOR_REQUEST_EVENT_TYPE = "operator_task_requested"
+_OPERATOR_ALLOWED_WRITES = ["LearningChange", "KnowledgeItem"]
+_OPERATOR_MAX_ATTEMPTS = 3
 
 
 @dataclass(frozen=True)
@@ -189,6 +197,9 @@ class TaskRuntime:
             if task.attempt_count >= task.max_attempts:
                 raise TaskNotEligible("task_attempts_exhausted")
 
+            if task.task_type == _OPERATOR_TASK_TYPE:
+                self._validate_operator_admission(session, task)
+
             self._require_prerequisites(session, task)
 
             # Serialize admissions for this Team. A shared/read lock would
@@ -222,11 +233,14 @@ class TaskRuntime:
             if not isinstance(task.budget, dict):
                 raise TaskNotEligible("invalid_task_budget")
 
-            for field, kind, lower_bound in (
+            budget_fields = (
                 ("max_tool_calls", int, 0),
                 ("max_cost_usd", (int, float), 0),
-                ("deadline_seconds", int, 1),
-            ):
+            )
+            if task.task_type != _OPERATOR_TASK_TYPE:
+                budget_fields += (("deadline_seconds", int, 1),)
+
+            for field, kind, lower_bound in budget_fields:
                 value = task.budget.get(field)
                 if (
                     isinstance(value, bool)
@@ -296,6 +310,178 @@ class TaskRuntime:
             session.flush()
 
             return AdmissionResult(task.id, task.attempt_count, event.id)
+
+    @staticmethod
+    def _validate_operator_admission(session: Session, task: Task) -> None:
+        """Fail closed unless this is an intact, no-deadline approval Task."""
+        if (
+            task.objective_id is not None
+            or task.plan_id is not None
+            or task.plan_action_id is not None
+            or task.allowed_writes != _OPERATOR_ALLOWED_WRITES
+            or task.max_attempts != _OPERATOR_MAX_ATTEMPTS
+            or task.completed_at is not None
+            or not isinstance(task.budget, dict)
+            or set(task.budget) != {"max_tool_calls", "max_cost_usd"}
+        ):
+            raise TaskNotEligible("operator_task_shape_invalid")
+
+        max_tool_calls = task.budget.get("max_tool_calls")
+        max_cost_usd = task.budget.get("max_cost_usd")
+        if (
+            isinstance(max_tool_calls, bool)
+            or not isinstance(max_tool_calls, int)
+            or max_tool_calls != 0
+            or isinstance(max_cost_usd, bool)
+            or not isinstance(max_cost_usd, (int, float))
+            or max_cost_usd != 0
+        ):
+            raise TaskNotEligible("operator_task_shape_invalid")
+
+        request_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == _OPERATOR_REQUEST_EVENT_TYPE,
+                )
+            )
+        )
+        if len(request_events) != 1 or not isinstance(
+            request_events[0].payload, dict
+        ):
+            raise TaskNotEligible("operator_task_request_event_invalid")
+
+        payload = request_events[0].payload
+        expected_keys = {
+            "schema_version",
+            "operation",
+            "learning_change_id",
+            "decision",
+            "rejection_reason",
+            "operator_id",
+            "idempotency_key_hash",
+            "request_fingerprint",
+            "policy_version",
+        }
+        if set(payload) != expected_keys:
+            raise TaskNotEligible("operator_task_request_payload_invalid")
+
+        schema_version = payload.get("schema_version")
+        policy_version = payload.get("policy_version")
+        if (
+            isinstance(schema_version, bool)
+            or schema_version != 1
+            or not isinstance(schema_version, int)
+            or payload.get("operation") != _OPERATOR_TASK_TYPE
+            or isinstance(policy_version, bool)
+            or not isinstance(policy_version, int)
+            or policy_version != task.policy_version
+        ):
+            raise TaskNotEligible("operator_task_request_payload_invalid")
+
+        decision = payload.get("decision")
+        rejection_reason = payload.get("rejection_reason")
+        if decision == "accept":
+            if rejection_reason is not None:
+                raise TaskNotEligible("operator_task_request_payload_invalid")
+        elif decision == "reject":
+            if (
+                not isinstance(rejection_reason, str)
+                or not rejection_reason
+                or rejection_reason != rejection_reason.strip()
+            ):
+                raise TaskNotEligible("operator_task_request_payload_invalid")
+        else:
+            raise TaskNotEligible("operator_task_request_payload_invalid")
+
+        operator_id = payload.get("operator_id")
+        if not isinstance(operator_id, str) or len(operator_id) > 255:
+            raise TaskNotEligible("operator_task_request_identity_invalid")
+        try:
+            identity = json.loads(operator_id)
+        except (TypeError, ValueError) as error:
+            raise TaskNotEligible(
+                "operator_task_request_identity_invalid"
+            ) from error
+        if (
+            not isinstance(identity, dict)
+            or set(identity) != {"iss", "sub"}
+            or any(
+                not isinstance(identity.get(field), str)
+                or not identity[field]
+                or identity[field] != identity[field].strip()
+                or any(
+                    unicodedata.category(character) == "Cc"
+                    for character in identity[field]
+                )
+                for field in ("iss", "sub")
+            )
+        ):
+            raise TaskNotEligible("operator_task_request_identity_invalid")
+
+        canonical_operator_id = json.dumps(
+            {"iss": identity["iss"], "sub": identity["sub"]},
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        if canonical_operator_id != operator_id:
+            raise TaskNotEligible("operator_task_request_identity_invalid")
+
+        for field in ("idempotency_key_hash", "request_fingerprint"):
+            value = payload.get(field)
+            if (
+                not isinstance(value, str)
+                or len(value) != 71
+                or not value.startswith("sha256:")
+                or any(character not in "0123456789abcdef" for character in value[7:])
+            ):
+                raise TaskNotEligible("operator_task_request_payload_invalid")
+
+        fingerprint_payload = {
+            "operation": _OPERATOR_TASK_TYPE,
+            "team_id": str(task.team_id),
+            "learning_change_id": payload.get("learning_change_id"),
+            "decision": decision,
+            "rejection_reason": rejection_reason,
+            "operator_id": operator_id,
+        }
+        expected_fingerprint = "sha256:" + hashlib.sha256(
+            json.dumps(
+                fingerprint_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if payload.get("request_fingerprint") != expected_fingerprint:
+            raise TaskNotEligible("operator_task_request_fingerprint_invalid")
+
+        learning_change_id_value = payload.get("learning_change_id")
+        if not isinstance(learning_change_id_value, str):
+            raise TaskNotEligible("operator_task_request_target_invalid")
+        try:
+            learning_change_id = UUID(learning_change_id_value)
+        except ValueError as error:
+            raise TaskNotEligible(
+                "operator_task_request_target_invalid"
+            ) from error
+        if str(learning_change_id) != learning_change_id_value:
+            raise TaskNotEligible("operator_task_request_target_invalid")
+
+        learning_change = session.scalar(
+            select(LearningChange)
+            .where(LearningChange.id == learning_change_id)
+            .with_for_update()
+        )
+        if (
+            learning_change is None
+            or learning_change.team_id != task.team_id
+            or learning_change.target_kind != "knowledge_item"
+            or learning_change.operation != "create"
+            or learning_change.target_id is not None
+        ):
+            raise TaskNotEligible("operator_task_request_target_invalid")
 
     def finalize(self, observation: TerminalObservation) -> FinalizationResult:
         """Commit one terminal `task_execution` Outcome for a running Task.
