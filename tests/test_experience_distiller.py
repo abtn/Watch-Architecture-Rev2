@@ -269,7 +269,9 @@ def distillation_fixture(
                     Task.task_type == "approve_learning_change",
                     Task.team_id == fixture.team_id,
                 )
-                session.execute(delete(Event).where(Event.task_id.in_(approval_task_ids)))
+                session.execute(
+                    delete(Event).where(Event.task_id.in_(approval_task_ids))
+                )
                 session.execute(delete(Task).where(Task.id.in_(approval_task_ids)))
                 learning_change_ids = select(LearningChange.id).where(
                     LearningChange.proposed_by_task_id == fixture.distillation_task_id

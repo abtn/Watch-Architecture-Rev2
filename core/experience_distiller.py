@@ -491,7 +491,10 @@ class ExperienceDistiller:
             or not isinstance(state, dict)
             or set(state) != expected_state_keys
             or not isinstance(learning_change.evidence_basis, list)
-            or not 1 <= len(learning_change.evidence_basis) <= MAX_DISTILLATION_EVALUATIONS
+            or not (
+                1 <= len(learning_change.evidence_basis)
+                <= MAX_DISTILLATION_EVALUATIONS
+            )
         ):
             raise ExperienceDistillerError("learning_change_proposal_shape_invalid")
 
