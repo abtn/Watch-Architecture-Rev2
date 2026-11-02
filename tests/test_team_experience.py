@@ -565,9 +565,9 @@ def test_changed_canonical_item_invalidates_existing_projection(
 ) -> None:
     item_id = experience_env.add_accepted_item()
     provider = FakeEmbeddingProvider()
-    TeamExperienceIndexer(experience_env.session_factory, provider).index_knowledge_item(
-        item_id
-    )
+    TeamExperienceIndexer(
+        experience_env.session_factory, provider
+    ).index_knowledge_item(item_id)
     with experience_env.session_factory.begin() as session:
         item = session.get(KnowledgeItem, item_id)
         assert item is not None
