@@ -118,7 +118,7 @@ The v1 rule vocabulary (fixed; extended only via a schema-version bump):
 | Rule group | Controls |
 |---|---|
 | `routing` | which signal/thread situations get update Tasks, and when |
-| `review` | what requires Operator approval; consultation requirements before delivery; `update_gating` flag (default off — blocks update commits while a required consultation on the Thread is open) |
+| `review` | what requires Operator approval; consultation requirements before delivery; `update_gating` flag (default off); and, after a forward rules-schema revision, optional `knowledge_item_interval_days` for Team Experience review scheduling |
 | `knowledge_selection` | how many and which kinds of KnowledgeItems are retrieved into task context |
 | `thresholds` | Trigger thresholds (e.g., "render when any hypothesis reaches high") |
 | `budgets` | Team-level ceilings: per-day task count, per-day cost (aggregate limits; per-Task budgets are set at Task creation) |
@@ -128,6 +128,8 @@ The v1 rule vocabulary (fixed; extended only via a schema-version bump):
 | `preferences` | Domain-appropriate operating preferences within vocabulary |
 
 Policy is not a security boundary; tool access and write permissions are enforced by application code. Initial policy is committed at `activate_team` or seeded explicitly (`seed_knowledge`). All policy changes in v1 require Operator approval (INV-12).
+
+**D7 — Knowledge review scheduling (resolved 2026-11-02):** `review.knowledge_item_interval_days` is an optional positive integer, with no default. It may be introduced only by a forward revision of the TeamPolicy rules JSON Schema; do not add it in place to the fixed v1 vocabulary. Existing policy versions without the key mean no review schedule. For a KnowledgeItem accepted by an `approve_learning_change` Task, application code reads the TeamPolicy row identified by that Task's pinned `(team_id, policy_version)`. A valid configured interval sets `review_after = committed_at + timedelta(days=N)` using timezone-aware UTC timestamps and 24-hour days. An absent key sets `review_after = NULL`; an explicitly present invalid value (including a boolean or non-positive integer) is a policy validation failure, not a fallback to NULL. A newer TeamPolicy version affects only later approval Tasks; it never rewrites existing KnowledgeItem dates. D7 does not authorize a TeamPolicy write path or retroactive date backfill. The current ORM does not expose the conceptual `schema_version` field shown above, so implementation must reconcile the actual TeamPolicy model/migration with the versioned rules-schema contract before accepting the new key.
 
 ### `Signal`
 
@@ -542,8 +544,8 @@ All dispositions except `deferred` are terminal.
 | From | Event | To | Notes |
 |---|---|---|---|
 | — | accepted `create` LearningChange | `active` | version 1 |
-| `active` | `review_after` passed (scheduled review task) | `needs_review` | |
-| `needs_review` | validated as current | `active` | `last_validated_at` bumped, version unchanged |
+| `active` | UTC `now >= review_after` (`review_knowledge` Task) | `needs_review` | The deterministic Task transition and Task-attributed Event are atomic. Retrieval excludes due items at the exact boundary even before this status update runs. `review_after = NULL` means unscheduled and ineligible for retrieval; it does not mean permanently valid. |
+| `needs_review` | separate explicit, validated re-review operation | `active` | `last_validated_at` is updated; the scheduled `review_knowledge` Task never reactivates or extends an item. The re-review operation remains separately specified/authorized. |
 | `needs_review` / `active` | accepted `retire` LearningChange | `retired` | terminal |
 
 ### TeamPolicy (version)
