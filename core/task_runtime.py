@@ -203,6 +203,38 @@ class TaskRuntime:
         self._session_factory = session_factory
         self._snapshot_store = snapshot_store
 
+    def complete_knowledge_review(
+        self, task_id: UUID, *, now: datetime | None = None
+    ) -> FinalizationResult:
+        """Execute one already-created review_knowledge Task through this runtime.
+
+        The host/scheduler only enqueues the ordinary Task. This method adds no
+        scheduler or dispatch loop: it composes the existing admission and
+        terminal-finalization transitions using one deterministic observation
+        time. A crash between them is handled by the existing interrupted Task
+        recovery and the host may invoke this method again after retry.
+        """
+        reference = now if now is not None else datetime.now(timezone.utc)
+        if reference.tzinfo is None or reference.utcoffset() is None:
+            raise TaskNotFinalizable("reference_time_not_timezone_aware")
+        reference = reference.astimezone(timezone.utc)
+        with self._session_factory() as session:
+            task = session.get(Task, task_id)
+            if task is None:
+                raise TaskNotFound(f"Task {task_id} does not exist")
+            if task.task_type != "review_knowledge":
+                raise TaskNotEligible("unsupported_task_type")
+
+        admission = self.admit(task_id)
+        return self.finalize(
+            TerminalObservation(
+                task_id=task_id,
+                attempt=admission.attempt_count,
+                result_category="success_knowledge_reviewed",
+                observed_at=reference,
+            )
+        )
+
     def admit(self, task_id: UUID) -> AdmissionResult:
         with self._session_factory.begin() as session:
             task = ObjectiveService._lock_task(session, task_id)
