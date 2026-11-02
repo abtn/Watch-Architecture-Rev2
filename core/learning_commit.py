@@ -293,7 +293,7 @@ class LearningCommitService:
                         "knowledge_item_exists_for_uncommitted_learning_change"
                     )
 
-                knowledge_item_id = uuid.uuid.uuid4()
+                knowledge_item_id = uuid.uuid4()
                 confidence = decimal.Decimal(str(draft.confidence)).quantize(
                     decimal.Decimal("0.001")
                 )
