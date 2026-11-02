@@ -203,21 +203,14 @@ class TaskRuntime:
         self._session_factory = session_factory
         self._snapshot_store = snapshot_store
 
-    def complete_knowledge_review(
-        self, task_id: UUID, *, now: datetime | None = None
-    ) -> FinalizationResult:
-        """Execute one already-created review_knowledge Task through this runtime.
+    def complete_knowledge_review(self, task_id: UUID) -> FinalizationResult:
+        """Run or replay one already-created review Task through this runtime.
 
         The host/scheduler only enqueues the ordinary Task. This method adds no
         scheduler or dispatch loop: it composes the existing admission and
-        terminal-finalization transitions using one deterministic observation
-        time. A crash between them is handled by the existing interrupted Task
-        recovery and the host may invoke this method again after retry.
+        terminal-finalization transitions. A completed Task is replayed from
+        its durable terminal Outcome rather than being admitted a second time.
         """
-        reference = now if now is not None else datetime.now(timezone.utc)
-        if reference.tzinfo is None or reference.utcoffset() is None:
-            raise TaskNotFinalizable("reference_time_not_timezone_aware")
-        reference = reference.astimezone(timezone.utc)
         with self._session_factory() as session:
             task = session.get(Task, task_id)
             if task is None:
@@ -225,13 +218,47 @@ class TaskRuntime:
             if task.task_type != "review_knowledge":
                 raise TaskNotEligible("unsupported_task_type")
 
-        admission = self.admit(task_id)
+            if task.status == "done":
+                outcome = session.scalar(
+                    select(Outcome).where(
+                        Outcome.recorded_by_task_id == task.id,
+                        Outcome.outcome_type == "task_execution",
+                    )
+                )
+                completed_event = session.scalar(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == "task_completed",
+                    )
+                )
+                if (
+                    outcome is None
+                    or outcome.observed_at is None
+                    or completed_event is None
+                    or completed_event.payload.get("result_category")
+                    != "success_knowledge_reviewed"
+                    or completed_event.payload.get("outcome_id") != str(outcome.id)
+                ):
+                    raise TaskNotEligible("review_task_not_successfully_completed")
+                attempt = task.attempt_count
+                observed_at = outcome.observed_at
+            elif task.status == "pending":
+                attempt = None
+                observed_at = None
+            else:
+                raise TaskNotEligible("review_task_not_pending")
+
+        if attempt is None:
+            admission = self.admit(task_id)
+            attempt = admission.attempt_count
+            observed_at = datetime.now(timezone.utc)
+
         return self.finalize(
             TerminalObservation(
                 task_id=task_id,
-                attempt=admission.attempt_count,
+                attempt=attempt,
                 result_category="success_knowledge_reviewed",
-                observed_at=reference,
+                observed_at=observed_at,
             )
         )
 
