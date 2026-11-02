@@ -568,7 +568,9 @@ class LearningCommitService:
             raise LearningCommitCorrupt("learning_change_decision_event_invalid")
         event = events[0]
         payload = event.payload
-        decision_attempt = payload.get("attempt_count") if isinstance(payload, dict) else None
+        decision_attempt = (
+            payload.get("attempt_count") if isinstance(payload, dict) else None
+        )
         if (
             isinstance(decision_attempt, bool)
             or not isinstance(decision_attempt, int)
