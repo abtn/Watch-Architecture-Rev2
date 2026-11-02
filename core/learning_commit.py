@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
-from json import dumps, loads
-from unicodedata import category
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
+from hashlib import sha256
+from json import dumps, loads
 from typing import Literal
+from unicodedata import category
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
