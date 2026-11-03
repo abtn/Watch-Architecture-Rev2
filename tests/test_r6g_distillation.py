@@ -32,8 +32,8 @@ from core.source_fetch import SourceFetchError
 from tests.test_r6b_dispatcher import (
     DispatchFixture,
     FakeFetcher,
-    dispatch_fixture as _dispatch_fixture,
-)  # noqa: F401
+    dispatch_fixture,
+)  # noqa: F401, F811
 
 
 def _add_configured_action(
