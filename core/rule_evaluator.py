@@ -66,8 +66,8 @@ class IngestSourceRuleEvaluator:
             except TaskNotFinalizable as error:
                 raise RuleEvaluationError(str(error)) from error
 
-            if task.status != "running":
-                raise RuleEvaluationError("evaluation_task_not_running")
+            if task.status not in {"running", "done"}:
+                raise RuleEvaluationError("evaluation_task_not_terminal_or_running")
 
             source_task = session.get(Task, UUID(request["source_task_id"]))
             outcome = session.get(Outcome, UUID(request["outcome_id"]))
