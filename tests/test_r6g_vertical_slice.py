@@ -7,7 +7,6 @@ import json
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -329,7 +328,6 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
         )
 
     source_task_ids: list[UUID] = []
-    all_objective_ids = [objective_id]
 
     try:
         SignalIndexer(
@@ -571,9 +569,7 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
         )
 
         later_objective_id, later_task_id = uuid4(), uuid4()
-        later_objective_statement = (
-            "Use configured source outcome verification practice for source review."
-        )
+        later_objective_statement = "Configured source outcome verification."
         with session_factory.begin() as session:
             session.add(
                 Objective(
@@ -601,7 +597,6 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
                     },
                 )
             )
-        all_objective_ids.append(later_objective_id)
         runtime.admit(later_task_id)
         later_context = TaskContextAssembler(
             session_factory,
@@ -632,11 +627,12 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
                 session.scalars(select(Plan.id).where(Plan.team_id == team_id))
             )
             signal_ids = list(
-                session.scalars(select(Signal.id).where(Signal.domain == "science"))
-            )
-            item_ids = list(
                 session.scalars(
-                    select(KnowledgeItem.id).where(KnowledgeItem.team_id == team_id)
+                    select(Signal.id).where(
+                        Signal.origin_url.in_(
+                            [baseline_url, *(url for url, _ in source_urls)]
+                        )
+                    )
                 )
             )
 
