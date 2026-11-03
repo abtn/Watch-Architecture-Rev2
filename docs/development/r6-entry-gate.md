@@ -188,9 +188,11 @@ D1–D4 were resolved in Checkpoint 1. D5 was resolved in Checkpoint 4 through a
 
 ### R6-G — Integrated vertical slice and formal gate
 
-Exercise the full cycle from Objective/assessment and RAG Context through accepted Strategy, Plan/Task execution, durable Outcome, follow-up assessment, proposed and accepted distillation, index update, and retrieval by a later task. Verify recovery after restart and explainability from canonical records rather than transcripts.
+The detailed planning-only design is in [R6-G Integrated Fixture and Service-Interaction Design](r6g-integrated-fixture-design.md), with the acceptance-to-test map in [docs/testing.md](../testing.md). It specifies one Team/Objective fixture, three configured-source cases (new content, legitimate no-change, terminal failure), atomic source terminalization plus evaluator-Task enqueue, the D9 rule runner, explicit failed-case preservation in a versioned distillation evidence pack, Operator rejection/acceptance, Team Experience publication, and later-Task retrieval.
 
-Run required focused and full-suite tests, Ruff, mypy, and applicable disposable-PostgreSQL migration/integration checks. Record actual commands, environment, results, skipped checks, and remaining limitations. R6 is not closed by code, tests, or merge alone; request explicit operator exit approval.
+Three inspected implementation gaps must be handled, not hidden: (1) create the evaluator request Task/Event atomically with the source terminal Outcome so a crash cannot drop the follow-on; (2) extend ExperienceDistiller to reconstruct a terminal failed source Task as contrary evidence while preserving v1 historical evidence-pack replay; and (3) add TaskRuntime recovery for an already-recorded Evaluation before attempt exhaustion can mark its Task failed. The design also flags the missing typed terminal result for the existing propose_strategy/create_plan control Tasks; resolve this in the separately authorized R6-G scope rather than writing Task status directly or misusing an ingestion result category.
+
+Exercise Objective/assessment and RAG Context → accepted Strategy → immutable Plan → ordinary source Tasks → Outcomes/Evaluations → distillation → explicit Operator decision → canonical KnowledgeItem → current Team Experience projection → later-Task retrieval. Verify recovery and explainability from canonical records rather than transcripts. Run focused/full tests, Ruff, Mypy and fresh disposable-PostgreSQL migration/integration checks. Record actual commands, environment, results, skipped checks and remaining limitations. R6 is not closed by code, tests or merge alone; request explicit operator exit approval.
 
 ## 5. Non-negotiable constraints
 
