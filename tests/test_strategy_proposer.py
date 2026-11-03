@@ -35,12 +35,12 @@ from core.models import (
 )
 from core.snapshot_store import SnapshotStore
 from core.strategy import StrategyService
-from core.task_runtime import TaskRuntime, TerminalObservation
 from core.strategy_proposer import (
     MAX_STRATEGY_CONTEXT_CHARACTERS,
     StrategyProposer,
     StrategyProposerError,
 )
+from core.task_runtime import TaskRuntime, TerminalObservation
 
 
 class _EmptyRetriever:
