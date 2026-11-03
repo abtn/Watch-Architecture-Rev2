@@ -663,6 +663,7 @@ class ExperienceDistiller:
                 raise ExperienceDistillerError("independent_outcome_task_required")
             source_task_ids.add(source_task.id)
 
+            failed_terminal_reason: str | None = None
             if source_task.status == "done":
                 self._require_terminal_event(
                     session,
@@ -672,7 +673,7 @@ class ExperienceDistiller:
                     expected_result=None,
                 )
             else:
-                self._require_failed_terminal_events(
+                failed_terminal_reason = self._require_failed_terminal_events(
                     session, source_task, outcome
                 )
             observation_bytes = self._read_snapshot(
@@ -697,6 +698,7 @@ class ExperienceDistiller:
                         observation.get("result_category") != expected_category
                         or not isinstance(observation.get("failure_reason"), str)
                         or not observation["failure_reason"].strip()
+                        or observation["failure_reason"] != failed_terminal_reason
                     ):
                         raise ExperienceDistillerError(
                             "failed_source_observation_invalid"
@@ -1129,6 +1131,168 @@ class ExperienceDistiller:
             "reference": normalized,
         }
         return item, refs
+
+    def _failed_task_provenance(
+        self,
+        session: Session,
+        task: Task,
+        outcome: Outcome,
+        observation: dict[str, Any],
+    ) -> dict[str, Any]:
+        failure_event, attempt_event, failure_reason = (
+            self._failed_terminal_events(session, task, outcome)
+        )
+        if (
+            observation.get("result_category") != "terminal_failure"
+            or observation.get("failure_reason") != failure_reason
+        ):
+            raise ExperienceDistillerError("failed_source_observation_invalid")
+        return {
+            "task_id": str(task.id),
+            "task_type": task.task_type,
+            "created_at": task.created_at.isoformat(),
+            "completed_at": None,
+            "attempt_count": task.attempt_count,
+            "status": "failed",
+            "task_failed_event_id": str(failure_event.id),
+            "task_failed_event_created_at": failure_event.created_at.isoformat(),
+            "task_failed_event_payload": dict(failure_event.payload),
+            "task_attempt_failed_event_id": str(attempt_event.id),
+            "task_attempt_failed_event_created_at": (
+                attempt_event.created_at.isoformat()
+            ),
+            "task_attempt_failed_event_payload": dict(attempt_event.payload),
+            "failure_reason": failure_reason,
+        }
+
+    @staticmethod
+    def _failed_terminal_events(
+        session: Session, task: Task, outcome: Outcome
+    ) -> tuple[Event, Event, str]:
+        if (
+            task.task_type != "ingest_source"
+            or task.status != "failed"
+            or task.completed_at is not None
+            or task.attempt_count < 1
+        ):
+            raise ExperienceDistillerError("failed_source_task_state_invalid")
+        terminal_successes = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == "task_completed",
+                )
+            )
+        )
+        if terminal_successes:
+            raise ExperienceDistillerError("failed_source_has_completion_event")
+        failure_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == "task_failed",
+                )
+            )
+        )
+        attempt_events = [
+            event
+            for event in session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == "task_attempt_failed",
+                )
+            )
+            if event.payload.get("attempt_count") == task.attempt_count
+        ]
+        if (
+            len(failure_events) != 1
+            or len(attempt_events) != 1
+        ):
+            raise ExperienceDistillerError("failed_source_terminal_event_invalid")
+        failure_event = failure_events[0]
+        attempt_event = attempt_events[0]
+        payloads = (failure_event.payload, attempt_event.payload)
+        failure_reason = payloads[0].get("failure_reason")
+        if not isinstance(failure_reason, str) or not failure_reason.strip():
+            raise ExperienceDistillerError("failed_source_reason_missing")
+        for payload in payloads:
+            if (
+                payload.get("from_status") != "running"
+                or payload.get("to_status") != "failed"
+                or payload.get("attempt_count") != task.attempt_count
+                or payload.get("result_category") != "terminal_failure"
+                or payload.get("failure_reason") != failure_reason
+                or payload.get("outcome_id") != str(outcome.id)
+                or payload.get("observation_snapshot_ref")
+                != outcome.observation_snapshot_ref
+                or payload.get("observation_hash") != outcome.observation_hash
+            ):
+                raise ExperienceDistillerError("failed_source_terminal_event_mismatch")
+        return failure_event, attempt_event, failure_reason
+
+    def _validate_r6g_evaluation_case(
+        self,
+        session: Session,
+        team: Team,
+        source_task: Task,
+        outcome: Outcome,
+        evaluation: Evaluation,
+        evaluator_task: Task,
+        normalized_links: list[dict[str, Any]],
+    ) -> None:
+        if (
+            source_task.task_type != "ingest_source"
+            or evaluator_task.task_type != "evaluate_outcome"
+            or evaluator_task.status != "done"
+            or evaluator_task.allowed_writes
+            != ["Evaluation", "EvidenceLink"]
+            or evaluation.evaluator_kind != "rule"
+            or evaluation.evaluator_identity
+            != "watch.r6g.ingest-source-rules"
+            or evaluation.evaluator_revision != "1"
+            or evaluation.conclusion
+            != ("failed" if source_task.status == "failed" else "worked")
+        ):
+            raise ExperienceDistillerError("r6g_evaluation_provenance_invalid")
+
+        from core.rule_evaluator import (
+            IngestSourceRuleEvaluator,
+            RuleEvaluationError,
+        )
+        from core.task_runtime import TaskNotFinalizable, TaskRuntime
+
+        try:
+            TaskRuntime._validate_evaluation_task_request(session, evaluator_task)
+        except TaskNotFinalizable as error:
+            raise ExperienceDistillerError(str(error)) from error
+        try:
+            deterministic_draft = IngestSourceRuleEvaluator(
+                self._session_factory, self._snapshot_store
+            ).evaluate(evaluator_task.id)
+        except RuleEvaluationError as error:
+            raise ExperienceDistillerError(str(error)) from error
+
+        if (
+            deterministic_draft.outcome_id != outcome.id
+            or deterministic_draft.conclusion != evaluation.conclusion
+            or deterministic_draft.findings.model_dump(mode="json")
+            != evaluation.findings
+            or deterministic_draft.idempotency_key != evaluation.idempotency_key
+        ):
+            raise ExperienceDistillerError("r6g_evaluation_draft_mismatch")
+        expected_links: list[dict[str, Any]] = []
+        try:
+            for evidence in deterministic_draft.evidence:
+                expected_links.append(
+                    self._evaluations._normalize_evidence(
+                        session, team, evidence
+                    )
+                )
+        except EvaluationValidationError as error:
+            raise ExperienceDistillerError(str(error)) from error
+        expected_links.sort(key=lambda item: item["reference_key"])
+        if expected_links != normalized_links:
+            raise ExperienceDistillerError("r6g_evaluation_evidence_mismatch")
 
     def _require_terminal_event(
         self,
