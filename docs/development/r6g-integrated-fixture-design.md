@@ -89,7 +89,7 @@ Use the existing TaskDispatcher with a deterministic fake Fetcher. Do not expand
 
 Verify A creates exactly one Signal, B records legitimate no-change against the existing Signal, and C fails terminally without an ingestion business Event. Reuse R6-B component tests for unsafe URLs, redirects, byte/time bounds, transient retry and exhaustion rather than duplicating those low-level tests.
 
-Run StateAssessmentBuilder twice at the same explicit observation time after execution. Its assessment basis/hash must be deterministic and it must remain read-only. This is an execution-state projection, not an Evaluation or causal judgment.
+Run ExecutionAssessmentBuilder.build(plan_id) after source execution, then rebuild against the same committed database/Snapshot state. Its deterministic assessment hash must match and the builder must remain read-only. With two succeeded Actions and one terminal-failed Action, expect conclusion failed with integrity consistent while the Plan itself remains active. This is an execution-state projection, not an Evaluation or causal judgment.
 
 ### 5 — Create and run D9 Evaluation Tasks
 
