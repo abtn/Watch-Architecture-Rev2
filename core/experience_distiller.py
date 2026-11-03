@@ -673,9 +673,9 @@ class ExperienceDistiller:
                     expected_result=None,
                 )
             else:
-                failed_terminal_reason = self._require_failed_terminal_events(
+                failed_terminal_reason = self._failed_terminal_events(
                     session, source_task, outcome
-                )
+                )[2]
             observation_bytes = self._read_snapshot(
                 outcome.observation_snapshot_ref, outcome.observation_hash
             )
