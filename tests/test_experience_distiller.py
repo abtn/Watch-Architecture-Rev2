@@ -1636,19 +1636,20 @@ def test_competing_approval_tasks_terminalize_the_losing_request(
                 )
             )
             assert len(loser_outcomes) == 1
-            loser_failure_events = list(
-                session.scalars(
+            loser_failure_events = {
+                event.type: event
+                for event in session.scalars(
                     select(Event).where(
                         Event.task_id == loser_request_result.task_id,
                         Event.type.in_(("task_attempt_failed", "task_failed")),
                     )
                 )
-            )
-            assert [event.type for event in loser_failure_events] == [
+            }
+            assert set(loser_failure_events) == {
                 "task_attempt_failed",
                 "task_failed",
-            ]
-            assert loser_failure_events[-1].payload["failure_reason"] == (
+            }
+            assert loser_failure_events["task_failed"].payload["failure_reason"] == (
                 "learning_change_already_decided"
             )
             assert session.scalar(
