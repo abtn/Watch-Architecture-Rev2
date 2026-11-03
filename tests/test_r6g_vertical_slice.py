@@ -372,16 +372,16 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
         assert strategy_terminal.status == "done"
 
         runtime.admit(plan_task_id)
+        with session_factory() as session:
+            strategy_event = session.get(
+                Event, strategy_result.disposition.event_id
+            )
+            assert strategy_event is not None
+            strategy_proposal_hash = strategy_event.payload["proposal_hash"]
         plan_result = PlanService(session_factory).create(
             task_id=plan_task_id,
             accepted_event_id=strategy_result.disposition.event_id,
-            proposal_hash=(
-                session.scalar(
-                    select(Event).where(
-                        Event.id == strategy_result.disposition.event_id
-                    )
-                ).payload["proposal_hash"]
-            ),
+            proposal_hash=strategy_proposal_hash,
             objective_id=objective_id,
             team_id=team_id,
         )
