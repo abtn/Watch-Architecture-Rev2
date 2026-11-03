@@ -22,7 +22,7 @@ from core.task_runtime import (
     TaskRuntime,
     TerminalObservation,
 )
-from tests.test_r6b_dispatcher import DispatchFixture, dispatch_fixture  # noqa: F401
+from tests.test_r6b_dispatcher import DispatchFixture, dispatch_fixture as _dispatch_fixture  # noqa: F401
 
 
 def _request_for_source(
