@@ -935,16 +935,16 @@ class ExperienceDistiller:
                     raise ExperienceDistillerError(
                         "distillation_case_shape_invalid"
                     )
-                source_task = case.get("source_task")
-                evidence_items = case.get("evidence")
-                if not isinstance(source_task, dict) or not isinstance(
-                    evidence_items, list
+                case_source_data = case.get("source_task")
+                case_evidence_data = case.get("evidence")
+                if not isinstance(case_source_data, dict) or not isinstance(
+                    case_evidence_data, list
                 ):
                     raise ExperienceDistillerError(
                         "distillation_case_evidence_shape_invalid"
                     )
-                failed_case = source_task.get("status") == "failed"
-                for evidence in evidence_items:
+                failed_case = case_source_data.get("status") == "failed"
+                for evidence in case_evidence_data:
                     if not isinstance(evidence, dict):
                         raise ExperienceDistillerError(
                             "distillation_evidence_shape_invalid"
