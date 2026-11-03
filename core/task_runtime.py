@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.models import (
     Evaluation,
+    EvidenceLink,
     Event,
     KnowledgeItem,
     LearningChange,
@@ -616,6 +617,9 @@ class TaskRuntime:
             task = ObjectiveService._lock_task(session, observation.task_id)
             if task is None:
                 raise TaskNotFound(f"Task {observation.task_id} does not exist")
+
+            if self._is_r6g_evaluation_task(session, task):
+                self._validate_evaluation_task_request(session, task)
 
             if (
                 observation.result_category == "success_knowledge_reviewed"
