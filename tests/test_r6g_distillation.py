@@ -30,8 +30,11 @@ from core.models import (
 )
 from core.snapshot_store import SnapshotStore
 from core.source_fetch import SourceFetchError
-from tests.test_r6b_dispatcher import DispatchFixture, FakeFetcher
-from tests.test_r6b_dispatcher import dispatch_fixture as base_dispatch_fixture  # noqa: F401
+from tests.test_r6b_dispatcher import (
+    DispatchFixture,
+    FakeFetcher,
+    dispatch_fixture as base_dispatch_fixture,  # noqa: F401
+)
 
 
 @pytest.fixture
