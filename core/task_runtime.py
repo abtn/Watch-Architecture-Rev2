@@ -545,12 +545,18 @@ class TaskRuntime:
                     raise TaskNotFinalizable(
                         "operator_task_requires_learning_change_decision"
                     )
-                if self._committed_operator_decision_observation(
-                    session, task
-                ) is not None:
-                    raise TaskNotFinalizable(
-                        "operator_decision_requires_success_finalization"
-                    )
+                expected_operator_observation = (
+                    self._committed_operator_decision_observation(session, task)
+                )
+                if expected_operator_observation is not None:
+                    if expected_operator_observation.result_category in _SUCCESS_CATEGORIES:
+                        raise TaskNotFinalizable(
+                            "operator_decision_requires_success_finalization"
+                        )
+                    if expected_operator_observation != observation:
+                        raise TaskNotFinalizable(
+                            "operator_conflict_failure_observation_mismatch"
+                        )
 
             prior = self._prior_terminal(session, task.id)
             if prior is not None:
@@ -921,7 +927,11 @@ class TaskRuntime:
                 if str(error) in _SKIPPED_FINALIZATION_REASONS:
                     return "skipped"
                 raise
-            return "completed"
+            return (
+                "failed"
+                if operator_observation.result_category == "terminal_failure"
+                else "completed"
+            )
 
         # Attempts are exhausted: resolve through the single terminal path.
         # `observed_at` is the durable current-attempt start, so repeated or
@@ -948,7 +958,14 @@ class TaskRuntime:
     def _committed_operator_decision_observation(
         session: Session, task: Task
     ) -> TerminalObservation | None:
-        """Build the canonical terminal observation after an Operator commit."""
+        """Reconcile a committed Operator decision for its owner or a loser.
+
+        The LearningChange row lock permits only one approval Task to win.
+        The winning Task receives its typed success observation. A different
+        Task targeting the already-decided LearningChange receives a stable,
+        attempt-fenced terminal failure that can be committed by the ordinary
+        TaskRuntime finalizer or reconstructed during interrupted recovery.
+        """
         if task.task_type != _OPERATOR_TASK_TYPE:
             return None
         try:
@@ -1009,9 +1026,9 @@ class TaskRuntime:
             return None
         if learning_change.status not in {"accepted", "rejected"}:
             raise TaskNotFinalizable("learning_change_decision_state_mismatch")
-
         if learning_change.committed_at is None:
             raise TaskNotFinalizable("learning_change_decision_timestamp_missing")
+
         result_category: Literal[
             "success_learning_change_accepted", "success_learning_change_rejected"
         ] = (
@@ -1019,17 +1036,58 @@ class TaskRuntime:
             if learning_change.status == "accepted"
             else "success_learning_change_rejected"
         )
-        observation = TerminalObservation(
-            task_id=task.id,
-            attempt=task.attempt_count,
+
+        if learning_change.committed_by_task_id == task.id:
+            observation = TerminalObservation(
+                task_id=task.id,
+                attempt=task.attempt_count,
+                result_category=result_category,
+                observed_at=learning_change.committed_at,
+                learning_change_id=learning_change.id,
+            )
+            TaskRuntime._validate_learning_change_decision_result(
+                session, task, observation
+            )
+            return observation
+
+        # Another approval Task won. Its durable decision must itself be
+        # internally valid before this Task is failed as the losing request.
+        if decision_events or learning_change.committed_by_task_id is None:
+            raise TaskNotFinalizable("learning_change_decision_owner_mismatch")
+        winning_task = session.get(Task, learning_change.committed_by_task_id)
+        if (
+            winning_task is None
+            or winning_task.team_id != task.team_id
+            or winning_task.task_type != _OPERATOR_TASK_TYPE
+            or winning_task.status not in {"running", "done"}
+            or winning_task.attempt_count < 1
+        ):
+            raise TaskNotFinalizable("learning_change_decision_owner_invalid")
+
+        winning_observation = TerminalObservation(
+            task_id=winning_task.id,
+            attempt=winning_task.attempt_count,
             result_category=result_category,
             observed_at=learning_change.committed_at,
             learning_change_id=learning_change.id,
         )
         TaskRuntime._validate_learning_change_decision_result(
-            session, task, observation
+            session,
+            winning_task,
+            winning_observation,
+            allow_completed=winning_task.status == "done",
         )
-        return observation
+
+        losing_started_at = TaskRuntime._current_attempt_start(session, task)
+        if losing_started_at is None:
+            raise TaskNotFinalizable("approval_task_start_event_invalid")
+        return TerminalObservation(
+            task_id=task.id,
+            attempt=task.attempt_count,
+            result_category="terminal_failure",
+            observed_at=losing_started_at,
+            failure_reason="learning_change_already_decided",
+        )
 
     @staticmethod
     def _current_attempt_start(session: Session, task: Task) -> datetime | None:

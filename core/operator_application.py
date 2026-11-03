@@ -318,7 +318,7 @@ class OperatorApplicationAdapter:
 
         # Import at call time to keep the application boundary below the
         # learning-commit module without creating a module-import cycle.
-        from core.learning_commit import LearningCommitService
+        from core.learning_commit import LearningCommitConflict, LearningCommitService
         from core.task_runtime import TaskNotEligible, TaskRuntime, TerminalObservation
 
         task_runtime = TaskRuntime(self._session_factory, self._snapshot_store)
@@ -346,12 +346,79 @@ class OperatorApplicationAdapter:
                         ) from error
                     task_status = task.status
                     attempt = task.attempt_count
+        elif task_status == "failed":
+            # A distinct approval Task may lose a race to another Task that
+            # already committed this LearningChange. Recovery terminalizes
+            # that loser as a deterministic failure; replay the same outcome
+            # and return the same typed conflict rather than treating it as an
+            # unexplained non-executable Task.
+            with self._session_factory.begin() as session:
+                task = session.scalar(
+                    select(Task)
+                    .where(Task.id == request_result.task_id)
+                    .with_for_update()
+                )
+                if task is None:
+                    raise OperatorTaskRequestCorrupt("approval_task_disappeared")
+                conflict_observation = (
+                    TaskRuntime._committed_operator_decision_observation(
+                        session, task
+                    )
+                )
+            if (
+                conflict_observation is None
+                or conflict_observation.result_category != "terminal_failure"
+                or conflict_observation.failure_reason
+                != "learning_change_already_decided"
+            ):
+                raise OperatorApplicationError("approval_task_not_executable")
+            replayed_failure = task_runtime.finalize(conflict_observation)
+            if replayed_failure.status != "failed":
+                raise OperatorApplicationError(
+                    "approval_task_conflict_failure_not_replayed"
+                )
+            raise OperatorTaskRequestConflict("learning_change_already_decided")
         elif task_status not in {"running", "done"}:
             raise OperatorApplicationError("approval_task_not_executable")
 
-        commit = LearningCommitService(
-            self._session_factory, self._snapshot_store
-        ).decide(request_result.task_id, attempt, principal)
+        try:
+            commit = LearningCommitService(
+                self._session_factory, self._snapshot_store
+            ).decide(request_result.task_id, attempt, principal)
+        except LearningCommitConflict as error:
+            if str(error) != "learning_change_already_decided":
+                raise
+            # The LearningChange row lock serializes distinct approval Tasks.
+            # Once another Task wins, this Task must become terminal through
+            # the existing runtime, not remain running after losing the race.
+            with self._session_factory.begin() as session:
+                task = session.scalar(
+                    select(Task)
+                    .where(Task.id == request_result.task_id)
+                    .with_for_update()
+                )
+                if task is None:
+                    raise OperatorTaskRequestCorrupt("approval_task_disappeared")
+                conflict_observation = (
+                    TaskRuntime._committed_operator_decision_observation(
+                        session, task
+                    )
+                )
+            if (
+                conflict_observation is None
+                or conflict_observation.result_category != "terminal_failure"
+                or conflict_observation.failure_reason
+                != "learning_change_already_decided"
+            ):
+                raise OperatorApplicationError(
+                    "approval_task_conflict_could_not_be_reconciled"
+                ) from error
+            finalization = task_runtime.finalize(conflict_observation)
+            if finalization.status != "failed":
+                raise OperatorApplicationError(
+                    "approval_task_conflict_failure_not_recorded"
+                ) from error
+            raise OperatorTaskRequestConflict("learning_change_already_decided") from error
         result_category: Literal[
             "success_learning_change_accepted", "success_learning_change_rejected"
         ] = (
