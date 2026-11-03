@@ -1774,7 +1774,7 @@ class TaskRuntime:
         )
         if not links:
             raise TaskNotFinalizable("evaluation_task_evidence_missing")
-        from core.evaluations import EvaluationService
+        from core.evaluations import EvaluationService, _sha256_json
 
         if self._snapshot_store is None:
             raise TaskNotFinalizable("snapshot_store_not_configured")
@@ -1808,7 +1808,7 @@ class TaskRuntime:
             "evaluator_revision": evaluation.evaluator_revision,
             "idempotency_key": evaluation.idempotency_key,
         }
-        if EvaluationService._sha256_json(proposal_payload) != evaluation.proposal_hash:
+        if _sha256_json(proposal_payload) != evaluation.proposal_hash:
             raise TaskNotFinalizable("evaluation_task_proposal_hash_mismatch")
 
         proposed_events = [
@@ -1859,6 +1859,11 @@ class TaskRuntime:
                 "success_evaluation_recorded", "success_evaluation_rejected"
             ] = "success_evaluation_recorded"
         elif evaluation.status == "rejected":
+            rejection_reason = evaluation.rejection_reason
+            if not isinstance(rejection_reason, str) or not rejection_reason:
+                raise TaskNotFinalizable(
+                    "evaluation_rejection_reason_missing"
+                )
             disposition_events = [
                 event
                 for event in related_events
@@ -1867,7 +1872,7 @@ class TaskRuntime:
             expected_event = {
                 "evaluation_id": str(evaluation.id),
                 "outcome_id": str(evaluation.outcome_id),
-                "reason": evaluation.rejection_reason,
+                "reason": rejection_reason,
             }
             result_category = "success_evaluation_rejected"
         else:
