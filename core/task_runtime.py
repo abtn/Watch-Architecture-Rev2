@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.models import (
     Evaluation,
-    EvidenceLink,
     Event,
+    EvidenceLink,
     KnowledgeItem,
     LearningChange,
     Outcome,
@@ -1964,7 +1964,10 @@ class TaskRuntime:
                 or payload.get("team_id") != str(task.team_id)
                 or payload.get("objective_id") != str(task.objective_id)
                 or payload.get("policy_version") != task.policy_version
-                or (expected_type == "strategy_proposal_accepted" and reason is not None)
+                or (
+                    expected_type == "strategy_proposal_accepted"
+                    and reason is not None
+                )
                 or (
                     expected_type == "strategy_proposal_rejected"
                     and (not isinstance(reason, str) or not reason.strip())
