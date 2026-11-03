@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
@@ -29,11 +30,9 @@ from core.models import (
 )
 from core.snapshot_store import SnapshotStore
 from core.source_fetch import SourceFetchError
-from tests.test_r6b_dispatcher import (
-    DispatchFixture,
-    FakeFetcher,
-    dispatch_fixture,
-)  # noqa: F401, F811
+from tests.test_r6b_dispatcher import DispatchFixture, FakeFetcher
+
+pytest_plugins = ["tests.test_r6b_dispatcher"]
 
 
 def _add_configured_action(
