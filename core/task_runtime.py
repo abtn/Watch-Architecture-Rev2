@@ -549,7 +549,10 @@ class TaskRuntime:
                     self._committed_operator_decision_observation(session, task)
                 )
                 if expected_operator_observation is not None:
-                    if expected_operator_observation.result_category in _SUCCESS_CATEGORIES:
+                    if (
+                        expected_operator_observation.result_category
+                        in _SUCCESS_CATEGORIES
+                    ):
                         raise TaskNotFinalizable(
                             "operator_decision_requires_success_finalization"
                         )

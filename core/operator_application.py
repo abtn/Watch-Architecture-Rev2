@@ -418,7 +418,9 @@ class OperatorApplicationAdapter:
                 raise OperatorApplicationError(
                     "approval_task_conflict_failure_not_recorded"
                 ) from error
-            raise OperatorTaskRequestConflict("learning_change_already_decided") from error
+            raise OperatorTaskRequestConflict(
+                "learning_change_already_decided"
+            ) from error
         result_category: Literal[
             "success_learning_change_accepted", "success_learning_change_rejected"
         ] = (
