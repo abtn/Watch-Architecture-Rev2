@@ -96,7 +96,7 @@ def _strategy_candidate(
             }
         ],
         "constraints": {"max_tasks": 3, "max_cost_usd": 0.0},
-        "stop_conditions": ["all_configured_sources_observed"],
+        "stop_conditions": ["configured_source_ingested"],
     }
 
 
