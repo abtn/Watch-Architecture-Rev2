@@ -39,13 +39,15 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 **R6 continuation**
 
 - **R6-F — Checkpoints 1–4 complete and merged:** PR #31 merged C3 create-only approval/canonical commit; PR #32 merged C4 Team Experience projection/retrieval. The combined C3+C4 operator-local verification passed on PR #33 head `7bd7c5df`; merge commit `de1af38` has the identical tree SHA. It passed migration/head validation at `0013_team_experience_projection`, 118 focused tests, Ruff, Mypy (27 files), 594 full-suite tests, and diff check. The run preceded merge; local `main` was subsequently synced cleanly. See `docs/testing.md` for exact evidence and qualification. D10 remains create-only; no production R6-F distillation provider is approved.
-- **R6-G — gated and not authorized:** the integrated Objective-to-later-Task knowledge loop, full verification, and explicit R6 exit gate remain to be demonstrated.
+- **R6-G — design prepared; implementation gated:** D9 is resolved in favor of the deterministic ruleset `watch.r6g.ingest-source-rules` revision `1`, which evaluates configured-source `ingest_source` terminal Outcomes only. The proposed integrated fixture combines three same-class cases (new Signal, legitimate no-change, terminal failure), real hybrid Context retrieval, Strategy/Plan materialization, ordinary Evaluation Tasks, distillation, explicit Operator review, Team Experience publication, and later-Task retrieval.
+- **R6-G implementation blockers identified in the design:** evaluator Task/request Event creation must be atomic with source terminalization; ExperienceDistiller must preserve a failed source Task as contrary evidence through a versioned v2 evidence pack while retaining v1 historical replay; TaskRuntime must recover an already-recorded Evaluation before failing its evaluator Task. The `propose_strategy`/`create_plan` control-Task terminal-result contract also needs an explicit decision. These are proposed design changes, not current capabilities.
+- **R6-G remains not authorized:** no implementation, migration, production evaluator provider, or R6 exit approval is included in the documentation work.
 
 ## Future plan
 
 Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for current milestone status.
 
-- **R6 next:** review the D9-resolved R6-G design and test map in the R6 entry gate and `docs/testing.md`; implementation still requires separate explicit operator authorization.
+- **R6 next:** review the [R6 entry gate](docs/development/r6-entry-gate.md), the [integrated fixture and service-interaction design](docs/development/r6g-integrated-fixture-design.md), and the [acceptance-to-test map](docs/testing.md). R6-G implementation requires separate explicit operator authorization.
 - **R7 — Distillation quality and knowledge lifecycle:** cross-case evaluation of abstractions, contradictory evidence and counterexamples, transferability tests, retrieval quality, review/expiry, staleness detection, supersession, and retirement — always preserving explicit provenance, canonical authority, and controlled commits.
 - **R8 — Multi-domain pressure test:** exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge stays outside the Kernel.
 - **R9 — Agent-assisted production workflow:** codified task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.
@@ -58,7 +60,9 @@ Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for curre
 - [`AGENTS.md`](AGENTS.md) — instructions for coding agents.
 - [`docs/development/agent-delivery-protocol.md`](docs/development/agent-delivery-protocol.md) — standing delivery authorization, automatic advancement, and merge conditions.
 - [`docs/development/local-embeddings.md`](docs/development/local-embeddings.md) — local LM Studio / BGE-M3 embedding API setup and smoke gate.
-- [`docs/development/r6-f-implementation-plan.md`](docs/development/r6-f-implementation-plan.md) — detailed R6-F technical checkpoints, open design decisions, and verification gates.
+- [`docs/development/r6-entry-gate.md`](docs/development/r6-entry-gate.md) — R6 decisions, implementation boundaries, acceptance gates, and the integrated R6 exit criteria.
+- [`docs/development/r6g-integrated-fixture-design.md`](docs/development/r6g-integrated-fixture-design.md) — detailed R6-G three-case fixture, service sequence, transaction/recovery boundaries, and required tests.
+- [`docs/development/r6-f-implementation-plan.md`](docs/development/r6-f-implementation-plan.md) — historical R6-F technical checkpoints, design decisions, and verification gates.
 - [`CHANGE_MAP.md`](CHANGE_MAP.md) — authority map for concepts.
 - [`docs/control-model.md`](docs/control-model.md) — Objective, StateAssessment, Strategy, Plan, and the dual-entry model.
 - [`docs/architecture.md`](docs/architecture.md) — general/original architecture for concepts not replaced by Revision 2.
@@ -71,6 +75,3 @@ Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for curre
 
 Python 3.12+, SQLAlchemy 2, PostgreSQL with pgvector, Alembic, `uv`, pytest, Ruff, and mypy. See `pyproject.toml`, `uv.lock`, and `compose.yaml` for the executable configuration. `.github/workflows/ci.yml` runs the same checks against a disposable PostgreSQL service container.
 
-## Development rule
-
-Make small, testable changes under the authority defined by `PLAN.md`, `CHANGE_MAP.md`, and the relevant spec/ADR. If the sources conflict or a milestone gate is blocked, stop and report rather than guessing. See `AGENTS.md` for the operating contract.
