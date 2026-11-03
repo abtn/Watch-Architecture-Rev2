@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.dispatcher import TaskDispatcher, TaskNotDispatchable
 from core.models import (
-    Event,
     Evaluation,
+    Event,
     EvidenceLink,
     Objective,
     Outcome,
