@@ -141,7 +141,7 @@ PR #30 merged to `main` at `61be8db75b6bd4e23fcc91ef00f1a8f0a833dde0` (implement
 
 ### Checkpoint 3 — Operator review and canonical learning commit
 
-**Status and authorization (updated 2026-11-03): IMPLEMENTED FOR CREATE-ONLY SCOPE; HOSTED CI GREEN; FINAL LOCAL FOLLOW-UP VERIFICATION PENDING.** The operator authorized C3 on 2026-11-01 and resolved D10 on 2026-11-02. PR #31 head `b9f1baf` passed hosted CI run `41593590306` (fresh PostgreSQL migration/head at `0012_learning_foundation`, Ruff, mypy 27 files, 579 tests). The D12 follow-up ensures a distinct-key losing approval Task is finalized as terminal_failure through TaskRuntime and recovered deterministically after interruption. Operator-local disposable-PostgreSQL verification passed on preceding code head `581ad185` (83 focused, 577 full tests); the follow-up code still needs the final local run before merge. No schema migration was introduced.
+**Status and authorization (updated 2026-11-03): IMPLEMENTED, MERGED, AND LOCALLY VERIFIED FOR CREATE-ONLY SCOPE.** C3 was merged by PR #31 to `main` at `99f8b6bbd76521eaac47761dcf432ebb3c0d28e3`. Final operator-local disposable-PostgreSQL verification passed on head `891bea490099a7478ef3538645f8924615187500`: 85 focused tests, 579 full-suite tests, Ruff, mypy (27 files), fresh migration to the single `0012_learning_foundation` head, and `git diff --check`. This included the D12 competing-approval loser-Task finalization and recovery cases. D10 remains resolved: C3 is create-only; revise/retire production is deferred. No C3 schema migration was introduced.
 
 **Purpose:** provide the R6-F canonical learning-commit boundary. Checkpoint 3 implements that boundary for real create-only LearningChanges; revise/retire proposal production and commitment are deferred beyond this checkpoint until a separately authorized knowledge-lifecycle scope exists.
 
@@ -223,7 +223,7 @@ Checkpoint 3's acceptance contract is limited to real create proposals from Chec
 
 ### Checkpoint 4 — Team Experience projection and later-Task retrieval
 
-**Status (2026-11-03): IMPLEMENTED ON PR #32; RECONCILED WITH MERGED C3 MAIN; FRESH HOSTED CI AND COMBINED LOCAL VERIFICATION PENDING.** Checkpoint 4 was separately authorized on 2026-11-02. PR #32's original implementation head `3682f7e` passed hosted CI run `41589798190` (fresh migration to one `0013_team_experience_projection` head, Ruff, mypy 27 files, 588 tests). The C4 branch has now been reconciled with the C3 merge commit `99f8b6b`; that earlier CI run predates reconciliation, so a new hosted run is required. Final C3 local verification passed 85 focused and 579 full-suite tests; that C3-only run did not include C4. Re-run the combined C4 local suite before formally closing this checkpoint.
+**Status (2026-11-03): IMPLEMENTED ON PR #32; RECONCILED WITH MERGED C3 MAIN; FRESH HOSTED CI PASSED; COMBINED LOCAL VERIFICATION PENDING.** Checkpoint 4 was separately authorized on 2026-11-02. The original C4 implementation head `3682f7e` passed hosted CI run `41589798190` with 588 tests. C4 was then reconciled with C3 merge commit `99f8b6b` using merge commit `923268b0efda16d2c87e1b53aba2acb1990680ad` and retargeted to `main`. Fresh hosted CI run [41598895890](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41598895890) passed on that exact combined head: fresh PostgreSQL migration to one `0013_team_experience_projection` head, Ruff, mypy (27 files), and **590 tests**. Final operator-local disposable-PostgreSQL verification on this combined C3+C4 tree remains required before formally closing C4.
 
 **Purpose:** make only current, accepted, eligible canonical Team Experience discoverable through the existing knowledge retrieval and Task Context path, without changing the existing Signal-only Domain Knowledge projection.
 
@@ -248,7 +248,7 @@ Checkpoint 3's acceptance contract is limited to real create proposals from Chec
 - Both cores share the combined eight-passage/8,000-character bound; Context v2 records per-core provenance and v1 replay remains immutable.
 - A later Task retrieves canonical Team Experience after the originating Task/session is gone.
 
-**Verification gate:** retain run `41589798190` as pre-reconciliation evidence only. Fresh hosted CI on the reconciled PR #32 head plus local disposable-PostgreSQL verification are required before merge. `docs/testing.md` contains the full command/environment contract. R6-G remains separately gated.
+**Verification gate:** run `41598895890` is the current hosted verification on the reconciled PR #32 head `923268b`; it passed fresh migration/head validation, Ruff, mypy, and 590 tests. Operator-local disposable-PostgreSQL verification on the same head is required before C4 merge. `docs/testing.md` contains the full command/environment contract. R6-G remains separately gated.
 
 ## 4. Decisions and design questions to close before implementation
 

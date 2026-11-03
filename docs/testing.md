@@ -198,7 +198,7 @@ Checkpoint 3 implements a thin in-repository adapter invoked in-process by a hos
 
 **Hosted verification on the review follow-up head b9f1baf5362cd899ccc96ceecef99484bd52b2d2:** CI run 41593590306 passed fresh PostgreSQL migrations and exactly one Alembic head at 0012_learning_foundation, Ruff, mypy (27 source files), and 579 full-suite tests. Focused additions in tests/test_experience_distiller.py exercise both direct losing-request finalization and interrupted-recovery finalization/replay.
 
-**Previous operator-local verification:** code head 581ad1853a81d77b2a4fc41abe349ccc53dbe6d2 passed fresh disposable PostgreSQL migration/head checks, 83 focused tests across test_experience_distiller.py, test_operator_application.py, and test_task_runtime.py, Ruff, mypy (27 source files), 577 full-suite tests, git diff --check, clean worktree, disposable container removal, and environment restoration. The D12 competing-request follow-up at b9f1baf has not yet been run locally; final merge is gated on that exact local verification. The user's C4 local run on 8333d69 also predates this follow-up and does not verify it.
+**Final operator-local verification:** the merged C3 head `891bea490099a7478ef3538645f8924615187500` passed fresh disposable PostgreSQL migration/head checks, 85 focused tests across `test_operator_application.py`, `test_experience_distiller.py`, and `test_task_runtime.py`, Ruff, mypy (27 source files), 579 full-suite tests, and `git diff --check`. The worktree was clean, the disposable container was removed, and database environment variables were restored. The earlier C4 run on `8333d69` predates C3 integration and does not verify the combined C3+C4 branch.
 
 The tests are located in the files that actually exist:
 - tests/test_operator_application.py: typed principal validation, Team/action authorization, request Task/Event creation, same-key replay/conflict, corrupt request Event rejection, duplicate same-key concurrency, approval-only no-deadline admission, malformed Task shape, and request fingerprint/identity tampering.
@@ -224,7 +224,7 @@ Checkpoint 4 was separately authorized on 2026-11-02. It implements the resolved
 - Context v2 records per-core provenance, KnowledgeItem version/hash, LearningChange identity, chunk details, and embedding identity. Existing same-Task Context v1 snapshots replay immutably; a later Task performs fresh retrieval.
 - `TaskRuntime.complete_knowledge_review(task_id)` runs an already-enqueued ordinary `review_knowledge` Task through existing admission/finalization. Due item transitions, Task-attributed Event, terminal Outcome/Snapshot, and Task completion are atomic and replayable. No new scheduler, dispatcher, or Task runtime was introduced.
 
-**Prior hosted verification (before C3 reconciliation):** [run 41589798190](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41589798190) passed on code head `3682f7e270ca65820e064d68c6e0bef5c390c5da`: fresh PostgreSQL migration to one `0013_team_experience_projection` head, Ruff, mypy (27 source files), and 588 tests. It does not verify the reconciled C4+C3 tree; a fresh hosted CI run is required.
+**Prior hosted verification (before C3 reconciliation):** [run 41589798190](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41589798190) passed on code head `3682f7e270ca65820e064d68c6e0bef5c390c5da` with 588 tests. **Fresh hosted verification after reconciliation:** [run 41598895890](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41598895890) passed on exact combined head `923268b0efda16d2c87e1b53aba2acb1990680ad`: fresh PostgreSQL migration to one `0013_team_experience_projection` head, Ruff, mypy (27 source files), and **590 tests**.
 
 **Local verification gate:** rerun on the reconciled PR #32 head, using a fresh disposable pgvector PostgreSQL database with both `DATABASE_URL` and `TEST_DATABASE_URL` bound to it. Run `uv sync --locked`, `uv run alembic upgrade head`, confirm exactly one head/current at `0013_team_experience_projection`, then:
 
@@ -236,7 +236,7 @@ uv run pytest -q
 git diff --check origin/main...HEAD
 ```
 
-Restore both database environment variables and remove only the disposable container. Never use persistent `watch`; no live generation provider is called. Do not formally close C4 until the reconciled local run and fresh hosted CI both pass.
+Restore both database environment variables and remove only the disposable container. Never use persistent `watch`; no live generation provider is called. Fresh hosted CI on the reconciled combined head has passed; do not formally close C4 until the operator-local disposable-PostgreSQL run on that same head also passes.
 
 ## R6-F Checkpoint 1 — Evaluation and canonical learning schema
 
