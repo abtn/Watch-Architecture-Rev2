@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from core.ingestion import IngestionProposal, IngestionService
 from core.models import (
     Event,
+    Outcome,
     Objective,
     Plan,
     PlanAction,
@@ -34,7 +35,7 @@ from core.snapshot_store import SnapshotStore
 from core.state_assessment import StateAssessmentBuilder, _canonical_json
 from core.strategy import StrategyService
 from core.strategy_proposal import FakeStrategyWorker, StrategyContext, StrategyProposal
-from core.task_runtime import TaskNotEligible, TaskRuntime
+from core.task_runtime import TaskNotEligible, TaskRuntime, TerminalObservation
 
 
 @pytest.fixture
@@ -124,6 +125,9 @@ def plan_request(session_factory: sessionmaker[Session]) -> Iterator[dict[str, A
             )
             session.execute(delete(Plan).where(Plan.team_id == team_id))
             session.execute(delete(Event).where(Event.task_id.in_(task_ids)))
+            session.execute(
+                delete(Outcome).where(Outcome.recorded_by_task_id.in_(task_ids))
+            )
             session.execute(delete(Task).where(Task.team_id == team_id))
             session.execute(delete(Objective).where(Objective.team_id == team_id))
             session.execute(delete(TeamPolicy).where(TeamPolicy.team_id == team_id))
@@ -1161,3 +1165,53 @@ def test_materialized_task_uses_existing_ingestion(
     service = IngestionService(session_factory, snapshot_store)
     assert service.ingest(proposal).outcome == "signal_ingested"
     assert service.ingest(proposal).outcome == "replayed"
+
+
+def test_plan_creation_terminalizes_through_task_runtime_and_replays(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    plan_request: dict[str, Any],
+) -> None:
+    started_at = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        task = session.get(Task, plan_request["task_id"])
+        assert task is not None
+        task.attempt_count = 1
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=task.id,
+                type="task_started",
+                payload={"attempt_count": 1},
+                created_at=started_at,
+            )
+        )
+
+    result = PlanService(session_factory).create(**plan_request)
+    observation = TerminalObservation(
+        task_id=plan_request["task_id"],
+        attempt=1,
+        result_category="success_plan_created",
+        observed_at=started_at,
+        plan_id=result.plan_id,
+        plan_event_id=result.event_id,
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    first = runtime.finalize(observation)
+    replay = runtime.finalize(observation)
+
+    assert first.status == "done"
+    assert replay.replayed is True
+    assert replay.outcome_id == first.outcome_id
+    with session_factory() as session:
+        task = session.get(Task, plan_request["task_id"])
+        assert task is not None and task.status == "done"
+        completed = session.scalar(
+            select(Event).where(
+                Event.task_id == task.id, Event.type == "task_completed"
+            )
+        )
+        assert completed is not None
+        assert completed.payload["result_category"] == "success_plan_created"
+        assert completed.payload["plan_id"] == str(result.plan_id)
+        assert completed.payload["plan_event_id"] == str(result.event_id)
