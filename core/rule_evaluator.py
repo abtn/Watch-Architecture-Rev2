@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.evaluations import (
+    Conclusion,
     EvaluationDraft,
     EvaluationEvidence,
     EvaluationFindings,
@@ -102,6 +103,7 @@ class IngestSourceRuleEvaluator:
             )
 
             signal: Signal | None = None
+            conclusion: Conclusion = "inconclusive"
             if result_category == "success_signal_created":
                 signal = self._validate_created_signal(
                     session,
