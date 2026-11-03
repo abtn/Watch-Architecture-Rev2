@@ -125,18 +125,25 @@ def _distillation_candidate(user_prompt: str) -> dict:
                 context.add(reference)
 
     practice = single_case
+    body = (
+        "One recorded configured-source observation is insufficient to establish "
+        "a transferable rule. Preserve its provenance and keep this practice "
+        "low-confidence until independent cases are available."
+        if practice
+        else (
+            "Record each configured source outcome and preserve its evidence. "
+            "Two successful ingestion observations support this bounded process "
+            "pattern; the terminal failure remains contrary evidence. The cases "
+            "do not establish source truth, relevance, causation, or Objective success."
+        )
+    )
     return {
         "kind": "practice" if practice else "pattern",
         "title": "Configured-source outcome verification",
         "statement": (
             "Verify terminal source-ingestion evidence before accepting a practice."
         ),
-        "body": (
-            "Record each configured source outcome and preserve its evidence. "
-            "Two successful ingestion observations support this bounded process "
-            "pattern; the terminal failure remains contrary evidence. The cases "
-            "do not establish source truth, relevance, causation, or Objective success."
-        ),
+        "body": body,
         "applicability": {
             "task_class": "ingest_source",
             "situation": "A Plan-materialized Task ingests a Team-configured source.",
@@ -368,7 +375,13 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
         plan_result = PlanService(session_factory).create(
             task_id=plan_task_id,
             accepted_event_id=strategy_result.disposition.event_id,
-            proposal_hash=strategy_result.disposition.proposal_hash,
+            proposal_hash=(
+                session.scalar(
+                    select(Event).where(
+                        Event.id == strategy_result.disposition.event_id
+                    )
+                ).payload["proposal_hash"]
+            ),
             objective_id=objective_id,
             team_id=team_id,
         )
@@ -384,8 +397,22 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
         )
         assert plan_terminal.status == "done"
         plan_id = plan_result.plan_id
-        source_task_ids = list(plan_result.task_ids)
-        assert len(source_task_ids) == 3
+        assert len(plan_result.task_ids) == 3
+        with session_factory() as session:
+            plan_actions = list(
+                session.scalars(
+                    select(PlanAction).where(PlanAction.plan_id == plan_id)
+                )
+            )
+        task_by_url = {
+            action.action["origin_url"]: task_id
+            for action_id, task_id in zip(
+                plan_result.action_ids, plan_result.task_ids, strict=True
+            )
+            for action in plan_actions
+            if action.action_id == action_id
+        }
+        source_task_ids = [task_by_url[url] for url, _ in source_urls]
 
         unchanged_content = b"Pre-existing configured source content for no change."
         unchanged_hash = "sha256:" + hashlib.sha256(unchanged_content).hexdigest()
@@ -561,12 +588,10 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
             approved_item_id, now=datetime.now(timezone.utc)
         )
         assert indexed.outcome == "indexed"
-        rebuilt = indexer.rebuild_all(now=datetime.now(timezone.utc))
-        assert any(
-            item.knowledge_item_id == approved_item_id
-            and item.outcome == "unchanged"
-            for item in rebuilt
+        replayed_index = indexer.index_knowledge_item(
+            approved_item_id, now=datetime.now(timezone.utc)
         )
+        assert replayed_index.outcome == "unchanged"
 
         later_objective_id, later_task_id = uuid4(), uuid4()
         later_objective_statement = "Configured source outcome verification."
