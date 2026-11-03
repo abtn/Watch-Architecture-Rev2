@@ -9,15 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.dispatcher import TaskDispatcher
-from core.models import Event, Signal, Task
+from core.models import Event, Signal
 from core.rule_evaluator import IngestSourceRuleEvaluator, RuleEvaluationError
-from core.source_fetch import SourceFetchError
 from core.snapshot_store import SnapshotStore
-from tests.test_r6b_dispatcher import (
-    DispatchFixture,
-    FakeFetcher,
-    dispatch_fixture,
-)
+from core.source_fetch import SourceFetchError
+from tests.test_r6b_dispatcher import DispatchFixture, FakeFetcher
 
 
 def _evaluator_task_id(
