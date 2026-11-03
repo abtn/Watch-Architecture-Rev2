@@ -546,6 +546,8 @@ def test_failed_publication_records_staleness_and_rebuilds(
             row.embedding_space_key != provider.current_space().key for row in chunks
         )
 
+    # Query embedding remains available; only the preceding index refresh failed.
+    provider.fail = False
     retriever = HybridKnowledgeRetriever(
         experience_env.session_factory, experience_env.snapshot_store, provider
     )
