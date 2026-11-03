@@ -403,6 +403,7 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
         )
         assert plan_terminal.status == "done"
         plan_id = plan_result.plan_id
+        assert plan_id is not None
         assert len(plan_result.task_ids) == 3
         with session_factory() as session:
             plan_actions = list(
@@ -516,6 +517,7 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
             distillation_task_id, [item for item in evaluation_ids if item is not None]
         )
         accepted_change_id = accepted_proposal.learning_change_id
+        assert accepted_change_id is not None
         proposal_terminal = runtime.finalize(
             TerminalObservation(
                 task_id=distillation_task_id,
@@ -538,6 +540,7 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
             TaskGenerationCostService(session_factory),
         ).propose(single_case_task_id, [evaluation_ids[0]])
         rejected_change_id = low_result.learning_change_id
+        assert rejected_change_id is not None
         low_terminal = runtime.finalize(
             TerminalObservation(
                 task_id=single_case_task_id,
@@ -576,6 +579,7 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
         assert accepted.learning_change_status == "accepted"
         assert accepted.knowledge_item_id is not None
         approved_item_id = accepted.knowledge_item_id
+        assert approved_item_id is not None
 
         with session_factory() as session:
             low_change = session.get(LearningChange, rejected_change_id)
