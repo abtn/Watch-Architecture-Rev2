@@ -115,6 +115,7 @@ The deterministic end-to-end fixture must demonstrate all of the following befor
 **Provider boundary:** deterministic fake StrategyProposer and ExperienceDistiller providers and a deterministic test embedding provider are used in the acceptance fixture. This D9 decision authorizes no external model call and does not alter D6: no production R6-F distillation provider is approved.
 
 **Scope of decision:** D9 selects the initial Evaluation source only. It does not authorize R6-G implementation, a human/model evaluator, broader Task-class evaluation, automatic acceptance, D10 revise/retire, a dispatcher expansion, or a second runtime. R6-G still requires a separate explicit operator authorization.
+
 **Frozen initial limits:** three total Task starts per Task; 30-second worker deadline; recover an orphaned running Task after 60 seconds with attempt-number fencing; source connect/read/total timeouts of 3/10/15 seconds; 2 MiB decompressed response ceiling; no redirects; maximum eight retrieved passages and 8,000 Unicode characters of retrieved knowledge. Production embedding and generation providers are deliberately staged to R6-D and R6-E, respectively.
 
 ### Explicitly deferred
