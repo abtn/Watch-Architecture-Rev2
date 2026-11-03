@@ -58,7 +58,9 @@ from tests.test_strategy_proposer import _FakeGenerationProvider
 from tests.test_team_experience import FakeEmbeddingProvider
 
 
-def _strategy_candidate(objective_id: UUID, sources: tuple[tuple[str, str], ...]) -> dict:
+def _strategy_candidate(
+    objective_id: UUID, sources: tuple[tuple[str, str], ...]
+) -> dict:
     actions = [
         {
             "id": str(uuid4()),
@@ -80,7 +82,9 @@ def _strategy_candidate(objective_id: UUID, sources: tuple[tuple[str, str], ...]
                 "id": str(uuid4()),
                 "name": "Configured-source evidence",
                 "scope": "Collect three independent configured-source observations.",
-                "boundary": "Do not infer source truth or Objective achievement from ingestion.",
+                "boundary": (
+                    "Do not infer source truth or Objective achievement from ingestion."
+                ),
                 "workstreams": [
                     {
                         "id": str(uuid4()),
@@ -247,7 +251,9 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
             for origin_url, source_type in source_urls
         ),
     )
-    objective_statement = "Gather scientific source evidence from configured feed monitoring."
+    objective_statement = (
+        "Gather scientific source evidence from configured feed monitoring."
+    )
     strategy_task_id = uuid4()
     plan_task_id = uuid4()
     baseline_signal_id = uuid4()
@@ -551,7 +557,9 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
                 learning_change_id=rejected_change_id,
                 decision="reject",
                 idempotency_key=uuid4(),
-                rejection_reason="Single-case evidence remains low-confidence practice.",
+                rejection_reason=(
+                    "Single-case evidence remains low-confidence practice."
+                ),
             ),
         )
         assert rejected.learning_change_status == "rejected"
