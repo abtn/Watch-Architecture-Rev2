@@ -170,7 +170,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Purpose:** assess one immutable Outcome without rewriting the observation.
 - **R6-G D9 decision (2026-11-03):** the first integrated caller is the deterministic code-defined ruleset `watch.r6g.ingest-source-rules`, revision `1`, for `ingest_source` terminal Outcomes only. It evaluates execution-contract consistency from typed terminal categories, task/attempt Events, the corresponding ingestion business Event, and canonical Signal/Snapshot identity/hash checks. `success_signal_created` and `success_no_change` can produce `worked`; a consistent `terminal_failure` can produce `failed`. `worked` does not mean source truth, causal impact, or Objective achievement. Unsupported or inconsistent evidence fails closed without creating an Evaluation. Revision 1 does not emit `mixed` or invent an `inconclusive` judgment.
 - **Evaluator boundary:** the rule component returns a typed `EvaluationDraft` only. It passes that draft to `EvaluationService.propose(evaluator_kind="rule", evaluator_identity="watch.r6g.ingest-source-rules", evaluator_revision="1")`; the service validates evidence and owns proposal/disposition Events, while `TaskRuntime` owns the Evaluation Task's terminal lifecycle. No human/model Evaluation producer is wired or authorized for R6-G v1. The generic persisted evaluator-kind vocabulary is not additional R6-G authorization.
-- **Durable target binding:** an application-managed ordinary `evaluate_outcome` Task is created with an immutable `evaluation_task_requested` Event containing Team, target Outcome, source Task, Outcome observation hash, evaluator identity/revision, and a request fingerprint. Use a deterministic Task UUIDv5 over Team + Outcome + ruleset identity/revision for idempotent enqueue/replay; verify any existing Task and exact request Event rather than creating a second evaluation Task. This uses the existing Task/Event K boundary and exact `Evaluation`/`EvidenceLink` worker write scope; it is not a dispatcher or scheduler.
+- **Durable target binding:** in the same transaction that `TaskRuntime` commits the terminal `task_execution` Outcome for a configured-source `ingest_source` Task, application code creates exactly one ordinary same-Team `evaluate_outcome` Task and its immutable `evaluation_task_requested` Event. The Event is owned by the evaluator Task and binds Team, source Task/attempt/result, PlanAction and policy pin, target Outcome ID and observation Snapshot ref/hash, evaluator identity/revision, and a canonical request fingerprint. A fixed UUIDv5 namespace derives the Task ID from Team + Outcome + ruleset identity/revision. The Task copies the source Task policy version, has no Objective/Plan/Action links, exact `allowed_writes=["Evaluation", "EvidenceLink"]`, zero tools/cost, a 30-second deadline, and three maximum attempts. TaskRuntime verifies exact Task/Event shape before admission and verifies the request exists on source-terminal replay. Task/Event creation is a narrow K side effect, not a general queue, dispatcher, or scheduler; a missing/duplicate/mismatched record fails closed.
 - **Reads:** exactly one `evaluation_task_requested` Event owned by this Task (including the target Outcome ID/hash and pinned evaluator identity/revision), the target Outcome, its source Task and immutable PlanAction/policy provenance, related same-Team Outcomes, domain-matching Signals, and immutable Snapshots referenced by those records. The Event target and fingerprint are revalidated before producing a draft.
 - **Writes:** one Evaluation proposal and its Evaluation-scoped EvidenceLinks, plus the narrowly scoped Events `evaluation_proposed`, `evaluation_recorded`, or `evaluation_rejected`. The lifecycle is `proposed → recorded or rejected`; the worker supplies draft findings and evidence only. Trusted application code supplies evaluator kind, stable identity, and revision, validates the proposal, and alone changes its disposition.
 - **Validation:** the target Outcome and Outcome evidence belong to the Task's Team; Signal evidence matches the Team's Domain; Snapshot references and hashes match the canonical source; quoted spans match exact UTF-8-decoded Snapshot text at supplied character offsets. The primary Outcome must appear as an evidence link. Idempotency is scoped to the creating Task.
@@ -263,7 +263,7 @@ TaskRuntime lifecycle records, distinct from the task-specific Signal Snapshot
 side effect in footnote ¹; footnote ¹ grants no worker Snapshot permission.
 | Task type | Team | Signal | SignalDisposition | Thread | Hypothesis | EvidenceLink | ConfidenceChange | Artifact | Outcome | Evaluation | KnowledgeItem | TeamPolicy | LearningChange | Trigger | Consultation | TeamDraft | Task (K) | Snapshot (K) | Event (K) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `ingest_source` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | K¹ | K |
+| `ingest_source` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K²⁵ | K¹ | K²⁵ |
 | `manual_signal_ingest` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | K¹ | K |
 | `triage_signal` | — | — | W | C/W² | — | — | — | — | — | — | — | — | — | — | — | — | K²³ | — | K |
 | `update_thread` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | K | — | K |
@@ -319,6 +319,19 @@ documented deferred/matched triage cases.
 `plan_stopped` for an accepted transition, and the categorized
 `plan_transition_rejected` Event for a rejected one. No other Event type, no
 Snapshot, and no Task other than the current one may be written.
+²⁵ On terminal finalization of a configured-source `ingest_source` Task,
+TaskRuntime may create exactly one same-Team pending `evaluate_outcome` Task
+and its one `evaluation_task_requested` Event in the same transaction as the
+source terminal Outcome/Snapshot/Events. The new Task copies the source
+policy-version pin, has no Objective/Plan/Action links, exact
+`allowed_writes=["Evaluation", "EvidenceLink"]`, zero tools/cost, a
+30-second deadline, and three maximum attempts. Its deterministic UUIDv5 ID
+uses Team + Outcome + the fixed D9 rule identity/revision. The request Event
+must bind the exact source Task/attempt/PlanAction/result, Outcome ID and
+Snapshot ref/hash, evaluator identity/revision, and canonical request
+fingerprint. Terminal replay verifies the exact Task/Event and never repairs
+or duplicates it. This is a narrow TaskRuntime K effect, not a scheduler,
+general dispatcher, or worker Task/Event grant.
 #### R4 `propose_strategy` scope extension
 This ordinary Task validates one transient StrategyProposal against its
 same-Team active Objective and exact derived R3 assessment. It requires a
@@ -537,7 +550,7 @@ Starting points, tuned during M2; per-Task values may override downward, never u
 | `review_knowledge` | 0 | 0 | 60 |
 | `render_output` | 4 | 0.75 | 240 |
 | `record_outcome` | 0 | 0 | — |
-| `evaluate_outcome` | 4 | 0.40 | 180 |
+| `evaluate_outcome` | 0 | 0.00 | 30 |
 | `propose_learning_change` | 4 | 0.40 | 180 |
 | `approve_learning_change` | 0 | 0 | — |
 | `seed_knowledge` | 0 | 0 | — |
