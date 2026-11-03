@@ -40,6 +40,10 @@ class TeamPolicy(Base):
     __tablename__ = "team_policies"
     __table_args__ = (
         UniqueConstraint("team_id", "version", name="uq_team_policies_team_version"),
+        CheckConstraint(
+            "schema_version IN (1, 2)",
+            name="ck_team_policies_schema_version",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -48,6 +52,9 @@ class TeamPolicy(Base):
     )
     version: Mapped[int] = mapped_column(nullable=False)
     rules: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    schema_version: Mapped[int] = mapped_column(
+        nullable=False, default=1, server_default="1"
+    )
 
 
 class Objective(Base):
@@ -475,6 +482,158 @@ class KnowledgeChunk(Base):
     indexed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+class TeamExperienceChunk(Base):
+    """Rebuildable projection for one accepted canonical KnowledgeItem version."""
+
+    __tablename__ = "team_experience_chunks"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["knowledge_item_id", "team_id"],
+            ["knowledge_items.id", "knowledge_items.team_id"],
+            name="fk_team_experience_chunks_item_team",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["origin_learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_team_experience_chunks_learning_change_team",
+        ),
+        UniqueConstraint(
+            "knowledge_item_id",
+            "item_version",
+            "chunk_index",
+            "embedding_space_key",
+            name="uq_team_experience_chunks_item_index_space",
+        ),
+        CheckConstraint(
+            "item_version > 0 AND chunk_index >= 0",
+            name="ck_team_experience_chunks_item_chunk",
+        ),
+        CheckConstraint(
+            "item_content_hash ~ '^sha256:[0-9a-f]{64}$' AND "
+            "chunk_hash ~ '^sha256:[0-9a-f]{64}$'",
+            name="ck_team_experience_chunks_hashes",
+        ),
+        CheckConstraint(
+            "embedding_dimensions > 0 AND "
+            "vector_dims(embedding) = embedding_dimensions",
+            name="ck_team_experience_chunks_embedding_dimensions",
+        ),
+        CheckConstraint(
+            "embedding_space_key ~ '^sha256:[0-9a-f]{64}$'",
+            name="ck_team_experience_chunks_embedding_space_key",
+        ),
+        CheckConstraint(
+            "length(chunking_version) > 0 AND "
+            "length(embedding_configuration) > 0",
+            name="ck_team_experience_chunks_configuration",
+        ),
+        Index(
+            "ix_team_experience_chunks_team_space_item",
+            "team_id",
+            "embedding_space_key",
+            "knowledge_item_id",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    knowledge_item_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    item_version: Mapped[int] = mapped_column(nullable=False)
+    item_content_hash: Mapped[str] = mapped_column(String, nullable=False)
+    origin_learning_change_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
+    chunk_index: Mapped[int] = mapped_column(nullable=False)
+    chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
+    chunk_hash: Mapped[str] = mapped_column(String, nullable=False)
+    chunking_version: Mapped[str] = mapped_column(String, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(), nullable=False)
+    embedding_provider: Mapped[str] = mapped_column(String, nullable=False)
+    embedding_model: Mapped[str] = mapped_column(String, nullable=False)
+    embedding_revision: Mapped[str] = mapped_column(String, nullable=False)
+    embedding_configuration: Mapped[str] = mapped_column(String, nullable=False)
+    embedding_dimensions: Mapped[int] = mapped_column(nullable=False)
+    embedding_space_key: Mapped[str] = mapped_column(String, nullable=False)
+    indexed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class TeamExperienceIndexState(Base):
+    """Operational publication state for one canonical Team Experience item."""
+
+    __tablename__ = "team_experience_index_state"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["knowledge_item_id", "team_id"],
+            ["knowledge_items.id", "knowledge_items.team_id"],
+            name="fk_team_experience_index_state_item_team",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["origin_learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_team_experience_index_state_learning_change_team",
+        ),
+        UniqueConstraint(
+            "knowledge_item_id",
+            "team_id",
+            name="uq_team_experience_index_state_item_team",
+        ),
+        CheckConstraint(
+            "status IN ('stale', 'published', 'ineligible')",
+            name="ck_team_experience_index_state_status",
+        ),
+        CheckConstraint(
+            "item_version > 0 AND attempt_count >= 0 AND chunk_count >= 0",
+            name="ck_team_experience_index_state_counts",
+        ),
+        CheckConstraint(
+            "item_content_hash ~ '^sha256:[0-9a-f]{64}$'",
+            name="ck_team_experience_index_state_item_hash",
+        ),
+        CheckConstraint(
+            "embedding_space_key IS NULL OR "
+            "embedding_space_key ~ '^sha256:[0-9a-f]{64}$'",
+            name="ck_team_experience_index_state_space_key",
+        ),
+        Index(
+            "ix_team_experience_index_state_team_status",
+            "team_id",
+            "status",
+            "knowledge_item_id",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    knowledge_item_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    item_version: Mapped[int] = mapped_column(nullable=False)
+    item_content_hash: Mapped[str] = mapped_column(String, nullable=False)
+    origin_learning_change_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    embedding_space_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    chunk_count: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default="0"
+    )
+    attempt_count: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default="0"
+    )
+    last_error_kind: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    indexed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
 
 class LearningChange(Base):
     """Evidence-backed proposal or durable learning disposition."""

@@ -140,7 +140,7 @@ R6-F is divided into four checkpoints. Each requires focused tests, applicable f
 | 1 — Evaluation and canonical learning foundation | Fresh migration from the preceding head with one Alembic head; Evaluation lifecycle; Team/Outcome/Signal/Snapshot/hash/quote validation; multi-record evidence representation; Task scope and TaskRuntime result fencing; rollback and database constraints. |
 | 2 — ExperienceDistiller and LearningChange proposal | Deterministic evidence pack/hash; fake-provider valid/invalid/malformed/error cases; one-case Practice and distinct-Task cross-case threshold; contrary evidence and uncertainty preservation; stale/cross-Team reference rejection; reservation-before-call and unknown/overrun cost behavior; proposal replay. |
 | 3 — Operator approval and canonical commit | Trusted Operator identity; create-only approve/reject; stale-evidence and concurrent-decision rejection; atomic rollback; exact replay and crash recovery; no revise/retire production path; proof TeamPolicy cannot be changed. |
-| 4 — Team Experience projection and retrieval | Versioned TeamPolicy interval schema and pinned-policy date assignment; positive non-boolean interval validation with no default; UTC arithmetic and exact due boundary; NULL/due exclusion at index and retrieval; deterministic `review_knowledge` Task transition with atomic Event/replay/concurrency; no automatic reactivation or retroactive backfill; index failure without canonical rollback; stale exclusion and idempotent rebuild; exact Context manifest provenance; global eight-passage/8,000-character bound; later-Task reuse. |
+| 4 — Team Experience projection and retrieval | Migration to one head at `0013_team_experience_projection`; TeamPolicy schema v1/v2 and pinned review-date assignment; positive non-boolean interval validation with no default; UTC arithmetic/exact due boundary; NULL/due exclusion; deterministic `review_knowledge` Task completion/replay with atomic status/Event/Outcome; separate Team Experience projection and publication-state constraints; `stale` on provider/index failure, atomic chunks+`published`, `ineligible` for NULL/due; failure leaves canonical rows unchanged; rebuild/retry/idempotency; canonical rechecks at indexing/retrieval/Context; dual-core FTS/vector RRF and combined eight-passage/8,000-character limit; Context v2 provenance and v1 replay; later-Task reuse.
 
 Use deterministic fake providers in CI. ADR-0031 selects a provider for R6-E only; separate R6-F provider/model approval is required before any production distillation request. Never use the persistent `watch` database for these checks.
 
@@ -198,7 +198,7 @@ Checkpoint 3 implements a thin in-repository adapter invoked in-process by a hos
 
 **Hosted verification on the review follow-up head b9f1baf5362cd899ccc96ceecef99484bd52b2d2:** CI run 41593590306 passed fresh PostgreSQL migrations and exactly one Alembic head at 0012_learning_foundation, Ruff, mypy (27 source files), and 579 full-suite tests. Focused additions in tests/test_experience_distiller.py exercise both direct losing-request finalization and interrupted-recovery finalization/replay.
 
-**Previous operator-local verification:** code head 581ad1853a81d77b2a4fc41abe349ccc53dbe6d2 passed fresh disposable PostgreSQL migration/head checks, 83 focused tests across test_experience_distiller.py, test_operator_application.py, and test_task_runtime.py, Ruff, mypy (27 source files), 577 full-suite tests, git diff --check, clean worktree, disposable container removal, and environment restoration. The D12 competing-request follow-up at b9f1baf has not yet been run locally; final merge is gated on that exact local verification. The user's C4 local run on 8333d69 also predates this follow-up and does not verify it.
+**Final operator-local verification:** the merged C3 head `891bea490099a7478ef3538645f8924615187500` passed fresh disposable PostgreSQL migration/head checks, 85 focused tests across `test_operator_application.py`, `test_experience_distiller.py`, and `test_task_runtime.py`, Ruff, mypy (27 source files), 579 full-suite tests, and `git diff --check`. The worktree was clean, the disposable container was removed, and database environment variables were restored. The earlier C4 run on `8333d69` predates C3 integration and does not verify the combined C3+C4 branch.
 
 The tests are located in the files that actually exist:
 - tests/test_operator_application.py: typed principal validation, Team/action authorization, request Task/Event creation, same-key replay/conflict, corrupt request Event rejection, duplicate same-key concurrency, approval-only no-deadline admission, malformed Task shape, and request fingerprint/identity tampering.
@@ -210,7 +210,33 @@ Focused test command:
 
 For full verification use a fresh disposable PostgreSQL instance, bind both DATABASE_URL and TEST_DATABASE_URL to it, then run uv sync --locked, uv run alembic upgrade head, confirm one head/current at 0012_learning_foundation, the focused tests above, uv run ruff check core tests migrations, uv run mypy core, uv run pytest -q, and git diff --check origin/main...HEAD. Restore both database environment variables and remove only the container created by the check. Never use the persistent watch database; no live generation provider is called.
 
-**Closure boundary:** D10 is resolved (2026-11-02): C3 is create-only. Revise/retire proposal production and commitment are deferred until a separately authorized knowledge-lifecycle scope defines a genuine proposal source and version/history/concurrency/recovery/projection semantics. D7 is resolved (2026-11-02): the optional TeamPolicy interval is pinned to the approval Task, UTC-based, and NULL/due items are excluded from retrieval; the deterministic review_knowledge Task owns active → needs_review. C3 still writes NULL review dates and does not implement D7; that is Checkpoint 4 work. C4 is separately authorized and staged in PR #32; R6-G remains a separate gate.
+**C3 closure:** PR #31 is merged to `main` at `99f8b6bbd76521eaac47761dcf432ebb3c0d28e3`. Final operator-local disposable-PostgreSQL verification passed 85 focused tests, 579 full-suite tests, Ruff, mypy (27 source files), fresh migration to the single head `0012_learning_foundation`, and `git diff --check`. D10 remains resolved: C3 is create-only; revise/retire proposal production and commitment are deferred to separately authorized lifecycle work. D7's review-date semantics are implemented in C4, not written through the C3 approval scope.
+
+## R6-F Checkpoint 4 — Team Experience projection and later-Task retrieval
+
+Checkpoint 4 was separately authorized on 2026-11-02. It implements the resolved D7 contract and publishes only eligible accepted canonical Team Experience through a separate regenerable projection.
+
+**Implementation boundaries**
+- Migration `0013_team_experience_projection` adds TeamPolicy rules-schema version support plus separate `team_experience_chunks` and `team_experience_index_state` tables. The Signal-only `knowledge_chunks.signal_id` projection remains unchanged.
+- Canonical acceptance reads optional `review.knowledge_item_interval_days` from the approval Task's pinned TeamPolicy version. The interval must be a positive non-boolean integer; there is no default. `review_after` is calculated from canonical `committed_at` in UTC. Missing configuration yields NULL, which is ineligible for Team Experience retrieval.
+- `TeamExperienceIndexer` verifies the accepted create LearningChange, approval Task, canonical decision Event and terminal Outcome, committed KnowledgeItem state, current version, active status, and future review date. It rechecks canonical state after embedding before atomically publishing chunks and `published` state. Failures preserve canonical acceptance, mark publication `stale`, and keep chunks undiscoverable. NULL/due items become `ineligible`; `rebuild_all()` retries stale rows idempotently.
+- `HybridKnowledgeRetriever` reuses the existing BGE-M3 embedding interface, PostgreSQL full-text search, pgvector, and reciprocal-rank fusion across Domain Knowledge and Team Experience. It applies one combined limit of eight passages and 8,000 Unicode characters.
+- Context v2 records per-core provenance, KnowledgeItem version/hash, LearningChange identity, chunk details, and embedding identity. Existing same-Task Context v1 snapshots replay immutably; a later Task performs fresh retrieval.
+- `TaskRuntime.complete_knowledge_review(task_id)` runs an already-enqueued ordinary `review_knowledge` Task through existing admission/finalization. Due item transitions, Task-attributed Event, terminal Outcome/Snapshot, and Task completion are atomic and replayable. No new scheduler, dispatcher, or Task runtime was introduced.
+
+**Prior hosted verification (before C3 reconciliation):** [run 41589798190](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41589798190) passed on code head `3682f7e270ca65820e064d68c6e0bef5c390c5da` with 588 tests. **Fresh hosted verification after reconciliation:** [run 41598895890](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41598895890) passed on exact combined head `923268b0efda16d2c87e1b53aba2acb1990680ad`: fresh PostgreSQL migration to one `0013_team_experience_projection` head, Ruff, mypy (27 source files), and **590 tests**.
+
+**Local verification gate:** rerun on the reconciled PR #32 head, using a fresh disposable pgvector PostgreSQL database with both `DATABASE_URL` and `TEST_DATABASE_URL` bound to it. Run `uv sync --locked`, `uv run alembic upgrade head`, confirm exactly one head/current at `0013_team_experience_projection`, then:
+
+```bash
+uv run pytest tests/test_team_experience.py tests/test_context_assembly.py tests/test_knowledge_index.py tests/test_learning_commit.py tests/test_task_runtime.py -q
+uv run ruff check core tests migrations
+uv run mypy core
+uv run pytest -q
+git diff --check origin/main...HEAD
+```
+
+Restore both database environment variables and remove only the disposable container. Never use persistent `watch`; no live generation provider is called. Fresh hosted CI on the reconciled combined head has passed; do not formally close C4 until the operator-local disposable-PostgreSQL run on that same head also passes.
 
 ## R6-F Checkpoint 1 — Evaluation and canonical learning schema
 

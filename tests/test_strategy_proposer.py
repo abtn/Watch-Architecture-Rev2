@@ -271,7 +271,7 @@ def test_valid_model_proposal_is_submitted_only_through_strategy_service(
     system_prompt, user_prompt, temperature = provider.calls[0]
     assert "untrusted data" in system_prompt
     assert len(user_prompt) <= MAX_STRATEGY_CONTEXT_CHARACTERS
-    assert '"schema_version":"r6e-task-context-v1"' in user_prompt
+    assert '"schema_version":"r6e-task-context-v2"' in user_prompt
     assert temperature == 0.1
 
     with session_factory() as session:

@@ -19,7 +19,7 @@ So Watch is not simply a chatbot with memory or a universal expert. It is a reus
 
 A Plan is intended work, not execution truth. Tasks and Events record execution. Derived assessments do not become authority merely because a model produced them.
 
-## Current state (snapshot 2026-11-02)
+## Current state (snapshot 2026-11-03)
 
 [`PLAN.md`](PLAN.md) is the single source of current milestone status; the summary below is a convenience snapshot, not an authority record.
 
@@ -38,14 +38,14 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 
 **R6 continuation**
 
-- **R6-F — C1–2 merged; C3 implemented with final local follow-up verification pending; C4 authorized and staged separately:** PR #29 and PR #30 are merged. [PR #31](https://github.com/abtn/Watch-Architecture-Rev2/pull/31) contains the typed host-principal adapter, atomic pending approval Task/request Event, approval-specific admission, create-only canonical LearningChange commit, TaskRuntime terminalization, same-Task replay, and committed-decision recovery. A review follow-up adds deterministic failure/finalization and recovery for a competing approval Task with a distinct idempotency key. Hosted CI on head `b9f1baf5362cd899ccc96ceecef99484bd52b2d2` passed fresh PostgreSQL migration/head checks, Ruff, mypy (27 files), and 579 tests in [run 41593590306](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41593590306). Local verification on prior code head `581ad185` passed 83 focused/577 full tests; the new D12 follow-up needs the final local run before merge. [PR #32](https://github.com/abtn/Watch-Architecture-Rev2/pull/32) implements authorized C4 on a branch stacked on C3; the local 588-test verification at `8333d69` predates the D12 follow-up, so integrate C3 first, then retarget/reverify C4. No C3 schema migration was added. D10: create-only; revise/retire deferred. D7: policy-pinned optional UTC review interval, NULL/due retrieval exclusion, and deterministic review_knowledge Task. The host remains responsible for authentication. No production R6-F provider, TeamPolicy write through C3, second runtime, or TaskDispatcher expansion is introduced.
+- **R6-F — C1–2 merged; C3 merged and locally verified; C4 reconciled to main with hosted CI green and local verification pending:** PR #31 merged at `99f8b6bbd76521eaac47761dcf432ebb3c0d28e3`; final C3 local verification passed 85 focused and 579 full-suite tests, Ruff, mypy, fresh single migration head `0012_learning_foundation`, and `git diff --check`. D12's distinct-key competing-approval loser Task is terminalized and recoverable through TaskRuntime. D10 remains create-only; revise/retire production is deferred. D7 is implemented in C4: optional schema-v2 TeamPolicy interval pinned to the approval Task, UTC review dates, NULL/due retrieval exclusion, and ordinary TaskRuntime review execution. PR #32 is reconciled with merged `main` at `923268b0efda16d2c87e1b53aba2acb1990680ad`; hosted CI run [41598895890](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41598895890) passed fresh migration to one `0013_team_experience_projection` head, Ruff, mypy (27 files), and 590 tests. Operator-local disposable-PostgreSQL verification of the combined tree is pending. No Watch auth stack, TeamPolicy write through C3, second runtime, TaskDispatcher expansion, or production R6-F provider is introduced.
 - **R6-G — later integration gate:** exercise the complete knowledge-grounded loop, full verification, and explicit R6 exit approval.
 
 ## Future plan
 
 Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for current milestone status.
 
-- **R6 next:** run the final operator-local disposable-PostgreSQL verification for PR #31 head `b9f1baf`, then merge C3. Retarget/reconcile the already-authorized C4 PR #32 against `main` and rerun CI. R6-G still requires its own authorization; no production R6-F provider is authorized.
+- **R6 next:** run the full C4 disposable-PostgreSQL verification on reconciled head `923268b` after hosted CI `41598895890` passed. Then review and integrate C4 separately. R6-G requires its own authorization; no production R6-F provider is authorized.
 - **R7 — Distillation quality and knowledge lifecycle:** cross-case evaluation of abstractions, contradictory evidence and counterexamples, transferability tests, retrieval quality, review/expiry, staleness detection, supersession, and retirement — always preserving explicit provenance, canonical authority, and controlled commits.
 - **R8 — Multi-domain pressure test:** exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge stays outside the Kernel.
 - **R9 — Agent-assisted production workflow:** codified task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.

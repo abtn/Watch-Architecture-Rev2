@@ -145,13 +145,14 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Reads:** active Triggers, current entity state for conditions.
 - **Writes:** Trigger `last_fired_at`/`next_fire_at`; creation of the Trigger's target Task; Event.
 - **Validation:** a Trigger creates Tasks only — it never mutates world memory or publishes output.
-### `review_knowledge` — deterministic, scheduled (specified; execution path not yet implemented)
+### `review_knowledge` — deterministic ordinary Task (Checkpoint 4 implementation)
 - **Purpose:** mark due same-Team KnowledgeItems as requiring review; this is a lifecycle/status operation, not a knowledge judgment.
-- **Task production:** a host/scheduler may enqueue an ordinary `review_knowledge` Task. The producer only creates the Task; it never changes KnowledgeItem state. The existing `TaskRuntime` remains the only Task lifecycle authority. This specification does not authorize a new scheduler/runtime or expand the ingestion-only `TaskDispatcher`.
-- **Reads:** same-Team KnowledgeItems with `status="active"` and a non-null `review_after` at or before one timezone-aware UTC observation time for the operation. A null date is unscheduled: it is not transitioned by this Task and remains ineligible for retrieval.
-- **Writes:** for each due item, KnowledgeItem status `active → needs_review` and one Task-attributed Event, atomically. Row locking and a status/date recheck prevent a stale scan from overwriting a concurrent decision; retries/replays do not create duplicate transitions or Events.
-- **Due boundary:** due when `now_utc >= review_after`; dates are UTC-aware. Retrieval excludes the item at this same boundary even if the scheduled Task has not yet run.
-- **Validation:** only the current canonical same-Team item is eligible; only this deterministic Task path marks it `needs_review`. It does not calculate/change `review_after`, revise/retire the item, or move `needs_review → active`. Revalidation/reactivation requires a separately specified and authorized operation.
+- **Task production:** the host/scheduler may enqueue an ordinary `review_knowledge` Task. The producer only creates the Task; it never changes KnowledgeItem state. There is no Watch-owned schedule loop, second runtime, or TaskDispatcher expansion.
+- **Execution:** `TaskRuntime.complete_knowledge_review(task_id)` composes the existing `TaskRuntime.admit()` and typed `finalize()` transitions. It accepts an already-created Task only; unsupported Task types, malformed Task shape, non-pending attempts, and wrong result categories fail closed. A repeated call after successful completion replays the original terminal Outcome rather than starting a second attempt.
+- **Reads:** same-Team KnowledgeItems with `status="active"` and non-null `review_after <= observed_at_utc`; the operation uses one timezone-aware UTC observation time. NULL dates are unscheduled and remain ineligible for retrieval.
+- **Writes:** for each due item, KnowledgeItem status `active → needs_review` and one Task-attributed `knowledge_items_reviewed` Event. The row lock, canonical LearningChange/approval provenance check, status/date recheck, Event, terminal Outcome/Snapshot, and Task completion share the existing TaskRuntime transaction; rollback leaves no partial transition.
+- **Due boundary:** due when `now_utc >= review_after`; retrieval excludes the item at this same boundary even if the scheduled Task has not yet run.
+- **Validation:** only the current accepted same-Team canonical KnowledgeItem may transition. This Task never calculates/changes `review_after`, revises/retires an item, or moves `needs_review → active`. Revalidation/reactivation requires a separately specified and authorized operation.
 ### `render_output` — model worker + deterministic assembly
 - **Purpose:** produce an Artifact from the current world model.
 - **Reads:** Thread, active Hypotheses, verified evidence packs, relevant active KnowledgeItems, current policy, prior Artifacts.
@@ -266,7 +267,7 @@ side effect in footnote ¹; footnote ¹ grants no worker Snapshot permission.
 | `operator_update` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | K | — | K |
 | `apply_decay` | — | — | — | W⁵ | — | — | W | — | — | — | — | — | — | — | — | — | K | — | K |
 | `check_triggers` | — | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | K²⁰ | — | K |
-| `review_knowledge` | — | — | — | — | — | — | — | — | — | W⁶ | — | — | — | — | — | — | K | — | K |
+| `review_knowledge` | — | — | — | — | — | — | — | — | — | — | W⁶ | — | — | — | — | — | K | — | K |
 | `render_output` | — | — | — | — | — | — | — | W | — | — | — | — | — | — | — | — | K²¹ | K⁷ | K |
 | `record_outcome` | — | — | — | — | — | — | — | — | W | — | — | — | — | — | — | — | K | K⁸ | K |
 | `evaluate_outcome` | — | — | — | — | — | W⁹ | — | — | — | W | — | — | — | — | — | — | K | — | K |
@@ -544,6 +545,6 @@ Starting points, tuned during M2; per-Task values may override downward, never u
 | `activate_team` | 0 | 0 | — |
 
 
-### R6-F Checkpoint 1–3 authority boundary
+### R6-F Checkpoint 1–4 authority boundary
 
-For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeItem writes plus exact application-managed Events; it has **no TeamPolicy write grant**. The legacy `seed_knowledge` row remains a separately documented Task type but is not implemented by R6-F. Evaluation worker output cannot set its own status: trusted application service code validates and records/rejects the proposal. ExperienceDistiller output likewise remains an untrusted candidate; Checkpoint 2 creates only proposed LearningChanges for KnowledgeItem creation. Checkpoint 3 performs explicit Operator review and canonical commit through a trusted application identity boundary and an ordinary same-Team approval Task; TaskRuntime remains the sole owner of Task lifecycle transitions. D7's interval is read-only policy input pinned to the approval Task; it does not grant a TeamPolicy write. Checkpoint 4 must implement canonical date stamping, the deterministic `review_knowledge` Task path, and due/null-aware retrieval before publication.
+For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeItem writes plus exact application-managed Events; it has **no TeamPolicy write grant**. The legacy `seed_knowledge` row remains a separately documented Task type but is not implemented by R6-F. Evaluation worker output cannot set its own status: trusted application service code validates and records/rejects the proposal. ExperienceDistiller output likewise remains an untrusted candidate; Checkpoint 2 creates only proposed LearningChanges for KnowledgeItem creation. Checkpoint 3 performs explicit Operator review and canonical commit through a trusted application identity boundary and an ordinary same-Team approval Task; TaskRuntime remains the sole owner of Task lifecycle transitions. D7's interval is read-only policy input pinned to the approval Task; it does not grant a TeamPolicy write. Checkpoint 4 implements the separate `team_experience_chunks` projection, current-canonical index/rebuild and dual-core retrieval, Context v2 with per-core provenance, and canonical review-date eligibility. `review_knowledge` owns only the `active → needs_review` transition through TaskRuntime; `approve_learning_change` remains read-only on TeamPolicy and pins the rule version used to compute `review_after`.
