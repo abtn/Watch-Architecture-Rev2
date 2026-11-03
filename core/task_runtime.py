@@ -1965,31 +1965,53 @@ class TaskRuntime:
                 or set(provenance) != {"event_id", "snapshot_ref", "content_hash"}
             ):
                 raise TaskNotFinalizable("strategy_disposition_payload_invalid")
-            try:
-                context_event_id = UUID(provenance["event_id"])
-                charge_id = UUID(payload["generation_charge_id"])
-            except (KeyError, TypeError, ValueError) as error:
-                raise TaskNotFinalizable(
-                    "strategy_disposition_provenance_invalid"
-                ) from error
-            context_event = session.get(Event, context_event_id)
-            charge = session.get(TaskGenerationCharge, charge_id)
-            if (
-                context_event is None
-                or context_event.task_id != task.id
-                or context_event.type != "context_assembled"
-                or context_event.payload.get("snapshot_ref") != provenance["snapshot_ref"]
-                or context_event.payload.get("content_hash") != provenance["content_hash"]
-                or charge is None
-                or charge.task_id != task.id
-                or charge.operation != "strategy_proposal"
-                or charge.status != "reconciled"
-                or charge.accounted_cost_usd is None
-                or charge.input_tokens is None
-                or charge.output_tokens is None
-                or charge.attempt_count > task.attempt_count
-            ):
-                raise TaskNotFinalizable("strategy_disposition_provenance_mismatch")
+            charge_reference = payload.get("generation_charge_id")
+            if provenance is None and charge_reference is None:
+                if session.scalar(
+                    select(Event.id).where(
+                        Event.task_id == task.id,
+                        Event.type == "context_assembled",
+                    )
+                ) is not None:
+                    raise TaskNotFinalizable(
+                        "strategy_disposition_provenance_mismatch"
+                    )
+            else:
+                if not isinstance(provenance, dict) or set(provenance) != {
+                    "event_id", "snapshot_ref", "content_hash"
+                }:
+                    raise TaskNotFinalizable(
+                        "strategy_disposition_provenance_invalid"
+                    )
+                try:
+                    context_event_id = UUID(provenance["event_id"])
+                    charge_id = UUID(charge_reference)
+                except (KeyError, TypeError, ValueError) as error:
+                    raise TaskNotFinalizable(
+                        "strategy_disposition_provenance_invalid"
+                    ) from error
+                context_event = session.get(Event, context_event_id)
+                charge = session.get(TaskGenerationCharge, charge_id)
+                if (
+                    context_event is None
+                    or context_event.task_id != task.id
+                    or context_event.type != "context_assembled"
+                    or context_event.payload.get("snapshot_ref")
+                    != provenance["snapshot_ref"]
+                    or context_event.payload.get("content_hash")
+                    != provenance["content_hash"]
+                    or charge is None
+                    or charge.task_id != task.id
+                    or charge.operation != "strategy_proposal"
+                    or charge.status != "reconciled"
+                    or charge.accounted_cost_usd is None
+                    or charge.input_tokens is None
+                    or charge.output_tokens is None
+                    or charge.attempt_count > task.attempt_count
+                ):
+                    raise TaskNotFinalizable(
+                        "strategy_disposition_provenance_mismatch"
+                    )
             if session.scalar(
                 select(Plan.id).where(Plan.created_by_task_id == task.id)
             ) is not None:
