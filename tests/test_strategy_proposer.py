@@ -25,8 +25,8 @@ from core.generation import (
 )
 from core.models import (
     Event,
-    Outcome,
     Objective,
+    Outcome,
     Plan,
     Task,
     TaskGenerationCharge,
