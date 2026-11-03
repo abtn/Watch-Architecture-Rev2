@@ -12,6 +12,7 @@ from core.dispatcher import TaskDispatcher
 from core.models import Event, Signal
 from core.rule_evaluator import IngestSourceRuleEvaluator, RuleEvaluationError
 from core.snapshot_store import SnapshotStore
+from core.task_runtime import TaskRuntime
 from core.source_fetch import SourceFetchError
 from tests.test_r6b_dispatcher import (
     DispatchFixture,
