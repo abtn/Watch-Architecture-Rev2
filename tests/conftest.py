@@ -8,10 +8,9 @@ from typing import Iterator
 from uuid import UUID, uuid4
 
 import pytest
+from _database_config import resolve_test_database_url
 from sqlalchemy import Engine, create_engine, delete
 from sqlalchemy.orm import Session, sessionmaker
-
-from _database_config import resolve_test_database_url
 
 from core.ingestion import IngestionProposal
 from core.models import Event, Objective, Signal, Task, Team, TeamPolicy
