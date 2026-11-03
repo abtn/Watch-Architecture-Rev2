@@ -107,19 +107,19 @@ Keep generic `recover_interrupted()` unchanged unless tests prove a conflict. Th
 
 Checkpoint 2 ExperienceDistiller emits only `operation="create"` proposals. Checkpoint 3's verified approval/rejection path consumes those real proposals. By explicit operator decision on 2026-11-02, D10 is resolved: Checkpoint 3's acceptance scope is create-only. Revise/retire proposal production and commitment are deferred beyond Checkpoint 3 until a separately authorized knowledge-lifecycle scope supplies a genuine proposal source and defines target-version pinning, history, concurrency, replay/recovery, and projection invalidation. The schema's revise/retire vocabulary does not authorize implementation or production support. Do not use `seed_knowledge`, ad-hoc endpoints, direct fixtures, direct database mutation, or other bypasses to claim reachability. Future revise/retire decisions must retain Operator approval and canonical learning-commit authority.
 
-D7 (`review_after`) was resolved on 2026-11-02: the optional interval is TeamPolicy-controlled and pinned to the approval Task's policy version; timestamps and due checks use UTC; NULL and due items are ineligible for retrieval; only a deterministic `review_knowledge` Task moves `active → needs_review`. Checkpoint 3 still writes NULL dates and does not implement this policy. Date assignment, review Task execution, and retrieval enforcement remain gated Checkpoint 4 work; D7 does not authorize that checkpoint.
+D7 (`review_after`) was resolved on 2026-11-02: the optional interval is TeamPolicy-controlled and pinned to the approval Task's policy version; timestamps and due checks use UTC; NULL and due items are ineligible for retrieval; only a deterministic `review_knowledge` Task moves active → needs_review. Checkpoint 3 still writes NULL dates and does not implement this policy. Date assignment, review Task execution, and retrieval enforcement are implemented separately in authorized Checkpoint 4 PR #32; D7 itself was a design decision and did not authorize C4.
 
 ## 8. Implementation and verification sequence
 
 1. **Implemented:** add host principal/authorization contract and `OperatorApplicationAdapter`; no routes, CLI, login, token verifier, user table, or deployed service.
 2. **Implemented:** atomic pending Task + request Event creation, deterministic request mapping, same-request replay/conflict.
 3. **Implemented and locally verified:** TaskRuntime approval-only admission guard, exact Task shape and request Event/fingerprint/target validation, and no-deadline budget exception. Generic Task deadline validation, daily quota, and 60-second interrupted recovery are unchanged.
-4. **Implemented on current draft PR #31 head; local verification pending:** create-only `LearningCommitService`, provider-free canonical evidence-pack reconstruction, atomic accept/reject and Task-attributed decision Event, plus exact replay checks for Event payload/timestamp, attempt-start history, and full committed KnowledgeItem state.
-5. **Remaining TaskRuntime/orchestration work:** typed accepted/rejected terminal results and validation of committed decision/Event against the approval Task and current attempt; wire the host adapter synchronously through admit → decide → finalize.
-6. Test host context provenance, raw/model identity rejection, wrong Team/action, exact scope, same-key duplicate/concurrency, changed payload conflict, accept/reject, evidence tampering, stale target, and rollback.
-7. Test rejection-as-done, result/task mismatch, stale attempts, crash after decision commit, recovery to pending, same-Task replay/finalize, and stale-attempt fencing.
-8. Verify whether a migration is necessary; preferred design adds none unless tests prove an integrity gap.
-9. Run focused tests, Ruff, mypy, full suite, disposable PostgreSQL locking/rollback/recovery tests, and `git diff --check`. No live R6-F provider.
+4. **Implemented:** create-only LearningCommitService, provider-free canonical evidence-pack reconstruction, atomic accept/reject and Task-attributed decision Event, and exact replay checks for Event payload/timestamp, attempt-start history, and full committed KnowledgeItem state.
+5. **Implemented:** TaskRuntime typed accepted/rejected terminal results, committed decision/Event validation against approval Task/current attempt, and synchronous host-adapter orchestration through admit → decide → finalize.
+6. **Implemented and covered by PostgreSQL tests:** exact Task/Team/scope, same-key replay/changed payload conflict, distinct-key competing decisions, direct failure finalization for the losing Task, and interrupted-recovery reconstruction of that failure.
+7. Tests cover rejection-as-done, result/task mismatch, stale attempts, crashes before/after decision commit, recovery to pending or terminal failure, same-Task replay/finalize, and stale-attempt fencing.
+8. **Verified:** no migration is necessary; all changes use the existing schema and one TaskRuntime.
+9. Run focused tests, Ruff, mypy, full suite, disposable PostgreSQL locking/rollback/recovery tests, and git diff check on the latest review head before merge. No live R6-F provider.
 
 ## 9. Decision register
 
