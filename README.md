@@ -38,14 +38,14 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 
 **R6 continuation**
 
-- **R6-F — Checkpoints 1–4 merged; C4 post-merge local verification pending:** PR #31 merged C3 at `99f8b6bbd76521eaac47761dcf432ebb3c0d28e3`; final C3 local verification passed 85 focused/579 full-suite tests, Ruff, mypy, one fresh `0012_learning_foundation` head, and diff check. PR #32 merged C4 at `c8e7317da6144a15725231e499b07f1c110c4c22`. Hosted CI on exact PR head `0b625506` (run [41599452685](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41599452685)) passed fresh migration/head validation at `0013_team_experience_projection`, Ruff, mypy (27 files), and 590 tests. The combined C3+C4 operator-local disposable-PostgreSQL run was not repeated before merge; the pre-merge gate was waived at the user's explicit instruction and remains pending post-merge. D10 remains create-only; D7 is implemented in C4. No Watch auth stack, TeamPolicy write through C3, second runtime, TaskDispatcher expansion, or production R6-F provider is introduced.
-- **R6-G — later integration gate:** exercise the complete knowledge-grounded loop, full verification, and explicit R6 exit approval.
+- **R6-F — Checkpoints 1–4 complete and merged:** PR #31 merged C3 create-only approval/canonical commit; PR #32 merged C4 Team Experience projection/retrieval. The combined C3+C4 operator-local verification passed on PR #33 head `7bd7c5df`; merge commit `de1af38` has the identical tree SHA. It passed migration/head validation at `0013_team_experience_projection`, 118 focused tests, Ruff, Mypy (27 files), 594 full-suite tests, and diff check. The run preceded merge; local `main` was subsequently synced cleanly. See `docs/testing.md` for exact evidence and qualification. D10 remains create-only; no production R6-F distillation provider is approved.
+- **R6-G — gated and not authorized:** the integrated Objective-to-later-Task knowledge loop, full verification, and explicit R6 exit gate remain to be demonstrated.
 
 ## Future plan
 
 Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for current milestone status.
 
-- **R6 next:** sync merged `main` and run the combined C4 disposable-PostgreSQL verification described in `docs/testing.md`; record the local result. R6-G remains separately gated and requires explicit authorization; no production R6-F provider is authorized.
+- **R6 next:** conduct a bounded R6-G readiness assessment only. Implementation requires separate explicit operator authorization; no second runtime or general dispatcher is implied.
 - **R7 — Distillation quality and knowledge lifecycle:** cross-case evaluation of abstractions, contradictory evidence and counterexamples, transferability tests, retrieval quality, review/expiry, staleness detection, supersession, and retirement — always preserving explicit provenance, canonical authority, and controlled commits.
 - **R8 — Multi-domain pressure test:** exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge stays outside the Kernel.
 - **R9 — Agent-assisted production workflow:** codified task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.

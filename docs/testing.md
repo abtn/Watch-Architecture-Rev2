@@ -250,7 +250,18 @@ git diff --check origin/main...HEAD
 
 Restore both database environment variables and remove only the disposable container. Never use persistent `watch`; no live generation provider is called.
 
-**Merge and local-verification record (2026-11-03):** PR #32 merged to `main` at `c8e7317da6144a15725231e499b07f1c110c4c22`. Hosted CI on exact PR head `0b625506` (run [41599452685](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41599452685)) passed fresh migration/head validation at `0013_team_experience_projection`, Ruff, mypy (27 source files), and 590 tests. The combined operator-local C3+C4 disposable-PostgreSQL run was not repeated before merge; the operator expressly waived the pre-merge gate to authorize integration. This is **not** a local verification pass. Run the command set above after syncing merged `main`, then record the actual outcome. Do not infer R6-G authorization from the C4 merge.
+**Merge and operator-local verification record (2026-11-03):** PR #32 merged C4 to `main` at `c8e7317da6144a15725231e499b07f1c110c4c22`. The combined C3+C4 local run was executed on PR #33 head `7bd7c5df95e56ee6658f6817d71eededf6f784c5`, before PR #33 merged. It used the isolated pgvector PostgreSQL container `watch-r6f-local-20261103`, database `watch_r6f_check`, host port `55464`; the script removed that temporary container and ran its `finally`-block environment restoration commands. The tested PR head and PR #33 merge commit `de1af38d67a7e79d71110bdda7155244717fbf73` have the identical Git tree SHA `5bca55cddea91d6d76b5c3581bfaa3645e03bb82`. After the merge, local `main` was fast-forwarded to `de1af38`, verified equal to `origin/main`, and confirmed clean. Therefore the local results apply to the exact source tree now on `main`; no separate test execution after switching to `main` is claimed.
+
+- `uv sync --locked`: passed.
+- `uv run alembic upgrade head`: passed; `alembic heads` and `alembic current` both identified the single expected revision `0013_team_experience_projection`.
+- Focused C3/C4 command (the six files listed in the local verification procedure above): **118 passed** in 17.95 seconds.
+- `uv run ruff check core tests migrations`: passed.
+- `uv run mypy core`: passed, no issues in 27 source files.
+- `uv run pytest -q`: **594 passed** in 67.11 seconds.
+- `git diff --check origin/main...HEAD`: passed on the tested feature branch.
+- Final local synchronization: `main` and `origin/main` both at `de1af38d67a7e79d71110bdda7155244717fbf73`; working tree clean.
+
+**C4 local verification disposition:** PASS for the exact merged source tree. The operator-local run happened immediately before merge rather than after the merge commit; tree identity was explicitly verified, and the subsequent fast-forward synchronization confirmed the local `main` snapshot. Do not describe this as a post-merge test rerun. R6-G remains separately gated and not authorized.
 
 ## R6-F Checkpoint 1 — Evaluation and canonical learning schema
 
