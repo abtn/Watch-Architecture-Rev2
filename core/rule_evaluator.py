@@ -418,7 +418,7 @@ class IngestSourceRuleEvaluator:
         if (
             digest != signal.content_hash
             or signal.snapshot_ref != (
-                "snap://sha256:" + digest.removeprefix("sha256:")
+                "snap://sha256/" + digest.removeprefix("sha256:")
             )
         ):
             raise RuleEvaluationError("evaluation_signal_snapshot_hash_mismatch")
