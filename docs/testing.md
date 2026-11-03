@@ -181,7 +181,7 @@ uv run pytest tests/test_experience_distiller.py tests/test_generation_cost.py t
 uv run ruff check core tests migrations
 uv run mypy core
 uv run pytest -q
-git diff --check origin/main...HEAD
+git diff --check c8e7317^1...c8e7317
 ```
 
 Use a fresh disposable PostgreSQL database even though this checkpoint has no new migration. Confirm the single head remains `0012_learning_foundation`. The Checkpoint 2 tests cover deterministic and bounded canonical evidence packs; terminal source Task/Outcome and Evaluation provenance; one-case Practice versus distinct-Task multi-case abstraction; supporting/challenging/mention stance retention; stale/mutated evidence both before and during a provider call; supporting/challenging/mention stance classification; cross-Team/missing references; reservation-before-provider, provider failure/model mismatch, invalid output, unknown/overrun costs, replay after finalization, concurrent duplicate calls, and typed TaskRuntime completion. Verify that a proposed LearningChange is the only Team Experience-domain write: no KnowledgeItem, TeamPolicy, or retrieval projection is created.
@@ -236,7 +236,9 @@ uv run pytest -q
 git diff --check origin/main...HEAD
 ```
 
-Restore both database environment variables and remove only the disposable container. Never use persistent `watch`; no live generation provider is called. Fresh hosted CI on the reconciled combined head has passed; do not formally close C4 until the operator-local disposable-PostgreSQL run on that same head also passes.
+Restore both database environment variables and remove only the disposable container. Never use persistent `watch`; no live generation provider is called.
+
+**Merge and local-verification record (2026-11-03):** PR #32 merged to `main` at `c8e7317da6144a15725231e499b07f1c110c4c22`. Hosted CI on exact PR head `0b625506` (run [41599452685](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41599452685)) passed fresh migration/head validation at `0013_team_experience_projection`, Ruff, mypy (27 source files), and 590 tests. The combined operator-local C3+C4 disposable-PostgreSQL run was not repeated before merge; the operator expressly waived the pre-merge gate to authorize integration. This is **not** a local verification pass. Run the command set above after syncing merged `main`, then record the actual outcome. Do not infer R6-G authorization from the C4 merge.
 
 ## R6-F Checkpoint 1 — Evaluation and canonical learning schema
 
