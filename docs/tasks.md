@@ -550,7 +550,7 @@ Starting points, tuned during M2; per-Task values may override downward, never u
 | `review_knowledge` | 0 | 0 | 60 |
 | `render_output` | 4 | 0.75 | 240 |
 | `record_outcome` | 0 | 0 | — |
-| `evaluate_outcome` | 0 | 0.00 | 30 |
+| `evaluate_outcome` | 4 | 0.40 | 180 |
 | `propose_learning_change` | 4 | 0.40 | 180 |
 | `approve_learning_change` | 0 | 0 | — |
 | `seed_knowledge` | 0 | 0 | — |
