@@ -6,7 +6,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -17,6 +17,7 @@ from core.models import (
     KnowledgeItem,
     LearningChange,
     Outcome,
+    Plan,
     PlanAction,
     Task,
     TaskGenerationCharge,
@@ -72,6 +73,24 @@ _OPERATOR_TASK_TYPE = "approve_learning_change"
 _OPERATOR_REQUEST_EVENT_TYPE = "operator_task_requested"
 _OPERATOR_ALLOWED_WRITES = ["LearningChange", "KnowledgeItem"]
 _OPERATOR_MAX_ATTEMPTS = 3
+
+_EVALUATION_TASK_TYPE = "evaluate_outcome"
+_EVALUATION_REQUEST_EVENT_TYPE = "evaluation_task_requested"
+_EVALUATION_ALLOWED_WRITES = ["Evaluation", "EvidenceLink"]
+_EVALUATION_MAX_ATTEMPTS = 3
+_EVALUATION_DEADLINE_SECONDS = 30
+_R6G_EVALUATOR_KIND = "rule"
+_R6G_EVALUATOR_IDENTITY = "watch.r6g.ingest-source-rules"
+_R6G_EVALUATOR_REVISION = "1"
+_R6G_EVALUATION_NAMESPACE = UUID("b10ac39a-2c9c-5ad1-9d2e-4f6ec9bfa1de")
+_R6G_EVALUATION_BUDGET = {
+    "max_tool_calls": 0,
+    "max_cost_usd": 0,
+    "deadline_seconds": _EVALUATION_DEADLINE_SECONDS,
+}
+_R6G_SOURCE_RESULTS = frozenset(
+    {"success_signal_created", "success_no_change", "terminal_failure"}
+)
 
 
 @dataclass(frozen=True)
@@ -282,6 +301,11 @@ class TaskRuntime:
 
             if task.task_type == _OPERATOR_TASK_TYPE:
                 self._validate_operator_admission(session, task)
+            elif self._is_r6g_evaluation_task(session, task):
+                try:
+                    self._validate_evaluation_task_request(session, task)
+                except TaskNotFinalizable as error:
+                    raise TaskNotEligible(str(error)) from error
 
             self._require_prerequisites(session, task)
 
@@ -634,6 +658,9 @@ class TaskRuntime:
 
             prior = self._prior_terminal(session, task.id)
             if prior is not None:
+                self._verify_terminal_evaluation_request(
+                    session, task, prior, observation
+                )
                 return self._replay(session, task, prior, payload, observation)
 
             # A terminal Task without its Outcome is the invariant violation
@@ -750,6 +777,12 @@ class TaskRuntime:
                 task.completed_at = None
 
             session.flush()
+
+            if task.task_type == "ingest_source" and task.plan_id is not None:
+                self._create_evaluation_task_request(
+                    session, task, outcome, observation.result_category
+                )
+                session.flush()
 
             return FinalizationResult(
                 task_id=task.id,
@@ -1054,7 +1087,7 @@ class TaskRuntime:
         behavior. Snapshot writes and terminal commits happen after releasing
         the discovery/decision transaction.
         """
-        operator_observation: TerminalObservation | None = None
+        recovered_observation: TerminalObservation | None = None
         with self._session_factory.begin() as session:
             task = ObjectiveService._lock_task(session, candidate.task_id)
             if task is None:
@@ -1074,12 +1107,16 @@ class TaskRuntime:
                 return "skipped"
 
             if task.task_type == _OPERATOR_TASK_TYPE:
-                operator_observation = (
+                recovered_observation = (
                     self._committed_operator_decision_observation(session, task)
+                )
+            elif self._is_r6g_evaluation_task(session, task):
+                recovered_observation = self._committed_evaluation_observation(
+                    session, task
                 )
 
             if (
-                operator_observation is None
+                recovered_observation is None
                 and task.attempt_count < task.max_attempts
             ):
                 disposition = self._retry_disposition(
@@ -1107,16 +1144,16 @@ class TaskRuntime:
             attempt = task.attempt_count
             observed_at = started_at
 
-        if operator_observation is not None:
+        if recovered_observation is not None:
             try:
-                self.finalize(operator_observation)
+                self.finalize(recovered_observation)
             except TaskNotFinalizable as error:
                 if str(error) in _SKIPPED_FINALIZATION_REASONS:
                     return "skipped"
                 raise
             return (
                 "failed"
-                if operator_observation.result_category == "terminal_failure"
+                if recovered_observation.result_category == "terminal_failure"
                 else "completed"
             )
 
@@ -1277,6 +1314,508 @@ class TaskRuntime:
         )
 
     @staticmethod
+    def _is_r6g_evaluation_task(session: Session, task: Task) -> bool:
+        """Identify a D9 evaluator Task, including a damaged request Event.
+
+        The exact no-cost Task shape identifies an unenqueued/missing-request
+        candidate; the Event identifies a request whose Task shape was altered.
+        Generic EvaluationService component fixtures with their own budgets
+        remain outside this automatic R6-G Task protocol.
+        """
+        if task.task_type != _EVALUATION_TASK_TYPE:
+            return False
+        request_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == _EVALUATION_REQUEST_EVENT_TYPE,
+                )
+            )
+        )
+        exact_shape = (
+            task.objective_id is None
+            and task.plan_id is None
+            and task.plan_action_id is None
+            and task.allowed_writes == _EVALUATION_ALLOWED_WRITES
+            and task.budget == _R6G_EVALUATION_BUDGET
+            and task.max_attempts == _EVALUATION_MAX_ATTEMPTS
+        )
+        return exact_shape or bool(request_events)
+
+    @staticmethod
+    def _source_action_for_evaluation(session: Session, source_task: Task) -> PlanAction:
+        if (
+            source_task.task_type != "ingest_source"
+            or source_task.plan_id is None
+            or source_task.plan_action_id is None
+            or source_task.allowed_writes != ["Signal"]
+        ):
+            raise TaskNotFinalizable("evaluation_source_task_shape_invalid")
+        plan = session.get(Plan, source_task.plan_id)
+        action = session.get(
+            PlanAction, (source_task.plan_id, source_task.plan_action_id)
+        )
+        if (
+            plan is None
+            or plan.team_id != source_task.team_id
+            or plan.objective_id != source_task.objective_id
+            or action is None
+            or not isinstance(action.action, dict)
+            or action.action.get("id") != str(action.action_id)
+            or action.action.get("task_type") != "ingest_source"
+            or action.action.get("tools")
+            or not isinstance(action.action.get("origin_url"), str)
+            or not action.action.get("origin_url")
+            or not isinstance(action.action.get("source_type"), str)
+            or not action.action.get("source_type")
+        ):
+            raise TaskNotFinalizable("evaluation_source_plan_action_invalid")
+
+        policy = session.scalar(
+            select(TeamPolicy).where(
+                TeamPolicy.team_id == source_task.team_id,
+                TeamPolicy.version == source_task.policy_version,
+            )
+        )
+        if policy is None or not isinstance(policy.rules, dict):
+            raise TaskNotFinalizable("evaluation_source_policy_missing")
+        configured_sources = policy.rules.get("sources")
+        if not isinstance(configured_sources, list) or not any(
+            isinstance(item, dict)
+            and item.get("origin_url") == action.action.get("origin_url")
+            and item.get("source_type") == action.action.get("source_type")
+            for item in configured_sources
+        ):
+            raise TaskNotFinalizable("evaluation_source_not_policy_configured")
+        return action
+
+    @staticmethod
+    def _evaluation_request_payload(
+        source_task: Task, outcome: Outcome, result_category: str
+    ) -> dict[str, Any]:
+        if result_category not in _R6G_SOURCE_RESULTS:
+            raise TaskNotFinalizable("evaluation_source_result_unsupported")
+        if (
+            outcome.team_id != source_task.team_id
+            or outcome.outcome_type != "task_execution"
+            or outcome.subject_kind != "task"
+            or outcome.subject_id != source_task.id
+            or outcome.recorded_by_task_id != source_task.id
+            or outcome.observation_snapshot_ref is None
+            or outcome.observation_hash is None
+            or outcome.observed_at is None
+        ):
+            raise TaskNotFinalizable("evaluation_source_outcome_invalid")
+        expected_status = "failed" if result_category == "terminal_failure" else "done"
+        if source_task.status != expected_status or source_task.attempt_count < 1:
+            raise TaskNotFinalizable("evaluation_source_terminal_state_invalid")
+
+        payload: dict[str, Any] = {
+            "schema_version": 1,
+            "operation": "evaluate_outcome",
+            "team_id": str(source_task.team_id),
+            "source_task_id": str(source_task.id),
+            "source_attempt": source_task.attempt_count,
+            "source_result_category": result_category,
+            "source_plan_id": str(source_task.plan_id),
+            "source_plan_action_id": str(source_task.plan_action_id),
+            "policy_version": source_task.policy_version,
+            "outcome_id": str(outcome.id),
+            "observation_snapshot_ref": outcome.observation_snapshot_ref,
+            "observation_hash": outcome.observation_hash,
+            "evaluator_kind": _R6G_EVALUATOR_KIND,
+            "evaluator_identity": _R6G_EVALUATOR_IDENTITY,
+            "evaluator_revision": _R6G_EVALUATOR_REVISION,
+        }
+        payload["request_fingerprint"] = (
+            "sha256:"
+            + hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+        )
+        return payload
+
+    @staticmethod
+    def _evaluation_task_id(payload: dict[str, Any]) -> UUID:
+        return uuid5(
+            _R6G_EVALUATION_NAMESPACE,
+            "|".join(
+                (
+                    payload["team_id"],
+                    payload["outcome_id"],
+                    payload["evaluator_identity"],
+                    payload["evaluator_revision"],
+                )
+            ),
+        )
+
+    @staticmethod
+    def _validate_evaluation_task_request(
+        session: Session, task: Task
+    ) -> dict[str, Any]:
+        if (
+            task.task_type != _EVALUATION_TASK_TYPE
+            or task.objective_id is not None
+            or task.plan_id is not None
+            or task.plan_action_id is not None
+            or task.allowed_writes != _EVALUATION_ALLOWED_WRITES
+            or task.budget != _R6G_EVALUATION_BUDGET
+            or task.max_attempts != _EVALUATION_MAX_ATTEMPTS
+            or task.status not in {"pending", "running", "done", "failed"}
+            or task.attempt_count < 0
+            or task.attempt_count > task.max_attempts
+        ):
+            raise TaskNotFinalizable("evaluation_task_shape_invalid")
+        request_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == _EVALUATION_REQUEST_EVENT_TYPE,
+                )
+            )
+        )
+        if len(request_events) != 1 or not isinstance(
+            request_events[0].payload, dict
+        ):
+            raise TaskNotFinalizable("evaluation_task_request_event_invalid")
+        payload = request_events[0].payload
+        expected_keys = {
+            "schema_version",
+            "operation",
+            "team_id",
+            "source_task_id",
+            "source_attempt",
+            "source_result_category",
+            "source_plan_id",
+            "source_plan_action_id",
+            "policy_version",
+            "outcome_id",
+            "observation_snapshot_ref",
+            "observation_hash",
+            "evaluator_kind",
+            "evaluator_identity",
+            "evaluator_revision",
+            "request_fingerprint",
+        }
+        if set(payload) != expected_keys:
+            raise TaskNotFinalizable("evaluation_task_request_payload_invalid")
+        fingerprint_fields = {
+            key: value for key, value in payload.items()
+            if key != "request_fingerprint"
+        }
+        expected_fingerprint = (
+            "sha256:"
+            + hashlib.sha256(
+                _canonical_json(fingerprint_fields).encode("utf-8")
+            ).hexdigest()
+        )
+        if payload.get("request_fingerprint") != expected_fingerprint:
+            raise TaskNotFinalizable("evaluation_task_request_fingerprint_invalid")
+        if (
+            payload.get("schema_version") != 1
+            or payload.get("operation") != _EVALUATION_TASK_TYPE
+            or payload.get("evaluator_kind") != _R6G_EVALUATOR_KIND
+            or payload.get("evaluator_identity") != _R6G_EVALUATOR_IDENTITY
+            or payload.get("evaluator_revision") != _R6G_EVALUATOR_REVISION
+            or payload.get("team_id") != str(task.team_id)
+            or payload.get("policy_version") != task.policy_version
+            or isinstance(payload.get("source_attempt"), bool)
+            or not isinstance(payload.get("source_attempt"), int)
+            or payload["source_attempt"] < 1
+            or isinstance(payload.get("policy_version"), bool)
+            or not isinstance(payload.get("policy_version"), int)
+        ):
+            raise TaskNotFinalizable("evaluation_task_request_binding_invalid")
+        try:
+            source_task_id = UUID(payload["source_task_id"])
+            outcome_id = UUID(payload["outcome_id"])
+            source_plan_id = UUID(payload["source_plan_id"])
+            source_action_id = UUID(payload["source_plan_action_id"])
+        except (TypeError, ValueError) as error:
+            raise TaskNotFinalizable("evaluation_task_request_reference_invalid") from error
+
+        source_task = session.get(Task, source_task_id)
+        outcome = session.get(Outcome, outcome_id)
+        if (
+            source_task is None
+            or outcome is None
+            or source_task.team_id != task.team_id
+            or source_task.status
+            != ("failed" if payload["source_result_category"] == "terminal_failure" else "done")
+            or source_task.attempt_count != payload["source_attempt"]
+            or source_task.plan_id != source_plan_id
+            or source_task.plan_action_id != source_action_id
+            or source_task.policy_version != task.policy_version
+        ):
+            raise TaskNotFinalizable("evaluation_task_source_binding_invalid")
+        TaskRuntime._source_action_for_evaluation(session, source_task)
+        expected_payload = TaskRuntime._evaluation_request_payload(
+            source_task, outcome, payload["source_result_category"]
+        )
+        if payload != expected_payload:
+            raise TaskNotFinalizable("evaluation_task_request_mismatch")
+        expected_task_id = TaskRuntime._evaluation_task_id(expected_payload)
+        if task.id != expected_task_id:
+            raise TaskNotFinalizable("evaluation_task_id_mismatch")
+        source_terminal_types = (
+            ("task_failed", "task_attempt_failed")
+            if expected_payload["source_result_category"] == "terminal_failure"
+            else ("task_completed",)
+        )
+        for event_type in source_terminal_types:
+            matching = [
+                event for event in session.scalars(
+                    select(Event).where(
+                        Event.task_id == source_task.id,
+                        Event.type == event_type,
+                    )
+                )
+                if event.payload.get("attempt_count") == source_task.attempt_count
+            ]
+            if len(matching) != 1:
+                raise TaskNotFinalizable("evaluation_source_terminal_event_invalid")
+            event_payload = matching[0].payload
+            expected_status = (
+                "failed"
+                if expected_payload["source_result_category"] == "terminal_failure"
+                else "done"
+            )
+            if (
+                event_payload.get("from_status") != "running"
+                or event_payload.get("to_status") != expected_status
+                or event_payload.get("attempt_count") != source_task.attempt_count
+                or event_payload.get("result_category")
+                != expected_payload["source_result_category"]
+                or event_payload.get("outcome_id") != str(outcome.id)
+                or event_payload.get("observation_snapshot_ref")
+                != outcome.observation_snapshot_ref
+                or event_payload.get("observation_hash") != outcome.observation_hash
+            ):
+                raise TaskNotFinalizable("evaluation_source_terminal_event_mismatch")
+        if (
+            task.attempt_count == 0 and task.status != "pending"
+        ) or (
+            task.status == "done" and task.completed_at is None
+        ) or (
+            task.status == "failed" and task.completed_at is not None
+        ):
+            raise TaskNotFinalizable("evaluation_task_lifecycle_state_invalid")
+        return payload
+
+    def _create_evaluation_task_request(
+        self,
+        session: Session,
+        source_task: Task,
+        outcome: Outcome,
+        result_category: str,
+    ) -> UUID:
+        self._source_action_for_evaluation(session, source_task)
+        payload = self._evaluation_request_payload(
+            source_task, outcome, result_category
+        )
+        task_id = self._evaluation_task_id(payload)
+        if session.get(Task, task_id) is not None:
+            raise TaskNotFinalizable("evaluation_task_id_conflict")
+        evaluation_task = Task(
+            id=task_id,
+            team_id=source_task.team_id,
+            task_type=_EVALUATION_TASK_TYPE,
+            status="pending",
+            attempt_count=0,
+            policy_version=source_task.policy_version,
+            objective_id=None,
+            plan_id=None,
+            plan_action_id=None,
+            allowed_writes=list(_EVALUATION_ALLOWED_WRITES),
+            budget=dict(_R6G_EVALUATION_BUDGET),
+            max_attempts=_EVALUATION_MAX_ATTEMPTS,
+        )
+        session.add(evaluation_task)
+        session.flush()
+        ObjectiveService._add_event(
+            session,
+            evaluation_task.id,
+            _EVALUATION_REQUEST_EVENT_TYPE,
+            payload,
+        )
+        session.flush()
+        self._validate_evaluation_task_request(session, evaluation_task)
+        return evaluation_task.id
+
+    def _verify_terminal_evaluation_request(
+        self,
+        session: Session,
+        source_task: Task,
+        outcome: Outcome,
+        observation: TerminalObservation,
+    ) -> None:
+        if source_task.task_type != "ingest_source" or source_task.plan_id is None:
+            return
+        expected_payload = self._evaluation_request_payload(
+            source_task, outcome, observation.result_category
+        )
+        evaluation_task = session.get(
+            Task, self._evaluation_task_id(expected_payload)
+        )
+        if evaluation_task is None:
+            raise TaskNotFinalizable("evaluation_task_request_missing")
+        validated_payload = self._validate_evaluation_task_request(
+            session, evaluation_task
+        )
+        if validated_payload != expected_payload:
+            raise TaskNotFinalizable("evaluation_task_request_mismatch")
+
+    def _committed_evaluation_observation(
+        self, session: Session, task: Task
+    ) -> TerminalObservation | None:
+        request = self._validate_evaluation_task_request(session, task)
+        evaluations = list(
+            session.scalars(
+                select(Evaluation).where(Evaluation.created_by_task_id == task.id)
+            )
+        )
+        related_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type.in_(
+                        ("evaluation_proposed", "evaluation_recorded", "evaluation_rejected")
+                    ),
+                )
+            )
+        )
+        if not evaluations:
+            if related_events:
+                raise TaskNotFinalizable("evaluation_task_history_corrupt")
+            return None
+        if len(evaluations) != 1:
+            raise TaskNotFinalizable("evaluation_task_history_conflict")
+        evaluation = evaluations[0]
+        if (
+            evaluation.team_id != task.team_id
+            or evaluation.outcome_id != UUID(request["outcome_id"])
+            or evaluation.created_by_task_id != task.id
+            or evaluation.evaluator_kind != _R6G_EVALUATOR_KIND
+            or evaluation.evaluator_identity != _R6G_EVALUATOR_IDENTITY
+            or evaluation.evaluator_revision != _R6G_EVALUATOR_REVISION
+            or evaluation.idempotency_key
+            != self._r6g_evaluation_idempotency_key(request["request_fingerprint"])
+        ):
+            raise TaskNotFinalizable("evaluation_task_result_binding_invalid")
+
+        links = list(
+            session.scalars(
+                select(EvidenceLink)
+                .where(
+                    EvidenceLink.subject_kind == "evaluation",
+                    EvidenceLink.subject_id == evaluation.id,
+                    EvidenceLink.team_id == task.team_id,
+                )
+                .order_by(EvidenceLink.reference_key)
+            )
+        )
+        if not links:
+            raise TaskNotFinalizable("evaluation_task_evidence_missing")
+        from core.evaluations import EvaluationService
+
+        if self._snapshot_store is None:
+            raise TaskNotFinalizable("snapshot_store_not_configured")
+        evaluation_service = EvaluationService(
+            self._session_factory, self._snapshot_store
+        )
+        normalized_links: list[dict[str, Any]] = []
+        for link in links:
+            try:
+                evaluation_service._revalidate_link(
+                    session, session.get(Team, task.team_id), link  # type: ignore[arg-type]
+                )
+            except (AttributeError, ValueError) as error:
+                raise TaskNotFinalizable("evaluation_task_evidence_invalid") from error
+            normalized_links.append(EvaluationService._link_payload(link))
+        if not any(
+            link["source_kind"] == "outcome"
+            and link["outcome_id"] == str(evaluation.outcome_id)
+            for link in normalized_links
+        ):
+            raise TaskNotFinalizable("evaluation_task_primary_outcome_missing")
+        proposal_payload = {
+            "team_id": str(task.team_id),
+            "outcome_id": str(evaluation.outcome_id),
+            "conclusion": evaluation.conclusion,
+            "findings": evaluation.findings,
+            "evidence": normalized_links,
+            "evaluator_kind": evaluation.evaluator_kind,
+            "evaluator_identity": evaluation.evaluator_identity,
+            "evaluator_revision": evaluation.evaluator_revision,
+            "idempotency_key": evaluation.idempotency_key,
+        }
+        if EvaluationService._sha256_json(proposal_payload) != evaluation.proposal_hash:
+            raise TaskNotFinalizable("evaluation_task_proposal_hash_mismatch")
+
+        proposed_events = [event for event in related_events if event.type == "evaluation_proposed"]
+        if (
+            len(proposed_events) != 1
+            or proposed_events[0].payload
+            != {
+                "evaluation_id": str(evaluation.id),
+                "outcome_id": str(evaluation.outcome_id),
+                "proposal_hash": evaluation.proposal_hash,
+                "evaluator_kind": evaluation.evaluator_kind,
+            }
+        ):
+            raise TaskNotFinalizable("evaluation_task_proposal_event_invalid")
+
+        started_at = self._current_attempt_start(session, task)
+        if started_at is None:
+            raise TaskNotFinalizable("evaluation_task_start_event_missing")
+        if evaluation.status == "proposed":
+            if (
+                evaluation.resolved_by_task_id is not None
+                or evaluation.resolved_at is not None
+                or evaluation.rejection_reason is not None
+                or len(related_events) != 1
+            ):
+                raise TaskNotFinalizable("evaluation_task_proposal_disposition_mismatch")
+            return None
+        if evaluation.resolved_by_task_id != task.id or evaluation.resolved_at is None:
+            raise TaskNotFinalizable("evaluation_task_disposition_owner_invalid")
+        if evaluation.status == "recorded":
+            disposition_events = [event for event in related_events if event.type == "evaluation_recorded"]
+            expected_event = {
+                "evaluation_id": str(evaluation.id),
+                "outcome_id": str(evaluation.outcome_id),
+                "proposal_hash": evaluation.proposal_hash,
+            }
+            result_category: Literal[
+                "success_evaluation_recorded", "success_evaluation_rejected"
+            ] = "success_evaluation_recorded"
+        elif evaluation.status == "rejected":
+            disposition_events = [event for event in related_events if event.type == "evaluation_rejected"]
+            expected_event = {
+                "evaluation_id": str(evaluation.id),
+                "outcome_id": str(evaluation.outcome_id),
+                "reason": evaluation.rejection_reason,
+            }
+            result_category = "success_evaluation_rejected"
+        else:
+            raise TaskNotFinalizable("evaluation_task_disposition_invalid")
+        if (
+            len(disposition_events) != 1
+            or disposition_events[0].payload != expected_event
+            or len(related_events) != 2
+        ):
+            raise TaskNotFinalizable("evaluation_task_disposition_event_invalid")
+        return TerminalObservation(
+            task_id=task.id,
+            attempt=task.attempt_count,
+            result_category=result_category,
+            observed_at=started_at,
+            evaluation_id=evaluation.id,
+        )
+
+    @staticmethod
+    def _r6g_evaluation_idempotency_key(request_fingerprint: str) -> str:
+        return "r6g-evaluate-v1:" + request_fingerprint.removeprefix("sha256:")
+
+    @staticmethod
     def _current_attempt_start(session: Session, task: Task) -> datetime | None:
         """The latest `task_started` Event for the Task's current attempt.
 
@@ -1296,6 +1835,8 @@ class TaskRuntime:
         observation: TerminalObservation) -> None:
         if task.task_type != "evaluate_outcome":
             raise TaskNotFinalizable("evaluation_result_wrong_task_type")
+        if TaskRuntime._is_r6g_evaluation_task(session, task):
+            TaskRuntime._validate_evaluation_task_request(session, task)
         if not {"Evaluation", "EvidenceLink"}.issubset(set(task.allowed_writes)):
             raise TaskNotFinalizable("evaluation_result_write_scope_missing")
         expected_status = "recorded" if observation.result_category == "success_evaluation_recorded" else "rejected"  # noqa: E501
