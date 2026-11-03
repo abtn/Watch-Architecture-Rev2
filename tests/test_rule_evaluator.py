@@ -52,7 +52,11 @@ def _dispatch(
     result = dispatcher.dispatch(fixture.task_id)
     assert result.outcome_id is not None
     assert result.status in {"done", "failed"}
-    return _evaluator_task_id(session_factory, fixture.task_id)
+    evaluator_task_id = _evaluator_task_id(
+        session_factory, fixture.task_id
+    )
+    TaskRuntime(session_factory, snapshot_store).admit(evaluator_task_id)
+    return evaluator_task_id
 
 
 def test_created_signal_produces_deterministic_worked_evaluation(
