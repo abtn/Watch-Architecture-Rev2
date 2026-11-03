@@ -793,6 +793,21 @@ class TaskRuntime:
                             if observation.learning_change_id is not None
                             else {}
                         ),
+                        **(
+                            {"strategy_event_id": str(observation.strategy_event_id)}
+                            if observation.strategy_event_id is not None
+                            else {}
+                        ),
+                        **(
+                            {"plan_id": str(observation.plan_id)}
+                            if observation.plan_id is not None
+                            else {}
+                        ),
+                        **(
+                            {"plan_event_id": str(observation.plan_event_id)}
+                            if observation.plan_event_id is not None
+                            else {}
+                        ),
                     },
                 )
                 for event_type in event_types
