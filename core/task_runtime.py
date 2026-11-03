@@ -35,6 +35,13 @@ _RETRY_EVENTS = ("task_attempt_failed", "task_retry_scheduled")
 _TERMINAL_STATUSES = frozenset({"done", "failed"})
 _EVALUATION_SUCCESS_CATEGORIES = frozenset({"success_evaluation_recorded",
     "success_evaluation_rejected"})
+_STRATEGY_SUCCESS_CATEGORIES = frozenset(
+    {"success_strategy_accepted", "success_strategy_rejected"}
+)
+_PLAN_SUCCESS_CATEGORIES = frozenset({"success_plan_created"})
+_CONTROL_TASK_SUCCESS_CATEGORIES = (
+    _STRATEGY_SUCCESS_CATEGORIES | _PLAN_SUCCESS_CATEGORIES
+)
 _LEARNING_CHANGE_SUCCESS_CATEGORIES = frozenset(
     {"success_learning_change_proposed"}
 )
@@ -55,6 +62,7 @@ _SUCCESS_CATEGORIES = (
     | _LEARNING_CHANGE_SUCCESS_CATEGORIES
     | _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES
     | _KNOWLEDGE_REVIEW_SUCCESS_CATEGORIES
+    | _CONTROL_TASK_SUCCESS_CATEGORIES
 )
 _RESULT_CATEGORIES = _SUCCESS_CATEGORIES | {"terminal_failure"}
 
@@ -121,13 +129,17 @@ class TerminalObservation:
         "success_signal_created", "success_no_change", "success_evaluation_recorded",
         "success_evaluation_rejected", "success_learning_change_proposed",
         "success_learning_change_accepted", "success_learning_change_rejected",
-        "success_knowledge_reviewed", "terminal_failure"
+        "success_knowledge_reviewed", "success_strategy_accepted",
+        "success_strategy_rejected", "success_plan_created", "terminal_failure"
     ]
     observed_at: datetime
     signals: tuple[SignalEvidence, ...] = ()
     failure_reason: str | None = None
     evaluation_id: UUID | None = None
     learning_change_id: UUID | None = None
+    strategy_event_id: UUID | None = None
+    plan_id: UUID | None = None
+    plan_event_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -710,6 +722,19 @@ class TaskRuntime:
                 self._validate_evaluation_result(session, task, observation)
             elif observation.evaluation_id is not None:
                 raise TaskNotFinalizable("evaluation_id_not_allowed")
+            if observation.result_category in _CONTROL_TASK_SUCCESS_CATEGORIES:
+                self._validate_control_task_result(
+                    session,
+                    task,
+                    observation,
+                    allow_completed=task.status == "done",
+                )
+            elif (
+                observation.strategy_event_id is not None
+                or observation.plan_id is not None
+                or observation.plan_event_id is not None
+            ):
+                raise TaskNotFinalizable("control_task_result_id_not_allowed")
             if observation.result_category in _LEARNING_CHANGE_SUCCESS_CATEGORIES:
                 self._validate_learning_change_result(session, task, observation)
             elif (
@@ -1116,6 +1141,10 @@ class TaskRuntime:
                 )
             elif self._is_r6g_evaluation_task(session, task):
                 recovered_observation = self._committed_evaluation_observation(
+                    session, task
+                )
+            elif task.task_type in {"propose_strategy", "create_plan"}:
+                recovered_observation = self._committed_control_task_observation(
                     session, task
                 )
 
@@ -1862,6 +1891,267 @@ class TaskRuntime:
         )
 
     @staticmethod
+    def _validate_control_task_result(
+        session: Session,
+        task: Task,
+        observation: TerminalObservation,
+        *,
+        allow_completed: bool = False,
+    ) -> None:
+        """Validate service-protocol results before TaskRuntime terminalization."""
+        if task.status != "running" and not (
+            allow_completed and task.status == "done"
+        ):
+            raise TaskNotFinalizable("task_not_running")
+        if task.attempt_count != observation.attempt:
+            raise TaskNotFinalizable("stale_attempt")
+
+        if observation.result_category in _STRATEGY_SUCCESS_CATEGORIES:
+            if task.task_type != "propose_strategy":
+                raise TaskNotFinalizable("strategy_result_wrong_task_type")
+            if task.allowed_writes != []:
+                raise TaskNotFinalizable("strategy_result_write_scope_violation")
+            if task.objective_id is None or any(
+                value is not None
+                for value in (observation.plan_id, observation.plan_event_id)
+            ):
+                raise TaskNotFinalizable("strategy_result_scope_invalid")
+            events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type.in_(
+                            ("strategy_proposal_accepted", "strategy_proposal_rejected")
+                        ),
+                    )
+                )
+            )
+            expected_type = (
+                "strategy_proposal_accepted"
+                if observation.result_category == "success_strategy_accepted"
+                else "strategy_proposal_rejected"
+            )
+            if (
+                len(events) != 1
+                or events[0].id != observation.strategy_event_id
+                or events[0].type != expected_type
+                or not isinstance(events[0].payload, dict)
+            ):
+                raise TaskNotFinalizable("strategy_disposition_event_invalid")
+            payload = events[0].payload
+            reason = payload.get("reason")
+            proposal_json = payload.get("proposal_json")
+            proposal_hash = payload.get("proposal_hash")
+            assessment = payload.get("assessment")
+            provenance = payload.get("context_provenance")
+            if (
+                payload.get("operation") != "propose_strategy"
+                or payload.get("team_id") != str(task.team_id)
+                or payload.get("objective_id") != str(task.objective_id)
+                or payload.get("policy_version") != task.policy_version
+                or (expected_type == "strategy_proposal_accepted" and reason is not None)
+                or (
+                    expected_type == "strategy_proposal_rejected"
+                    and (not isinstance(reason, str) or not reason.strip())
+                )
+                or not isinstance(proposal_json, str)
+                or not isinstance(proposal_hash, str)
+                or hashlib.sha256(proposal_json.encode("utf-8")).hexdigest()
+                != proposal_hash
+                or not isinstance(assessment, dict)
+                or not isinstance(assessment.get("basis"), dict)
+                or not isinstance(assessment["basis"].get("sha256"), str)
+                or not isinstance(provenance, dict)
+                or set(provenance) != {"event_id", "snapshot_ref", "content_hash"}
+            ):
+                raise TaskNotFinalizable("strategy_disposition_payload_invalid")
+            try:
+                context_event_id = UUID(provenance["event_id"])
+                charge_id = UUID(payload["generation_charge_id"])
+            except (KeyError, TypeError, ValueError) as error:
+                raise TaskNotFinalizable(
+                    "strategy_disposition_provenance_invalid"
+                ) from error
+            context_event = session.get(Event, context_event_id)
+            charge = session.get(TaskGenerationCharge, charge_id)
+            if (
+                context_event is None
+                or context_event.task_id != task.id
+                or context_event.type != "context_assembled"
+                or context_event.payload.get("snapshot_ref") != provenance["snapshot_ref"]
+                or context_event.payload.get("content_hash") != provenance["content_hash"]
+                or charge is None
+                or charge.task_id != task.id
+                or charge.operation != "strategy_proposal"
+                or charge.status != "reconciled"
+                or charge.accounted_cost_usd is None
+                or charge.input_tokens is None
+                or charge.output_tokens is None
+                or charge.attempt_count > task.attempt_count
+            ):
+                raise TaskNotFinalizable("strategy_disposition_provenance_mismatch")
+            if session.scalar(
+                select(Plan.id).where(Plan.created_by_task_id == task.id)
+            ) is not None:
+                raise TaskNotFinalizable("strategy_task_materialized_plan")
+            return
+
+        if observation.result_category == "success_plan_created":
+            if (
+                task.task_type != "create_plan"
+                or task.allowed_writes != ["Plan"]
+                or task.objective_id is None
+                or observation.plan_id is None
+                or observation.plan_event_id is None
+                or observation.strategy_event_id is not None
+            ):
+                raise TaskNotFinalizable("plan_result_scope_invalid")
+            plan = session.get(Plan, observation.plan_id)
+            if (
+                plan is None
+                or plan.created_by_task_id != task.id
+                or plan.team_id != task.team_id
+                or plan.objective_id != task.objective_id
+            ):
+                raise TaskNotFinalizable("plan_result_not_created_by_task")
+            created_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == "plan_created",
+                    )
+                )
+            )
+            if (
+                len(created_events) != 1
+                or created_events[0].id != observation.plan_event_id
+                or created_events[0].payload.get("plan_id") != str(plan.id)
+            ):
+                raise TaskNotFinalizable("plan_created_event_invalid")
+            # Reuse the service's complete reconstruction validator: accepted
+            # Strategy provenance, immutable actions, materialized Tasks,
+            # Plan lifecycle and the exact plan_created payload are all checked.
+            from core.plans import PlanService
+
+            try:
+                reconstructed = PlanService._reconstruct(session, plan.id)
+            except ValueError as error:
+                raise TaskNotFinalizable(
+                    "plan_creation_records_corrupt"
+                ) from error
+            if (
+                reconstructed.event_id != observation.plan_event_id
+                or reconstructed.plan_id != observation.plan_id
+            ):
+                raise TaskNotFinalizable("plan_created_reconstruction_mismatch")
+            return
+
+        raise TaskNotFinalizable("control_task_result_unsupported")
+
+    def _committed_control_task_observation(
+        self, session: Session, task: Task
+    ) -> TerminalObservation | None:
+        """Reconstruct a committed Strategy/Plan service result for recovery."""
+        started_at = self._current_attempt_start(session, task)
+        if started_at is None:
+            raise TaskNotFinalizable("control_task_start_event_missing")
+        if task.task_type == "propose_strategy":
+            events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type.in_(
+                            ("strategy_proposal_accepted", "strategy_proposal_rejected")
+                        ),
+                    )
+                )
+            )
+            if not events:
+                return None
+            if len(events) != 1:
+                raise TaskNotFinalizable("strategy_disposition_event_conflict")
+            event = events[0]
+            observation = TerminalObservation(
+                task_id=task.id,
+                attempt=task.attempt_count,
+                result_category=(
+                    "success_strategy_accepted"
+                    if event.type == "strategy_proposal_accepted"
+                    else "success_strategy_rejected"
+                ),
+                observed_at=started_at,
+                strategy_event_id=event.id,
+            )
+            self._validate_control_task_result(session, task, observation)
+            return observation
+
+        if task.task_type == "create_plan":
+            created = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == "plan_created",
+                    )
+                )
+            )
+            rejected = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == "plan_creation_rejected",
+                    )
+                )
+            )
+            if created and rejected:
+                raise TaskNotFinalizable("plan_creation_disposition_conflict")
+            if created:
+                if len(created) != 1 or not isinstance(created[0].payload, dict):
+                    raise TaskNotFinalizable("plan_created_event_conflict")
+                try:
+                    plan_id = UUID(created[0].payload["plan_id"])
+                except (KeyError, TypeError, ValueError) as error:
+                    raise TaskNotFinalizable("plan_created_event_invalid") from error
+                observation = TerminalObservation(
+                    task_id=task.id,
+                    attempt=task.attempt_count,
+                    result_category="success_plan_created",
+                    observed_at=started_at,
+                    plan_id=plan_id,
+                    plan_event_id=created[0].id,
+                )
+                self._validate_control_task_result(session, task, observation)
+                return observation
+            if rejected:
+                if len(rejected) != 1 or not isinstance(rejected[0].payload, dict):
+                    raise TaskNotFinalizable("plan_rejection_event_conflict")
+                payload = rejected[0].payload
+                reason = payload.get("reason")
+                if (
+                    payload.get("operation") != "create_plan"
+                    or payload.get("team_id") != str(task.team_id)
+                    or payload.get("objective_id") != str(task.objective_id)
+                    or payload.get("accepted_event_id") is None
+                    or payload.get("proposal_hash") is None
+                    or not isinstance(reason, str)
+                    or not reason.strip()
+                ):
+                    raise TaskNotFinalizable("plan_rejection_event_invalid")
+                return TerminalObservation(
+                    task_id=task.id,
+                    attempt=task.attempt_count,
+                    result_category="terminal_failure",
+                    observed_at=started_at,
+                    failure_reason=reason,
+                )
+            if session.scalar(
+                select(Plan.id).where(Plan.created_by_task_id == task.id)
+            ) is not None:
+                raise TaskNotFinalizable("plan_creation_event_missing")
+            return None
+
+        return None
+
+    @staticmethod
     def _validate_evaluation_result(session: Session, task: Task,
         observation: TerminalObservation) -> None:
         if task.task_type != "evaluate_outcome":
@@ -2267,14 +2557,41 @@ class TaskRuntime:
                     raise TaskNotFinalizable("learning_change_id_required")
                 if observation.signals or observation.evaluation_id is not None:
                     raise TaskNotFinalizable("terminal_evidence_not_allowed")
+            elif observation.result_category in _STRATEGY_SUCCESS_CATEGORIES:
+                if observation.strategy_event_id is None:
+                    raise TaskNotFinalizable("strategy_event_id_required")
+                if (
+                    observation.signals
+                    or observation.evaluation_id is not None
+                    or observation.learning_change_id is not None
+                    or observation.plan_id is not None
+                    or observation.plan_event_id is not None
+                ):
+                    raise TaskNotFinalizable("terminal_evidence_not_allowed")
+            elif observation.result_category in _PLAN_SUCCESS_CATEGORIES:
+                if observation.plan_id is None or observation.plan_event_id is None:
+                    raise TaskNotFinalizable("plan_result_identity_required")
+                if (
+                    observation.signals
+                    or observation.evaluation_id is not None
+                    or observation.learning_change_id is not None
+                    or observation.strategy_event_id is not None
+                ):
+                    raise TaskNotFinalizable("terminal_evidence_not_allowed")
             elif (observation.signals or observation.evaluation_id is not None
-                or observation.learning_change_id is not None):
+                or observation.learning_change_id is not None
+                or observation.strategy_event_id is not None
+                or observation.plan_id is not None
+                or observation.plan_event_id is not None):
                 raise TaskNotFinalizable("terminal_evidence_not_allowed")
             return
 
         if (
             observation.evaluation_id is not None
             or observation.learning_change_id is not None
+            or observation.strategy_event_id is not None
+            or observation.plan_id is not None
+            or observation.plan_event_id is not None
         ):
             raise TaskNotFinalizable("terminal_evidence_not_allowed")
         if not observation.failure_reason or not observation.failure_reason.strip():
@@ -2302,6 +2619,12 @@ class TaskRuntime:
             payload["evaluation_id"] = str(observation.evaluation_id)
         if observation.learning_change_id is not None:
             payload["learning_change_id"] = str(observation.learning_change_id)
+        if observation.strategy_event_id is not None:
+            payload["strategy_event_id"] = str(observation.strategy_event_id)
+        if observation.plan_id is not None:
+            payload["plan_id"] = str(observation.plan_id)
+        if observation.plan_event_id is not None:
+            payload["plan_event_id"] = str(observation.plan_event_id)
         return payload
 
     def _store_snapshot(self, content: bytes) -> tuple[str, str]:
