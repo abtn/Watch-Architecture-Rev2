@@ -1984,8 +1984,14 @@ class TaskRuntime:
                 or not isinstance(assessment, dict)
                 or not isinstance(assessment.get("basis"), dict)
                 or not isinstance(assessment["basis"].get("sha256"), str)
-                or not isinstance(provenance, dict)
-                or set(provenance) != {"event_id", "snapshot_ref", "content_hash"}
+                or (
+                    provenance is not None
+                    and (
+                        not isinstance(provenance, dict)
+                        or set(provenance)
+                        != {"event_id", "snapshot_ref", "content_hash"}
+                    )
+                )
             ):
                 raise TaskNotFinalizable("strategy_disposition_payload_invalid")
             charge_reference = payload.get("generation_charge_id")
