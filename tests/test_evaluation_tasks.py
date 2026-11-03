@@ -15,7 +15,12 @@ from core.evaluations import (
     EvaluationService,
 )
 from core.models import Event, Outcome, Task
-from core.task_runtime import TaskNotEligible, TaskRuntime, TerminalObservation
+from core.task_runtime import (
+    FinalizationResult,
+    TaskNotEligible,
+    TaskRuntime,
+    TerminalObservation,
+)
 from tests.test_r6b_dispatcher import DispatchFixture, dispatch_fixture  # noqa: F401
 
 
@@ -41,8 +46,10 @@ def _finalize_source(
     runtime: TaskRuntime,
     fixture: DispatchFixture,
     *,
-    result_category: Literal["success_no_change", "terminal_failure"] = "success_no_change",
-) -> tuple[TerminalObservation, object]:
+    result_category: Literal["success_no_change", "terminal_failure"] = (
+        "success_no_change"
+    ),
+) -> tuple[TerminalObservation, FinalizationResult]:
     admission = runtime.admit(fixture.task_id)
     if result_category == "terminal_failure":
         observation = TerminalObservation(

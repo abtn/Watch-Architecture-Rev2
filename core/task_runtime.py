@@ -1347,7 +1347,9 @@ class TaskRuntime:
         return exact_shape or bool(request_events)
 
     @staticmethod
-    def _source_action_for_evaluation(session: Session, source_task: Task) -> PlanAction:
+    def _source_action_for_evaluation(
+        session: Session, source_task: Task
+    ) -> PlanAction:
         if (
             source_task.task_type != "ingest_source"
             or source_task.plan_id is None
@@ -1534,7 +1536,9 @@ class TaskRuntime:
             source_plan_id = UUID(payload["source_plan_id"])
             source_action_id = UUID(payload["source_plan_action_id"])
         except (TypeError, ValueError) as error:
-            raise TaskNotFinalizable("evaluation_task_request_reference_invalid") from error
+            raise TaskNotFinalizable(
+                "evaluation_task_request_reference_invalid"
+            ) from error
 
         source_task = session.get(Task, source_task_id)
         outcome = session.get(Outcome, outcome_id)
@@ -1543,7 +1547,11 @@ class TaskRuntime:
             or outcome is None
             or source_task.team_id != task.team_id
             or source_task.status
-            != ("failed" if payload["source_result_category"] == "terminal_failure" else "done")
+            != (
+                "failed"
+                if payload["source_result_category"] == "terminal_failure"
+                else "done"
+            )
             or source_task.attempt_count != payload["source_attempt"]
             or source_task.plan_id != source_plan_id
             or source_task.plan_action_id != source_action_id
@@ -1681,7 +1689,11 @@ class TaskRuntime:
                 select(Event).where(
                     Event.task_id == task.id,
                     Event.type.in_(
-                        ("evaluation_proposed", "evaluation_recorded", "evaluation_rejected")
+                        (
+                            "evaluation_proposed",
+                            "evaluation_recorded",
+                            "evaluation_rejected",
+                        )
                     ),
                 )
             )
@@ -1755,7 +1767,11 @@ class TaskRuntime:
         if EvaluationService._sha256_json(proposal_payload) != evaluation.proposal_hash:
             raise TaskNotFinalizable("evaluation_task_proposal_hash_mismatch")
 
-        proposed_events = [event for event in related_events if event.type == "evaluation_proposed"]
+        proposed_events = [
+            event
+            for event in related_events
+            if event.type == "evaluation_proposed"
+        ]
         if (
             len(proposed_events) != 1
             or proposed_events[0].payload
@@ -1778,12 +1794,18 @@ class TaskRuntime:
                 or evaluation.rejection_reason is not None
                 or len(related_events) != 1
             ):
-                raise TaskNotFinalizable("evaluation_task_proposal_disposition_mismatch")
+                raise TaskNotFinalizable(
+                    "evaluation_task_proposal_disposition_mismatch"
+                )
             return None
         if evaluation.resolved_by_task_id != task.id or evaluation.resolved_at is None:
             raise TaskNotFinalizable("evaluation_task_disposition_owner_invalid")
         if evaluation.status == "recorded":
-            disposition_events = [event for event in related_events if event.type == "evaluation_recorded"]
+            disposition_events = [
+                event
+                for event in related_events
+                if event.type == "evaluation_recorded"
+            ]
             expected_event = {
                 "evaluation_id": str(evaluation.id),
                 "outcome_id": str(evaluation.outcome_id),
@@ -1793,7 +1815,11 @@ class TaskRuntime:
                 "success_evaluation_recorded", "success_evaluation_rejected"
             ] = "success_evaluation_recorded"
         elif evaluation.status == "rejected":
-            disposition_events = [event for event in related_events if event.type == "evaluation_rejected"]
+            disposition_events = [
+                event
+                for event in related_events
+                if event.type == "evaluation_rejected"
+            ]
             expected_event = {
                 "evaluation_id": str(evaluation.id),
                 "outcome_id": str(evaluation.outcome_id),
