@@ -353,7 +353,13 @@ class ExperienceDistiller:
             "proposal_hash": proposal_hash,
         }
         idempotency_key = (
-            "r6f-distill-v1:" + pack.basis_hash.removeprefix("sha256:")
+            (
+                "r6g-distill-v2:"
+                if pack.document["schema_version"]
+                == "r6g-experience-evidence-pack-v2"
+                else "r6f-distill-v1:"
+            )
+            + pack.basis_hash.removeprefix("sha256:")
         )
 
         with self._session_factory.begin() as session:
@@ -584,6 +590,32 @@ class ExperienceDistiller:
         if len(evaluations) != len(evaluation_ids):
             raise ExperienceDistillerError("recorded_evaluation_not_found_for_team")
 
+        source_tasks_by_evaluation: dict[UUID, Task] = {}
+        pack_version = 1
+        for evaluation in evaluations:
+            outcome = session.get(Outcome, evaluation.outcome_id)
+            source_task = (
+                session.get(Task, outcome.recorded_by_task_id)
+                if outcome is not None
+                else None
+            )
+            if (
+                outcome is None
+                or source_task is None
+                or source_task.team_id != team.id
+                or source_task.status not in {"done", "failed"}
+            ):
+                raise ExperienceDistillerError("source_task_not_eligible")
+            source_tasks_by_evaluation[evaluation.id] = source_task
+            if source_task.status == "failed":
+                pack_version = 2
+
+        if pack_version == 2 and any(
+            source_task.task_type != "ingest_source"
+            for source_task in source_tasks_by_evaluation.values()
+        ):
+            raise ExperienceDistillerError("failed_case_requires_configured_ingest")
+
         source_task_ids: set[UUID] = set()
         cases: list[dict[str, Any]] = []
         basis: list[dict[str, Any]] = []
@@ -614,11 +646,10 @@ class ExperienceDistiller:
             ):
                 raise ExperienceDistillerError("task_execution_outcome_invalid")
 
-            source_task = session.get(Task, outcome.recorded_by_task_id)
+            source_task = source_tasks_by_evaluation[evaluation.id]
             if (
-                source_task is None
-                or source_task.team_id != team.id
-                or source_task.status != "done"
+                source_task.team_id != team.id
+                or source_task.status not in {"done", "failed"}
                 or source_task.task_type
                 in {
                     "evaluate_outcome",
@@ -632,13 +663,18 @@ class ExperienceDistiller:
                 raise ExperienceDistillerError("independent_outcome_task_required")
             source_task_ids.add(source_task.id)
 
-            self._require_terminal_event(
-                session,
-                source_task,
-                outcome,
-                "task_completed",
-                expected_result=None,
-            )
+            if source_task.status == "done":
+                self._require_terminal_event(
+                    session,
+                    source_task,
+                    outcome,
+                    "task_completed",
+                    expected_result=None,
+                )
+            else:
+                self._require_failed_terminal_events(
+                    session, source_task, outcome
+                )
             observation_bytes = self._read_snapshot(
                 outcome.observation_snapshot_ref, outcome.observation_hash
             )
@@ -650,6 +686,28 @@ class ExperienceDistiller:
                 ) from error
             if not isinstance(observation, dict):
                 raise ExperienceDistillerError("outcome_observation_shape_invalid")
+            if pack_version == 2:
+                expected_category = (
+                    "terminal_failure"
+                    if source_task.status == "failed"
+                    else None
+                )
+                if source_task.status == "failed":
+                    if (
+                        observation.get("result_category") != expected_category
+                        or not isinstance(observation.get("failure_reason"), str)
+                        or not observation["failure_reason"].strip()
+                    ):
+                        raise ExperienceDistillerError(
+                            "failed_source_observation_invalid"
+                        )
+                elif observation.get("result_category") not in {
+                    "success_signal_created",
+                    "success_no_change",
+                }:
+                    raise ExperienceDistillerError(
+                        "worked_source_observation_invalid"
+                    )
 
             evaluator_task = session.get(Task, evaluation.created_by_task_id)
             if (
@@ -707,6 +765,16 @@ class ExperienceDistiller:
                 normalized_links.append(normalized)
 
             normalized_links.sort(key=lambda item: item["reference_key"])
+            if pack_version == 2:
+                self._validate_r6g_evaluation_case(
+                    session,
+                    team,
+                    source_task,
+                    outcome,
+                    evaluation,
+                    evaluator_task,
+                    normalized_links,
+                )
             evaluation_payload = {
                 "team_id": str(team.id),
                 "outcome_id": str(outcome.id),
@@ -765,7 +833,14 @@ class ExperienceDistiller:
                 if link.stance == "challenges":
                     contrary_reference_ids.add(link_ref)
 
-            task_context = self._task_provenance(session, source_task)
+            if source_task.status == "done":
+                task_context = self._task_provenance(session, source_task)
+            else:
+                task_context = self._failed_task_provenance(
+                    session, source_task, outcome, observation
+                )
+            if pack_version == 2:
+                task_context["status"] = source_task.status
             case = {
                 "source_task": task_context,
                 "outcome": {
@@ -851,6 +926,22 @@ class ExperienceDistiller:
                 }
             )
 
+        if pack_version == 2:
+            contrary_reference_ids.clear()
+            for case in cases:
+                failed_case = case["source_task"]["status"] == "failed"
+                for evidence in case["evidence"]:
+                    original_stance = evidence["stance"]
+                    case_relative_stance = original_stance
+                    if failed_case:
+                        if original_stance == "supports":
+                            case_relative_stance = "challenges"
+                        elif original_stance == "challenges":
+                            case_relative_stance = "supports"
+                    evidence["case_relative_stance"] = case_relative_stance
+                    if case_relative_stance == "challenges":
+                        contrary_reference_ids.add(evidence["reference_id"])
+
         cases.sort(
             key=lambda item: (
                 item["outcome"]["observed_at"],
@@ -860,7 +951,11 @@ class ExperienceDistiller:
         )
         basis.sort(key=lambda item: item["evaluation_id"])
         document = {
-            "schema_version": "r6f-experience-evidence-pack-v1",
+            "schema_version": (
+                "r6g-experience-evidence-pack-v2"
+                if pack_version == 2
+                else "r6f-experience-evidence-pack-v1"
+            ),
             "requesting_task_id": str(task.id),
             "team_id": str(team.id),
             "case_count": len(cases),
@@ -1170,10 +1265,18 @@ class ExperienceDistiller:
         if not pack.contrary_reference_ids.issubset(contrary_refs):
             raise ExperienceDistillerError("contrary_evidence_not_preserved")
 
+        is_v2 = (
+            pack.document.get("schema_version")
+            == "r6g-experience-evidence-pack-v2"
+        )
         for case in pack.document["cases"]:
             for evidence in case["evidence"]:
                 reference_id = evidence["reference_id"]
-                stance = evidence["stance"]
+                stance = (
+                    evidence["case_relative_stance"]
+                    if is_v2
+                    else evidence["stance"]
+                )
                 target_refs = (
                     supporting_refs
                     if stance == "supports"
@@ -1193,8 +1296,30 @@ class ExperienceDistiller:
                 if item["evaluation"]["reference_id"] == f"evaluation:{evaluation_id}"
             )
             required.add(case["outcome"]["reference_id"])
-            if not required.issubset(supporting_refs):
+            if is_v2 and case["source_task"]["status"] == "failed":
+                if not required.issubset(contrary_refs):
+                    raise ExperienceDistillerError(
+                        "failed_case_must_remain_contrary"
+                    )
+            elif not required.issubset(supporting_refs):
                 raise ExperienceDistillerError("distillation_case_reference_omitted")
+
+        if is_v2 and draft.kind in {"pattern", "method", "playbook"}:
+            worked_cases = sum(
+                case["source_task"]["status"] == "done"
+                for case in pack.document["cases"]
+            )
+            if worked_cases < 2:
+                raise ExperienceDistillerError(
+                    "multi_case_method_requires_two_worked_cases"
+                )
+        if is_v2 and not any(
+            case["source_task"]["status"] == "done"
+            for case in pack.document["cases"]
+        ):
+            raise ExperienceDistillerError(
+                "failed_only_evidence_cannot_support_practice"
+            )
 
         if not pack.contrary_reference_ids and not any(
             "No counterexample was observed in the available evidence basis."
