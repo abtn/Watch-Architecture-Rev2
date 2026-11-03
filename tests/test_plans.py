@@ -20,8 +20,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from core.ingestion import IngestionProposal, IngestionService
 from core.models import (
     Event,
-    Outcome,
     Objective,
+    Outcome,
     Plan,
     PlanAction,
     Signal,
