@@ -13,7 +13,9 @@ from core.models import Event, Signal
 from core.rule_evaluator import IngestSourceRuleEvaluator, RuleEvaluationError
 from core.snapshot_store import SnapshotStore
 from core.source_fetch import SourceFetchError
-from tests.test_r6b_dispatcher import DispatchFixture, FakeFetcher, dispatch_fixture  # noqa: F401, F811
+from tests.test_r6b_dispatcher import DispatchFixture, FakeFetcher
+
+pytest_plugins = ["tests.test_r6b_dispatcher"]
 
 
 def _evaluator_task_id(
