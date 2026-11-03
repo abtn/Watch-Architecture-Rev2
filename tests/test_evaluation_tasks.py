@@ -1,6 +1,6 @@
 """R6-G: durable D9 evaluator-Task request and recovery protocol."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Literal
 from uuid import UUID
 
@@ -22,7 +22,9 @@ from core.task_runtime import (
     TaskRuntime,
     TerminalObservation,
 )
-from tests.test_r6b_dispatcher import DispatchFixture, dispatch_fixture  # noqa: F401, F811
+from tests.test_r6b_dispatcher import DispatchFixture
+
+pytest_plugins = ["tests.test_r6b_dispatcher"]
 
 
 def _request_for_source(
