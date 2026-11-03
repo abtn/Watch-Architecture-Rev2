@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from core.evaluation_tasks import RuleEvaluationTaskRunner
 from core.evaluations import (
     EvaluationDraft,
     EvaluationEvidence,
@@ -244,3 +245,33 @@ def test_recovery_finalizes_a_recorded_evaluation_before_retry(
         )
         assert evaluator_outcome is not None
         assert evaluator_outcome.observed_at == started
+
+
+
+def test_runner_records_evaluation_and_replays_terminal_task(
+    session_factory: sessionmaker[Session],
+    snapshot_store,
+    dispatch_fixture: DispatchFixture,
+) -> None:
+    from core.dispatcher import TaskDispatcher
+    from tests.test_r6b_dispatcher import FakeFetcher
+
+    TaskDispatcher(
+        session_factory, snapshot_store, FakeFetcher()
+    ).dispatch(dispatch_fixture.task_id)
+    evaluator_task, _ = _request_for_source(
+        session_factory, dispatch_fixture.task_id
+    )
+
+    runner = RuleEvaluationTaskRunner(session_factory, snapshot_store)
+    first = runner.run(evaluator_task.id)
+    second = runner.run(evaluator_task.id)
+
+    assert first.status == "done"
+    assert first.evaluation_id is not None
+    assert first.outcome_id is not None
+    assert first.replayed is False
+    assert second.status == "done"
+    assert second.evaluation_id == first.evaluation_id
+    assert second.outcome_id == first.outcome_id
+    assert second.replayed is True

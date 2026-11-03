@@ -183,7 +183,8 @@ class IngestSourceRuleEvaluator:
                         f"Configured source type: {source_type}.",
                     ],
                     alternative_explanations=[
-                        "Execution consistency does not prove that the source content is correct or useful."
+                        "Execution consistency does not prove that the source "
+                        "content is correct or useful."
                     ],
                     attribution="not established",
                     uncertainty=list(_COMMON_UNCERTAINTY),
@@ -206,7 +207,9 @@ class IngestSourceRuleEvaluator:
                 outcome.observation_snapshot_ref
             )
         except SnapshotIntegrityError as error:
-            raise RuleEvaluationError("evaluation_outcome_snapshot_unreadable") from error
+            raise RuleEvaluationError(
+                "evaluation_outcome_snapshot_unreadable"
+            ) from error
         digest = "sha256:" + hashlib.sha256(content).hexdigest()
         if digest != outcome.observation_hash:
             raise RuleEvaluationError("evaluation_outcome_snapshot_hash_mismatch")
@@ -366,7 +369,9 @@ class IngestSourceRuleEvaluator:
         events: list[Event], observation: dict[str, object]
     ) -> None:
         if observation.get("signals") != [] or events:
-            raise RuleEvaluationError("evaluation_failure_has_successful_ingestion_event")
+            raise RuleEvaluationError(
+                "evaluation_failure_has_successful_ingestion_event"
+            )
 
     def _signal_from_business_event(
         self,
@@ -388,7 +393,9 @@ class IngestSourceRuleEvaluator:
         try:
             signal_id = UUID(payload["signal_id"])
         except (TypeError, ValueError) as error:
-            raise RuleEvaluationError("evaluation_ingestion_signal_id_invalid") from error
+            raise RuleEvaluationError(
+                "evaluation_ingestion_signal_id_invalid"
+            ) from error
         signal = session.get(Signal, signal_id)
         if (
             signal is None
@@ -404,10 +411,15 @@ class IngestSourceRuleEvaluator:
         try:
             content = self._snapshot_store.read(signal.snapshot_ref)
         except SnapshotIntegrityError as error:
-            raise RuleEvaluationError("evaluation_signal_snapshot_unreadable") from error
+            raise RuleEvaluationError(
+                "evaluation_signal_snapshot_unreadable"
+            ) from error
         digest = "sha256:" + hashlib.sha256(content).hexdigest()
-        if digest != signal.content_hash or not signal.snapshot_ref.endswith(
-            digest.removeprefix("sha256:")
+        if (
+            digest != signal.content_hash
+            or signal.snapshot_ref != (
+                "snap://sha256:" + digest.removeprefix("sha256:")
+            )
         ):
             raise RuleEvaluationError("evaluation_signal_snapshot_hash_mismatch")
         return signal
