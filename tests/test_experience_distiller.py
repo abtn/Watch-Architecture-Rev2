@@ -53,6 +53,7 @@ from core.operator_application import (
     LearningChangeDecisionRequest,
     OperatorApplicationAdapter,
     OperatorGrant,
+    OperatorTaskRequestConflict,
     TrustedOperatorPrincipal,
 )
 from core.snapshot_store import SnapshotStore
@@ -1523,6 +1524,144 @@ def test_operator_adapter_decides_and_finalizes_the_same_task(
     assert replay.outcome_id == result.outcome_id
 
     _cleanup_operator_decision_task(session_factory, result.task_id)
+
+
+@pytest.mark.parametrize("reconcile_by", ["adapter", "recovery"])
+def test_competing_approval_tasks_terminalize_the_losing_request(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    reconcile_by: str,
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+
+    principal = _approval_principal(fixture.team_id)
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    winner_request = LearningChangeDecisionRequest(
+        learning_change_id=proposal.learning_change_id,
+        decision="accept",
+        idempotency_key=uuid4(),
+    )
+    loser_request = LearningChangeDecisionRequest(
+        learning_change_id=proposal.learning_change_id,
+        decision="accept",
+        idempotency_key=uuid4(),
+    )
+
+    winner_request_result = adapter.request_learning_change_decision(
+        principal, winner_request
+    )
+    loser_request_result = adapter.request_learning_change_decision(
+        principal, loser_request
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    winner_admission = runtime.admit(winner_request_result.task_id)
+    loser_admission = runtime.admit(loser_request_result.task_id)
+    assert winner_admission.attempt_count == loser_admission.attempt_count == 1
+
+    try:
+        winner = adapter.decide_learning_change(principal, winner_request)
+        assert winner.task_status == "done"
+        assert winner.decision == "accept"
+
+        if reconcile_by == "adapter":
+            with pytest.raises(
+                OperatorTaskRequestConflict, match="learning_change_already_decided"
+            ):
+                adapter.decide_learning_change(principal, loser_request)
+        else:
+            now = datetime.now(timezone.utc)
+            with session_factory.begin() as session:
+                started = session.scalar(
+                    select(Event).where(
+                        Event.task_id == loser_request_result.task_id,
+                        Event.type == "task_started",
+                    )
+                )
+                assert started is not None
+                started.created_at = now - timedelta(seconds=61)
+
+            recovery = runtime.recover_interrupted(now=now)
+            assert recovery.failed == (loser_request_result.task_id,)
+            assert recovery.retried == ()
+            assert recovery.completed == ()
+
+            # The same host request replays the already-recorded failure and
+            # surfaces the same decision conflict; it cannot add another Outcome.
+            with pytest.raises(
+                OperatorTaskRequestConflict, match="learning_change_already_decided"
+            ):
+                adapter.decide_learning_change(principal, loser_request)
+
+        with session_factory() as session:
+            learning_change = session.get(
+                LearningChange, proposal.learning_change_id
+            )
+            winner_task = session.get(Task, winner_request_result.task_id)
+            loser_task = session.get(Task, loser_request_result.task_id)
+            assert learning_change is not None
+            assert learning_change.status == "accepted"
+            assert learning_change.committed_by_task_id == winner_request_result.task_id
+            assert winner_task is not None and winner_task.status == "done"
+            assert loser_task is not None and loser_task.status == "failed"
+            assert session.scalar(
+                select(KnowledgeItem.id).where(
+                    KnowledgeItem.origin_learning_change_id == learning_change.id
+                )
+            ) == winner.knowledge_item_id
+            assert session.scalar(
+                select(Outcome.id).where(
+                    Outcome.recorded_by_task_id == winner_request_result.task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            ) == winner.outcome_id
+            loser_outcomes = list(
+                session.scalars(
+                    select(Outcome).where(
+                        Outcome.recorded_by_task_id == loser_request_result.task_id,
+                        Outcome.outcome_type == "task_execution",
+                    )
+                )
+            )
+            assert len(loser_outcomes) == 1
+            loser_failure_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == loser_request_result.task_id,
+                        Event.type.in_(("task_attempt_failed", "task_failed")),
+                    )
+                )
+            )
+            assert [event.type for event in loser_failure_events] == [
+                "task_attempt_failed",
+                "task_failed",
+            ]
+            assert loser_failure_events[-1].payload["failure_reason"] == (
+                "learning_change_already_decided"
+            )
+            assert session.scalar(
+                select(Event.id).where(
+                    Event.task_id == loser_request_result.task_id,
+                    Event.type.in_(
+                        ("learning_change_accepted", "learning_change_rejected")
+                    ),
+                )
+            ) is None
+    finally:
+        _cleanup_operator_decision_task(session_factory, loser_request_result.task_id)
+        _cleanup_operator_decision_task(session_factory, winner_request_result.task_id)
 
 
 def test_operator_recovery_finalizes_a_committed_decision_after_crash(
