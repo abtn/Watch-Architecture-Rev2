@@ -25,11 +25,23 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 
 ## Database safety
 
-- Database-backed tests use the configured disposable/test PostgreSQL database.
+- Every database-backed test run requires an explicit `TEST_DATABASE_URL` pointing to a disposable PostgreSQL database.
+- The test fixture does not fall back to `DATABASE_URL` and has no hard-coded connection to the developer's `watch` database.
+- The test fixture rejects SQLite and rejects a database named exactly `watch`, even when supplied through `TEST_DATABASE_URL`.
+- It is acceptable for `DATABASE_URL` to keep pointing at the persistent application database while `TEST_DATABASE_URL` points at the disposable test database; tests use only `TEST_DATABASE_URL`.
 - Use a disposable database/volume for migration and concurrency verification.
 - Never target a persistent `watch` database to make a test pass.
 - Do not run destructive cleanup such as `docker compose down -v` as generic test cleanup.
 - If the database cannot be started or a dependency is missing, report the environmental blocker separately from a code defect.
+
+Before running database-backed tests, configure the test URL explicitly. For example, after starting a disposable PostgreSQL instance:
+
+```powershell
+$env:TEST_DATABASE_URL = "postgresql+psycopg://watch:watch@127.0.0.1:55463/watch_test"
+uv run pytest -q
+```
+
+The example URL is illustrative; it does not create the database. Use the actual port and database name of the disposable instance. The fixture fails with a clear configuration error when `TEST_DATABASE_URL` is missing or unsafe.
 
 ## What to test by boundary
 
@@ -229,7 +241,7 @@ Checkpoint 4 was separately authorized on 2026-11-02. It implements the resolved
 **Local verification gate:** rerun on the reconciled PR #32 head, using a fresh disposable pgvector PostgreSQL database with both `DATABASE_URL` and `TEST_DATABASE_URL` bound to it. Run `uv sync --locked`, `uv run alembic upgrade head`, confirm exactly one head/current at `0013_team_experience_projection`, then:
 
 ```bash
-uv run pytest tests/test_team_experience.py tests/test_context_assembly.py tests/test_knowledge_index.py tests/test_learning_commit.py tests/test_task_runtime.py -q
+uv run pytest tests/test_team_experience.py tests/test_context_assembly.py tests/test_knowledge_index.py tests/test_experience_distiller.py tests/test_operator_application.py tests/test_task_runtime.py -q
 uv run ruff check core tests migrations
 uv run mypy core
 uv run pytest -q

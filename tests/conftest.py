@@ -8,6 +8,7 @@ from typing import Iterator
 from uuid import UUID, uuid4
 
 import pytest
+from _database_config import resolve_test_database_url
 from sqlalchemy import Engine, create_engine, delete
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -38,13 +39,10 @@ class ObjectivePrerequisites:
 
 @pytest.fixture
 def database_engine() -> Iterator[Engine]:
-    database_url = os.environ.get(
-        "TEST_DATABASE_URL",
-        os.environ.get(
-            "DATABASE_URL",
-            "postgresql+psycopg://watch:watch@127.0.0.1:5432/watch",
-        ),
-    )
+    try:
+        database_url = resolve_test_database_url(os.environ)
+    except ValueError as exc:
+        raise pytest.UsageError(str(exc)) from exc
     engine = create_engine(database_url)
     with engine.connect():
         pass
