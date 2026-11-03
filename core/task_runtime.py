@@ -1725,12 +1725,13 @@ class TaskRuntime:
         evaluation_service = EvaluationService(
             self._session_factory, self._snapshot_store
         )
+        team = session.get(Team, task.team_id)
+        if team is None:
+            raise TaskNotFinalizable("evaluation_task_team_missing")
         normalized_links: list[dict[str, Any]] = []
         for link in links:
             try:
-                evaluation_service._revalidate_link(
-                    session, session.get(Team, task.team_id), link  # type: ignore[arg-type]
-                )
+                evaluation_service._revalidate_link(session, team, link)
             except (AttributeError, ValueError) as error:
                 raise TaskNotFinalizable("evaluation_task_evidence_invalid") from error
             normalized_links.append(EvaluationService._link_payload(link))
