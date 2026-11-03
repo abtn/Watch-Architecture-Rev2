@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.evaluations import EvaluationService
-from core.models import Evaluation, Event, Outcome, Task
+from core.models import Event, Outcome, Task
 from core.rule_evaluator import IngestSourceRuleEvaluator, RuleEvaluationError
 from core.snapshot_store import SnapshotStore
 from core.task_runtime import (
