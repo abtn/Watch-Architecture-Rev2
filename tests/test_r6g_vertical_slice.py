@@ -23,8 +23,8 @@ from core.knowledge_index import (
 )
 from core.models import (
     Evaluation,
-    EvidenceLink,
     Event,
+    EvidenceLink,
     KnowledgeChunk,
     KnowledgeItem,
     LearningChange,
