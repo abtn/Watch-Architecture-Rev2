@@ -931,9 +931,35 @@ class ExperienceDistiller:
         if pack_version == 2:
             contrary_reference_ids.clear()
             for case in cases:
-                failed_case = case["source_task"]["status"] == "failed"
-                for evidence in case["evidence"]:
-                    original_stance = evidence["stance"]
+                if not isinstance(case, dict):
+                    raise ExperienceDistillerError(
+                        "distillation_case_shape_invalid"
+                    )
+                source_task = case.get("source_task")
+                evidence_items = case.get("evidence")
+                if not isinstance(source_task, dict) or not isinstance(
+                    evidence_items, list
+                ):
+                    raise ExperienceDistillerError(
+                        "distillation_case_evidence_shape_invalid"
+                    )
+                failed_case = source_task.get("status") == "failed"
+                for evidence in evidence_items:
+                    if not isinstance(evidence, dict):
+                        raise ExperienceDistillerError(
+                            "distillation_evidence_shape_invalid"
+                        )
+                    original_stance = evidence.get("stance")
+                    reference_id = evidence.get("reference_id")
+                    if (
+                        not isinstance(original_stance, str)
+                        or original_stance not in {"supports", "challenges", "mentions"}
+                        or not isinstance(reference_id, str)
+                        or not reference_id
+                    ):
+                        raise ExperienceDistillerError(
+                            "distillation_evidence_reference_invalid"
+                        )
                     case_relative_stance = original_stance
                     if failed_case:
                         if original_stance == "supports":
@@ -942,7 +968,7 @@ class ExperienceDistiller:
                             case_relative_stance = "supports"
                     evidence["case_relative_stance"] = case_relative_stance
                     if case_relative_stance == "challenges":
-                        contrary_reference_ids.add(evidence["reference_id"])
+                        contrary_reference_ids.add(reference_id)
 
         cases.sort(
             key=lambda item: (
