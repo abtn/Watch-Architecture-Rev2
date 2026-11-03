@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timezone
-from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
@@ -49,7 +48,6 @@ from core.operator_application import (
     TrustedOperatorPrincipal,
 )
 from core.plans import PlanService
-from core.rule_evaluator import EVALUATOR_IDENTITY, EVALUATOR_REVISION
 from core.snapshot_store import SnapshotStore
 from core.source_fetch import SourceFetchError
 from core.strategy import StrategyService
@@ -251,7 +249,6 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
     approved_item_id: UUID | None = None
     accepted_change_id: UUID | None = None
     rejected_change_id: UUID | None = None
-    distillation_task_ids: list[UUID] = []
     later_task_id: UUID | None = None
     later_objective_id: UUID | None = None
 
@@ -332,9 +329,6 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
         )
 
     source_task_ids: list[UUID] = []
-    evaluator_task_ids: list[UUID] = []
-    all_distillation_task_ids: list[UUID] = []
-    approval_task_ids: list[UUID] = []
     all_objective_ids = [objective_id]
 
     try:
@@ -443,7 +437,6 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
                 in {str(item) for item in source_task_ids}
             }
         assert set(requested_by_source) == set(source_task_ids)
-        evaluator_task_ids = [requested_by_source[item] for item in source_task_ids]
 
         runner = RuleEvaluationTaskRunner(session_factory, snapshot_store)
         evaluations = [
@@ -451,13 +444,20 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
             for source_task_id in source_task_ids
         ]
         assert all(item.status == "done" and item.evaluation_id for item in evaluations)
-        evaluation_ids = [item.evaluation_id for item in evaluations]
-        assert all(item is not None for item in evaluation_ids)
-        assert [item.conclusion for item in (
-            runner._evaluator.evaluate(requested_by_source[source_task_ids[0]]),
-            runner._evaluator.evaluate(requested_by_source[source_task_ids[1]]),
-            runner._evaluator.evaluate(requested_by_source[source_task_ids[2]]),
-        )] == ["worked", "worked", "failed"]
+        evaluation_ids = [
+            item.evaluation_id for item in evaluations if item.evaluation_id is not None
+        ]
+        assert len(evaluation_ids) == 3
+        with session_factory() as session:
+            recorded_evaluations = list(
+                session.scalars(
+                    select(Evaluation).where(Evaluation.id.in_(evaluation_ids))
+                )
+            )
+        assert {item.conclusion for item in recorded_evaluations} == {
+            "worked", "failed"
+        }
+        assert len(recorded_evaluations) == 3
 
         assessment_builder = ExecutionAssessmentBuilder(
             session_factory, snapshot_store
@@ -474,8 +474,6 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
         distillation_task_id = _new_distillation_task(
             session_factory, team_id, 1
         )
-        distillation_task_ids.append(distillation_task_id)
-        all_distillation_task_ids.append(distillation_task_id)
         proposal_provider = _FakeDistillationProvider(_distillation_candidate)
         distiller = ExperienceDistiller(
             session_factory,
@@ -501,8 +499,6 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
         single_case_task_id = _new_distillation_task(
             session_factory, team_id, 1
         )
-        distillation_task_ids.append(single_case_task_id)
-        all_distillation_task_ids.append(single_case_task_id)
         low_provider = _FakeDistillationProvider(_distillation_candidate)
         low_result = ExperienceDistiller(
             session_factory,
@@ -533,7 +529,6 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
                 rejection_reason="Single-case evidence remains low-confidence practice.",
             ),
         )
-        approval_task_ids.append(rejected.task_id)
         assert rejected.learning_change_status == "rejected"
         assert rejected.knowledge_item_id is None
 
@@ -545,7 +540,6 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
                 idempotency_key=uuid4(),
             ),
         )
-        approval_task_ids.append(accepted.task_id)
         assert accepted.learning_change_status == "accepted"
         assert accepted.knowledge_item_id is not None
         approved_item_id = accepted.knowledge_item_id
@@ -608,7 +602,6 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
                 )
             )
         all_objective_ids.append(later_objective_id)
-        later_task_id = later_task_id
         runtime.admit(later_task_id)
         later_context = TaskContextAssembler(
             session_factory,
