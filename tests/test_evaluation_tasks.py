@@ -22,9 +22,12 @@ from core.task_runtime import (
     TaskRuntime,
     TerminalObservation,
 )
-from tests.test_r6b_dispatcher import DispatchFixture
+from tests.test_r6b_dispatcher import DispatchFixture, dispatch_fixture as base_dispatch_fixture
 
-pytest_plugins = ["tests.test_r6b_dispatcher"]
+
+@pytest.fixture
+def dispatch_fixture(base_dispatch_fixture: DispatchFixture) -> DispatchFixture:
+    return base_dispatch_fixture
 
 
 def _request_for_source(
