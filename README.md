@@ -45,7 +45,7 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 
 Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for current milestone status.
 
-- **R6 next:** conduct a bounded R6-G readiness assessment only. Implementation requires separate explicit operator authorization; no second runtime or general dispatcher is implied.
+- **R6 next:** resolve D9's first integrated Evaluation-source policy and prepare the deterministic R6-G fixture/design plan for review. Implementation still requires separate explicit operator authorization; no second runtime or general dispatcher is implied.
 - **R7 — Distillation quality and knowledge lifecycle:** cross-case evaluation of abstractions, contradictory evidence and counterexamples, transferability tests, retrieval quality, review/expiry, staleness detection, supersession, and retirement — always preserving explicit provenance, canonical authority, and controlled commits.
 - **R8 — Multi-domain pressure test:** exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge stays outside the Kernel.
 - **R9 — Agent-assisted production workflow:** codified task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.
