@@ -211,7 +211,7 @@ class ExperienceDistiller:
         self,
         session_factory: sessionmaker[Session],
         snapshot_store: SnapshotStore,
-        provider: ExperienceDistillationProvider,
+        provider: ExperienceDistillationProvider | None = None,
         cost_service: TaskGenerationCostService | None = None,
     ) -> None:
         self._session_factory = session_factory
@@ -236,6 +236,9 @@ class ExperienceDistiller:
         self, task_id: UUID, evaluation_ids: Sequence[UUID]
     ) -> LearningChangeProposalResult:
         normalized_ids = self._normalize_evaluation_ids(evaluation_ids)
+        provider = self._provider
+        if provider is None:
+            raise ExperienceDistillerError("distillation_provider_not_configured")
 
         # Matching prior proposals are returned before any provider call or
         # reservation. This remains true after TaskRuntime has finalized the
@@ -284,7 +287,7 @@ class ExperienceDistiller:
 
         user_prompt = self._user_prompt(pack)
         try:
-            quote = self._provider.maximum_request_cost(
+            quote = provider.maximum_request_cost(
                 system_prompt=_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
             )
@@ -299,7 +302,7 @@ class ExperienceDistiller:
             raise ExperienceDistillerError("generation_cost_quote_failed") from error
 
         try:
-            result = self._provider.generate_json(
+            result = provider.generate_json(
                 system_prompt=_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
                 temperature=0.1,
@@ -450,10 +453,13 @@ class ExperienceDistiller:
         return tuple(sorted(values))
 
     @staticmethod
-    def _require_task_scope(task: Task, team: Team | None) -> Team:
+    def _require_task_scope(
+        task: Task, team: Team | None, *, allow_completed: bool = False
+    ) -> Team:
+        allowed_statuses = {"running", "done"} if allow_completed else {"running"}
         if (
             task.task_type != "propose_learning_change"
-            or task.status != "running"
+            or task.status not in allowed_statuses
             or task.attempt_count < 1
         ):
             raise ExperienceDistillerError("distillation_task_not_eligible")
@@ -463,14 +469,107 @@ class ExperienceDistiller:
             raise ExperienceDistillerError("team_not_active")
         return team
 
+    def validate_learning_change(
+        self, session: Session, learning_change: LearningChange
+    ) -> tuple[DistilledExperienceDraft, ExperienceEvidencePack]:
+        """Rebuild and verify a stored create proposal from canonical evidence.
+
+        This method is read-only. It is intentionally usable after the
+        proposing Task has completed and does not call a generation provider.
+        """
+        expected_state_keys = set(DistilledExperienceDraft.model_fields) | {
+            "evidence_basis_hash",
+            "evidence_case_count",
+            "proposal_hash",
+        }
+        state = learning_change.proposed_state
+        if (
+            learning_change.target_kind != "knowledge_item"
+            or learning_change.operation != "create"
+            or learning_change.target_id is not None
+            or learning_change.status != "proposed"
+            or not isinstance(state, dict)
+            or set(state) != expected_state_keys
+            or not isinstance(learning_change.evidence_basis, list)
+            or not (
+                1 <= len(learning_change.evidence_basis)
+                <= MAX_DISTILLATION_EVALUATIONS
+            )
+        ):
+            raise ExperienceDistillerError("learning_change_proposal_shape_invalid")
+
+        evaluation_ids: list[UUID] = []
+        for item in learning_change.evidence_basis:
+            if not isinstance(item, dict):
+                raise ExperienceDistillerError("learning_change_evidence_basis_invalid")
+            value = item.get("evaluation_id")
+            if not isinstance(value, str):
+                raise ExperienceDistillerError("learning_change_evidence_basis_invalid")
+            try:
+                evaluation_ids.append(UUID(value))
+            except ValueError as error:
+                raise ExperienceDistillerError(
+                    "learning_change_evidence_basis_invalid"
+                ) from error
+            if str(evaluation_ids[-1]) != value:
+                raise ExperienceDistillerError("learning_change_evidence_basis_invalid")
+
+        normalized_ids = self._normalize_evaluation_ids(evaluation_ids)
+        if len(normalized_ids) != len(evaluation_ids):
+            raise ExperienceDistillerError("learning_change_evidence_basis_invalid")
+
+        proposer = session.get(Task, learning_change.proposed_by_task_id)
+        if (
+            proposer is None
+            or proposer.team_id != learning_change.team_id
+            or proposer.task_type != "propose_learning_change"
+            or proposer.status != "done"
+            or proposer.allowed_writes != ["LearningChange"]
+            or proposer.completed_at is None
+        ):
+            raise ExperienceDistillerError("learning_change_proposer_task_invalid")
+        team = session.get(Team, learning_change.team_id)
+        team = self._require_task_scope(proposer, team, allow_completed=True)
+        pack = self._build_pack(
+            session, proposer, team, normalized_ids, allow_completed_task=True
+        )
+
+        if (
+            pack.evidence_basis != learning_change.evidence_basis
+            or pack.basis_hash != learning_change.evidence_basis_hash
+            or state.get("evidence_basis_hash") != pack.basis_hash
+            or state.get("evidence_case_count") != pack.case_count
+        ):
+            raise ExperienceDistillerError("learning_change_evidence_basis_stale")
+
+        try:
+            draft = DistilledExperienceDraft.model_validate(
+                {
+                    field: state[field]
+                    for field in DistilledExperienceDraft.model_fields
+                }
+            )
+        except (ValidationError, KeyError) as error:
+            raise ExperienceDistillerError(
+                "distillation_proposal_schema_invalid"
+            ) from error
+
+        proposal_hash = _sha256_json(draft.model_dump(mode="json"))
+        if state.get("proposal_hash") != proposal_hash:
+            raise ExperienceDistillerError("learning_change_proposal_hash_mismatch")
+        self._validate_references(draft, pack)
+        return draft, pack
+
     def _build_pack(
         self,
         session: Session,
         task: Task,
         team: Team,
         evaluation_ids: tuple[UUID, ...],
+        *,
+        allow_completed_task: bool = False,
     ) -> ExperienceEvidencePack:
-        self._require_task_scope(task, team)
+        self._require_task_scope(task, team, allow_completed=allow_completed_task)
         evaluations = list(
             session.scalars(
                 select(Evaluation)

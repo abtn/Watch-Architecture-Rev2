@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from threading import Barrier
 from typing import Any, Callable, Iterator
@@ -32,6 +32,11 @@ from core.generation import (
     GenerationUsage,
 )
 from core.generation_cost import TaskGenerationCostService
+from core.learning_commit import (
+    LearningCommitCorrupt,
+    LearningCommitError,
+    LearningCommitService,
+)
 from core.models import (
     Evaluation,
     Event,
@@ -43,6 +48,13 @@ from core.models import (
     TaskGenerationCharge,
     Team,
     TeamPolicy,
+)
+from core.operator_application import (
+    LearningChangeDecisionRequest,
+    OperatorApplicationAdapter,
+    OperatorGrant,
+    OperatorTaskRequestConflict,
+    TrustedOperatorPrincipal,
 )
 from core.snapshot_store import SnapshotStore
 from core.task_runtime import (
@@ -258,12 +270,39 @@ def distillation_fixture(
                         EvidenceLink.subject_id.in_(evaluation_ids)
                     )
                 )
+                approval_task_ids = select(Task.id).where(
+                    Task.task_type == "approve_learning_change",
+                    Task.team_id == fixture.team_id,
+                )
+                proposal_owner = (
+                    LearningChange.proposed_by_task_id
+                    == fixture.distillation_task_id
+                )
+                approval_commit = LearningChange.committed_by_task_id.in_(
+                    approval_task_ids
+                )
+                learning_change_ids = select(LearningChange.id).where(
+                    proposal_owner | approval_commit
+                )
                 session.execute(
-                    delete(LearningChange).where(
-                        LearningChange.proposed_by_task_id
-                        == fixture.distillation_task_id
+                    delete(KnowledgeItem).where(
+                        KnowledgeItem.origin_learning_change_id.in_(learning_change_ids)
                     )
                 )
+                session.execute(
+                    delete(LearningChange).where(
+                        proposal_owner | approval_commit
+                    )
+                )
+                session.execute(
+                    delete(Outcome).where(
+                        Outcome.recorded_by_task_id.in_(approval_task_ids)
+                    )
+                )
+                session.execute(
+                    delete(Event).where(Event.task_id.in_(approval_task_ids))
+                )
+                session.execute(delete(Task).where(Task.id.in_(approval_task_ids)))
                 session.execute(
                     delete(Evaluation).where(Evaluation.id.in_(evaluation_ids))
                 )
@@ -280,7 +319,7 @@ def distillation_fixture(
                 session.execute(delete(Event).where(Event.task_id.in_(all_task_ids)))
                 session.execute(delete(Task).where(Task.id.in_(all_task_ids)))
                 session.execute(
-                    delete(TeamPolicy).where(TeamPolicy.id == fixture.policy_id)
+                    delete(TeamPolicy).where(TeamPolicy.team_id == fixture.team_id)
                 )
                 session.execute(delete(Team).where(Team.id == fixture.team_id))
 
@@ -936,3 +975,1051 @@ def test_concurrent_duplicate_proposals_reserve_and_commit_exactly_once(
         assert len(changes) == 1
         assert len(charges) == 1
         assert len(events) == 1
+
+
+def _approval_principal(team_id: UUID, subject: str = "operator-commit-1"):
+    return TrustedOperatorPrincipal(
+        issuer="https://host.example/identity",
+        subject=subject,
+        grants=frozenset(
+            {OperatorGrant(team_id=team_id, action="approve_learning_change")}
+        ),
+    )
+
+
+def _create_admitted_approval_task(
+    session_factory,
+    team_id: UUID,
+    learning_change_id: UUID,
+    *,
+    decision: str = "accept",
+    reason: str | None = None,
+):
+    request = LearningChangeDecisionRequest(
+        learning_change_id=learning_change_id,
+        decision=decision,  # type: ignore[arg-type]
+        idempotency_key=uuid4(),
+        rejection_reason=reason,
+    )
+    result = OperatorApplicationAdapter(
+        session_factory
+    ).request_learning_change_decision(_approval_principal(team_id), request)
+    admission = TaskRuntime(session_factory).admit(result.task_id)
+    return result.task_id, admission.attempt_count, _approval_principal(team_id)
+
+
+def test_learning_commit_accepts_real_create_proposal_atomically(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    distiller = _distiller(session_factory, snapshot_store, _provider())
+    proposal = distiller.propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    task_id, attempt, principal = _create_admitted_approval_task(
+        session_factory, fixture.team_id, proposal.learning_change_id
+    )
+
+    result = LearningCommitService(session_factory, snapshot_store).decide(
+        task_id, attempt, principal
+    )
+
+    assert result.decision == "accept"
+    assert result.status == "accepted"
+    assert result.knowledge_item_id is not None
+    assert not result.replayed
+    with session_factory() as session:
+        change = session.get(LearningChange, proposal.learning_change_id)
+        item = session.get(KnowledgeItem, result.knowledge_item_id)
+        assert change is not None and change.status == "accepted"
+        assert change.committed_by_task_id == task_id
+        assert change.operator_id == result.operator_id
+        assert change.previous_state is None
+        assert change.committed_state is not None
+        assert item is not None
+        assert item.origin_learning_change_id == change.id
+        assert item.team_id == fixture.team_id
+        assert item.kind == "practice"
+        assert item.version == 1
+        assert item.status == "active"
+        assert item.review_after is None
+        assert item.last_validated_at is None
+        decision_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task_id,
+                    Event.type == "learning_change_accepted",
+                )
+            )
+        )
+        assert len(decision_events) == 1
+        assert decision_events[0].payload["knowledge_item_id"] == str(item.id)
+        assert session.scalar(
+            select(Task).where(Task.id == task_id)
+        ).status == "running"
+
+    try:
+        replay = LearningCommitService(session_factory, snapshot_store).decide(
+            task_id, attempt, principal
+        )
+        assert replay.replayed
+        assert replay.knowledge_item_id == result.knowledge_item_id
+    finally:
+        with session_factory.begin() as session:
+            committed_change_ids = list(
+                session.scalars(
+                    select(LearningChange.id).where(
+                        LearningChange.committed_by_task_id == task_id
+                    )
+                )
+            )
+            if committed_change_ids:
+                session.execute(
+                    delete(KnowledgeItem).where(
+                        KnowledgeItem.origin_learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
+                    delete(LearningChange).where(
+                        LearningChange.id.in_(committed_change_ids)
+                    )
+                )
+            session.execute(delete(Event).where(Event.task_id == task_id))
+            session.execute(delete(Task).where(Task.id == task_id))
+
+
+def test_learning_commit_rejection_is_durable_without_knowledge_item(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    task_id, attempt, principal = _create_admitted_approval_task(
+        session_factory,
+        fixture.team_id,
+        proposal.learning_change_id,
+        decision="reject",
+        reason="The evidence is too narrow for this team's current method.",
+    )
+    try:
+        result = LearningCommitService(session_factory, snapshot_store).decide(
+            task_id, attempt, principal
+        )
+        assert result.decision == "reject"
+        assert result.status == "rejected"
+        assert result.knowledge_item_id is None
+        with session_factory() as session:
+            change = session.get(LearningChange, proposal.learning_change_id)
+            assert change is not None
+            assert change.status == "rejected"
+            assert change.decision_reason == (
+                "The evidence is too narrow for this team's current method."
+            )
+            assert change.committed_state is None
+            assert session.scalar(
+                select(KnowledgeItem.id).where(
+                    KnowledgeItem.origin_learning_change_id == change.id
+                )
+            ) is None
+            assert session.scalar(
+                select(Event.id).where(
+                    Event.task_id == task_id,
+                    Event.type == "learning_change_rejected",
+                )
+            ) is not None
+        replay = LearningCommitService(session_factory, snapshot_store).decide(
+            task_id, attempt, principal
+        )
+        assert replay.replayed and replay.decision == "reject"
+    finally:
+        with session_factory.begin() as session:
+            committed_change_ids = list(
+                session.scalars(
+                    select(LearningChange.id).where(
+                        LearningChange.committed_by_task_id == task_id
+                    )
+                )
+            )
+            if committed_change_ids:
+                session.execute(
+                    delete(KnowledgeItem).where(
+                        KnowledgeItem.origin_learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
+                    delete(LearningChange).where(
+                        LearningChange.id.in_(committed_change_ids)
+                    )
+                )
+            session.execute(delete(Event).where(Event.task_id == task_id))
+            session.execute(delete(Task).where(Task.id == task_id))
+
+
+def test_learning_commit_rejects_stale_or_tampered_evidence_without_partial_state(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    task_id, attempt, principal = _create_admitted_approval_task(
+        session_factory, fixture.team_id, proposal.learning_change_id
+    )
+    try:
+        with session_factory.begin() as session:
+            link = session.scalar(
+                select(EvidenceLink).where(
+                    EvidenceLink.subject_id == fixture.cases[0].evaluation_id
+                )
+            )
+            assert link is not None
+            link.stance = "challenges"
+
+        with pytest.raises(
+            LearningCommitError, match="evidence_link_integrity_mismatch"
+        ):
+            LearningCommitService(session_factory, snapshot_store).decide(
+                task_id, attempt, principal
+            )
+        with session_factory() as session:
+            change = session.get(LearningChange, proposal.learning_change_id)
+            assert change is not None and change.status == "proposed"
+            assert change.committed_by_task_id is None
+            assert session.scalar(
+                select(KnowledgeItem.id).where(
+                    KnowledgeItem.origin_learning_change_id == change.id
+                )
+            ) is None
+            assert session.scalar(
+                select(Event.id).where(
+                    Event.task_id == task_id,
+                    Event.type.in_(
+                        ("learning_change_accepted", "learning_change_rejected")
+                    ),
+                )
+            ) is None
+    finally:
+        with session_factory.begin() as session:
+            committed_change_ids = list(
+                session.scalars(
+                    select(LearningChange.id).where(
+                        LearningChange.committed_by_task_id == task_id
+                    )
+                )
+            )
+            if committed_change_ids:
+                session.execute(
+                    delete(KnowledgeItem).where(
+                        KnowledgeItem.origin_learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
+                    delete(LearningChange).where(
+                        LearningChange.id.in_(committed_change_ids)
+                    )
+                )
+            session.execute(delete(Event).where(Event.task_id == task_id))
+            session.execute(delete(Task).where(Task.id == task_id))
+
+
+def test_learning_commit_rejects_wrong_operator_and_stale_policy(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    task_id, attempt, principal = _create_admitted_approval_task(
+        session_factory, fixture.team_id, proposal.learning_change_id
+    )
+    try:
+        wrong_principal = _approval_principal(fixture.team_id, "other-operator")
+        with pytest.raises(LearningCommitError, match="operator_identity_mismatch"):
+            LearningCommitService(session_factory, snapshot_store).decide(
+                task_id, attempt, wrong_principal
+            )
+
+        with session_factory.begin() as session:
+            session.add(
+                TeamPolicy(
+                    id=uuid4(),
+                    team_id=fixture.team_id,
+                    version=2,
+                    rules={"new": "policy"},
+                )
+            )
+        with pytest.raises(LearningCommitError, match="approval_task_policy_is_stale"):
+            LearningCommitService(session_factory, snapshot_store).decide(
+                task_id, attempt, principal
+            )
+        with session_factory() as session:
+            change = session.get(LearningChange, proposal.learning_change_id)
+            assert change is not None and change.status == "proposed"
+            assert session.scalar(
+                select(KnowledgeItem.id).where(
+                    KnowledgeItem.origin_learning_change_id == change.id
+                )
+            ) is None
+    finally:
+        with session_factory.begin() as session:
+            committed_change_ids = list(
+                session.scalars(
+                    select(LearningChange.id).where(
+                        LearningChange.committed_by_task_id == task_id
+                    )
+                )
+            )
+            if committed_change_ids:
+                session.execute(
+                    delete(KnowledgeItem).where(
+                        KnowledgeItem.origin_learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
+                    delete(LearningChange).where(
+                        LearningChange.id.in_(committed_change_ids)
+                    )
+                )
+            session.execute(delete(Event).where(Event.task_id == task_id))
+            session.execute(delete(Task).where(Task.id == task_id))
+
+
+def test_learning_commit_event_failure_rolls_back_canonical_decision(
+    session_factory, snapshot_store, database_engine, distillation_fixture
+):
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    task_id, attempt, principal = _create_admitted_approval_task(
+        session_factory, fixture.team_id, proposal.learning_change_id
+    )
+    suffix = uuid4().hex
+    function = f"fail_learning_decision_{suffix}"
+    trigger = f"fail_learning_decision_tr_{suffix}"
+    with database_engine.begin() as connection:
+        connection.execute(
+            text(
+                f"CREATE FUNCTION {function}() RETURNS trigger AS $$ BEGIN "
+                "RAISE EXCEPTION 'injected learning decision Event failure'; "
+                "END; $$ LANGUAGE plpgsql"
+            )
+        )
+        connection.execute(
+            text(
+                f"CREATE TRIGGER {trigger} BEFORE INSERT ON events "
+                "FOR EACH ROW WHEN (NEW.type IN "
+                "('learning_change_accepted', 'learning_change_rejected')) "
+                f"EXECUTE FUNCTION {function}()"
+            )
+        )
+    try:
+        with pytest.raises(DBAPIError):
+            LearningCommitService(session_factory, snapshot_store).decide(
+                task_id, attempt, principal
+            )
+        with session_factory() as session:
+            change = session.get(LearningChange, proposal.learning_change_id)
+            assert change is not None and change.status == "proposed"
+            assert change.committed_by_task_id is None
+            assert session.scalar(
+                select(KnowledgeItem.id).where(
+                    KnowledgeItem.origin_learning_change_id == change.id
+                )
+            ) is None
+    finally:
+        with database_engine.begin() as connection:
+            connection.execute(text(f"DROP TRIGGER {trigger} ON events"))
+            connection.execute(text(f"DROP FUNCTION {function}()"))
+        with session_factory.begin() as session:
+            committed_change_ids = list(
+                session.scalars(
+                    select(LearningChange.id).where(
+                        LearningChange.committed_by_task_id == task_id
+                    )
+                )
+            )
+            if committed_change_ids:
+                session.execute(
+                    delete(KnowledgeItem).where(
+                        KnowledgeItem.origin_learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
+                    delete(LearningChange).where(
+                        LearningChange.id.in_(committed_change_ids)
+                    )
+                )
+            session.execute(delete(Event).where(Event.task_id == task_id))
+            session.execute(delete(Task).where(Task.id == task_id))
+
+
+def _cleanup_operator_decision_task(
+    session_factory: sessionmaker[Session], task_id: UUID
+) -> None:
+    with session_factory.begin() as session:
+        change_ids = list(
+            session.scalars(
+                select(LearningChange.id).where(
+                    LearningChange.committed_by_task_id == task_id
+                )
+            )
+        )
+        if change_ids:
+            session.execute(
+                delete(KnowledgeItem).where(
+                    KnowledgeItem.origin_learning_change_id.in_(change_ids)
+                )
+            )
+            session.execute(
+                delete(LearningChange).where(LearningChange.id.in_(change_ids))
+            )
+        session.execute(
+            delete(Outcome).where(Outcome.recorded_by_task_id == task_id)
+        )
+        session.execute(delete(Event).where(Event.task_id == task_id))
+        session.execute(delete(Task).where(Task.id == task_id))
+
+
+@pytest.mark.parametrize("decision", ["accept", "reject"])
+def test_operator_adapter_decides_and_finalizes_the_same_task(
+    session_factory, snapshot_store, distillation_fixture, decision: str
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    principal = _approval_principal(fixture.team_id)
+    request = LearningChangeDecisionRequest(
+        learning_change_id=proposal.learning_change_id,
+        decision=decision,  # type: ignore[arg-type]
+        idempotency_key=uuid4(),
+        rejection_reason=(
+            "The evidence does not justify retaining this practice."
+            if decision == "reject"
+            else None
+        ),
+    )
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    result = adapter.decide_learning_change(principal, request)
+    expected_status = "accepted" if decision == "accept" else "rejected"
+
+    assert result.decision == decision
+    assert result.learning_change_status == expected_status
+    assert result.task_status == "done"
+    assert result.attempt_count == 1
+    assert result.outcome_id is not None
+    assert not result.replayed
+
+    with session_factory() as session:
+        task = session.get(Task, result.task_id)
+        change = session.get(LearningChange, proposal.learning_change_id)
+        outcomes = list(
+            session.scalars(
+                select(Outcome).where(
+                    Outcome.recorded_by_task_id == result.task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+        )
+        completed = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == result.task_id,
+                    Event.type == "task_completed",
+                )
+            )
+        )
+        assert task is not None and task.status == "done"
+        assert change is not None and change.status == expected_status
+        assert len(outcomes) == 1
+        assert len(completed) == 1
+        assert completed[0].payload["result_category"] == (
+            "success_learning_change_accepted"
+            if decision == "accept"
+            else "success_learning_change_rejected"
+        )
+        if decision == "accept":
+            assert result.knowledge_item_id is not None
+            assert session.get(KnowledgeItem, result.knowledge_item_id) is not None
+        else:
+            assert result.knowledge_item_id is None
+            assert session.scalar(
+                select(KnowledgeItem.id).where(
+                    KnowledgeItem.origin_learning_change_id == change.id
+                )
+            ) is None
+
+    replay = adapter.decide_learning_change(principal, request)
+    assert replay.replayed
+    assert replay.task_id == result.task_id
+    assert replay.outcome_id == result.outcome_id
+
+    _cleanup_operator_decision_task(session_factory, result.task_id)
+
+
+@pytest.mark.parametrize("reconcile_by", ["adapter", "recovery"])
+def test_competing_approval_tasks_terminalize_the_losing_request(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    reconcile_by: str,
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+
+    principal = _approval_principal(fixture.team_id)
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    winner_request = LearningChangeDecisionRequest(
+        learning_change_id=proposal.learning_change_id,
+        decision="accept",
+        idempotency_key=uuid4(),
+    )
+    loser_request = LearningChangeDecisionRequest(
+        learning_change_id=proposal.learning_change_id,
+        decision="accept",
+        idempotency_key=uuid4(),
+    )
+
+    winner_request_result = adapter.request_learning_change_decision(
+        principal, winner_request
+    )
+    loser_request_result = adapter.request_learning_change_decision(
+        principal, loser_request
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    winner_admission = runtime.admit(winner_request_result.task_id)
+    loser_admission = runtime.admit(loser_request_result.task_id)
+    assert winner_admission.attempt_count == loser_admission.attempt_count == 1
+
+    try:
+        winner = adapter.decide_learning_change(principal, winner_request)
+        assert winner.task_status == "done"
+        assert winner.decision == "accept"
+
+        if reconcile_by == "adapter":
+            with pytest.raises(
+                OperatorTaskRequestConflict, match="learning_change_already_decided"
+            ):
+                adapter.decide_learning_change(principal, loser_request)
+        else:
+            now = datetime.now(timezone.utc)
+            with session_factory.begin() as session:
+                started = session.scalar(
+                    select(Event).where(
+                        Event.task_id == loser_request_result.task_id,
+                        Event.type == "task_started",
+                    )
+                )
+                assert started is not None
+                started.created_at = now - timedelta(seconds=61)
+
+            recovery = runtime.recover_interrupted(now=now)
+            assert recovery.failed == (loser_request_result.task_id,)
+            assert recovery.retried == ()
+            assert recovery.completed == ()
+
+            # The same host request replays the already-recorded failure and
+            # surfaces the same decision conflict; it cannot add another Outcome.
+            with pytest.raises(
+                OperatorTaskRequestConflict, match="learning_change_already_decided"
+            ):
+                adapter.decide_learning_change(principal, loser_request)
+
+        with session_factory() as session:
+            learning_change = session.get(
+                LearningChange, proposal.learning_change_id
+            )
+            winner_task = session.get(Task, winner_request_result.task_id)
+            loser_task = session.get(Task, loser_request_result.task_id)
+            assert learning_change is not None
+            assert learning_change.status == "accepted"
+            assert learning_change.committed_by_task_id == winner_request_result.task_id
+            assert winner_task is not None and winner_task.status == "done"
+            assert loser_task is not None and loser_task.status == "failed"
+            assert session.scalar(
+                select(KnowledgeItem.id).where(
+                    KnowledgeItem.origin_learning_change_id == learning_change.id
+                )
+            ) == winner.knowledge_item_id
+            assert session.scalar(
+                select(Outcome.id).where(
+                    Outcome.recorded_by_task_id == winner_request_result.task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            ) == winner.outcome_id
+            loser_outcomes = list(
+                session.scalars(
+                    select(Outcome).where(
+                        Outcome.recorded_by_task_id == loser_request_result.task_id,
+                        Outcome.outcome_type == "task_execution",
+                    )
+                )
+            )
+            assert len(loser_outcomes) == 1
+            loser_failure_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == loser_request_result.task_id,
+                        Event.type.in_(("task_attempt_failed", "task_failed")),
+                    )
+                )
+            )
+            assert [event.type for event in loser_failure_events] == [
+                "task_attempt_failed",
+                "task_failed",
+            ]
+            assert loser_failure_events[-1].payload["failure_reason"] == (
+                "learning_change_already_decided"
+            )
+            assert session.scalar(
+                select(Event.id).where(
+                    Event.task_id == loser_request_result.task_id,
+                    Event.type.in_(
+                        ("learning_change_accepted", "learning_change_rejected")
+                    ),
+                )
+            ) is None
+    finally:
+        _cleanup_operator_decision_task(session_factory, loser_request_result.task_id)
+        _cleanup_operator_decision_task(session_factory, winner_request_result.task_id)
+
+
+def test_operator_recovery_finalizes_a_committed_decision_after_crash(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    monkeypatch,
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    principal = _approval_principal(fixture.team_id)
+    request = LearningChangeDecisionRequest(
+        learning_change_id=proposal.learning_change_id,
+        decision="accept",
+        idempotency_key=uuid4(),
+    )
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    request_result = adapter.request_learning_change_decision(principal, request)
+    captured: list[TerminalObservation] = []
+
+    def crash_before_finalize(
+        runtime: TaskRuntime, observation: TerminalObservation
+    ):
+        captured.append(observation)
+        raise RuntimeError("simulated process loss after decision commit")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(TaskRuntime, "finalize", crash_before_finalize)
+        with pytest.raises(RuntimeError, match="simulated process loss"):
+            adapter.decide_learning_change(principal, request)
+
+    assert captured and captured[0].task_id == request_result.task_id
+    with session_factory() as session:
+        task = session.get(Task, request_result.task_id)
+        change = session.get(LearningChange, proposal.learning_change_id)
+        assert task is not None and task.status == "running"
+        assert change is not None and change.status == "accepted"
+        assert session.scalar(
+            select(Outcome.id).where(
+                Outcome.recorded_by_task_id == request_result.task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) is None
+
+    now = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        start = session.scalar(
+            select(Event).where(
+                Event.task_id == request_result.task_id,
+                Event.type == "task_started",
+            )
+        )
+        assert start is not None
+        start.created_at = now - timedelta(seconds=61)
+
+    recovery = TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+        now=now
+    )
+    assert recovery.completed == (request_result.task_id,)
+    assert recovery.retried == ()
+    with session_factory() as session:
+        task = session.get(Task, request_result.task_id)
+        assert task is not None and task.status == "done"
+        assert task.attempt_count == 1
+        assert session.scalar(
+            select(Outcome.id).where(
+                Outcome.recorded_by_task_id == request_result.task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) is not None
+
+    replay = adapter.decide_learning_change(principal, request)
+    assert replay.replayed and replay.task_status == "done"
+    _cleanup_operator_decision_task(session_factory, request_result.task_id)
+
+
+def test_operator_recovery_retries_predecision_crash_then_reuses_same_task(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    monkeypatch,
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    principal = _approval_principal(fixture.team_id)
+    request = LearningChangeDecisionRequest(
+        learning_change_id=proposal.learning_change_id,
+        decision="reject",
+        idempotency_key=uuid4(),
+        rejection_reason="The current evidence is insufficient.",
+    )
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    captured_task_ids: list[UUID] = []
+
+    def crash_before_decision(
+        service: LearningCommitService,
+        task_id: UUID,
+        attempt: int,
+        trusted_principal: TrustedOperatorPrincipal,
+    ):
+        captured_task_ids.append(task_id)
+        raise RuntimeError("simulated process loss before decision commit")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(LearningCommitService, "decide", crash_before_decision)
+        with pytest.raises(RuntimeError, match="before decision commit"):
+            adapter.decide_learning_change(principal, request)
+
+    assert len(captured_task_ids) == 1
+    task_id = captured_task_ids[0]
+    with session_factory() as session:
+        task = session.get(Task, task_id)
+        change = session.get(LearningChange, proposal.learning_change_id)
+        assert task is not None and task.status == "running"
+        assert change is not None and change.status == "proposed"
+
+    now = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        start = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "task_started",
+            )
+        )
+        assert start is not None
+        start.created_at = now - timedelta(seconds=61)
+
+    recovery = TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+        now=now
+    )
+    assert recovery.retried == (task_id,)
+    assert recovery.completed == ()
+
+    result = adapter.decide_learning_change(principal, request)
+    assert result.task_id == task_id
+    assert result.decision == "reject"
+    assert result.learning_change_status == "rejected"
+    assert result.task_status == "done"
+    assert result.attempt_count == 2
+
+    with session_factory() as session:
+        task = session.get(Task, task_id)
+        assert task is not None and task.status == "done"
+        assert task.attempt_count == 2
+        starts = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task_id,
+                    Event.type == "task_started",
+                )
+            )
+        )
+        retries = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task_id,
+                    Event.type == "task_retry_scheduled",
+                )
+            )
+        )
+        decision = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "learning_change_rejected",
+            )
+        )
+        assert len(starts) == 2
+        assert len(retries) == 1
+        assert decision is not None
+        assert decision.payload["attempt_count"] == 2
+
+    _cleanup_operator_decision_task(session_factory, task_id)
+
+
+def test_operator_terminal_result_is_fenced_and_must_match_decision(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    principal = _approval_principal(fixture.team_id)
+    request = LearningChangeDecisionRequest(
+        learning_change_id=proposal.learning_change_id,
+        decision="accept",
+        idempotency_key=uuid4(),
+    )
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    task_request = adapter.request_learning_change_decision(principal, request)
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    runtime.admit(task_request.task_id)
+
+    stale_start = datetime.now(timezone.utc) - timedelta(seconds=61)
+    with session_factory.begin() as session:
+        start = session.scalar(
+            select(Event).where(
+                Event.task_id == task_request.task_id,
+                Event.type == "task_started",
+            )
+        )
+        assert start is not None
+        start.created_at = stale_start
+    recovered = runtime.recover_interrupted(now=datetime.now(timezone.utc))
+    assert recovered.retried == (task_request.task_id,)
+
+    second = runtime.admit(task_request.task_id)
+    commit = LearningCommitService(session_factory, snapshot_store).decide(
+        task_request.task_id, second.attempt_count, principal
+    )
+    stale_observation = TerminalObservation(
+        task_id=task_request.task_id,
+        attempt=1,
+        result_category="success_learning_change_accepted",
+        observed_at=commit.committed_at,
+        learning_change_id=commit.learning_change_id,
+    )
+    with pytest.raises(TaskNotFinalizable, match="stale_attempt"):
+        runtime.finalize(stale_observation)
+
+    wrong_observation = TerminalObservation(
+        task_id=task_request.task_id,
+        attempt=second.attempt_count,
+        result_category="success_learning_change_rejected",
+        observed_at=commit.committed_at,
+        learning_change_id=commit.learning_change_id,
+    )
+    with pytest.raises(
+        TaskNotFinalizable, match="learning_change_decision_result_mismatch"
+    ):
+        runtime.finalize(wrong_observation)
+
+    terminal = runtime.finalize(
+        TerminalObservation(
+            task_id=task_request.task_id,
+            attempt=second.attempt_count,
+            result_category="success_learning_change_accepted",
+            observed_at=commit.committed_at,
+            learning_change_id=commit.learning_change_id,
+        )
+    )
+    assert terminal.status == "done"
+    with session_factory() as session:
+        task = session.get(Task, task_request.task_id)
+        assert task is not None and task.status == "done"
+        assert task.attempt_count == 2
+        assert session.scalar(
+            select(Outcome.id).where(
+                Outcome.recorded_by_task_id == task_request.task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) is not None
+
+    _cleanup_operator_decision_task(session_factory, task_request.task_id)
+
+
+@pytest.mark.parametrize("tamper", ["knowledge_item", "decision_event"])
+def test_learning_commit_replay_rejects_tampered_canonical_records(
+    session_factory, snapshot_store, distillation_fixture, tamper: str
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    task_id, attempt, principal = _create_admitted_approval_task(
+        session_factory, fixture.team_id, proposal.learning_change_id
+    )
+    try:
+        result = LearningCommitService(session_factory, snapshot_store).decide(
+            task_id, attempt, principal
+        )
+        assert result.knowledge_item_id is not None
+        with session_factory.begin() as session:
+            if tamper == "knowledge_item":
+                item = session.get(KnowledgeItem, result.knowledge_item_id)
+                assert item is not None
+                item.body = "A post-commit mutation that must not replay."
+            else:
+                event = session.scalar(
+                    select(Event).where(
+                        Event.task_id == task_id,
+                        Event.type == "learning_change_accepted",
+                    )
+                )
+                assert event is not None
+                payload = dict(event.payload)
+                payload["proposal_hash"] = "sha256:" + "0" * 64
+                event.payload = payload
+
+        expected = (
+            "committed_knowledge_item_mismatch"
+            if tamper == "knowledge_item"
+            else "learning_change_decision_event_mismatch"
+        )
+        with pytest.raises(LearningCommitCorrupt, match=expected):
+            LearningCommitService(session_factory, snapshot_store).decide(
+                task_id, attempt, principal
+            )
+    finally:
+        with session_factory.begin() as session:
+            committed_change_ids = list(
+                session.scalars(
+                    select(LearningChange.id).where(
+                        LearningChange.committed_by_task_id == task_id
+                    )
+                )
+            )
+            if committed_change_ids:
+                session.execute(
+                    delete(KnowledgeItem).where(
+                        KnowledgeItem.origin_learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
+                    delete(LearningChange).where(
+                        LearningChange.id.in_(committed_change_ids)
+                    )
+                )
+            session.execute(delete(Event).where(Event.task_id == task_id))
+            session.execute(delete(Task).where(Task.id == task_id))

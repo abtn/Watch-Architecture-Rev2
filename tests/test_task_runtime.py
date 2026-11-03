@@ -771,3 +771,15 @@ def test_daily_task_quota_counts_only_the_owning_team(
     with session_factory() as session:
         task = session.get(Task, pending_task)
         assert task.status == "running" and task.attempt_count == 1
+
+def test_non_operator_task_still_requires_positive_deadline(
+    session_factory: sessionmaker[Session],
+    pending_task: UUID,
+) -> None:
+    with session_factory.begin() as session:
+        task = session.get(Task, pending_task)
+        assert task is not None
+        task.budget = {"max_tool_calls": 0, "max_cost_usd": 0.0}
+
+    with pytest.raises(TaskNotEligible, match="invalid_task_budget"):
+        TaskRuntime(session_factory).admit(pending_task)

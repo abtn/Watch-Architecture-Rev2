@@ -63,7 +63,7 @@ is an upper bound on the Actions authorized by one Strategy, not a daily Task
 quota. It must not be compared with `max_tasks_per_day`.
 - **Scope:** This rule enforces a Task-start count quota only. It does not mean
 that daily cost quotas are enforced.
-**Creation sources:** Triggers (all three types), the scheduler (ingestion, decay, review, overdue scans), Task enqueues (triage → update; consultation follow-ups), the API and CLI (manual Operator tasks), and Task retries.
+**Creation sources:** Triggers (all three types), the scheduler (ingestion, decay, review, overdue scans), Task enqueues (triage → update; consultation follow-ups), and Task retries. Manual Operator Tasks are created by a thin in-repository application adapter invoked in-process by a host after it authenticates and authorizes the Operator. This is not a separate deployed Watch API/CLI. Checkpoint 3 implements the adapter first for `approve_learning_change`; other manual Task specifications do not imply implemented callers.
 ## 2. Common validation rules (every commit path)
 1. Task status is `running` and budget is not exhausted (operator task types: no model cost, no enforced deadline).
 2. All referenced entities exist and belong to the Task's Team.
@@ -109,9 +109,9 @@ The Signal fields required for K1 are `domain`, `source_type`, `origin_url`,
 `fetched_at`, `content_hash`, and `snapshot_ref`. `domain` comes from the
 Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 `embedding_model` are projections and are not generated or required by K1.
-### `manual_signal_ingest` — Operator via API/CLI
+### `manual_signal_ingest` — Operator via host-invoked application adapter
 - **Purpose:** admit externally obtained material with provenance.
-- **Writes:** same as `ingest_source`; the API/CLI call creates the Task so provenance is uniform.
+- **Writes:** same as `ingest_source`. A host application authenticates/authorizes the Operator and invokes the in-repository manual-Task adapter; the adapter creates the ordinary Task. This caller is not implemented by the current R6-F slice, which first supplies the adapter for `approve_learning_change`.
 - **Validation:** same as `ingest_source`.
 ### `triage_signal` — deterministic
 - **Purpose:** disposition a Signal for the Team; enqueue follow-up work.
@@ -128,7 +128,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Commit-time validation:** quote offset + hash (INV-04); stance rule (INV-06); hypothesis transition legality with reasons (INV-07); confidence cause pairing (INV-05); per-proposal atomic commit; scope (INV-14). If policy `review.update_gating` is enabled and a required Consultation on the Thread is open, the commit is rejected until answered (default off).
 - **Failure:** all proposals rejected → Task failed with rejection Events; partial commits never occur.
 - **Invariants exercised:** INV-01, 02, 04, 05, 06, 07, 13, 14.
-### `operator_update` — Operator via API/CLI
+### `operator_update` — Operator via host-invoked application adapter
 - **Purpose:** a human expert contributes directly to world memory — their own hypotheses, evidence, confidence judgments, rejections (ADR-0021).
 - **Reads/Writes:** identical scope to `update_thread`.
 - **Commit-time validation:** **identical to `update_thread`** — quotes checked against snapshots (INV-04), stance rule (INV-06), cause pairing (INV-05), explicit transitions (INV-07), scope (INV-14). An unsubstantiated expert hypothesis (no EvidenceLink) enters at `low` band, like any worker's.
@@ -145,10 +145,13 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Reads:** active Triggers, current entity state for conditions.
 - **Writes:** Trigger `last_fired_at`/`next_fire_at`; creation of the Trigger's target Task; Event.
 - **Validation:** a Trigger creates Tasks only — it never mutates world memory or publishes output.
-### `review_knowledge` — deterministic, scheduled
-- **Purpose:** flag KnowledgeItems whose `review_after` has passed.
-- **Writes:** KnowledgeItem status `active → needs_review`; Event.
-- **Validation:** status transition legality; never retires or revises (that is the learning path's job).
+### `review_knowledge` — deterministic, scheduled (specified; execution path not yet implemented)
+- **Purpose:** mark due same-Team KnowledgeItems as requiring review; this is a lifecycle/status operation, not a knowledge judgment.
+- **Task production:** a host/scheduler may enqueue an ordinary `review_knowledge` Task. The producer only creates the Task; it never changes KnowledgeItem state. The existing `TaskRuntime` remains the only Task lifecycle authority. This specification does not authorize a new scheduler/runtime or expand the ingestion-only `TaskDispatcher`.
+- **Reads:** same-Team KnowledgeItems with `status="active"` and a non-null `review_after` at or before one timezone-aware UTC observation time for the operation. A null date is unscheduled: it is not transitioned by this Task and remains ineligible for retrieval.
+- **Writes:** for each due item, KnowledgeItem status `active → needs_review` and one Task-attributed Event, atomically. Row locking and a status/date recheck prevent a stale scan from overwriting a concurrent decision; retries/replays do not create duplicate transitions or Events.
+- **Due boundary:** due when `now_utc >= review_after`; dates are UTC-aware. Retrieval excludes the item at this same boundary even if the scheduled Task has not yet run.
+- **Validation:** only the current canonical same-Team item is eligible; only this deterministic Task path marks it `needs_review`. It does not calculate/change `review_after`, revise/retire the item, or move `needs_review → active`. Revalidation/reactivation requires a separately specified and authorized operation.
 ### `render_output` — model worker + deterministic assembly
 - **Purpose:** produce an Artifact from the current world model.
 - **Reads:** Thread, active Hypotheses, verified evidence packs, relevant active KnowledgeItems, current policy, prior Artifacts.
@@ -156,7 +159,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Flow:** F4. Delivery gating: if a policy-required Consultation on the subject is open, the Task ends after recording an Event and enqueuing `request_consultation` — it does not wait inside the Task (ADR-0020).
 - **Commit-time validation:** evidence pack quotes pre-validated; deterministic post-check rejects bodies containing URL/link patterns; Snapshot stored and hashed.
 - **Failure:** post-check failure → Task failed; no Artifact committed.
-### `record_outcome` — Operator via API (connector later)
+### `record_outcome` — Operator via host-invoked application adapter (connector later)
 - **Purpose:** durably record what happened — or register a prediction before the result is known.
 - **Reads:** subject entity (validates existence and Team ownership).
 - **Writes:** Outcome (+observation Snapshot +hash where an observation exists), Event.
@@ -177,12 +180,19 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Validation:** all records and references are same-Team/domain as applicable; Outcome/Evaluation terminal Events, proposal hashes, EvidenceLink reference keys, Snapshot hashes, and quotes are revalidated; one case permits only a narrow low-confidence `practice`; `pattern`, `method`, or `playbook` requires at least two recorded Evaluations tied to distinct source Task IDs. Supporting, challenging, and mentioning links must retain their respective stance. The exact deterministic evidence basis/hash is recomputed after provider return before the proposal is stored. Model references outside the supplied evidence pack, stale or altered evidence, malformed output, unknown usage, or cost overrun cannot yield a proposal.
 - **Provider boundary:** the provider is dependency-injected. Only a synthetic deterministic test card is allowed in this checkpoint; ADR-0031 authorizes Cloudflare for R6-E only. No production R6-F provider/model call is authorized until the separate provider decision is accepted.
 - **Not permitted:** approval/rejection, KnowledgeItem create/revise/retire, TeamPolicy mutation, indexing, retrieval publication, new dispatcher, or a second runtime. Those belong to later checkpoints and remain outside this Task's grants.
-### `approve_learning_change` — Operator via API
-- **Purpose:** run the learning commit service on a proposal.
-- **Writes:** LearningChange status; KnowledgeItem or TeamPolicy new version (on acceptance); Event.
-- **Validation:** full F6 commit-service checklist: evaluation basis, evidence present, target version unchanged since proposal, proposed state schema-valid, Operator approval identity recorded in the Event payload.
-- **Rejection:** recorded with reason; the proposal is never silently edited.
-### `seed_knowledge` — Operator via API
+### `approve_learning_change` — trusted Operator via host-invoked in-repository adapter (R6-F Checkpoint 3)
+- **Purpose:** explicitly accept or reject one proposed LearningChange through the only R6-F canonical learning-commit path.
+- **Caller and identity:** the host authenticates the Operator and authorizes the exact Team/action, then invokes the adapter in-process with a typed principal carrying stable issuer/subject. The adapter does not accept a bare `operator_id`, display name, email, request-body identity, or model output as proof. No deployed Watch API/CLI, login, token middleware, or user store is added.
+- **Task creation:** atomically create one ordinary pending same-Team approval Task and its request Event, pinned to current TeamPolicy, with no Objective/Plan/Action links, exact `["LearningChange", "KnowledgeItem"]` scope, zero tools/cost. Host idempotency UUID resolves retries to the same Task and request fingerprint. Never insert a running Task.
+- **Lifecycle:** call `TaskRuntime.admit`, invoke the narrow decision service synchronously, then call `TaskRuntime.finalize` with a typed accepted/rejected result. TaskRuntime alone changes attempt/status/completion and writes lifecycle Events/Outcome. `TaskDispatcher` remains ingestion-only.
+- **Writes:** LearningChange disposition/history; KnowledgeItem changes only where supported by a validated proposal; one exact Task-attributed decision Event. Events are application-managed effects, not a worker grant. **No TeamPolicy write is permitted in R6-F.**
+- **Validation:** exact Task type, same Team/current policy, current running attempt, exact write scope, host Team/action authorization, and canonical actor matching the request Event. Lock/revalidate the LearningChange, complete evidence hash/references, source hashes/quotes, operation, target version/status, and replay/concurrency preconditions.
+- **Acceptance:** atomically commit KnowledgeItem state/version, LearningChange accepted disposition, previous/committed state, canonical operator identity, approval Task ID, timestamp, and acceptance Event.
+- **Rejection:** atomically commit LearningChange rejected disposition, non-empty reason, identity, Task ID, timestamp, and rejection Event without creating or mutating KnowledgeItem. Rejection is a successful Operator decision; approval Task ends `done`.
+- **Replay and competing requests:** same host idempotency UUID and identical request return the same Task and decision. Reuse with changed actor/target/decision/reason conflicts. Different idempotency keys may create distinct approval Tasks, but the LearningChange row lock permits one canonical decision only. A losing Task is terminalized as terminal_failure with reason learning_change_already_decided, using its current-attempt start as the deterministic observation time; the failure is committed through TaskRuntime with its ordinary Outcome/Snapshot/Events. Interrupted recovery reconstructs the same failure before retry/exhaustion, and replay returns the same typed conflict without another Outcome or KnowledgeItem version.
+- **Not permitted:** raw-string authentication, model-selected actor/disposition, direct Task lifecycle writes, second runtime, general dispatcher, seed/bypass path, or TeamPolicy mutation.
+
+### `seed_knowledge` — legacy Operator Task via host application (excluded from R6-F)
 - **Purpose:** explicit `manual_seed` creation of additional KnowledgeItems or a revised TeamPolicy outside the setup flow.
 - **Writes:** LearningChange (`basis_kind="manual_seed"`, committed immediately), target entity, Event.
 - **Validation:** same schema and version checks as F6 minus the Evaluation basis.
@@ -192,7 +202,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Writes:** Consultation (`status="open"`, context Snapshot + hash of exactly what the expert will be shown), Event. Any follow-up Task after the answer is enqueued by the later `answer_consultation` Task; this Task ends when it opens the Consultation.
 - **Validation:** subject exists, same Team; context Snapshot stored before commit; `check_by` set when the question is time-bound.
 - **Key rule:** opening the Consultation **ends this Task**. Waiting for a human happens between Tasks, never inside one.
-### `answer_consultation` — Operator via API
+### `answer_consultation` — Operator via host-invoked application adapter
 - **Purpose:** record the expert's answer.
 - **Reads:** the open Consultation.
 - **Writes:** Consultation status `open → answered` (+ answer Snapshot + hash, optional structured `verdict` per team policy), Event with operator identity; optional enqueue of a follow-up update/evaluate Task so the answer enters the loop.
@@ -210,7 +220,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Commit:** Revalidate expected state and atomically commit the transition with an attributable Event sufficient to reconstruct it. Rejected operations leave Objective unchanged and produce an auditable rejection Event with a stable reason/category.
 - **Concurrency:** stale/conflicting transitions reject under INV-13 rather than silently overwrite. A same-Task retry cannot double-commit a matching successful transition. The database mechanism, exact retry identity, and reuse of rejection Events remain open.
 - **Boundary:** R2 implements the Objective operations in its milestone; additional Objective mutation semantics remain subject to later design. Triggers initiate mutations through ordinary Tasks, not a parallel write path.
-### `create_team` — Operator via API/CLI
+### `create_team` — Operator via host application integration (not implemented in Checkpoint 3)
 - **Purpose:** create a Shell team for a new subject (F7).
 - **Writes:** Team (`status="configuring"`), subject-brief Snapshot (+hash, referenced from the Event payload and by the subsequent TeamDraft), Event.
 - **Validation:** unique team key; Domain may be any pack key including `generalist`; brief is freeform prose stored immutably.
@@ -220,7 +230,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Writes:** TeamDraft (`status="draft"`, config Snapshot + hash, `advisor_notes` citing the samples), Event.
 - **Validation:** proposed policy validates against the JSON Schema; vocabulary conforms to the pack's structure; candidate sources marked unverified; draft revision current.
 - **Failure:** invalid model output → draft discarded with reason; Task failed.
-### `activate_team` — Operator via API
+### `activate_team` — Operator via host application integration (not implemented in Checkpoint 3)
 - **Purpose:** review, edit, and activate the team (F7).
 - **Writes:** TeamPolicy v1; starter Threads (through the normal commit path); Team `configuring → active`; TeamDraft `approved` (config re-snapshotted if the Operator edited it); Event with operator identity.
 - **Validation:** policy against JSON Schema; vocabulary within pack structure; pack-contract conformance; draft revision current (optimistic check, INV-13); operator identity in Event payload.
@@ -534,6 +544,6 @@ Starting points, tuned during M2; per-Task values may override downward, never u
 | `activate_team` | 0 | 0 | — |
 
 
-### R6-F Checkpoint 1–2 authority boundary
+### R6-F Checkpoint 1–3 authority boundary
 
-For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeItem writes plus exact application-managed Events; it has **no TeamPolicy write grant**. The legacy `seed_knowledge` row remains a separately documented Task type but is not implemented by R6-F. Evaluation worker output cannot set its own status: trusted application service code validates and records/rejects the proposal. ExperienceDistiller output likewise remains an untrusted candidate; Checkpoint 2 can create only a proposed LearningChange for a KnowledgeItem creation, while approval and canonical commit stay in Checkpoint 3. TaskRuntime remains the sole owner of Task lifecycle transitions.
+For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeItem writes plus exact application-managed Events; it has **no TeamPolicy write grant**. The legacy `seed_knowledge` row remains a separately documented Task type but is not implemented by R6-F. Evaluation worker output cannot set its own status: trusted application service code validates and records/rejects the proposal. ExperienceDistiller output likewise remains an untrusted candidate; Checkpoint 2 creates only proposed LearningChanges for KnowledgeItem creation. Checkpoint 3 performs explicit Operator review and canonical commit through a trusted application identity boundary and an ordinary same-Team approval Task; TaskRuntime remains the sole owner of Task lifecycle transitions. D7's interval is read-only policy input pinned to the approval Task; it does not grant a TeamPolicy write. Checkpoint 4 must implement canonical date stamping, the deterministic `review_knowledge` Task path, and due/null-aware retrieval before publication.
