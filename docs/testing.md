@@ -241,7 +241,7 @@ Checkpoint 4 was separately authorized on 2026-11-02. It implements the resolved
 **Local verification gate:** rerun on the reconciled PR #32 head, using a fresh disposable pgvector PostgreSQL database with both `DATABASE_URL` and `TEST_DATABASE_URL` bound to it. Run `uv sync --locked`, `uv run alembic upgrade head`, confirm exactly one head/current at `0013_team_experience_projection`, then:
 
 ```bash
-uv run pytest tests/test_team_experience.py tests/test_context_assembly.py tests/test_knowledge_index.py tests/test_learning_commit.py tests/test_task_runtime.py -q
+uv run pytest tests/test_team_experience.py tests/test_context_assembly.py tests/test_knowledge_index.py tests/test_experience_distiller.py tests/test_operator_application.py tests/test_task_runtime.py -q
 uv run ruff check core tests migrations
 uv run mypy core
 uv run pytest -q
