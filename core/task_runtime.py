@@ -1612,7 +1612,7 @@ class TaskRuntime:
         if task.id != expected_task_id:
             raise TaskNotFinalizable("evaluation_task_id_mismatch")
         source_terminal_types = (
-            ("task_failed", "task_attempt_failed")
+            ("task_attempt_failed", "task_failed")
             if expected_payload["source_result_category"] == "terminal_failure"
             else ("task_completed",)
         )
