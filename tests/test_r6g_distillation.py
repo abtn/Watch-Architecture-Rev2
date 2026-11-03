@@ -30,9 +30,16 @@ from core.models import (
 )
 from core.snapshot_store import SnapshotStore
 from core.source_fetch import SourceFetchError
-from tests.test_r6b_dispatcher import DispatchFixture, FakeFetcher
+from tests.test_r6b_dispatcher import (
+    DispatchFixture,
+    FakeFetcher,
+    dispatch_fixture as base_dispatch_fixture,
+)
 
-pytest_plugins = ["tests.test_r6b_dispatcher"]
+
+@pytest.fixture
+def dispatch_fixture(base_dispatch_fixture: DispatchFixture) -> DispatchFixture:
+    return base_dispatch_fixture
 
 
 def _add_configured_action(
