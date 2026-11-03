@@ -22,8 +22,8 @@ from core.task_runtime import (
     TaskRuntime,
     TerminalObservation,
 )
+from tests.test_r6b_dispatcher import DispatchFixture
 from tests.test_r6b_dispatcher import (
-    DispatchFixture,
     dispatch_fixture as base_dispatch_fixture,  # noqa: F401
 )
 
