@@ -2,13 +2,13 @@
 
 ## Status and authority
 
-**R7-0: DOCUMENTATION / DESIGN IN PROGRESS — 2026-11-04.**
+**R7-0: COMPLETE — 2026-11-04. R7-A: AUTHORIZED / IMPLEMENTATION IN PROGRESS.**
 
 - This document is the proposed R7 implementation entry gate. It is not an implementation authorization.
-- ADR-0032 is **Proposed** and requires explicit Operator review/acceptance.
+- ADR-0032 is **Accepted — 2026-11-04**. The Operator authorized R7-A only; R7-B and R7-C remain unauthorized.
 - PLAN.md remains the sole authority for milestone status and next action.
 - R6 is formally complete through R6-G. R6-G approval and merge do not authorize R7.
-- This R7-0 scope is documentation only: no application code, tests, migrations, schemas, Task types, write scopes, provider configuration, or runtime behavior may change.
+- The completed R7-0 change was documentation-only. R7-A authorization now permits only its bounded evidence-lineage and KnowledgeQualityAssessment implementation scope; it does not authorize R7-B lifecycle commits or R7-C retrieval/use work.
 
 ## 1. Objective
 
@@ -170,13 +170,13 @@ R7-0 documentation acceptance:
 - [x] A proposed, non-active R7 Task/write-scope matrix is recorded in docs/tasks.md; no current Task grant is changed.
 - [x] Proposed INV-12 amendment is included in ADR-0032; active docs/invariants.md remains unchanged pending acceptance.
 - [x] PLAN.md, README.md, CONTEXT.md, CHANGE_MAP.md, and docs/decisions.md point to the same authority chain.
-- [ ] Operator explicitly accepts, rejects, or revises ADR-0032's proposed architecture decisions.
-- [ ] Operator explicitly authorizes the next implementation phase; R7-0 does not authorize it.
+- [x] Operator explicitly accepted revised ADR-0032 on 2026-11-04.
+- [x] Operator explicitly authorized R7-A implementation on 2026-11-04. R7-B and R7-C remain unauthorized.
 
 Before R7-A implementation:
 
-- [ ] Operator acceptance of the ADR and resolution of every R7-A architecture decision above.
-- [ ] Separate explicit Operator instruction authorizing R7-A implementation and its bounded file/scope.
+- [x] Operator acceptance of ADR-0032 and R7-A implementation authorization recorded; remaining R7-A implementation details are frozen in the implementation plan before source changes.
+- [x] Separate explicit Operator instruction authorizes R7-A only; see §3 R7-A scope.
 - [ ] Local preflight on the actual checkout: current branch, HEAD, clean/known worktree, sync with intended base, merge status, and exact migration heads.
 - [ ] Confirm DATABASE_URL and TEST_DATABASE_URL are pointed only at an identified disposable PostgreSQL database before database-backed checks.
 - [ ] Review actual current code, migration chain, Task matrix, invariants, and tests; do not assume the current migration number or infer implementation from this plan.
@@ -208,4 +208,4 @@ R7-0 is ready to close only when:
 
 Closing R7-0 or accepting ADR-0032 does not, by itself, authorize R7-A unless the Operator explicitly authorizes it.
 
-**Current gate:** R7-0 documentation is prepared for review. ADR-0032 remains Proposed. R7-A/B/C are not authorized.
+**Current gate:** R7-0 is complete. ADR-0032 is Accepted. R7-A is authorized and in progress; R7-B and R7-C remain unauthorized.
