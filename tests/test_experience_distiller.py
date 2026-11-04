@@ -1343,7 +1343,7 @@ def test_accepted_create_requires_recorded_quality_assessment(
             LearningChangeDecisionRequest(
                 learning_change_id=proposal.learning_change_id,
                 decision="accept",
-                idempotency_key="quality-required-before-accept",
+                idempotency_key=uuid4(),
             ),
         )
 
