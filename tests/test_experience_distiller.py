@@ -33,13 +33,15 @@ from core.generation import (
 )
 from core.generation_cost import TaskGenerationCostService
 from core.knowledge_quality import (
-    DIMENSIONS as KNOWLEDGE_QUALITY_DIMENSIONS,
     RUBRIC_IDENTITY,
     RUBRIC_REVISION,
     KnowledgeQualityAssessmentDraft,
     KnowledgeQualityAssessmentService,
     KnowledgeQualityDimension,
     build_case_lineage_report,
+)
+from core.knowledge_quality import (
+    DIMENSIONS as KNOWLEDGE_QUALITY_DIMENSIONS,
 )
 from core.knowledge_quality_tasks import KnowledgeQualityAssessmentTaskRunner
 from core.learning_commit import (
