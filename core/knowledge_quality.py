@@ -784,6 +784,7 @@ def require_recorded_assessment(
             or terminal[0].payload.get("attempt_count") != task.attempt_count
             or outcomes[0].recorded_by_task_id != task.id
             or outcomes[0].observed_at is None
+            or outcomes[0].observed_at != assessment.recorded_at
             or task.completed_at != outcomes[0].observed_at
         ):
             raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_task_incomplete")
@@ -902,103 +903,6 @@ def assessment_payload_from_row(
         evidence_reference_hash=assessment.evidence_reference_hash,
         idempotency_key=assessment.idempotency_key,
     )
-
-
-def require_recorded_assessment(
-    session: Session,
-    learning_change: LearningChange,
-) -> KnowledgeQualityAssessment:
-    assessments = list(
-        session.scalars(
-            select(KnowledgeQualityAssessment)
-            .where(
-                KnowledgeQualityAssessment.learning_change_id == learning_change.id,
-                KnowledgeQualityAssessment.team_id == learning_change.team_id,
-            )
-            .with_for_update()
-        )
-    )
-    if len(assessments) != 1:
-        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_required")
-    assessment = assessments[0]
-    task = session.get(Task, assessment.creating_task_id)
-    if (
-        task is None
-        or task.team_id != learning_change.team_id
-        or task.task_type != TASK_TYPE
-        or task.status != "done"
-        or task.completed_at is None
-        or task.allowed_writes != ALLOWED_WRITES
-        or task.objective_id is not None
-        or task.plan_id is not None
-        or task.plan_action_id is not None
-        or task.max_attempts != TASK_MAX_ATTEMPTS
-        or task.budget != TASK_BUDGET
-        or assessment.proposal_hash
-        != learning_change.proposed_state.get("proposal_hash")
-        or assessment.evidence_basis_hash != learning_change.evidence_basis_hash
-        or assessment.rubric_identity != RUBRIC_IDENTITY
-        or assessment.rubric_revision != RUBRIC_REVISION
-        or assessment.evaluator_kind != EVALUATOR_KIND
-        or assessment.evaluator_identity != EVALUATOR_IDENTITY
-        or assessment.evaluator_revision != EVALUATOR_REVISION
-        or assessment.assessment_payload_hash
-        != assessment_payload_hash(assessment_payload_from_row(assessment))
-        or assessment.lineage_report_hash != sha256_json(assessment.lineage_report)
-    ):
-        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_binding_invalid")
-    requested = list(
-        session.scalars(
-            select(Event).where(
-                Event.task_id == task.id,
-                Event.type == REQUEST_EVENT_TYPE,
-            )
-        )
-    )
-    recorded = list(
-        session.scalars(
-            select(Event).where(
-                Event.task_id == task.id,
-                Event.type == RECORDED_EVENT_TYPE,
-            )
-        )
-    )
-    terminal = list(
-        session.scalars(
-            select(Event).where(
-                Event.task_id == task.id,
-                Event.type == "task_completed",
-            )
-        )
-    )
-    outcomes = list(
-        session.scalars(
-            select(Outcome).where(
-                Outcome.recorded_by_task_id == task.id,
-                Outcome.outcome_type == "task_execution",
-            )
-        )
-    )
-    if (
-        len(requested) != 1
-        or requested[0].payload.get("learning_change_id") != str(learning_change.id)
-        or requested[0].payload.get("proposal_hash") != assessment.proposal_hash
-        or requested[0].payload.get("evidence_basis_hash") != assessment.evidence_basis_hash
-        or len(recorded) != 1
-        or recorded[0].payload != recorded_assessment_event_payload(assessment)
-        or len(terminal) != 1
-        or terminal[0].payload.get("result_category")
-        != "success_knowledge_quality_assessed"
-        or terminal[0].payload.get("knowledge_quality_assessment_id")
-        != str(assessment.id)
-        or len(outcomes) != 1
-        or terminal[0].payload.get("outcome_id") != str(outcomes[0].id)
-        or outcomes[0].recorded_by_task_id != task.id
-        or outcomes[0].observed_at is None
-        or task.completed_at != outcomes[0].observed_at
-    ):
-        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_task_incomplete")
-    return assessment
 
 
 class KnowledgeQualityAssessmentService:
