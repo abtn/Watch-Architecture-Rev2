@@ -657,11 +657,6 @@ class TaskRuntime:
                 self._validate_knowledge_quality_task_request(
                     session, task, require_proposed=task.status == "running"
                 )
-
-            if self._is_knowledge_quality_task(session, task):
-                self._validate_knowledge_quality_task_request(
-                    session, task, require_proposed=task.status == "running"
-                )
             if (
                 observation.result_category == "success_knowledge_reviewed"
                 and task.task_type != "review_knowledge"
@@ -2379,6 +2374,59 @@ class TaskRuntime:
             raise TaskNotFinalizable("evaluation_not_recorded")
 
     @staticmethod
+    def _validate_knowledge_quality_result(
+        session: Session,
+        task: Task,
+        observation: TerminalObservation,
+        *,
+        allow_completed: bool = False,
+    ) -> None:
+        from core.knowledge_quality import (
+            KnowledgeQualityAssessmentError,
+            require_recorded_assessment,
+        )
+
+        if (
+            task.task_type != _KNOWLEDGE_QUALITY_TASK_TYPE
+            or task.team_id is None
+            or task.allowed_writes != _KNOWLEDGE_QUALITY_ALLOWED_WRITES
+            or task.objective_id is not None
+            or task.plan_id is not None
+            or task.plan_action_id is not None
+            or task.max_attempts != _KNOWLEDGE_QUALITY_MAX_ATTEMPTS
+            or task.budget != _KNOWLEDGE_QUALITY_BUDGET
+            or task.status != ("done" if allow_completed else "running")
+            or task.attempt_count != observation.attempt
+            or observation.knowledge_quality_assessment_id is None
+        ):
+            raise TaskNotFinalizable("knowledge_quality_result_task_shape_invalid")
+        assessment = session.scalar(
+            select(KnowledgeQualityAssessment).where(
+                KnowledgeQualityAssessment.id
+                == observation.knowledge_quality_assessment_id,
+                KnowledgeQualityAssessment.team_id == task.team_id,
+                KnowledgeQualityAssessment.creating_task_id == task.id,
+            )
+        )
+        if assessment is None:
+            raise TaskNotFinalizable("knowledge_quality_assessment_not_recorded")
+        try:
+            require_recorded_assessment(
+                session,
+                session.get(LearningChange, assessment.learning_change_id),
+                require_task_done=allow_completed,
+            )
+        except (KnowledgeQualityAssessmentError, TypeError) as error:
+            reason = (
+                str(error)
+                if str(error)
+                else "knowledge_quality_assessment_invalid"
+            )
+            raise TaskNotFinalizable(reason) from error
+        if allow_completed and task.completed_at != observation.observed_at:
+            raise TaskNotFinalizable("knowledge_quality_terminal_timestamp_mismatch")
+
+    @staticmethod
     def _validate_learning_change_decision_result(
         session: Session,
         task: Task,
@@ -2787,11 +2835,24 @@ class TaskRuntime:
                     or observation.strategy_event_id is not None
                 ):
                     raise TaskNotFinalizable("terminal_evidence_not_allowed")
+            elif observation.result_category in _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES:
+                if observation.knowledge_quality_assessment_id is None:
+                    raise TaskNotFinalizable("knowledge_quality_assessment_id_required")
+                if (
+                    observation.signals
+                    or observation.evaluation_id is not None
+                    or observation.learning_change_id is not None
+                    or observation.strategy_event_id is not None
+                    or observation.plan_id is not None
+                    or observation.plan_event_id is not None
+                ):
+                    raise TaskNotFinalizable("terminal_evidence_not_allowed")
             elif (observation.signals or observation.evaluation_id is not None
                 or observation.learning_change_id is not None
                 or observation.strategy_event_id is not None
                 or observation.plan_id is not None
-                or observation.plan_event_id is not None):
+                or observation.plan_event_id is not None
+                or observation.knowledge_quality_assessment_id is not None):
                 raise TaskNotFinalizable("terminal_evidence_not_allowed")
             return
 
@@ -2801,6 +2862,7 @@ class TaskRuntime:
             or observation.strategy_event_id is not None
             or observation.plan_id is not None
             or observation.plan_event_id is not None
+            or observation.knowledge_quality_assessment_id is not None
         ):
             raise TaskNotFinalizable("terminal_evidence_not_allowed")
         if not observation.failure_reason or not observation.failure_reason.strip():
@@ -2834,6 +2896,10 @@ class TaskRuntime:
             payload["plan_id"] = str(observation.plan_id)
         if observation.plan_event_id is not None:
             payload["plan_event_id"] = str(observation.plan_event_id)
+        if observation.knowledge_quality_assessment_id is not None:
+            payload["knowledge_quality_assessment_id"] = str(
+                observation.knowledge_quality_assessment_id
+            )
         return payload
 
     def _store_snapshot(self, content: bytes) -> tuple[str, str]:
