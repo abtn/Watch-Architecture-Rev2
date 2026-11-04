@@ -286,6 +286,7 @@ side effect in footnote ¹; footnote ¹ grants no worker Snapshot permission.
 | `record_outcome` | — | — | — | — | — | — | — | — | W | — | — | — | — | — | — | — | — | K | K⁸ | K |
 | `evaluate_outcome` | — | — | — | — | — | W⁹ | — | — | — | W | — | — | — | — | — | — | — | K | — | K |
 | `propose_learning_change` | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | — | — | K | — | K |
+| `assess_knowledge_quality` | — | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | — | K | — | K |
 | `approve_learning_change` | — | — | — | — | — | — | — | — | — | — | W | — | W | — | — | — | — | K | — | K |
 | `seed_knowledge` | — | — | — | — | — | — | — | — | — | — | W | W | W | — | — | — | — | K | — | K |
 | `request_consultation` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W¹⁰ | — | K | K¹¹ | K |
@@ -566,7 +567,7 @@ Starting points, tuned during M2; per-Task values may override downward, never u
 | `evaluate_outcome` | 4 | 0.40 | 180 |
 | `propose_learning_change` | 4 | 0.40 | 180 |
 | `assess_knowledge_quality` | 0 | 0 | 30 |
-| `assess_knowledge_quality` | — | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | — | K | — | K |
+
 | `approve_learning_change` | 0 | 0 | — |
 | `seed_knowledge` | 0 | 0 | — |
 | `request_consultation` | 4 | 0.30 | 180 |
@@ -587,7 +588,7 @@ For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeI
 
 | Proposed Task / operation | Purpose and authority | Proposed worker write scope | Application / TaskRuntime side effects | Explicitly forbidden |
 |---|---|---|---|---|
-| **assess_knowledge_quality — ACTIVE (R7-A)** | Implemented evaluator Task for one exact proposed create LearningChange state. | Exact worker proposal scope: KnowledgeQualityAssessment draft only. | TaskRuntime creates/admit/finalizes/recoveries the narrow Task; application rebuilds canonical evidence, validates lineage/rubric/evaluator identity/revision and proposal/evidence hashes, then records one immutable assessment and attributable Event. "recorded" means stored, not accepted. | No LearningChange disposition, KnowledgeItem, TeamPolicy, index, Context, citation or approval write. Accepted creates require exact completed assessment. |
+
 | **propose_learning_change — proposed R7 extension** | Extend the existing create-only proposal Task to propose create/revise/revalidate/supersede/retire after each operation's evidence contract is accepted. | LearningChange proposal only. | Application validates proposal shape and evidence-basis hash; TaskRuntime/cost ledger effects remain managed by the existing runtime. | No KnowledgeItem, TeamPolicy, projection, approval, or direct canonical write. Until separately implemented, the delivered R6 behavior remains create-only. |
 | **approve_learning_change — proposed R7 extension** | Existing trusted Operator Task, invoked through the host-authenticated typed-principal adapter; commits one exact proposed lifecycle change. | No model/worker business writes. | The application commit transaction may write the LearningChange disposition, KnowledgeItem current state/current pointer/successor link, and exact Task-attributed Events. TaskRuntime remains sole Task lifecycle authority. | No TeamPolicy write, seed bypass, arbitrary target/version, autonomous approval, or second commit path. The delivered R6 behavior remains create-only until R7-B is separately authorized and implemented. |
 | **review_knowledge — unchanged D7 exception** | Deterministic scheduled maintenance Task. | No worker business writes. | TaskRuntime/application service may perform only status active → needs_review and its Task-attributed Event. | No content/confidence change, LearningChange lifecycle operation, review-date extension, reactivation, revision, supersession, or retirement. |
