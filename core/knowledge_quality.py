@@ -638,6 +638,7 @@ def require_recorded_assessment(
         or task.team_id != learning_change.team_id
         or task.status not in expected_statuses
         or (task.completed_at is None and task.status == "done")
+        or assessment.status != "recorded"
         or task.task_type != TASK_TYPE
         or task.allowed_writes != ALLOWED_WRITES
         or task.objective_id is not None
@@ -912,7 +913,10 @@ def require_recorded_assessment(
         or terminal[0].payload.get("knowledge_quality_assessment_id")
         != str(assessment.id)
         or len(outcomes) != 1
-        or task.completed_at != terminal[0].created_at
+        or terminal[0].payload.get("outcome_id") != str(outcomes[0].id)
+        or outcomes[0].recorded_by_task_id != task.id
+        or outcomes[0].observed_at is None
+        or task.completed_at != outcomes[0].observed_at
     ):
         raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_task_incomplete")
     return assessment
