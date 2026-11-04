@@ -14,7 +14,7 @@ function Invoke-UvChecked {
 
     Write-Host ""
     Write-Host "=== $Label ===" -ForegroundColor Cyan
-    & uv @Arguments
+    & $script:uvExecutable @Arguments
     $exitCode = $LASTEXITCODE
 
     if ($exitCode -ne 0) {
@@ -93,11 +93,21 @@ try {
         }
     }
 
-    if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
-        throw "uv was not found on PATH. Install uv, open a new terminal, and retry."
+    $uvCommand = Get-Command uv -ErrorAction SilentlyContinue
+    if ($null -eq $uvCommand -or $uvCommand.CommandType -ne "Application") {
+        throw "A standalone uv executable was not found on PATH. Install uv outside the project .venv and retry."
     }
 
-    $uvVersionOutput = & uv --version
+    $script:uvExecutable = [System.IO.Path]::GetFullPath($uvCommand.Source)
+    $uvExecutablePrefix = $venvComparisonPath + [System.IO.Path]::DirectorySeparatorChar
+    if ($script:uvExecutable.StartsWith(
+        $uvExecutablePrefix,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "uv is installed inside the project .venv that this script needs to rebuild. Install uv outside .venv and retry."
+    }
+
+    $uvVersionOutput = & $script:uvExecutable --version
     if ($LASTEXITCODE -ne 0) {
         throw "Could not read the installed uv version."
     }
@@ -178,7 +188,7 @@ try {
     Remove-Item Env:VIRTUAL_ENV -ErrorAction SilentlyContinue
     Remove-Item Env:UV_PYTHON -ErrorAction SilentlyContinue
 
-    $basePythonOutput = & uv python find $pythonRequest --managed-python
+    $basePythonOutput = & $script:uvExecutable python find $pythonRequest --managed-python
     $findExitCode = $LASTEXITCODE
 
     if ($findExitCode -ne 0) {
