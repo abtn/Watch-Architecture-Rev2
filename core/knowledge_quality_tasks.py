@@ -189,14 +189,14 @@ class KnowledgeQualityAssessmentTaskRunner:
                 lineage_report=lineage_report,
             )
         except Exception:
-            started_at = self._attempt_started_at(task_id, admission.attempt_count)
+            failure_time = datetime.now(timezone.utc)
             retry = self._runtime.report_failure(
                 FailureObservation(
                     task_id=task_id,
                     attempt=admission.attempt_count,
                     reason="knowledge_quality_evaluator_unavailable",
                     retryable=True,
-                    observed_at=started_at,
+                    observed_at=failure_time,
                 )
             )
             return KnowledgeQualityTaskRunResult(
@@ -212,14 +212,40 @@ class KnowledgeQualityAssessmentTaskRunner:
                 )
             recorded = self._service.record(task_id, draft)
         except KnowledgeQualityAssessmentError as error:
+            failed_at = datetime.now(timezone.utc)
+            non_retryable = {
+                "knowledge_quality_evidence_basis_stale",
+                "knowledge_quality_lineage_report_mismatch",
+                "knowledge_quality_task_request_mismatch",
+                "learning_change_not_proposed",
+                "knowledge_quality_task_start_event_invalid",
+            }
+            if error.reason not in non_retryable:
+                retry = self._runtime.report_failure(
+                    FailureObservation(
+                        task_id=task_id,
+                        attempt=admission.attempt_count,
+                        reason=error.reason,
+                        retryable=True,
+                        observed_at=failed_at,
+                    )
+                )
+                return KnowledgeQualityTaskRunResult(
+                    task_id=task_id,
+                    status=retry.status,
+                    assessment_id=None,
+                    outcome_id=(
+                        retry.terminal.outcome_id
+                        if retry.terminal is not None
+                        else None
+                    ),
+                )
             failed = self._runtime.finalize(
                 TerminalObservation(
                     task_id=task_id,
                     attempt=admission.attempt_count,
                     result_category="terminal_failure",
-                    observed_at=self._attempt_started_at(
-                        task_id, admission.attempt_count
-                    ),
+                    observed_at=failed_at,
                     failure_reason=error.reason,
                 )
             )
