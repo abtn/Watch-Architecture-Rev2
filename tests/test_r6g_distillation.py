@@ -261,6 +261,14 @@ def test_failed_source_case_uses_v2_without_mutating_canonical_evidence(
 
         assert pack.document["schema_version"] == "r6g-experience-evidence-pack-v2"
         assert pack.case_count == 3
+        assert all(
+            item["schema_version"] == "r6g-experience-evidence-pack-v2"
+            for item in pack.evidence_basis
+        )
+        assert all(
+            item["schema_version"] == "r6g-experience-evidence-pack-v2"
+            for item in replay.evidence_basis
+        )
         assert pack.basis_hash == replay.basis_hash
         assert pack.document == replay.document
 
