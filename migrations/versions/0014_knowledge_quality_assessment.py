@@ -3,7 +3,6 @@
 Revision ID: 0014_knowledge_quality
 Revises: 0013_team_experience_projection
 """
-
 from typing import Sequence
 
 import sqlalchemy as sa
@@ -22,7 +21,9 @@ def upgrade() -> None:
         "knowledge_quality_assessments",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("team_id", sa.Uuid(), nullable=False),
-        sa.Column("status", sa.String(length=16), nullable=False, server_default="recorded"),
+        sa.Column(
+            "status", sa.String(length=16), nullable=False, server_default="recorded"
+        ),
         sa.Column("learning_change_id", sa.Uuid(), nullable=False),
         sa.Column("creating_task_id", sa.Uuid(), nullable=False),
         sa.Column("proposal_hash", sa.String(), nullable=False),
@@ -32,9 +33,13 @@ def upgrade() -> None:
         sa.Column("evaluator_kind", sa.String(length=16), nullable=False),
         sa.Column("evaluator_identity", sa.String(length=255), nullable=False),
         sa.Column("evaluator_revision", sa.String(length=255), nullable=False),
-        sa.Column("dimensions", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column(
+            "dimensions", postgresql.JSONB(astext_type=sa.Text()), nullable=False
+        ),
         sa.Column("narrative", sa.Text(), nullable=False),
-        sa.Column("lineage_report", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column(
+            "lineage_report", postgresql.JSONB(astext_type=sa.Text()), nullable=False
+        ),
         sa.Column("lineage_report_hash", sa.String(), nullable=False),
         sa.Column("evidence_reference_hash", sa.String(), nullable=False),
         sa.Column("assessment_payload_hash", sa.String(), nullable=False),
