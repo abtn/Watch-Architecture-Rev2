@@ -392,12 +392,18 @@ def evidence_reference_set(
         evaluation_id = _canonical_uuid(item.get("evaluation_id"))
         outcome_id = _canonical_uuid(item.get("outcome_id"))
         source_task_id = _canonical_uuid(item.get("source_task_id"))
-        if not all((evaluation_id, outcome_id, source_task_id)):
+        evaluation_task_outcome_id = _canonical_uuid(
+            item.get("evaluation_task_outcome_id")
+        )
+        if not all(
+            (evaluation_id, outcome_id, source_task_id, evaluation_task_outcome_id)
+        ):
             raise KnowledgeQualityAssessmentError("knowledge_quality_reference_basis_invalid")
         references.update(
             {
                 f"evaluation:{evaluation_id}",
                 f"outcome:{outcome_id}",
+                f"evaluation_task_outcome:{evaluation_task_outcome_id}",
                 f"source_task:{source_task_id}",
             }
         )
