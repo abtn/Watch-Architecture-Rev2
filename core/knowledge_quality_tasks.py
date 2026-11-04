@@ -145,10 +145,10 @@ class KnowledgeQualityAssessmentTaskRunner:
             )
             if learning_change is None or learning_change.team_id != task.team_id:
                 raise TaskNotEligible("knowledge_quality_learning_change_missing")
-            if learning_change.status != "proposed":
-                admission = None
-            else:
-                admission = "pending"
+            rejected_before_assessment = learning_change.status == "rejected"
+            if learning_change.status not in {"proposed", "rejected"}:
+                raise TaskNotEligible("knowledge_quality_learning_change_already_decided")
+            if not rejected_before_assessment:
                 try:
                     _, pack = self._distiller.validate_learning_change(
                         session, learning_change
@@ -162,12 +162,14 @@ class KnowledgeQualityAssessmentTaskRunner:
                     raise TaskNotEligible("knowledge_quality_evidence_basis_stale")
 
         admission = self._runtime.admit(task_id)
-        if admission is None:
-            started_at = self._attempt_started_at(task_id, 1)
+        if rejected_before_assessment:
+            started_at = self._attempt_started_at(
+                task_id, admission.attempt_count
+            )
             failed = self._runtime.finalize(
                 TerminalObservation(
                     task_id=task_id,
-                    attempt=1,
+                    attempt=admission.attempt_count,
                     result_category="terminal_failure",
                     observed_at=started_at,
                     failure_reason="learning_change_rejected_before_quality_assessment",
