@@ -2681,6 +2681,8 @@ class TaskRuntime:
             .with_for_update()
         )
         expected_status = "accepted" if expected_decision == "accept" else "rejected"
+        if learning_change is None or learning_change.team_id != task.team_id:
+            raise TaskNotFinalizable("learning_change_not_found_for_task_team")
         if expected_decision == "accept":
             from core.knowledge_quality import (
                 KnowledgeQualityAssessmentError,
