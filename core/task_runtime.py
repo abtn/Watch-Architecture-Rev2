@@ -2630,6 +2630,35 @@ class TaskRuntime:
         )
         if requested_decision != expected_decision:
             raise TaskNotFinalizable("learning_change_decision_result_mismatch")
+        quality_assessment_id_value = request_payload.get(
+            "knowledge_quality_assessment_id"
+        )
+        quality_assessment_hash = request_payload.get(
+            "knowledge_quality_assessment_hash"
+        )
+        if expected_decision == "accept":
+            from core.knowledge_quality import (
+                KnowledgeQualityAssessmentError,
+                require_recorded_assessment,
+            )
+
+            if (
+                not isinstance(quality_assessment_id_value, str)
+                or not isinstance(quality_assessment_hash, str)
+            ):
+                raise TaskNotFinalizable("operator_quality_assessment_required")
+            try:
+                quality_assessment_id = UUID(quality_assessment_id_value)
+            except ValueError as error:
+                raise TaskNotFinalizable(
+                    "operator_quality_assessment_reference_invalid"
+                ) from error
+            if str(quality_assessment_id) != quality_assessment_id_value:
+                raise TaskNotFinalizable(
+                    "operator_quality_assessment_reference_invalid"
+                )
+        elif quality_assessment_id_value is not None or quality_assessment_hash is not None:
+            raise TaskNotFinalizable("operator_quality_assessment_reference_invalid")
         learning_change_id_value = request_payload.get("learning_change_id")
         try:
             learning_change_id = UUID(learning_change_id_value)
@@ -2652,6 +2681,23 @@ class TaskRuntime:
             .with_for_update()
         )
         expected_status = "accepted" if expected_decision == "accept" else "rejected"
+        if expected_decision == "accept":
+            from core.knowledge_quality import (
+                KnowledgeQualityAssessmentError,
+                require_recorded_assessment,
+            )
+
+            try:
+                quality_assessment = require_recorded_assessment(
+                    session, learning_change, require_task_done=True
+                )
+            except KnowledgeQualityAssessmentError as error:
+                raise TaskNotFinalizable(str(error)) from error
+            if (
+                str(quality_assessment.id) != quality_assessment_id_value
+                or quality_assessment.assessment_payload_hash != quality_assessment_hash
+            ):
+                raise TaskNotFinalizable("operator_quality_assessment_binding_invalid")
         if (
             learning_change is None
             or learning_change.status != expected_status
@@ -2749,6 +2795,12 @@ class TaskRuntime:
         }
 
         if expected_decision == "accept":
+            expected_payload["knowledge_quality_assessment_id"] = (
+                quality_assessment_id_value
+            )
+            expected_payload["knowledge_quality_assessment_hash"] = (
+                quality_assessment_hash
+            )
             items = list(
                 session.scalars(
                     select(KnowledgeItem).where(
