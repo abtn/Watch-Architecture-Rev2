@@ -37,7 +37,6 @@ _TERMINAL_STATUSES = frozenset({"done", "failed"})
 _EVALUATION_SUCCESS_CATEGORIES = frozenset({
     "success_evaluation_recorded",
     "success_evaluation_rejected",
-    "success_knowledge_quality_assessed",
 })
 _STRATEGY_SUCCESS_CATEGORIES = frozenset(
     {"success_strategy_accepted", "success_strategy_rejected"}
