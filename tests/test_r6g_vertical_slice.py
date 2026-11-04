@@ -27,6 +27,7 @@ from core.models import (
     EvidenceLink,
     KnowledgeChunk,
     KnowledgeItem,
+    KnowledgeQualityAssessment,
     LearningChange,
     Objective,
     Outcome,
@@ -694,6 +695,11 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
             )
             session.execute(
                 delete(KnowledgeItem).where(KnowledgeItem.team_id == team_id)
+            )
+            session.execute(
+                delete(KnowledgeQualityAssessment).where(
+                    KnowledgeQualityAssessment.team_id == team_id
+                )
             )
             session.execute(
                 delete(LearningChange).where(LearningChange.team_id == team_id)
