@@ -7,23 +7,9 @@ milestone status.
 
 ## Standing conditional authorization
 
-- The operator has authorized continued work through **R6-A, R6-B, and R6-C**
-  without separate approval for every checkpoint.
-- **R6-D is complete.** The operator explicitly selected Cloudflare Workers AI
-  `@cf/meta/llama-3.1-8b-instruct-fp8` and authorized **R6-E** on 2026-10-30
-  (ADR-0031). R6-E may proceed through bounded Context assembly, immutable
-  Context Snapshot/manifest, the model-backed StrategyProposer, strict
-  application validation, Task-level usage reservation/reconciliation, and
-  required verification. The current branch contains only the initial provider
-  adapter/smoke checkpoint; do not report R6-E complete until all remaining
-  acceptance criteria and checks pass.
-- **R6-F Checkpoints 1–2 are complete.** The operator explicitly authorized
-  **R6-F Checkpoint 3 — Operator review and canonical learning commit** on
-  2026-11-01. Work may proceed through Checkpoint 3 design closure, implementation,
-  tests, and required verification only. This does not authorize Checkpoint 4,
-  R6-G, a production R6-F generation provider, or any TeamPolicy mutation.
-- **R6-G remains outside this authorization.** The integrated R6 exit gate still
-  requires a separate explicit operator decision.
+- **R6-A through R6-E are complete.** R6-D's embedding provider decision and R6-E's generation provider decision are recorded in their governing ADRs. The Cloudflare provider selected for R6-E remains authorized for R6-E only and outside automatic Task dispatch.
+- **R6-F Checkpoints 1–4 are complete and merged.** Checkpoints 1–2 merged through PRs #29/#30; C3 create-only Operator approval/canonical commit was separately authorized on 2026-11-01 and merged by PR #31; C4 Team Experience projection/retrieval was separately authorized on 2026-11-02 and merged by PR #32. Combined C3+C4 operator-local verification passed against the exact source tree merged by PR #33; see `docs/testing.md` for evidence and timing. D10 remains create-only: revise/retire proposal production and commitment are deferred to separately authorized lifecycle work. No production R6-F distillation provider/model is approved; deterministic fakes remain the test path.
+- **R6-G remains outside this authorization.** The integrated R6 exit gate requires a separate explicit operator decision. Readiness assessment and planning do not authorize implementation.
 
 ## Automatic advancement
 
