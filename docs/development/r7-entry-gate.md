@@ -144,7 +144,7 @@ Do not begin R7-A while any decision that changes canonical schema, authority, s
 ## 5. Non-negotiable constraints
 
 - Model/worker/evaluator output is a proposal, never authority to change canonical knowledge.
-- All canonical changes require a committed LearningChange and explicit trusted Operator decision.
+- All KnowledgeItem content changes and explicit lifecycle decisions require a committed LearningChange and trusted Operator decision. The sole narrow maintenance exception remains the scheduled review_knowledge status-only active → needs_review transition; it cannot change content/confidence or reactivate an item.
 - INV-11/INV-13/INV-14 remain in force. INV-12 remains the active rule until ADR-0032 is accepted; the proposed amendment in ADR-0032 must be applied to docs/invariants.md before implementation. Canonical records govern, commits revalidate atomically, and Tasks stay within exact scope/budget.
 - The existing host remains the authentication root. No Watch-owned authentication stack or public Operator API is part of this gate.
 - TaskRuntime remains the sole lifecycle authority. No second runtime, generalized dispatcher, scheduler, queue, or workflow engine.
