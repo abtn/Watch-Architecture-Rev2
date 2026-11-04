@@ -38,6 +38,8 @@ from core.knowledge_quality import (
     RUBRIC_REVISION,
     KnowledgeQualityAssessmentDraft,
     KnowledgeQualityDimension,
+    KnowledgeQualityAssessmentService,
+    build_case_lineage_report,
 )
 from core.knowledge_quality_tasks import KnowledgeQualityAssessmentTaskRunner
 from core.learning_commit import (
@@ -1188,6 +1190,117 @@ def _create_admitted_approval_task(
 
 
 
+
+
+
+def test_quality_assessment_recovery_finalizes_same_record_without_duplicate(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(2, include_contrary=False)
+    proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    runtime.finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+
+    from core.knowledge_quality import REQUEST_EVENT_TYPE, TASK_TYPE
+
+    with session_factory() as session:
+        learning_change = session.get(LearningChange, proposal.learning_change_id)
+        assert learning_change is not None
+        quality_task = session.scalar(
+            select(Task).where(
+                Task.task_type == TASK_TYPE,
+                Task.team_id == fixture.team_id,
+            )
+        )
+        assert quality_task is not None
+        _, pack = ExperienceDistiller(
+            session_factory, snapshot_store, provider=None
+        ).validate_learning_change(session, learning_change)
+        lineage = build_case_lineage_report(
+            session, fixture.team_id, pack.evidence_basis
+        )
+        request_event = session.scalar(
+            select(Event).where(
+                Event.task_id == quality_task.id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+        assert request_event is not None
+    admission = runtime.admit(quality_task.id)
+    draft = _FakeKnowledgeQualityAssessmentProvider().assess(
+        task_id=quality_task.id,
+        learning_change=learning_change,
+        evidence_document=pack.document,
+        lineage_report=lineage,
+    )
+    recorded = KnowledgeQualityAssessmentService(
+        session_factory, snapshot_store
+    ).record(quality_task.id, draft)
+
+    with session_factory.begin() as session:
+        start_event = session.scalar(
+            select(Event).where(
+                Event.task_id == quality_task.id,
+                Event.type == "task_started",
+            )
+        )
+        assert start_event is not None
+        start_event.created_at = recorded.recorded_at - timedelta(seconds=61)
+
+    recovery = runtime.recover_interrupted(now=recorded.recorded_at)
+    assert recovery.completed == (quality_task.id,)
+    assert recovery.retried == ()
+    assert recovery.failed == ()
+
+    with session_factory() as session:
+        completed = session.get(Task, quality_task.id)
+        assert completed is not None and completed.status == "done"
+        assert completed.attempt_count == admission.attempt_count == 1
+        assert completed.completed_at == recorded.recorded_at
+        assert session.scalar(
+            select(func.count(KnowledgeQualityAssessment.id)).where(
+                KnowledgeQualityAssessment.learning_change_id
+                == proposal.learning_change_id
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == quality_task.id,
+                Event.type == "knowledge_quality_assessment_recorded",
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == quality_task.id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) == 1
+
+    replay = KnowledgeQualityAssessmentTaskRunner(
+        session_factory,
+        snapshot_store,
+        _FakeKnowledgeQualityAssessmentProvider(),
+        runtime,
+    ).run(quality_task.id)
+    assert replay.status == "done"
+    assert replay.assessment_id == recorded.assessment_id
+    assert replay.outcome_id is not None
+    assert replay.replayed
 
 def test_accepted_create_requires_recorded_quality_assessment(
     session_factory,
