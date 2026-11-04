@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Design prepared 2026-11-03; implementation authorized and in progress 2026-11-04.** This document records the R6-G service boundaries and intended integrated fixture, together with the implemented behavior on `r6g-implementation-20261103` / PR #35. It does not itself close R6-G or authorize a merge. PLAN.md remains the only milestone-status authority.
+**Design prepared 2026-11-03; implementation completed and formally closed 2026-11-04.** This document records the R6-G service boundaries and integrated fixture, implemented on `r6g-implementation-20261103`, technically accepted 10/10, explicitly approved by the Operator and merged by PR #35 at `56745b613b5b77a21a514b4e261d3450f90c0df1`. PLAN.md remains the only milestone-status authority.
 
 PLAN.md owns milestone status. The R6 entry gate and ADR-0028/0029/0030/0031 govern architecture. docs/tasks.md owns Task types, write scopes and budgets. The accepted D9 choice is unchanged: evaluator_kind rule, evaluator_identity watch.r6g.ingest-source-rules, evaluator_revision 1; configured-source ingest_source terminal Outcomes only; no model/human Evaluation producer. The evaluator returns an EvaluationDraft only; EvaluationService validates and records it; TaskRuntime owns Task lifecycle. No general dispatcher, second runtime, or production provider is introduced.
 
@@ -208,7 +208,7 @@ Tests now cover accepted Strategy finalization/replay, rejected Strategy finaliz
 
 Additional component suites remain part of the acceptance evidence: `test_r6b_dispatcher.py`, `test_knowledge_index.py`, `test_team_experience.py`, `test_context_assembly.py`, `test_strategy_proposer.py`, `test_strategy.py`, `test_plans.py`, `test_task_lifecycle_retry.py`, `test_task_lifecycle_recovery.py`, `test_task_runtime.py`, `test_evaluations.py`, `test_operator_application.py` and `test_generation_cost.py.
 
-R6-G exit still requires evidence mapped to all ten criteria in `docs/testing.md`, successful exact-head programmer-local verification with disposable PostgreSQL, review of the relevant failure-injection/replay cases, and explicit operator approval. Existing component coverage may satisfy a criterion; the integrated test does not need to duplicate every lower-level fault test.
+The R6-G exit criteria required evidence mapped to all ten criteria in `docs/testing.md`, exact-head programmer-local verification with disposable PostgreSQL, review of relevant failure-injection/replay cases, and explicit Operator approval. These requirements were met and accepted on 2026-11-04; existing component coverage was combined with the integrated fixture rather than duplicating every lower-level fault test.
 
 ## 8. Implementation and verification status
 
@@ -220,10 +220,10 @@ R6-G exit still requires evidence mapped to all ten criteria in `docs/testing.md
 6. **Implemented:** typed TaskRuntime completion/recovery results for Strategy and Plan producer Tasks.
 7. **Implemented:** integrated three-case fixture through later-Task Team Experience retrieval.
 8. **Hosted CI passed on exact implementation head** `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3`, run [41782439302](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41782439302): fresh PostgreSQL migration/head check, Ruff, Mypy and 614 tests in 44.93s. Programmer-local disposable-PostgreSQL verification also passed on this exact head: Python 3.12.12; fresh DB migrated to the single `0013_team_experience_projection` head; 134 focused tests and 614 full-suite tests passed; Ruff, Mypy (29 source files) and `git diff --check` passed. The disposable container/anonymous volume were removed and the worktree was clean. See `docs/testing.md` for the full operator-reported record.
-9. **Technical acceptance review passed 10/10** on 2026-11-04; no blocking gap was found. The integrated fixture remains intentionally offline with fake fetch/model/embedding providers; relevant component suites cover URL/DNS/HTTP safety, hybrid retrieval and failure behavior. **Pending:** obtain the Operator's explicit R6-G exit approval. Code, CI or merge alone does not close R6.
+9. **Technical acceptance review passed 10/10** on 2026-11-04; no blocking gap was found. The integrated fixture remains intentionally offline with fake fetch/model/embedding providers; relevant component suites cover URL/DNS/HTTP safety, hybrid retrieval and failure behavior. The Operator explicitly approved the R6-G exit gate, and PR #35 merged on 2026-11-04. Code, CI or merge alone does not close R6; closure followed the separate explicit approval.
 
 ## 9. Explicit non-goals
 
 No production R6-G evaluator/provider; no human/model evaluator; no production R6-F distillation provider; no new model SDK/credentials; no general dispatcher, scheduler, queue or second runtime; no arbitrary source URL or wider network access; no D10 revise/retire; no TeamPolicy mutation; no automatic LearningChange acceptance; no new knowledge entity family; no weakening of R5 Plan prerequisites/completion rules; no use of the persistent watch database for tests.
 
-**Current gate:** implementation was separately authorized and is in progress on PR #35 (draft/open, unmerged). No merge or R6 closure is implied. The explicit non-goals below remain binding.
+**Current gate: CLOSED.** PR #35 merged to `main` at `56745b613b5b77a21a514b4e261d3450f90c0df1` after explicit Operator approval. The explicit non-goals below remain binding.
