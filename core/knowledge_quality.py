@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -260,6 +260,11 @@ def build_case_lineage_report(
                     link_ref is not None and not _complete_snapshot(link_ref, link_hash)
                 ):
                     incomplete = True
+                elif link_ref is not None and (
+                    link_ref != source.observation_snapshot_ref
+                    or link_hash != source.observation_hash
+                ):
+                    incomplete = True
                 elif isinstance(link_hash, str):
                     snapshot_anchors.add(f"snapshot:{link_hash}")
             elif source_kind == "signal":
@@ -285,6 +290,13 @@ def build_case_lineage_report(
                     link_ref is not None and not _complete_snapshot(link_ref, link_hash)
                 ):
                     incomplete = True
+                elif link_ref is not None and (
+                    link_ref != signal.snapshot_ref
+                    or link_hash != signal.content_hash
+                ):
+                    incomplete = True
+                elif isinstance(link_hash, str):
+                    snapshot_anchors.add(f"snapshot:{link_hash}")
             else:
                 incomplete = True
 
@@ -373,7 +385,10 @@ def evidence_reference_set(
 ) -> frozenset[str]:
     """Build the assessment's allowed evidence keys from verified canonical basis."""
     references: set[str] = set()
-    for item in pack.evidence_basis:
+    evidence_basis = (
+        pack if isinstance(pack, list) else pack.evidence_basis
+    )
+    for item in evidence_basis:
         evaluation_id = _canonical_uuid(item.get("evaluation_id"))
         outcome_id = _canonical_uuid(item.get("outcome_id"))
         source_task_id = _canonical_uuid(item.get("source_task_id"))
@@ -660,6 +675,42 @@ def require_recorded_assessment(
         or assessment.lineage_report_hash != sha256_json(assessment.lineage_report)
     ):
         raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_binding_invalid")
+    try:
+        stored_draft = KnowledgeQualityAssessmentDraft(
+            learning_change_id=assessment.learning_change_id,
+            proposal_hash=assessment.proposal_hash,
+            evidence_basis_hash=assessment.evidence_basis_hash,
+            rubric_identity=assessment.rubric_identity,
+            rubric_revision=assessment.rubric_revision,
+            dimensions=assessment.dimensions,
+            narrative=assessment.narrative,
+        )
+        allowed_references = evidence_reference_set(
+            learning_change, learning_change.evidence_basis
+        )
+        validated_dimensions = validate_dimension_draft(
+            stored_draft, allowed_references
+        )
+    except (ValidationError, KnowledgeQualityAssessmentError) as error:
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_assessment_payload_invalid"
+        ) from error
+    if validated_dimensions != assessment.dimensions:
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_assessment_dimensions_mismatch"
+        )
+    referenced_keys = sorted(
+        {
+            reference
+            for dimension in validated_dimensions.values()
+            for reference in dimension["evidence_refs"]
+        }
+    )
+    if assessment.evidence_reference_hash != sha256_json(referenced_keys):
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_assessment_reference_hash_mismatch"
+        )
+
     request = validate_quality_task_request(session, task, require_proposed=False)
     if (
         request.get("learning_change_id") != str(learning_change.id)
