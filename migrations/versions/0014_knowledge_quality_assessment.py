@@ -9,7 +9,6 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-
 revision: str = "0014_knowledge_quality"
 down_revision: str | None = "0013_team_experience_projection"
 branch_labels: str | Sequence[str] | None = None
