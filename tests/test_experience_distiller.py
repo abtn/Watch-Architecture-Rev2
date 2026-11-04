@@ -37,8 +37,8 @@ from core.knowledge_quality import (
     RUBRIC_IDENTITY,
     RUBRIC_REVISION,
     KnowledgeQualityAssessmentDraft,
-    KnowledgeQualityDimension,
     KnowledgeQualityAssessmentService,
+    KnowledgeQualityDimension,
     build_case_lineage_report,
 )
 from core.knowledge_quality_tasks import KnowledgeQualityAssessmentTaskRunner
@@ -339,7 +339,9 @@ def distillation_fixture(
                         Outcome.recorded_by_task_id.in_(quality_task_ids)
                     )
                 )
-                session.execute(delete(Event).where(Event.task_id.in_(quality_task_ids)))
+                session.execute(
+                    delete(Event).where(Event.task_id.in_(quality_task_ids))
+                )
                 session.execute(delete(Task).where(Task.id.in_(quality_task_ids)))
                 session.execute(
                     delete(Outcome).where(
@@ -1101,7 +1103,9 @@ class _FakeKnowledgeQualityAssessmentProvider:
             dimensions={
                 name: KnowledgeQualityDimension(
                     disposition="insufficient_evidence",
-                    findings=["The deterministic test evaluator records no positive claim."],
+                    findings=[
+                        "The deterministic test evaluator records no positive claim."
+                    ],
                     evidence_refs=[],
                 )
                 for name in KNOWLEDGE_QUALITY_DIMENSIONS
@@ -1123,7 +1127,9 @@ def _run_quality_assessment(
     with session_factory() as session:
         tasks = list(
             session.scalars(
-                select(Task).where(Task.task_type == TASK_TYPE).order_by(Task.created_at)
+                select(Task)
+                .where(Task.task_type == TASK_TYPE)
+                .order_by(Task.created_at)
             )
         )
         task_id = None
@@ -1310,7 +1316,10 @@ def test_accepted_create_requires_recorded_quality_assessment(
     fixture = distillation_fixture(2, include_contrary=False)
     proposal = _distiller(
         session_factory, snapshot_store, _provider()
-    ).propose(fixture.distillation_task_id, [case.evaluation_id for case in fixture.cases])
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
     TaskRuntime(session_factory, snapshot_store).finalize(
         TerminalObservation(
             task_id=fixture.distillation_task_id,
@@ -1394,7 +1403,10 @@ def test_recorded_quality_assessment_is_completed_by_interrupted_recovery(
     fixture = distillation_fixture(2, include_contrary=False)
     proposal = _distiller(
         session_factory, snapshot_store, _provider()
-    ).propose(fixture.distillation_task_id, [case.evaluation_id for case in fixture.cases])
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
     TaskRuntime(session_factory, snapshot_store).finalize(
         TerminalObservation(
             task_id=fixture.distillation_task_id,
