@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
@@ -444,6 +444,256 @@ def quality_request_payload(
     return payload
 
 
+
+def build_quality_task_request(
+    session: Session,
+    source_task: Task,
+    learning_change: LearningChange,
+) -> tuple[UUID, dict[str, Any]]:
+    if (
+        source_task.task_type != "propose_learning_change"
+        or source_task.status != "done"
+        or source_task.completed_at is None
+        or source_task.allowed_writes != ["LearningChange"]
+        or source_task.team_id != learning_change.team_id
+        or learning_change.proposed_by_task_id != source_task.id
+        or learning_change.status != "proposed"
+        or learning_change.operation != "create"
+        or learning_change.target_kind != "knowledge_item"
+        or learning_change.target_id is not None
+    ):
+        raise KnowledgeQualityAssessmentError("knowledge_quality_source_proposal_invalid")
+    lineage = build_case_lineage_report(
+        session, learning_change.team_id, learning_change.evidence_basis
+    )
+    task_id = quality_task_id(source_task.team_id, learning_change.id)
+    payload = quality_request_payload(
+        task_id=task_id,
+        team_id=source_task.team_id,
+        learning_change=learning_change,
+        lineage_report=lineage,
+        policy_version=source_task.policy_version,
+    )
+    return task_id, payload
+
+
+def validate_quality_task_request(
+    session: Session,
+    task: Task,
+    *,
+    require_proposed: bool,
+) -> dict[str, Any]:
+    if (
+        task.task_type != TASK_TYPE
+        or task.objective_id is not None
+        or task.plan_id is not None
+        or task.plan_action_id is not None
+        or task.allowed_writes != ALLOWED_WRITES
+        or task.budget != TASK_BUDGET
+        or task.max_attempts != TASK_MAX_ATTEMPTS
+        or task.attempt_count < 0
+        or task.attempt_count > task.max_attempts
+        or (task.completed_at is not None and task.status != "done")
+    ):
+        raise KnowledgeQualityAssessmentError("knowledge_quality_task_shape_invalid")
+    events = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+    )
+    if len(events) != 1 or not isinstance(events[0].payload, dict):
+        raise KnowledgeQualityAssessmentError("knowledge_quality_task_request_event_invalid")
+    payload = events[0].payload
+    try:
+        learning_change_id = UUID(payload.get("learning_change_id"))
+    except (TypeError, ValueError) as error:
+        raise KnowledgeQualityAssessmentError("knowledge_quality_task_target_invalid") from error
+    learning_change = session.scalar(
+        select(LearningChange).where(
+            LearningChange.id == learning_change_id,
+            LearningChange.team_id == task.team_id,
+        )
+    )
+    if (
+        learning_change is None
+        or learning_change.operation != "create"
+        or learning_change.target_kind != "knowledge_item"
+        or learning_change.target_id is not None
+        or learning_change.proposed_by_task_id is None
+        or learning_change.status not in {"proposed", "accepted", "rejected"}
+        or (require_proposed and learning_change.status != "proposed")
+    ):
+        raise KnowledgeQualityAssessmentError("knowledge_quality_learning_change_invalid")
+    source_task = session.get(Task, learning_change.proposed_by_task_id)
+    if (
+        source_task is None
+        or source_task.team_id != task.team_id
+        or source_task.task_type != "propose_learning_change"
+        or source_task.status != "done"
+        or source_task.completed_at is None
+        or source_task.policy_version != task.policy_version
+        or source_task.allowed_writes != ["LearningChange"]
+    ):
+        raise KnowledgeQualityAssessmentError("knowledge_quality_source_task_invalid")
+    task_id, expected = build_quality_task_request(
+        session, source_task, learning_change
+    )
+    if task.id != task_id or task.team_id != learning_change.team_id:
+        raise KnowledgeQualityAssessmentError("knowledge_quality_task_identity_invalid")
+    if task.policy_version != source_task.policy_version:
+        raise KnowledgeQualityAssessmentError("knowledge_quality_task_policy_mismatch")
+    if payload != expected:
+        raise KnowledgeQualityAssessmentError("knowledge_quality_task_request_mismatch")
+    proposal_events = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == source_task.id,
+                Event.type == "learning_change_proposed",
+            )
+        )
+    )
+    if len(proposal_events) != 1:
+        raise KnowledgeQualityAssessmentError("knowledge_quality_proposal_event_missing")
+    proposal = proposal_events[0].payload
+    if (
+        not isinstance(proposal, dict)
+        or proposal.get("learning_change_id") != str(learning_change.id)
+        or proposal.get("proposal_hash")
+        != learning_change.proposed_state.get("proposal_hash")
+        or proposal.get("evidence_basis_hash") != learning_change.evidence_basis_hash
+    ):
+        raise KnowledgeQualityAssessmentError("knowledge_quality_proposal_event_mismatch")
+    terminal_events = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == source_task.id,
+                Event.type == "task_completed",
+            )
+        )
+    )
+    source_outcomes = list(
+        session.scalars(
+            select(Outcome).where(
+                Outcome.recorded_by_task_id == source_task.id,
+                Outcome.outcome_type == "task_execution",
+            )
+        )
+    )
+    if (
+        len(terminal_events) != 1
+        or terminal_events[0].payload.get("result_category")
+        != "success_learning_change_proposed"
+        or terminal_events[0].payload.get("learning_change_id")
+        != str(learning_change.id)
+        or len(source_outcomes) != 1
+    ):
+        raise KnowledgeQualityAssessmentError("knowledge_quality_source_terminal_invalid")
+    return payload
+
+
+def require_recorded_assessment(
+    session: Session,
+    learning_change: LearningChange,
+    *,
+    require_task_done: bool = True,
+) -> KnowledgeQualityAssessment:
+    assessments = list(
+        session.scalars(
+            select(KnowledgeQualityAssessment)
+            .where(
+                KnowledgeQualityAssessment.learning_change_id == learning_change.id,
+                KnowledgeQualityAssessment.team_id == learning_change.team_id,
+            )
+            .with_for_update()
+        )
+    )
+    if len(assessments) != 1:
+        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_required")
+    assessment = assessments[0]
+    task = session.get(Task, assessment.creating_task_id)
+    expected_statuses = {"done"} if require_task_done else {"running", "done"}
+    if (
+        task is None
+        or task.team_id != learning_change.team_id
+        or task.status not in expected_statuses
+        or (task.completed_at is None and task.status == "done")
+        or task.task_type != TASK_TYPE
+        or task.allowed_writes != ALLOWED_WRITES
+        or task.objective_id is not None
+        or task.plan_id is not None
+        or task.plan_action_id is not None
+        or task.max_attempts != TASK_MAX_ATTEMPTS
+        or task.budget != TASK_BUDGET
+        or assessment.proposal_hash
+        != learning_change.proposed_state.get("proposal_hash")
+        or assessment.evidence_basis_hash != learning_change.evidence_basis_hash
+        or assessment.rubric_identity != RUBRIC_IDENTITY
+        or assessment.rubric_revision != RUBRIC_REVISION
+        or assessment.evaluator_kind != EVALUATOR_KIND
+        or assessment.evaluator_identity != EVALUATOR_IDENTITY
+        or assessment.evaluator_revision != EVALUATOR_REVISION
+        or assessment.assessment_payload_hash
+        != assessment_payload_hash(assessment_payload_from_row(assessment))
+        or assessment.lineage_report_hash != sha256_json(assessment.lineage_report)
+    ):
+        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_binding_invalid")
+    request = validate_quality_task_request(session, task, require_proposed=False)
+    if (
+        request.get("learning_change_id") != str(learning_change.id)
+        or request.get("proposal_hash") != assessment.proposal_hash
+        or request.get("evidence_basis_hash") != assessment.evidence_basis_hash
+        or request.get("lineage_report_hash") != assessment.lineage_report_hash
+    ):
+        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_request_mismatch")
+    recorded = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == RECORDED_EVENT_TYPE,
+            )
+        )
+    )
+    if (
+        len(recorded) != 1
+        or recorded[0].payload != recorded_assessment_event_payload(assessment)
+        or recorded[0].created_at != assessment.recorded_at
+    ):
+        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_record_event_invalid")
+    terminal = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == "task_completed",
+            )
+        )
+    )
+    outcomes = list(
+        session.scalars(
+            select(Outcome).where(
+                Outcome.recorded_by_task_id == task.id,
+                Outcome.outcome_type == "task_execution",
+            )
+        )
+    )
+    if require_task_done:
+        if (
+            len(terminal) != 1
+            or len(outcomes) != 1
+            or terminal[0].payload.get("result_category")
+            != "success_knowledge_quality_assessed"
+            or terminal[0].payload.get("knowledge_quality_assessment_id")
+            != str(assessment.id)
+            or task.completed_at != terminal[0].created_at
+        ):
+            raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_task_incomplete")
+    elif terminal or outcomes:
+        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_task_already_terminal")
+    return assessment
+
+
 def validate_dimension_draft(
     draft: KnowledgeQualityAssessmentDraft,
     allowed_references: frozenset[str],
@@ -779,7 +1029,7 @@ class KnowledgeQualityAssessmentService:
                 raise KnowledgeQualityConflict("knowledge_quality_assessment_already_recorded")
 
             assessment = KnowledgeQualityAssessment(
-                id=UUID(int=0),  # replaced below with a generated UUID
+                id=uuid4(),
                 team_id=task.team_id,
                 learning_change_id=learning_change.id,
                 creating_task_id=task.id,
@@ -799,9 +1049,6 @@ class KnowledgeQualityAssessmentService:
                 idempotency_key=request["idempotency_key"],
                 recorded_at=datetime.now(timezone.utc),
             )
-            from uuid import uuid4
-
-            assessment.id = uuid4()
             session.add(assessment)
             session.flush()
             session.add(
