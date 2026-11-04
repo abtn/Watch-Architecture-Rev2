@@ -1,6 +1,8 @@
 """R6-G: durable D9 evaluator-Task request and recovery protocol."""
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from threading import Barrier
 from typing import Literal
 from uuid import UUID
 
@@ -125,6 +127,62 @@ def test_terminal_source_finalization_atomically_requests_evaluation(
     )
     assert replay_task.id == evaluator_task.id
     assert replay_request.id == request.id
+
+
+def test_concurrent_terminal_replay_creates_one_evaluation_request(
+    session_factory: sessionmaker[Session],
+    snapshot_store,
+    dispatch_fixture: DispatchFixture,
+) -> None:
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    admission = runtime.admit(dispatch_fixture.task_id)
+    observation = TerminalObservation(
+        task_id=dispatch_fixture.task_id,
+        attempt=admission.attempt_count,
+        result_category="success_no_change",
+        observed_at=datetime.now(timezone.utc),
+    )
+    barrier = Barrier(2)
+
+    def finalize() -> FinalizationResult:
+        barrier.wait(timeout=10)
+        return runtime.finalize(observation)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(finalize) for _ in range(2)]
+        results = [future.result(timeout=20) for future in futures]
+
+    assert {result.outcome_id for result in results} == {results[0].outcome_id}
+    assert sum(not result.replayed for result in results) == 1
+    evaluator_task, request = _request_for_source(
+        session_factory, dispatch_fixture.task_id
+    )
+    with session_factory() as session:
+        source_outcomes = list(
+            session.scalars(
+                select(Outcome).where(
+                    Outcome.subject_kind == "task",
+                    Outcome.subject_id == dispatch_fixture.task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+        )
+        requests = [
+            event
+            for event in session.scalars(
+                select(Event).where(Event.type == "evaluation_task_requested")
+            )
+            if event.payload.get("source_task_id") == str(dispatch_fixture.task_id)
+        ]
+        evaluator = session.get(Task, evaluator_task.id)
+
+    assert len(source_outcomes) == 1
+    assert source_outcomes[0].id == results[0].outcome_id
+    assert len(requests) == 1
+    assert requests[0].id == request.id
+    assert evaluator is not None
+    assert evaluator.status == "pending"
+    assert evaluator.attempt_count == 0
 
 
 def test_terminal_failure_also_creates_one_evaluator_request(
