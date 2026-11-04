@@ -655,7 +655,12 @@ class TaskRuntime:
                 self._validate_evaluation_task_request(session, task)
             if self._is_knowledge_quality_task(session, task):
                 self._validate_knowledge_quality_task_request(
-                    session, task, require_proposed=task.status == "running"
+                    session,
+                    task,
+                    require_proposed=(
+                        observation.result_category
+                        in _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES
+                    ),
                 )
             if (
                 observation.result_category == "success_knowledge_reviewed"
@@ -2480,19 +2485,17 @@ class TaskRuntime:
         )
         if assessment is None:
             raise TaskNotFinalizable("knowledge_quality_assessment_not_recorded")
+        learning_change = session.get(LearningChange, assessment.learning_change_id)
+        if learning_change is None or learning_change.team_id != task.team_id:
+            raise TaskNotFinalizable("knowledge_quality_learning_change_missing")
         try:
             require_recorded_assessment(
                 session,
-                session.get(LearningChange, assessment.learning_change_id),
+                learning_change,
                 require_task_done=allow_completed,
             )
-        except (KnowledgeQualityAssessmentError, TypeError) as error:
-            reason = (
-                str(error)
-                if str(error)
-                else "knowledge_quality_assessment_invalid"
-            )
-            raise TaskNotFinalizable(reason) from error
+        except KnowledgeQualityAssessmentError as error:
+            raise TaskNotFinalizable(str(error)) from error
         if allow_completed and task.completed_at != observation.observed_at:
             raise TaskNotFinalizable("knowledge_quality_terminal_timestamp_mismatch")
 
