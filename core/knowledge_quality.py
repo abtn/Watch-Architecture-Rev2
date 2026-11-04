@@ -32,7 +32,6 @@ from core.models import (
 )
 from core.snapshot_store import SnapshotStore
 
-
 RUBRIC_IDENTITY = "watch.r7a.knowledge-quality"
 RUBRIC_REVISION = "1"
 EVALUATOR_KIND = "model"
