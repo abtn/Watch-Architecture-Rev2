@@ -1386,7 +1386,7 @@ class TaskRuntime:
         if not TaskRuntime._is_knowledge_quality_task(session, task):
             return None
         request = TaskRuntime._validate_knowledge_quality_task_request(
-            session, task, require_proposed=task.status == "running"
+            session, task, require_proposed=False
         )
         assessment = session.scalar(
             select(KnowledgeQualityAssessment).where(
@@ -1395,6 +1395,23 @@ class TaskRuntime:
             )
         )
         if assessment is None:
+            learning_change_id = UUID(request["learning_change_id"])
+            learning_change = session.get(LearningChange, learning_change_id)
+            if learning_change is None:
+                raise TaskNotFinalizable("knowledge_quality_learning_change_missing")
+            if learning_change.status == "rejected" and task.status == "running":
+                started_at = TaskRuntime._current_attempt_start(session, task)
+                if started_at is None:
+                    raise TaskNotFinalizable("knowledge_quality_task_start_missing")
+                return TerminalObservation(
+                    task_id=task.id,
+                    attempt=task.attempt_count,
+                    result_category="terminal_failure",
+                    observed_at=started_at,
+                    failure_reason="learning_change_rejected_before_quality_assessment",
+                )
+            if learning_change.status != "proposed":
+                raise TaskNotFinalizable("knowledge_quality_assessment_missing_for_decided_change")
             return None
         learning_change = session.get(LearningChange, assessment.learning_change_id)
         if learning_change is None:
