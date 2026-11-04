@@ -60,6 +60,7 @@ from core.models import (
 )
 from core.operator_application import (
     LearningChangeDecisionRequest,
+    LearningChangeNotApprovable,
     OperatorApplicationAdapter,
     OperatorGrant,
     OperatorTaskRequestConflict,
@@ -1185,6 +1186,90 @@ def _create_admitted_approval_task(
     admission = TaskRuntime(session_factory).admit(result.task_id)
     return result.task_id, admission.attempt_count, _approval_principal(team_id)
 
+
+
+
+def test_accepted_create_requires_recorded_quality_assessment(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(2, include_contrary=False)
+    proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(fixture.distillation_task_id, [case.evaluation_id for case in fixture.cases])
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    principal = _approval_principal(fixture.team_id)
+    with pytest.raises(
+        LearningChangeNotApprovable,
+        match="knowledge_quality_assessment_required",
+    ):
+        adapter.request_learning_change_decision(
+            principal,
+            LearningChangeDecisionRequest(
+                learning_change_id=proposal.learning_change_id,
+                decision="accept",
+                idempotency_key="quality-required-before-accept",
+            ),
+        )
+
+    with session_factory() as session:
+        assessment_task = session.scalar(
+            select(Task).where(
+                Task.task_type == "assess_knowledge_quality",
+                Task.team_id == fixture.team_id,
+            )
+        )
+        assert assessment_task is not None
+        assert assessment_task.status == "pending"
+        assert session.scalar(
+            select(Task.id).where(
+                Task.task_type == "approve_learning_change",
+                Task.team_id == fixture.team_id,
+            )
+        ) is None
+
+    _run_quality_assessment(
+        session_factory, snapshot_store, proposal.learning_change_id
+    )
+    approval_task_id, attempt, trusted_principal = _create_admitted_approval_task(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        proposal.learning_change_id,
+    )
+    result = LearningCommitService(
+        session_factory, snapshot_store
+    ).decide(approval_task_id, attempt, trusted_principal)
+    assert result.status == "accepted"
+    assert result.knowledge_item_id is not None
+
+    with session_factory() as session:
+        learning_change = session.get(LearningChange, proposal.learning_change_id)
+        assert learning_change is not None
+        assert learning_change.status == "accepted"
+        item = session.get(KnowledgeItem, result.knowledge_item_id)
+        assert item is not None
+        assert item.version == 1
+        accepted_event = session.scalar(
+            select(Event).where(
+                Event.task_id == approval_task_id,
+                Event.type == "learning_change_accepted",
+            )
+        )
+        assert accepted_event is not None
+        assert accepted_event.payload["knowledge_quality_assessment_id"]
+        assert accepted_event.payload["knowledge_quality_assessment_hash"]
 
 def test_learning_commit_accepts_real_create_proposal_atomically(
     session_factory, snapshot_store, distillation_fixture
