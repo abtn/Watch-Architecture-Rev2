@@ -18,6 +18,10 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
+from core.knowledge_quality import (
+    KnowledgeQualityAssessmentError,
+    require_recorded_assessment,
+)
 from core.models import Event, LearningChange, Task, Team, TeamPolicy
 from core.snapshot_store import SnapshotStore
 
@@ -174,12 +178,26 @@ class OperatorApplicationAdapter:
 
             task_id = _approval_task_id(team_id, request.idempotency_key)
             idempotency_key_hash = _sha256(str(request.idempotency_key))
+            quality_assessment_id: UUID | None = None
+            quality_assessment_hash: str | None = None
+            if request.decision == "accept":
+                try:
+                    assessment = require_recorded_assessment(
+                        session, learning_change, require_task_done=True
+                    )
+                except KnowledgeQualityAssessmentError as error:
+                    raise LearningChangeNotApprovable(str(error)) from error
+                quality_assessment_id = assessment.id
+                quality_assessment_hash = assessment.assessment_payload_hash
+
             request_fingerprint = _request_fingerprint(
                 team_id=team_id,
                 learning_change_id=learning_change.id,
                 decision=request.decision,
                 rejection_reason=rejection_reason,
                 operator_id=canonical_operator_id,
+                quality_assessment_id=quality_assessment_id,
+                quality_assessment_hash=quality_assessment_hash,
             )
 
             existing_task = session.scalar(
