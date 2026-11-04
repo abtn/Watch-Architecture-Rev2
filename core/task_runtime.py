@@ -1405,6 +1405,96 @@ class TaskRuntime:
         return exact_shape or bool(request_events)
 
     @staticmethod
+    def _is_knowledge_quality_task(session: Session, task: Task) -> bool:
+        if task.task_type == _KNOWLEDGE_QUALITY_TASK_TYPE:
+            return True
+        return session.scalar(
+            select(Event.id).where(
+                Event.task_id == task.id,
+                Event.type == _KNOWLEDGE_QUALITY_REQUEST_EVENT_TYPE,
+            )
+        ) is not None
+
+    @staticmethod
+    def _validate_knowledge_quality_task_request(
+        session: Session,
+        task: Task,
+        *,
+        require_proposed: bool = True,
+    ) -> dict[str, Any]:
+        from core.knowledge_quality import (
+            KnowledgeQualityAssessmentError,
+            validate_quality_task_request,
+        )
+
+        try:
+            return validate_quality_task_request(
+                session, task, require_proposed=require_proposed
+            )
+        except KnowledgeQualityAssessmentError as error:
+            raise TaskNotFinalizable(error.reason) from error
+
+    @staticmethod
+    def _create_knowledge_quality_task_request(
+        session: Session,
+        source_task: Task,
+        learning_change: LearningChange,
+    ) -> Task:
+        from core.knowledge_quality import (
+            ALLOWED_WRITES,
+            REQUEST_EVENT_TYPE,
+            TASK_BUDGET,
+            TASK_MAX_ATTEMPTS,
+            TASK_TYPE,
+            build_quality_task_request,
+            validate_quality_task_request,
+        )
+
+        task_id, payload = build_quality_task_request(
+            session, source_task, learning_change, require_proposed=True
+        )
+        existing = session.get(Task, task_id)
+        if existing is not None:
+            try:
+                validate_quality_task_request(
+                    session, existing, require_proposed=True
+                )
+            except Exception as error:
+                raise TaskNotFinalizable(
+                    "knowledge_quality_task_existing_request_corrupt"
+                ) from error
+            return existing
+
+        task = Task(
+            id=task_id,
+            team_id=source_task.team_id,
+            task_type=TASK_TYPE,
+            status="pending",
+            attempt_count=0,
+            policy_version=source_task.policy_version,
+            objective_id=None,
+            plan_id=None,
+            plan_action_id=None,
+            allowed_writes=list(ALLOWED_WRITES),
+            budget=dict(TASK_BUDGET),
+            completed_at=None,
+            max_attempts=TASK_MAX_ATTEMPTS,
+        )
+        session.add(task)
+        session.flush()
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=task.id,
+                type=REQUEST_EVENT_TYPE,
+                payload=payload,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        session.flush()
+        return task
+
+    @staticmethod
     def _source_action_for_evaluation(
         session: Session, source_task: Task
     ) -> PlanAction:
