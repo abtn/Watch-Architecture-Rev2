@@ -1271,6 +1271,119 @@ def test_accepted_create_requires_recorded_quality_assessment(
         assert accepted_event.payload["knowledge_quality_assessment_id"]
         assert accepted_event.payload["knowledge_quality_assessment_hash"]
 
+
+
+def test_recorded_quality_assessment_is_completed_by_interrupted_recovery(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(2, include_contrary=False)
+    proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(fixture.distillation_task_id, [case.evaluation_id for case in fixture.cases])
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+
+    with session_factory() as session:
+        request_event = session.scalar(
+            select(Event).where(
+                Event.type == "knowledge_quality_assessment_task_requested",
+                Event.payload["learning_change_id"].as_string()
+                == str(proposal.learning_change_id),
+            )
+        )
+        assert request_event is not None
+        quality_task_id = request_event.task_id
+
+    class CrashAfterAssessmentRecordRuntime(TaskRuntime):
+        def finalize(self, observation):
+            if observation.result_category == "success_knowledge_quality_assessed":
+                raise RuntimeError("simulated_process_loss_after_assessment_commit")
+            return super().finalize(observation)
+
+    runner = KnowledgeQualityAssessmentTaskRunner(
+        session_factory,
+        snapshot_store,
+        _FakeKnowledgeQualityAssessmentProvider(),
+        runtime=CrashAfterAssessmentRecordRuntime(
+            session_factory, snapshot_store
+        ),
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="simulated_process_loss_after_assessment_commit",
+    ):
+        runner.run(quality_task_id)
+
+    with session_factory() as session:
+        assessment = session.scalar(
+            select(KnowledgeQualityAssessment).where(
+                KnowledgeQualityAssessment.learning_change_id
+                == proposal.learning_change_id
+            )
+        )
+        task = session.get(Task, quality_task_id)
+        assert assessment is not None
+        assert task is not None and task.status == "running"
+        assessed_at = assessment.recorded_at
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == quality_task_id
+            )
+        ) == 0
+
+    recovery = TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+        now=assessed_at + timedelta(seconds=120)
+    )
+    assert recovery.completed == (quality_task_id,)
+    assert recovery.failed == ()
+    assert recovery.retried == ()
+
+    with session_factory() as session:
+        assessment_rows = list(
+            session.scalars(
+                select(KnowledgeQualityAssessment).where(
+                    KnowledgeQualityAssessment.learning_change_id
+                    == proposal.learning_change_id
+                )
+            )
+        )
+        task = session.get(Task, quality_task_id)
+        outcomes = list(
+            session.scalars(
+                select(Outcome).where(
+                    Outcome.recorded_by_task_id == quality_task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+        )
+        terminal_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == quality_task_id,
+                    Event.type == "task_completed",
+                )
+            )
+        )
+        assert len(assessment_rows) == 1
+        assert task is not None and task.status == "done"
+        assert task.completed_at == assessed_at
+        assert len(outcomes) == 1
+        assert outcomes[0].observed_at == assessed_at
+        assert len(terminal_events) == 1
+        assert (
+            terminal_events[0].payload["knowledge_quality_assessment_id"]
+            == str(assessment_rows[0].id)
+        )
+
 def test_learning_commit_accepts_real_create_proposal_atomically(
     session_factory, snapshot_store, distillation_fixture
 ):
