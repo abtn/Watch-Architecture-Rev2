@@ -191,6 +191,8 @@ class KnowledgeQualityAssessmentTaskRunner:
                 assessment_id=None,
                 outcome_id=failed.outcome_id,
             )
+        if learning_change is None:
+            raise TaskNotEligible("knowledge_quality_learning_change_missing")
         try:
             draft = self._provider.assess(
                 task_id=task_id,
