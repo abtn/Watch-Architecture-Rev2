@@ -1730,6 +1730,8 @@ class TaskRuntime:
             ExperienceDistillerError,
         )
 
+        if self._snapshot_store is None:
+            raise TaskNotFinalizable("knowledge_quality_snapshot_store_required")
         try:
             _, canonical_pack = ExperienceDistiller(
                 self._session_factory, self._snapshot_store, provider=None
