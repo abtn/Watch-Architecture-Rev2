@@ -210,4 +210,4 @@ No source code, tests, migrations, schema, runtime configuration, provider confi
 
 **R7-0: COMPLETE — 2026-11-04.** The Operator accepted ADR-0032 and separately authorized R7-A. The documentation-only PR #38 passed exact-head hosted CI and merged to `main` at `c09578302927471d20e2236bb6fbfb018fab76c4`. This closeout does not authorize R7-B or R7-C.
 
-**Current gate:** R7-0 is complete and merged. ADR-0032 is Accepted. R7-A source implementation and tests are under review on the authorized branch; hosted CI and Operator-local disposable-PostgreSQL verification remain outstanding. R7-B and R7-C remain unauthorized.
+**Current gate:** R7-0 is complete and merged. ADR-0032 is Accepted. R7-A implementation PR #39 is open at `65bf263124149c93bef88f95b32367f5d52f2832`; the first hosted attempt stopped at migration version-length validation, which is corrected in the current head. Corrected exact-head CI is queued; Operator-local disposable-PostgreSQL verification remains outstanding. R7-B and R7-C remain unauthorized.
