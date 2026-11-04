@@ -102,7 +102,9 @@ class KnowledgeQualityDimension(BaseModel):
     @field_validator("evidence_refs")
     @classmethod
     def unique_nonblank_references(cls, values: list[str]) -> list[str]:
-        normalized = [value.strip() if isinstance(value, str) else value for value in values]
+        normalized = [
+            value.strip() if isinstance(value, str) else value for value in values
+        ]
         if any(not isinstance(value, str) or not value for value in normalized):
             raise ValueError("knowledge_quality_evidence_reference_required")
         if len(set(normalized)) != len(normalized):
@@ -111,7 +113,9 @@ class KnowledgeQualityDimension(BaseModel):
 
 
 class KnowledgeQualityAssessmentDraft(BaseModel):
-    """Untrusted assessment proposal; lineage and evaluator identity are application-owned."""
+    """Untrusted assessment proposal; lineage and evaluator identity are
+    application-owned.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -229,7 +233,9 @@ def build_case_lineage_report(
             or not isinstance(evidence_links, list)
             or source_task_id in seen_tasks
         ):
-            raise KnowledgeQualityAssessmentError("knowledge_quality_evidence_case_invalid")
+            raise KnowledgeQualityAssessmentError(
+                "knowledge_quality_evidence_case_invalid"
+            )
         seen_tasks.add(source_task_id)
         source_task = session.get(Task, UUID(source_task_id))
         if source_task is None or source_task.team_id != team_id:
@@ -444,7 +450,9 @@ def evidence_reference_set(
                 else None
             )
             if not isinstance(reference_key, str) or not reference_key:
-                raise KnowledgeQualityAssessmentError("knowledge_quality_reference_basis_invalid")
+                raise KnowledgeQualityAssessmentError(
+                    "knowledge_quality_reference_basis_invalid"
+                )
             references.add(f"evidence_link:{reference_key}")
             if source_id is not None:
                 references.add(f"{source_kind}:{source_id}")
