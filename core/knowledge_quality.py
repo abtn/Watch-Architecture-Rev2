@@ -1,0 +1,821 @@
+"""Evidence lineage and typed knowledge-quality assessments for R7-A."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Literal
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
+
+from core.experience_distiller import (
+    ExperienceDistiller,
+    ExperienceDistillerError,
+    ExperienceEvidencePack,
+)
+from core.models import (
+    Event,
+    KnowledgeQualityAssessment,
+    LearningChange,
+    Outcome,
+    Signal,
+    Task,
+    Team,
+)
+from core.snapshot_store import SnapshotStore
+
+
+RUBRIC_IDENTITY = "watch.r7a.knowledge-quality"
+RUBRIC_REVISION = "1"
+EVALUATOR_KIND = "model"
+EVALUATOR_IDENTITY = "watch.r7a.knowledge-quality"
+EVALUATOR_REVISION = "1"
+TASK_TYPE = "assess_knowledge_quality"
+REQUEST_EVENT_TYPE = "knowledge_quality_assessment_task_requested"
+RECORDED_EVENT_TYPE = "knowledge_quality_assessment_recorded"
+ALLOWED_WRITES = ["KnowledgeQualityAssessment"]
+TASK_BUDGET = {
+    "max_tool_calls": 0,
+    "max_cost_usd": 0.0,
+    "deadline_seconds": 30,
+}
+TASK_MAX_ATTEMPTS = 3
+_TASK_ID_NAMESPACE = UUID("f15af579-4f1d-5ed9-8c7a-7d1d5e6c30c7")
+_HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
+
+DIMENSIONS = (
+    "evidence_fidelity",
+    "case_coverage_relationship",
+    "contradiction_handling",
+    "applicability_boundaries",
+    "uncertainty_calibration",
+    "specificity_actionability",
+    "novelty_overlap",
+)
+DISPOSITIONS = frozenset(
+    {"supported", "limited", "contradicted", "insufficient_evidence"}
+)
+
+
+class KnowledgeQualityAssessmentError(ValueError):
+    """A knowledge-quality assessment failed deterministic validation."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class KnowledgeQualityConflict(KnowledgeQualityAssessmentError):
+    """An assessment or idempotency key conflicts with durable state."""
+
+
+class KnowledgeQualityDimension(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    disposition: Literal[
+        "supported", "limited", "contradicted", "insufficient_evidence"
+    ]
+    findings: list[str] = Field(min_length=1, max_length=8)
+    evidence_refs: list[str] = Field(default_factory=list, max_length=32)
+
+    @field_validator("findings")
+    @classmethod
+    def nonblank_findings(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() if isinstance(value, str) else value for value in values]
+        if any(not isinstance(value, str) or not value for value in normalized):
+            raise ValueError("knowledge_quality_finding_required")
+        return normalized
+
+    @field_validator("evidence_refs")
+    @classmethod
+    def unique_nonblank_references(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() if isinstance(value, str) else value for value in values]
+        if any(not isinstance(value, str) or not value for value in normalized):
+            raise ValueError("knowledge_quality_evidence_reference_required")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("duplicate_knowledge_quality_evidence_reference")
+        return normalized
+
+
+class KnowledgeQualityAssessmentDraft(BaseModel):
+    """Untrusted assessment proposal; lineage/evaluator identity are application-owned."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    learning_change_id: UUID
+    proposal_hash: str
+    evidence_basis_hash: str
+    rubric_identity: str
+    rubric_revision: str
+    dimensions: dict[str, KnowledgeQualityDimension] = Field(
+        min_length=7, max_length=7
+    )
+    narrative: str = Field(min_length=1, max_length=4000)
+
+    @field_validator(
+        "proposal_hash",
+        "evidence_basis_hash",
+    )
+    @classmethod
+    def valid_sha256(cls, value: str) -> str:
+        if not _HASH_RE.fullmatch(value):
+            raise ValueError("knowledge_quality_hash_invalid")
+        return value
+
+    @field_validator("rubric_identity", "rubric_revision", "narrative")
+    @classmethod
+    def nonblank_strings(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("knowledge_quality_value_required")
+        return normalized
+
+    @field_validator("dimensions")
+    @classmethod
+    def exact_dimensions(
+        cls, value: dict[str, KnowledgeQualityDimension]
+    ) -> dict[str, KnowledgeQualityDimension]:
+        if set(value) != set(DIMENSIONS):
+            raise ValueError("knowledge_quality_dimensions_invalid")
+        return value
+
+
+@dataclass(frozen=True)
+class KnowledgeQualityAssessmentResult:
+    assessment_id: UUID
+    status: str
+    assessment_payload_hash: str
+    replayed: bool = False
+
+
+def canonical_json(value: Any) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+
+
+def sha256_json(value: Any) -> str:
+    return "sha256:" + hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _canonical_uuid(value: object) -> str | None:
+    if not isinstance(value, str) or not _UUID_RE.fullmatch(value):
+        return None
+    try:
+        parsed = UUID(value)
+    except ValueError:
+        return None
+    return value if str(parsed) == value else None
+
+
+def _complete_snapshot(ref: object, digest: object) -> bool:
+    if not isinstance(ref, str) or not isinstance(digest, str):
+        return False
+    if not ref.startswith("snap://sha256/") or not _HASH_RE.fullmatch(digest):
+        return False
+    return ref.rsplit("/", 1)[-1] == digest.removeprefix("sha256:")
+
+
+def build_case_lineage_report(
+    session: Session,
+    team_id: UUID,
+    evidence_basis: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Classify pairs from canonical source lineage, never worker-provided labels."""
+    if not isinstance(evidence_basis, list) or not evidence_basis or len(evidence_basis) > 8:
+        raise KnowledgeQualityAssessmentError("knowledge_quality_evidence_basis_invalid")
+
+    cases: list[dict[str, Any]] = []
+    seen_tasks: set[str] = set()
+    for basis in evidence_basis:
+        if not isinstance(basis, dict):
+            raise KnowledgeQualityAssessmentError("knowledge_quality_evidence_case_invalid")
+        evaluation_id = _canonical_uuid(basis.get("evaluation_id"))
+        outcome_id = _canonical_uuid(basis.get("outcome_id"))
+        source_task_id = _canonical_uuid(basis.get("source_task_id"))
+        provenance = basis.get("source_task_provenance")
+        evidence_links = basis.get("evidence_links")
+        if (
+            evaluation_id is None
+            or outcome_id is None
+            or source_task_id is None
+            or not isinstance(provenance, dict)
+            or not isinstance(evidence_links, list)
+            or source_task_id in seen_tasks
+        ):
+            raise KnowledgeQualityAssessmentError("knowledge_quality_evidence_case_invalid")
+        seen_tasks.add(source_task_id)
+
+        snapshot_anchors: set[str] = set()
+        related_anchors: set[str] = set()
+        incomplete = False
+        for link in evidence_links:
+            if not isinstance(link, dict):
+                incomplete = True
+                continue
+            source_kind = link.get("source_kind")
+            source_id: str | None = None
+            if source_kind == "outcome":
+                source_id = _canonical_uuid(link.get("outcome_id"))
+                if source_id is None:
+                    incomplete = True
+                    continue
+                # The case's primary Outcome is not an upstream independence anchor.
+                if source_id == outcome_id:
+                    continue
+                source = session.get(Outcome, UUID(source_id))
+                if (
+                    source is None
+                    or source.team_id != team_id
+                    or not _complete_snapshot(
+                        source.observation_snapshot_ref, source.observation_hash
+                    )
+                ):
+                    incomplete = True
+                    continue
+                related_anchors.add(f"outcome:{source_id}")
+                snapshot_anchors.add(f"snapshot:{source.observation_hash}")
+                link_ref = link.get("snapshot_ref")
+                link_hash = link.get("snapshot_hash")
+                if (link_ref is None) != (link_hash is None) or (
+                    link_ref is not None and not _complete_snapshot(link_ref, link_hash)
+                ):
+                    incomplete = True
+            elif source_kind == "signal":
+                source_id = _canonical_uuid(link.get("signal_id"))
+                if source_id is None:
+                    incomplete = True
+                    continue
+                signal = session.get(Signal, UUID(source_id))
+                team = session.get(Team, team_id)
+                if (
+                    signal is None
+                    or team is None
+                    or signal.domain != team.domain
+                    or not _complete_snapshot(signal.snapshot_ref, signal.content_hash)
+                ):
+                    incomplete = True
+                    continue
+                related_anchors.add(f"signal:{source_id}")
+                snapshot_anchors.add(f"snapshot:{signal.content_hash}")
+                link_ref = link.get("snapshot_ref")
+                link_hash = link.get("snapshot_hash")
+                if (link_ref is None) != (link_hash is None) or (
+                    link_ref is not None and not _complete_snapshot(link_ref, link_hash)
+                ):
+                    incomplete = True
+            else:
+                incomplete = True
+
+        plan_action = provenance.get("plan_action")
+        plan_action_anchor: str | None = None
+        if plan_action is not None:
+            if not isinstance(plan_action, dict):
+                incomplete = True
+            else:
+                plan_id = _canonical_uuid(plan_action.get("plan_id"))
+                action_id = _canonical_uuid(plan_action.get("action_id"))
+                if plan_id is None or action_id is None:
+                    incomplete = True
+                else:
+                    plan_action_anchor = f"plan_action:{plan_id}:{action_id}"
+
+        cases.append(
+            {
+                "evaluation_id": evaluation_id,
+                "outcome_id": outcome_id,
+                "source_task_id": source_task_id,
+                "snapshot_anchors": sorted(snapshot_anchors),
+                "related_anchors": sorted(related_anchors),
+                "plan_action_anchor": plan_action_anchor,
+                "lineage_complete": bool(snapshot_anchors) and not incomplete,
+            }
+        )
+
+    cases.sort(key=lambda item: item["evaluation_id"])
+    pairs: list[dict[str, Any]] = []
+    for left_index, left in enumerate(cases):
+        for right in cases[left_index + 1 :]:
+            shared = sorted(
+                set(left["related_anchors"]) & set(right["related_anchors"])
+            )
+            shared_snapshots = sorted(
+                set(left["snapshot_anchors"]) & set(right["snapshot_anchors"])
+            )
+            shared_plan_action = (
+                left["plan_action_anchor"]
+                if left["plan_action_anchor"] is not None
+                and left["plan_action_anchor"] == right["plan_action_anchor"]
+                else None
+            )
+            shared_reasons = (
+                shared
+                + shared_snapshots
+                + ([shared_plan_action] if shared_plan_action is not None else [])
+            )
+            if shared_reasons:
+                relationship = "related"
+            elif (
+                not left["lineage_complete"]
+                or not right["lineage_complete"]
+            ):
+                relationship = "unknown"
+            else:
+                relationship = "independent"
+            pairs.append(
+                {
+                    "left_evaluation_id": left["evaluation_id"],
+                    "right_evaluation_id": right["evaluation_id"],
+                    "relationship": relationship,
+                    "shared_anchor_reasons": shared_reasons,
+                }
+            )
+
+    return {
+        "schema_version": "r7a-case-lineage-v1",
+        "cases": cases,
+        "pairs": pairs,
+    }
+
+
+def evidence_reference_set(
+    learning_change: LearningChange,
+    pack: ExperienceEvidencePack,
+) -> frozenset[str]:
+    """Build the assessment's allowed evidence keys from verified canonical basis."""
+    references: set[str] = set()
+    for item in pack.evidence_basis:
+        evaluation_id = _canonical_uuid(item.get("evaluation_id"))
+        outcome_id = _canonical_uuid(item.get("outcome_id"))
+        source_task_id = _canonical_uuid(item.get("source_task_id"))
+        if not all((evaluation_id, outcome_id, source_task_id)):
+            raise KnowledgeQualityAssessmentError("knowledge_quality_reference_basis_invalid")
+        references.update(
+            {
+                f"evaluation:{evaluation_id}",
+                f"outcome:{outcome_id}",
+                f"source_task:{source_task_id}",
+            }
+        )
+        for digest in (item.get("outcome_snapshot_hash"), item.get("evaluation_task_snapshot_hash")):
+            if isinstance(digest, str) and _HASH_RE.fullmatch(digest):
+                references.add(f"snapshot:{digest}")
+        for link in item.get("evidence_links", []):
+            if not isinstance(link, dict):
+                raise KnowledgeQualityAssessmentError("knowledge_quality_reference_basis_invalid")
+            reference_key = link.get("reference_key")
+            source_kind = link.get("source_kind")
+            source_id = (
+                _canonical_uuid(link.get("outcome_id"))
+                if source_kind == "outcome"
+                else _canonical_uuid(link.get("signal_id"))
+                if source_kind == "signal"
+                else None
+            )
+            if not isinstance(reference_key, str) or not reference_key:
+                raise KnowledgeQualityAssessmentError("knowledge_quality_reference_basis_invalid")
+            references.add(f"evidence_link:{reference_key}")
+            if source_id is not None:
+                references.add(f"{source_kind}:{source_id}")
+            digest = link.get("snapshot_hash")
+            if isinstance(digest, str) and _HASH_RE.fullmatch(digest):
+                references.add(f"snapshot:{digest}")
+    return frozenset(references)
+
+
+def quality_task_id(
+    team_id: UUID,
+    learning_change_id: UUID,
+) -> UUID:
+    key = (
+        f"{team_id}:{learning_change_id}:{RUBRIC_IDENTITY}:"
+        f"{RUBRIC_REVISION}:{EVALUATOR_IDENTITY}:{EVALUATOR_REVISION}"
+    )
+    return uuid5(_TASK_ID_NAMESPACE, key)
+
+
+def quality_request_payload(
+    *,
+    task_id: UUID,
+    team_id: UUID,
+    learning_change: LearningChange,
+    lineage_report: dict[str, Any],
+    policy_version: int,
+) -> dict[str, Any]:
+    proposal_hash = learning_change.proposed_state.get("proposal_hash")
+    if not isinstance(proposal_hash, str) or not _HASH_RE.fullmatch(proposal_hash):
+        raise KnowledgeQualityAssessmentError("learning_change_proposal_hash_invalid")
+    if not _HASH_RE.fullmatch(learning_change.evidence_basis_hash):
+        raise KnowledgeQualityAssessmentError("learning_change_evidence_hash_invalid")
+    payload: dict[str, Any] = {
+        "schema_version": 1,
+        "task_type": TASK_TYPE,
+        "task_id": str(task_id),
+        "team_id": str(team_id),
+        "learning_change_id": str(learning_change.id),
+        "proposed_by_task_id": str(learning_change.proposed_by_task_id),
+        "proposal_hash": proposal_hash,
+        "evidence_basis_hash": learning_change.evidence_basis_hash,
+        "rubric_identity": RUBRIC_IDENTITY,
+        "rubric_revision": RUBRIC_REVISION,
+        "evaluator_kind": EVALUATOR_KIND,
+        "evaluator_identity": EVALUATOR_IDENTITY,
+        "evaluator_revision": EVALUATOR_REVISION,
+        "lineage_report_hash": sha256_json(lineage_report),
+        "policy_version": policy_version,
+    }
+    payload["idempotency_key"] = (
+        "r7a-quality-v1:" + sha256_json(payload).removeprefix("sha256:")
+    )
+    payload["request_fingerprint"] = sha256_json(payload)
+    return payload
+
+
+def validate_dimension_draft(
+    draft: KnowledgeQualityAssessmentDraft,
+    allowed_references: frozenset[str],
+) -> dict[str, Any]:
+    if set(draft.dimensions) != set(DIMENSIONS):
+        raise KnowledgeQualityAssessmentError("knowledge_quality_dimensions_invalid")
+    dimensions: dict[str, Any] = {}
+    for name in DIMENSIONS:
+        dimension = draft.dimensions[name]
+        if dimension.disposition not in DISPOSITIONS:
+            raise KnowledgeQualityAssessmentError("knowledge_quality_disposition_invalid")
+        if any(ref not in allowed_references for ref in dimension.evidence_refs):
+            raise KnowledgeQualityAssessmentError("knowledge_quality_reference_not_in_basis")
+        if (
+            dimension.disposition != "insufficient_evidence"
+            and not dimension.evidence_refs
+        ):
+            raise KnowledgeQualityAssessmentError("knowledge_quality_evidence_reference_required")
+        if name == "novelty_overlap" and (
+            dimension.disposition != "insufficient_evidence"
+            or dimension.evidence_refs
+        ):
+            raise KnowledgeQualityAssessmentError(
+                "knowledge_quality_novelty_requires_validated_knowledge_item"
+            )
+        dimensions[name] = dimension.model_dump(mode="json")
+    return dimensions
+
+
+def assessment_payload_hash(payload: dict[str, Any]) -> str:
+    return sha256_json(payload)
+
+
+def recorded_assessment_event_payload(
+    assessment: KnowledgeQualityAssessment,
+) -> dict[str, Any]:
+    return {
+        "assessment_id": str(assessment.id),
+        "learning_change_id": str(assessment.learning_change_id),
+        "proposal_hash": assessment.proposal_hash,
+        "evidence_basis_hash": assessment.evidence_basis_hash,
+        "rubric_identity": assessment.rubric_identity,
+        "rubric_revision": assessment.rubric_revision,
+        "lineage_report_hash": assessment.lineage_report_hash,
+        "evidence_reference_hash": assessment.evidence_reference_hash,
+        "assessment_payload_hash": assessment.assessment_payload_hash,
+        "evaluator_kind": assessment.evaluator_kind,
+        "evaluator_identity": assessment.evaluator_identity,
+        "evaluator_revision": assessment.evaluator_revision,
+    }
+
+
+def assessment_record_payload(
+    *,
+    task_id: UUID,
+    team_id: UUID,
+    learning_change_id: UUID,
+    proposal_hash: str,
+    evidence_basis_hash: str,
+    rubric_identity: str,
+    rubric_revision: str,
+    evaluator_kind: str,
+    evaluator_identity: str,
+    evaluator_revision: str,
+    dimensions: dict[str, Any],
+    narrative: str,
+    lineage_report: dict[str, Any],
+    evidence_reference_hash: str,
+    idempotency_key: str,
+) -> dict[str, Any]:
+    return {
+        "creating_task_id": str(task_id),
+        "team_id": str(team_id),
+        "learning_change_id": str(learning_change_id),
+        "proposal_hash": proposal_hash,
+        "evidence_basis_hash": evidence_basis_hash,
+        "rubric_identity": rubric_identity,
+        "rubric_revision": rubric_revision,
+        "evaluator_kind": evaluator_kind,
+        "evaluator_identity": evaluator_identity,
+        "evaluator_revision": evaluator_revision,
+        "dimensions": dimensions,
+        "narrative": narrative,
+        "lineage_report": lineage_report,
+        "lineage_report_hash": sha256_json(lineage_report),
+        "evidence_reference_hash": evidence_reference_hash,
+        "idempotency_key": idempotency_key,
+    }
+
+
+def assessment_payload_from_row(
+    assessment: KnowledgeQualityAssessment,
+) -> dict[str, Any]:
+    return assessment_record_payload(
+        task_id=assessment.creating_task_id,
+        team_id=assessment.team_id,
+        learning_change_id=assessment.learning_change_id,
+        proposal_hash=assessment.proposal_hash,
+        evidence_basis_hash=assessment.evidence_basis_hash,
+        rubric_identity=assessment.rubric_identity,
+        rubric_revision=assessment.rubric_revision,
+        evaluator_kind=assessment.evaluator_kind,
+        evaluator_identity=assessment.evaluator_identity,
+        evaluator_revision=assessment.evaluator_revision,
+        dimensions=assessment.dimensions,
+        narrative=assessment.narrative,
+        lineage_report=assessment.lineage_report,
+        evidence_reference_hash=assessment.evidence_reference_hash,
+        idempotency_key=assessment.idempotency_key,
+    )
+
+
+def require_recorded_assessment(
+    session: Session,
+    learning_change: LearningChange,
+) -> KnowledgeQualityAssessment:
+    assessments = list(
+        session.scalars(
+            select(KnowledgeQualityAssessment)
+            .where(
+                KnowledgeQualityAssessment.learning_change_id == learning_change.id,
+                KnowledgeQualityAssessment.team_id == learning_change.team_id,
+            )
+            .with_for_update()
+        )
+    )
+    if len(assessments) != 1:
+        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_required")
+    assessment = assessments[0]
+    task = session.get(Task, assessment.creating_task_id)
+    if (
+        task is None
+        or task.team_id != learning_change.team_id
+        or task.task_type != TASK_TYPE
+        or task.status != "done"
+        or task.completed_at is None
+        or task.allowed_writes != ALLOWED_WRITES
+        or task.objective_id is not None
+        or task.plan_id is not None
+        or task.plan_action_id is not None
+        or task.max_attempts != TASK_MAX_ATTEMPTS
+        or task.budget != TASK_BUDGET
+        or assessment.proposal_hash
+        != learning_change.proposed_state.get("proposal_hash")
+        or assessment.evidence_basis_hash != learning_change.evidence_basis_hash
+        or assessment.rubric_identity != RUBRIC_IDENTITY
+        or assessment.rubric_revision != RUBRIC_REVISION
+        or assessment.evaluator_kind != EVALUATOR_KIND
+        or assessment.evaluator_identity != EVALUATOR_IDENTITY
+        or assessment.evaluator_revision != EVALUATOR_REVISION
+        or assessment.assessment_payload_hash
+        != assessment_payload_hash(assessment_payload_from_row(assessment))
+        or assessment.lineage_report_hash != sha256_json(assessment.lineage_report)
+    ):
+        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_binding_invalid")
+    requested = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+    )
+    recorded = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == RECORDED_EVENT_TYPE,
+            )
+        )
+    )
+    terminal = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == "task_completed",
+            )
+        )
+    )
+    outcomes = list(
+        session.scalars(
+            select(Outcome).where(
+                Outcome.recorded_by_task_id == task.id,
+                Outcome.outcome_type == "task_execution",
+            )
+        )
+    )
+    if (
+        len(requested) != 1
+        or requested[0].payload.get("learning_change_id") != str(learning_change.id)
+        or requested[0].payload.get("proposal_hash") != assessment.proposal_hash
+        or requested[0].payload.get("evidence_basis_hash") != assessment.evidence_basis_hash
+        or len(recorded) != 1
+        or recorded[0].payload != recorded_assessment_event_payload(assessment)
+        or len(terminal) != 1
+        or terminal[0].payload.get("result_category")
+        != "success_knowledge_quality_assessed"
+        or terminal[0].payload.get("knowledge_quality_assessment_id")
+        != str(assessment.id)
+        or len(outcomes) != 1
+        or task.completed_at != terminal[0].created_at
+    ):
+        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_task_incomplete")
+    return assessment
+
+
+class KnowledgeQualityAssessmentService:
+    """Revalidate canonical evidence and record one immutable assessment."""
+
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        snapshot_store: SnapshotStore,
+    ) -> None:
+        self._session_factory = session_factory
+        self._snapshot_store = snapshot_store
+        self._distiller = ExperienceDistiller(
+            session_factory, snapshot_store, provider=None
+        )
+
+    def record(
+        self,
+        task_id: UUID,
+        draft: KnowledgeQualityAssessmentDraft,
+    ) -> KnowledgeQualityAssessmentResult:
+        from core.task_runtime import TaskNotFinalizable, TaskRuntime
+
+        with self._session_factory.begin() as session:
+            task = session.scalar(
+                select(Task).where(Task.id == task_id).with_for_update()
+            )
+            if task is None:
+                raise KnowledgeQualityAssessmentError("knowledge_quality_task_not_found")
+            if (
+                task.task_type != TASK_TYPE
+                or task.status != "running"
+                or task.allowed_writes != ALLOWED_WRITES
+                or task.objective_id is not None
+                or task.plan_id is not None
+                or task.plan_action_id is not None
+                or task.max_attempts != TASK_MAX_ATTEMPTS
+                or task.budget != TASK_BUDGET
+            ):
+                raise KnowledgeQualityAssessmentError("knowledge_quality_task_not_eligible")
+            try:
+                request = TaskRuntime._validate_knowledge_quality_task_request(
+                    session, task, require_proposed=True
+                )
+            except TaskNotFinalizable as error:
+                raise KnowledgeQualityAssessmentError(str(error)) from error
+
+            learning_change_id = UUID(request["learning_change_id"])
+            learning_change = session.scalar(
+                select(LearningChange)
+                .where(
+                    LearningChange.id == learning_change_id,
+                    LearningChange.team_id == task.team_id,
+                )
+                .with_for_update()
+            )
+            if learning_change is None or learning_change.status != "proposed":
+                raise KnowledgeQualityAssessmentError("learning_change_not_proposed")
+            if (
+                draft.learning_change_id != learning_change.id
+                or draft.proposal_hash != request["proposal_hash"]
+                or draft.evidence_basis_hash != request["evidence_basis_hash"]
+                or draft.rubric_identity != request["rubric_identity"]
+                or draft.rubric_revision != request["rubric_revision"]
+            ):
+                raise KnowledgeQualityAssessmentError("knowledge_quality_draft_request_mismatch")
+
+            try:
+                _, pack = self._distiller.validate_learning_change(
+                    session, learning_change
+                )
+            except ExperienceDistillerError as error:
+                raise KnowledgeQualityAssessmentError(error.reason) from error
+            if pack.basis_hash != learning_change.evidence_basis_hash:
+                raise KnowledgeQualityAssessmentError("knowledge_quality_evidence_basis_stale")
+            lineage = build_case_lineage_report(
+                session, task.team_id, pack.evidence_basis
+            )
+            if sha256_json(lineage) != request["lineage_report_hash"]:
+                raise KnowledgeQualityAssessmentError("knowledge_quality_lineage_report_mismatch")
+            allowed_references = evidence_reference_set(learning_change, pack)
+            dimensions = validate_dimension_draft(draft, allowed_references)
+            used_references = sorted(
+                {
+                    reference
+                    for dimension in dimensions.values()
+                    for reference in dimension["evidence_refs"]
+                }
+            )
+            evidence_reference_hash = sha256_json(used_references)
+            payload = assessment_record_payload(
+                task_id=task.id,
+                team_id=task.team_id,
+                learning_change_id=learning_change.id,
+                proposal_hash=request["proposal_hash"],
+                evidence_basis_hash=request["evidence_basis_hash"],
+                rubric_identity=request["rubric_identity"],
+                rubric_revision=request["rubric_revision"],
+                evaluator_kind=request["evaluator_kind"],
+                evaluator_identity=request["evaluator_identity"],
+                evaluator_revision=request["evaluator_revision"],
+                dimensions=dimensions,
+                narrative=draft.narrative,
+                lineage_report=lineage,
+                evidence_reference_hash=evidence_reference_hash,
+                idempotency_key=request["idempotency_key"],
+            )
+            payload_hash = assessment_payload_hash(payload)
+            prior = session.scalar(
+                select(KnowledgeQualityAssessment)
+                .where(
+                    KnowledgeQualityAssessment.learning_change_id
+                    == learning_change.id
+                )
+                .with_for_update()
+            )
+            if prior is not None:
+                if (
+                    prior.creating_task_id == task.id
+                    and prior.idempotency_key == request["idempotency_key"]
+                    and prior.assessment_payload_hash == payload_hash
+                ):
+                    return KnowledgeQualityAssessmentResult(
+                        assessment_id=prior.id,
+                        status="recorded",
+                        assessment_payload_hash=prior.assessment_payload_hash,
+                        replayed=True,
+                    )
+                raise KnowledgeQualityConflict("knowledge_quality_assessment_already_recorded")
+
+            assessment = KnowledgeQualityAssessment(
+                id=UUID(int=0),  # replaced below with a generated UUID
+                team_id=task.team_id,
+                learning_change_id=learning_change.id,
+                creating_task_id=task.id,
+                proposal_hash=request["proposal_hash"],
+                evidence_basis_hash=request["evidence_basis_hash"],
+                rubric_identity=request["rubric_identity"],
+                rubric_revision=request["rubric_revision"],
+                evaluator_kind=request["evaluator_kind"],
+                evaluator_identity=request["evaluator_identity"],
+                evaluator_revision=request["evaluator_revision"],
+                dimensions=dimensions,
+                narrative=draft.narrative,
+                lineage_report=lineage,
+                lineage_report_hash=sha256_json(lineage),
+                evidence_reference_hash=evidence_reference_hash,
+                assessment_payload_hash=payload_hash,
+                idempotency_key=request["idempotency_key"],
+                recorded_at=datetime.now(timezone.utc),
+            )
+            from uuid import uuid4
+
+            assessment.id = uuid4()
+            session.add(assessment)
+            session.flush()
+            session.add(
+                Event(
+                    id=uuid4(),
+                    task_id=task.id,
+                    type=RECORDED_EVENT_TYPE,
+                    payload=recorded_assessment_event_payload(assessment),
+                    created_at=assessment.recorded_at,
+                )
+            )
+            session.flush()
+            return KnowledgeQualityAssessmentResult(
+                assessment_id=assessment.id,
+                status="recorded",
+                assessment_payload_hash=assessment.assessment_payload_hash,
+            )
