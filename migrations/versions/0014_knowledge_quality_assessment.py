@@ -22,6 +22,7 @@ def upgrade() -> None:
         "knowledge_quality_assessments",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("team_id", sa.Uuid(), nullable=False),
+        sa.Column("status", sa.String(length=16), nullable=False, server_default="recorded"),
         sa.Column("learning_change_id", sa.Uuid(), nullable=False),
         sa.Column("creating_task_id", sa.Uuid(), nullable=False),
         sa.Column("proposal_hash", sa.String(), nullable=False),
@@ -73,6 +74,10 @@ def upgrade() -> None:
             "creating_task_id",
             "idempotency_key",
             name="uq_knowledge_quality_assessments_task_idempotency",
+        ),
+        sa.CheckConstraint(
+            "status = 'recorded'",
+            name="ck_knowledge_quality_assessments_status",
         ),
         sa.CheckConstraint(
             "evaluator_kind IN ('rule', 'human', 'model')",
