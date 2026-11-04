@@ -930,6 +930,10 @@ class KnowledgeQualityAssessment(Base):
             name="uq_knowledge_quality_assessments_task_idempotency",
         ),
         CheckConstraint(
+            "status = 'recorded'",
+            name="ck_knowledge_quality_assessments_status",
+        ),
+        CheckConstraint(
             "evaluator_kind IN ('rule', 'human', 'model')",
             name="ck_knowledge_quality_assessments_evaluator_kind",
         ),
@@ -963,6 +967,9 @@ class KnowledgeQualityAssessment(Base):
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     team_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="recorded", server_default="recorded"
     )
     learning_change_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), nullable=False
