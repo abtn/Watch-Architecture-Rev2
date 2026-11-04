@@ -13,7 +13,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.dispatcher import TaskDispatcher, TaskNotDispatchable
 from core.models import (
+    Evaluation,
     Event,
+    EvidenceLink,
     Objective,
     Outcome,
     Plan,
@@ -225,6 +227,46 @@ def dispatch_fixture(
         yield context
     finally:
         with session_factory.begin() as session:
+            evaluation_task_ids = [
+                event.task_id
+                for event in session.scalars(
+                    select(Event).where(Event.type == "evaluation_task_requested")
+                )
+                if event.payload.get("source_task_id") == str(task_id)
+            ]
+            evaluation_ids = (
+                list(
+                    session.scalars(
+                        select(Evaluation.id).where(
+                            Evaluation.created_by_task_id.in_(evaluation_task_ids)
+                        )
+                    )
+                )
+                if evaluation_task_ids
+                else []
+            )
+            if evaluation_ids:
+                session.execute(
+                    delete(EvidenceLink).where(
+                        EvidenceLink.subject_kind == "evaluation",
+                        EvidenceLink.subject_id.in_(evaluation_ids),
+                    )
+                )
+                session.execute(
+                    delete(Evaluation).where(Evaluation.id.in_(evaluation_ids))
+                )
+            if evaluation_task_ids:
+                session.execute(
+                    delete(Outcome).where(
+                        Outcome.recorded_by_task_id.in_(evaluation_task_ids)
+                    )
+                )
+                session.execute(
+                    delete(Event).where(Event.task_id.in_(evaluation_task_ids))
+                )
+                session.execute(
+                    delete(Task).where(Task.id.in_(evaluation_task_ids))
+                )
             session.execute(
                 delete(Outcome).where(Outcome.recorded_by_task_id == task_id)
             )

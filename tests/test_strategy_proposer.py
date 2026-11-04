@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Callable, Iterator
 from uuid import UUID, uuid4
@@ -26,6 +26,7 @@ from core.generation import (
 from core.models import (
     Event,
     Objective,
+    Outcome,
     Plan,
     Task,
     TaskGenerationCharge,
@@ -39,6 +40,7 @@ from core.strategy_proposer import (
     StrategyProposer,
     StrategyProposerError,
 )
+from core.task_runtime import TaskRuntime, TerminalObservation
 
 
 class _EmptyRetriever:
@@ -118,6 +120,9 @@ def proposer_fixture(
     finally:
         with session_factory.begin() as session:
             session.execute(delete(Event).where(Event.task_id == task_id))
+            session.execute(
+                delete(Outcome).where(Outcome.recorded_by_task_id == task_id)
+            )
             session.execute(
                 delete(TaskGenerationCharge).where(
                     TaskGenerationCharge.task_id == task_id
@@ -304,9 +309,21 @@ def test_valid_model_proposal_is_submitted_only_through_strategy_service(
 
 def test_incomplete_model_output_is_durably_rejected_without_a_plan(
     session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
     proposer_fixture: _ProposerFixture,
 ) -> None:
     fixture = proposer_fixture
+    started_at = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=fixture.task_id,
+                type="task_started",
+                payload={"attempt_count": 1},
+                created_at=started_at,
+            )
+        )
     provider = _FakeGenerationProvider(
         {"objective_id": str(fixture.objective_id), "approach": "incomplete"}
     )
@@ -327,6 +344,26 @@ def test_incomplete_model_output_is_durably_rejected_without_a_plan(
                 select(Plan).where(Plan.created_by_task_id == fixture.task_id)
             )
         ) == []
+
+    terminal = TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.task_id,
+            attempt=1,
+            result_category="success_strategy_rejected",
+            observed_at=started_at,
+            strategy_event_id=result.disposition.event_id,
+        )
+    )
+    assert terminal.status == "done"
+    with session_factory() as session:
+        task = session.get(Task, fixture.task_id)
+        assert task is not None and task.status == "done"
+        assert session.scalar(
+            select(Outcome).where(Outcome.recorded_by_task_id == fixture.task_id)
+        ) is not None
+        assert session.scalar(
+            select(Plan.id).where(Plan.created_by_task_id == fixture.task_id)
+        ) is None
 
 
 def test_unsupported_action_is_rejected_by_application_validation(
@@ -636,3 +673,100 @@ def test_context_submission_cannot_accept_without_reconciled_generation_charge(
                 )
             )
         ) == []
+
+
+def test_task_runtime_finalizes_and_replays_strategy_disposition(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    proposer_fixture: _ProposerFixture,
+) -> None:
+    fixture = proposer_fixture
+    started_at = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=fixture.task_id,
+                type="task_started",
+                payload={"attempt_count": 1},
+                created_at=started_at,
+            )
+        )
+
+    provider = _FakeGenerationProvider(_valid_proposal(fixture))
+    result = StrategyProposer(
+        session_factory, fixture.assembler, provider, StrategyService(session_factory)
+    ).propose(fixture.task_id)
+    assert result.disposition.accepted
+
+    observation = TerminalObservation(
+        task_id=fixture.task_id,
+        attempt=1,
+        result_category="success_strategy_accepted",
+        observed_at=started_at,
+        strategy_event_id=result.disposition.event_id,
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    first = runtime.finalize(observation)
+    replay = runtime.finalize(observation)
+
+    assert first.status == "done"
+    assert replay.replayed is True
+    assert replay.outcome_id == first.outcome_id
+    with session_factory() as session:
+        task = session.get(Task, fixture.task_id)
+        assert task is not None and task.status == "done"
+        completed = session.scalar(
+            select(Event).where(
+                Event.task_id == fixture.task_id,
+                Event.type == "task_completed",
+            )
+        )
+        assert completed is not None
+        assert completed.payload["result_category"] == "success_strategy_accepted"
+        assert completed.payload["strategy_event_id"] == str(
+            result.disposition.event_id
+        )
+
+
+def test_interrupted_strategy_task_recovers_its_committed_disposition(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    proposer_fixture: _ProposerFixture,
+) -> None:
+    fixture = proposer_fixture
+    started_at = datetime.now(timezone.utc) - timedelta(seconds=90)
+    with session_factory.begin() as session:
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=fixture.task_id,
+                type="task_started",
+                payload={"attempt_count": 1},
+                created_at=started_at,
+            )
+        )
+
+    result = StrategyProposer(
+        session_factory,
+        fixture.assembler,
+        _FakeGenerationProvider(_valid_proposal(fixture)),
+        StrategyService(session_factory),
+    ).propose(fixture.task_id)
+    assert result.disposition.accepted
+
+    recovered = TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+        now=datetime.now(timezone.utc)
+    )
+
+    assert fixture.task_id in recovered.completed
+    assert fixture.task_id not in recovered.retried
+    with session_factory() as session:
+        task = session.get(Task, fixture.task_id)
+        assert task is not None and task.status == "done"
+        assert session.scalar(
+            select(Event).where(
+                Event.task_id == fixture.task_id,
+                Event.type == "task_completed",
+            )
+        ) is not None
