@@ -524,6 +524,34 @@ class ExperienceDistiller:
         if len(normalized_ids) != len(evaluation_ids):
             raise ExperienceDistillerError("learning_change_evidence_basis_invalid")
 
+        marker_presence = {
+            "schema_version" in item for item in learning_change.evidence_basis
+        }
+        if len(marker_presence) != 1:
+            raise ExperienceDistillerError("learning_change_evidence_version_invalid")
+        has_version_marker = marker_presence.pop()
+        if has_version_marker:
+            versions = {
+                item.get("schema_version") for item in learning_change.evidence_basis
+            }
+            if (
+                len(versions) != 1
+                or not isinstance(next(iter(versions)), str)
+                or next(iter(versions))
+                not in {
+                    "r6f-experience-evidence-pack-v1",
+                    "r6g-experience-evidence-pack-v2",
+                }
+            ):
+                raise ExperienceDistillerError(
+                    "learning_change_evidence_version_invalid"
+                )
+            stored_pack_version = next(iter(versions))
+        else:
+            # Historical R6-F evidence_basis rows predate the per-case marker.
+            # They are v1 records and must be rebuilt with their original shape.
+            stored_pack_version = "r6f-experience-evidence-pack-v1"
+
         proposer = session.get(Task, learning_change.proposed_by_task_id)
         if (
             proposer is None
@@ -537,8 +565,17 @@ class ExperienceDistiller:
         team = session.get(Team, learning_change.team_id)
         team = self._require_task_scope(proposer, team, allow_completed=True)
         pack = self._build_pack(
-            session, proposer, team, normalized_ids, allow_completed_task=True
+            session,
+            proposer,
+            team,
+            normalized_ids,
+            allow_completed_task=True,
+            include_version_marker=has_version_marker,
         )
+        if pack.document.get("schema_version") != stored_pack_version:
+            raise ExperienceDistillerError(
+                "learning_change_evidence_version_mismatch"
+            )
 
         if (
             pack.evidence_basis != learning_change.evidence_basis
@@ -574,6 +611,7 @@ class ExperienceDistiller:
         evaluation_ids: tuple[UUID, ...],
         *,
         allow_completed_task: bool = False,
+        include_version_marker: bool = True,
     ) -> ExperienceEvidencePack:
         self._require_task_scope(task, team, allow_completed=allow_completed_task)
         evaluations = list(
@@ -616,6 +654,11 @@ class ExperienceDistiller:
         ):
             raise ExperienceDistillerError("failed_case_requires_configured_ingest")
 
+        schema_version = (
+            "r6g-experience-evidence-pack-v2"
+            if pack_version == 2
+            else "r6f-experience-evidence-pack-v1"
+        )
         source_task_ids: set[UUID] = set()
         cases: list[dict[str, Any]] = []
         basis: list[dict[str, Any]] = []
@@ -894,39 +937,40 @@ class ExperienceDistiller:
                 "evidence": evidence_items,
             }
             cases.append(case)
-            basis.append(
-                {
-                    "evaluation_id": str(evaluation.id),
-                    "evaluation_proposal_hash": evaluation.proposal_hash,
-                    "evaluator_kind": evaluation.evaluator_kind,
-                    "evaluator_identity": evaluation.evaluator_identity,
-                    "evaluator_revision": evaluation.evaluator_revision,
-                    "evaluation_task_id": str(evaluator_task.id),
-                    "evaluation_task_completed_event_id": str(
-                        evaluation_completion.id
-                    ),
-                    "evaluation_task_outcome_id": str(evaluator_outcome.id),
-                    "evaluation_task_snapshot_ref": (
-                        evaluator_outcome.observation_snapshot_ref
-                    ),
-                    "evaluation_task_snapshot_hash": evaluator_outcome.observation_hash,
-                    "evaluation_task_completed_event_payload": dict(
-                        evaluation_completion.payload
-                    ),
-                    "evaluation_recorded_event_id": str(
-                        evaluation_recorded_event.id
-                    ),
-                    "evaluation_recorded_event_payload": dict(
-                        evaluation_recorded_event.payload
-                    ),
-                    "outcome_id": str(outcome.id),
-                    "source_task_id": str(source_task.id),
-                    "source_task_provenance": task_context,
-                    "outcome_snapshot_ref": outcome.observation_snapshot_ref,
-                    "outcome_snapshot_hash": outcome.observation_hash,
-                    "evidence_links": basis_links,
-                }
-            )
+            basis_item = {
+                "evaluation_id": str(evaluation.id),
+                "evaluation_proposal_hash": evaluation.proposal_hash,
+                "evaluator_kind": evaluation.evaluator_kind,
+                "evaluator_identity": evaluation.evaluator_identity,
+                "evaluator_revision": evaluation.evaluator_revision,
+                "evaluation_task_id": str(evaluator_task.id),
+                "evaluation_task_completed_event_id": str(
+                    evaluation_completion.id
+                ),
+                "evaluation_task_outcome_id": str(evaluator_outcome.id),
+                "evaluation_task_snapshot_ref": (
+                    evaluator_outcome.observation_snapshot_ref
+                ),
+                "evaluation_task_snapshot_hash": evaluator_outcome.observation_hash,
+                "evaluation_task_completed_event_payload": dict(
+                    evaluation_completion.payload
+                ),
+                "evaluation_recorded_event_id": str(
+                    evaluation_recorded_event.id
+                ),
+                "evaluation_recorded_event_payload": dict(
+                    evaluation_recorded_event.payload
+                ),
+                "outcome_id": str(outcome.id),
+                "source_task_id": str(source_task.id),
+                "source_task_provenance": task_context,
+                "outcome_snapshot_ref": outcome.observation_snapshot_ref,
+                "outcome_snapshot_hash": outcome.observation_hash,
+                "evidence_links": basis_links,
+            }
+            if include_version_marker:
+                basis_item["schema_version"] = schema_version
+            basis.append(basis_item)
 
         if pack_version == 2:
             contrary_reference_ids.clear()
@@ -979,11 +1023,7 @@ class ExperienceDistiller:
         )
         basis.sort(key=lambda item: item["evaluation_id"])
         document = {
-            "schema_version": (
-                "r6g-experience-evidence-pack-v2"
-                if pack_version == 2
-                else "r6f-experience-evidence-pack-v1"
-            ),
+            "schema_version": schema_version,
             "requesting_task_id": str(task.id),
             "team_id": str(team.id),
             "case_count": len(cases),
