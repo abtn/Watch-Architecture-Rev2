@@ -20,9 +20,10 @@ from core.knowledge_quality import (
     KnowledgeQualityAssessmentService,
     build_case_lineage_report,
 )
-from core.models import Event, LearningChange, Outcome, Task
+from core.models import Event, KnowledgeQualityAssessment, LearningChange, Outcome, Task
 from core.snapshot_store import SnapshotStore
 from core.task_runtime import (
+    FailureObservation,
     TaskNotEligible,
     TaskNotFinalizable,
     TaskRuntime,
@@ -99,8 +100,9 @@ class KnowledgeQualityAssessmentTaskRunner:
                         "completed_knowledge_quality_assessment_missing"
                     )
                 assessment = session.scalar(
-                    select(__import__("core.models", fromlist=["KnowledgeQualityAssessment"]).KnowledgeQualityAssessment).where(
-                        __import__("core.models", fromlist=["KnowledgeQualityAssessment"]).KnowledgeQualityAssessment.creating_task_id == task.id
+                    select(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.creating_task_id == task.id,
+                        KnowledgeQualityAssessment.team_id == task.team_id,
                     )
                 )
                 outcome = session.scalar(
@@ -164,33 +166,28 @@ class KnowledgeQualityAssessmentTaskRunner:
                 evidence_document=pack.document,
                 lineage_report=lineage_report,
             )
-            if not isinstance(draft, KnowledgeQualityAssessmentDraft):
-                raise KnowledgeQualityAssessmentError(
-                    "knowledge_quality_provider_output_invalid"
-                )
-            recorded = self._service.record(task_id, draft)
-        except Exception as error:
-            reason = (
-                error.reason
-                if isinstance(error, KnowledgeQualityAssessmentError)
-                else "knowledge_quality_assessment_execution_failed"
-            )
+        except Exception:
             started_at = self._attempt_started_at(task_id, admission.attempt_count)
-            failed = self._runtime.finalize(
-                TerminalObservation(
+            retry = self._runtime.report_failure(
+                FailureObservation(
                     task_id=task_id,
                     attempt=admission.attempt_count,
-                    result_category="terminal_failure",
+                    reason="knowledge_quality_evaluator_unavailable",
+                    retryable=True,
                     observed_at=started_at,
-                    failure_reason=reason,
                 )
             )
             return KnowledgeQualityTaskRunResult(
                 task_id=task_id,
-                status=failed.status,
+                status=retry.status,
                 assessment_id=None,
-                outcome_id=failed.outcome_id,
+                outcome_id=None,
             )
+        if not isinstance(draft, KnowledgeQualityAssessmentDraft):
+            raise KnowledgeQualityAssessmentError(
+                "knowledge_quality_provider_output_invalid"
+            )
+        recorded = self._service.record(task_id, draft)
 
         finalized = self._runtime.finalize(
             TerminalObservation(
