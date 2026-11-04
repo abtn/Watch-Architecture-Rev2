@@ -16,7 +16,6 @@ The implementation closes the three integration gaps identified during design:
 
 **Boundary:** this is a narrow TaskRuntime-managed side effect, not a second lifecycle owner. The request Event is owned by the evaluator Task. A terminal source replay verifies the deterministic Task ID and exact request Task/Event; it does not repair missing or contradictory records.
 
-This is a narrow TaskRuntime-managed K side effect, not a second lifecycle owner. The request Event is owned by the new evaluator Task. A replay of the source terminal result verifies the exact evaluator Task/Event; it never repairs or duplicates missing or contradictory records.
 
 Evaluator Task identity uses the fixed UUIDv5 namespace and binds Team ID, Outcome ID, evaluator identity and revision. The canonical request fingerprint covers Team, source Task, attempt/result, Plan/Action references, policy pin, Outcome ID, Snapshot reference/hash and evaluator identity/revision. The Task primary key plus source-Task row lock and transaction are the idempotency boundary. Do not expand DispatchResult/TaskDispatcher or add a startup poller.
 
@@ -25,18 +24,6 @@ Evaluator Task identity uses the fixed UUIDv5 namespace and binds Team ID, Outco
 **Implemented:** ExperienceDistiller now admits a worked case only when its source Task is done, the current-attempt `task_completed` Event matches the terminal Outcome/Snapshot, and the recorded D9 Evaluation conclusion is `worked`. A failed case is admitted only when its source Task is failed, the current-attempt `task_attempt_failed` and `task_failed` Events match the attempt/reason/Outcome/Snapshot, the immutable observation Snapshot verifies, the D9 Evaluation conclusion is `failed`, and no contradictory successful ingestion business Event exists. Retryable attempts that leave a source Task pending are not cases. Missing, corrupt, stale, cross-Team/domain or contradictory evidence fails closed.
 
 **Evidence interpretation:** ADR-0029 requires disconfirming cases to remain inspectable. Each worked Evaluation and primary Outcome is classified as supporting the candidate execution practice; each failed Evaluation and primary Outcome is contrary. The canonical EvidenceLink stance is never changed. The evidence pack retains original `stance` and adds a derived `case_relative_stance`; for failed cases, `supports` and `challenges` are inverted relative to the positive practice, while `mentions` remains context. Failure reason and limitations remain visible. Two successes do not prove causation, source truth, universal reliability or Objective achievement.
-- a worked case only when its source Task is done, the current-attempt task_completed Event matches the terminal Outcome/Snapshot, and the recorded D9 Evaluation conclusion is worked;
-- a failed case only when its source Task is failed, the current-attempt task_attempt_failed and task_failed Events match the attempt/reason/Outcome/Snapshot, the immutable observation Snapshot verifies, and the recorded D9 Evaluation conclusion is failed.
-
-Pack versions are explicit. New evidence-basis case records carry their schema marker, and the marker participates in the basis hash. Historical R6-F basis records that predate the marker are detected as v1 and reconstructed without adding or interpreting a marker. Mixed, unknown or mismatched markers fail closed. New v2 packs preserve the terminal-failure case and its case-relative contrary evidence.
-
-ADR-0029 requires disconfirming cases to remain inspectable. For this first positive-experience fixture, classify each Evaluation case relative to the proposed reusable execution practice:
-- Evaluation conclusion worked: its Evaluation and primary Outcome are supporting case references.
-- Evaluation conclusion failed: its Evaluation and primary Outcome are contrary case references.
-- Preserve each canonical EvidenceLink stance unchanged in storage. In the distillation document retain the original link stance and a separate derived case-relative stance. For a failed case, invert supports/challenges when translating a link to the positive practice's perspective; mentions remains context. This is an evidence-pack interpretation only, not an update to Evaluation or EvidenceLink.
-
-The failure reason and its limitations must remain visible. Two successes do not prove causation, source truth, universal reliability or Objective achievement. Version this interpretation as r6f-experience-evidence-pack-v2. Preserve the v1 reconstruction path for LearningChanges already stored under the prior contract; revalidation must choose the original version and never reinterpret old evidence silently. Put an explicit version marker in each new persisted evidence-basis representation and include it in the basis hash.
-
 ### 1.3 Recover a recorded Evaluation before failing its Task
 
 **Implemented:** before retry scheduling or terminal failure, TaskRuntime checks the immutable evaluator request and reconstructs an already recorded or rejected Evaluation only when its Task/request binding, creating/resolving Task, evaluator identity/revision, proposal hash, disposition Event and canonical EvidenceLinks validate. It finalizes through the ordinary TaskRuntime path using the current-attempt `task_started` timestamp for deterministic `observed_at`. A proposed but unrecorded Evaluation is not promoted: the runner can replay its deterministic proposal and record it while attempts remain; when attempts are exhausted before record, the evaluator Task fails and the proposal is not distillation evidence. Corruption fails closed. Terminal runner replay is read-only.
@@ -215,7 +202,7 @@ Tests now cover accepted Strategy finalization/replay, rejected Strategy finaliz
 | Test module | Implemented proof |
 |---|---|
 | `tests/test_rule_evaluator.py` | D9 new-Signal, no-change and terminal-failure mappings; deterministic rule draft and contradictory-business-event fail-closed check. |
-| `tests/test_evaluation_tasks.py` | Atomic source-terminal enqueue, exact request Task/Event binding, request tamper rejection, committed-Evaluation recovery and terminal runner replay. |
+| `tests/test_evaluation_tasks.py` | Atomic source-terminal enqueue, exact request Task/Event binding, concurrent duplicate terminal replay producing one evaluator request, request tamper rejection, committed-Evaluation recovery and terminal runner replay. |
 | `tests/test_experience_distiller.py` and `tests/test_r6g_distillation.py` | Failed-source provenance, claim-relative contrary evidence, canonical EvidenceLink stance preservation, per-case v2 marker/hash and legacy unmarked-v1 reconstruction. |
 | `tests/test_r6g_vertical_slice.py` | Objective Context → Strategy → Plan → three source Tasks → Outcomes/Evaluations → reassessment → distillation → Operator reject/accept → Team Experience projection → later-Task retrieval. |
 
