@@ -280,7 +280,7 @@ git diff --check
 ```
 
 Use a fresh disposable PostgreSQL database. Confirm one Alembic head and a successful upgrade from `0011_task_generation_cost`; never use the persistent `watch` database. The Evaluation tests cover same-Team Outcome references, domain-scoped Signal references, exact Snapshot/hash/quote validation, evaluator identity/revision, proposal idempotency, recorded/rejected dispositions, Task write scope, and TaskRuntime terminal finalization. This checkpoint deliberately does not implement ExperienceDistiller, LearningChange proposal/approval writes, KnowledgeItem commits, or Team Experience indexing.
-## R6-G implementation and acceptance-to-test map (2026-11-04; exact-head verification passed, acceptance review pending)
+## R6-G implementation, verification and technical acceptance review (2026-11-04; Operator exit approval pending)
 
 **Implementation status:** R6-G implementation was explicitly authorized and is present on `r6g-implementation-20261103`, PR #35 (draft/open, unmerged). This section maps implemented behavior and required proof; it does not record R6-G closure.
 
@@ -288,7 +288,7 @@ Use a fresh disposable PostgreSQL database. Confirm one Alembic head and a succe
 
 1. **Evaluator source — implemented.** Use deterministic code-defined rules for `ingest_source` terminal Outcomes only. Validate terminal result category, current attempt, Task status, terminal Event payload, ingestion business Event, and canonical same-Team/domain Signal/Snapshot identity/hash. Map valid `success_signal_created` and `success_no_change` to `worked`; map a consistent `terminal_failure` to `failed`. Reject inconsistent, stale, cross-Team, corrupt or unsupported evidence without creating an Evaluation. The conclusion is execution-contract conformance only, not source truth or Objective success. Persist the fixed rule identity/revision. No human/model Evaluation producer is included.
 2. **Integrated fixture/service sequence — implemented.** `tests/test_r6g_vertical_slice.py` builds one Team/Objective and three Plan-materialized ingestion cases (new Signal, legitimate no-change, terminal failure), baseline Domain Knowledge indexed by deterministic fake embeddings, real hybrid Context retrieval, fake StrategyProposer, StrategyService, PlanService and TaskDispatcher. TaskRuntime creates each evaluator Task and immutable request Event atomically with source terminalization; the pure D9 evaluator proposes, EvaluationService records, and TaskRuntime finalizes or recovers the Evaluation Task. ExperienceDistiller includes the failed Task in a versioned v2 evidence pack as contrary evidence while preserving canonical EvidenceLink stance and historical v1 reconstruction. The fixture continues through separate one-case rejection and three-case Operator acceptance, canonical Team Experience indexing, and later-Task retrieval. The implementation retains one TaskRuntime, a narrow ingestion-only TaskDispatcher, and no production R6-G provider.
-3. **Acceptance mapping — implemented tests; final proof review pending.** The focused R6-G test modules now exist: `tests/test_rule_evaluator.py`, `tests/test_evaluation_tasks.py`, `tests/test_r6g_distillation.py`, and `tests/test_r6g_vertical_slice.py`; Strategy, Plan and ExperienceDistiller suites also contain R6-G coverage. See the table below for the ten proofs and the component/integrated test boundaries.
+3. **Acceptance mapping — implemented tests; technical review complete, Operator exit approval pending.** The focused R6-G test modules now exist: `tests/test_rule_evaluator.py`, `tests/test_evaluation_tasks.py`, `tests/test_r6g_distillation.py`, and `tests/test_r6g_vertical_slice.py`; Strategy, Plan and ExperienceDistiller suites also contain R6-G coverage. See the table below for the ten proofs and the component/integrated test boundaries.
 
 ### Ten acceptance criteria mapped to tests
 
@@ -308,7 +308,7 @@ Use a fresh disposable PostgreSQL database. Confirm one Alembic head and a succe
 
 ### Technical acceptance review — 2026-11-04
 
-<badge>10/10 supported by implementation and test evidence</badge>
+**Review disposition: 10/10 PASS — supported by implementation and test evidence.**
 
 This is a code/test review of implementation commit `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3`, not a claim that the Operator has approved R6 closure. Review checked the integrated fixture, the mapped component tests, and the relevant failure/recovery/replay paths.
 
@@ -354,7 +354,7 @@ This is a code/test review of implementation commit `2a55acfeadaf37e23b9f2cffd88
 - `uv run pytest -q` (full suite): **614 passed in 74.48s**.
 - `git diff --check` passed; disposable container cleanup succeeded; final `git status --short --branch` was clean and `HEAD` remained `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3`.
 
-This is operator-reported local evidence, recorded distinctly from hosted CI. It verifies the exact PR head; it does not itself constitute acceptance of the ten proofs or R6 exit approval.
+This is operator-reported local evidence, recorded distinctly from hosted CI. It verifies the exact implementation code head; the technical acceptance review is recorded above, but explicit Operator exit approval remains outstanding.
 - Existing component tests do not satisfy integrated R6-G acceptance by themselves. Do not close R6-G until all ten proofs pass and the Operator explicitly approves the R6 exit gate.
 
 **Exit boundary:** implementation authorization is in force; R6-G is not closed. Exact-head local verification and the technical ten-proof review are complete. Do not close R6-G or merge PR #35 until the Operator explicitly approves the R6 exit gate.
