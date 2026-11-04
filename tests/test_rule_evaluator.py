@@ -172,7 +172,9 @@ def test_terminal_event_mismatch_fails_closed_without_evaluation(
         payload["observation_hash"] = "sha256:" + ("f" * 64)
         terminal.payload = payload
 
-    with pytest.raises(RuleEvaluationError, match="evaluation_source_terminal_event_mismatch"):
+    with pytest.raises(
+        RuleEvaluationError, match="evaluation_source_terminal_event_mismatch"
+    ):
         IngestSourceRuleEvaluator(
             session_factory, snapshot_store
         ).evaluate(evaluator_task_id)
