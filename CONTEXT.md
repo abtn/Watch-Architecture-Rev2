@@ -10,12 +10,12 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. The R6-G implementation and formal closeout are merged to main; R6 verification and limitations are recorded in PLAN.md and docs/testing.md. R7-0 documentation is complete. ADR-0032 was accepted on 2026-11-04 and R7-A alone is authorized. The accepted INV-12 amendment is active in docs/invariants.md. The R7 Task/write-scope matrix documents the future contracts but does not register runtime Tasks or grant writes; R7-A will activate only its exact assessment Task through implementation. R7-B/C remain unauthorized. The R6-G approval did not authorize R7.
+R6 is complete through R6-G. R7-0 is complete. R7-A is complete and merged by PR #39 at 75122a7b34c15e2445b81a2a719020667b55bf06; hosted and operator-local verification passed on the exact same source tree (631 tests, fresh 0014_knowledge_quality head, Ruff and Mypy). ADR-0032 and the accepted INV-12 amendment remain active. R7-B has a documentation-only preparation plan; implementation is not authorized. R7-C remains unauthorized. PLAN.md is the sole current status authority.
 
 ## Open the smallest relevant set of documents
 
 1. [`PLAN.md`](PLAN.md) — the only source for current milestone status, gates, and next action.
-2. [`docs/development/r7-entry-gate.md`](docs/development/r7-entry-gate.md), [`ADR-0032`](docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md), [`docs/development/r7-a-implementation-plan.md`](docs/development/r7-a-implementation-plan.md), and the non-active R7 matrix in [`docs/tasks.md`](docs/tasks.md) — accepted architecture, R7-A contract, and separate phase gates.
+2. [`docs/development/r7-entry-gate.md`](docs/development/r7-entry-gate.md), [`ADR-0032`](docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md), [`docs/development/r7-a-implementation-plan.md`](docs/development/r7-a-implementation-plan.md), [`docs/development/r7-b-implementation-plan.md`](docs/development/r7-b-implementation-plan.md), and [`docs/tasks.md`](docs/tasks.md) — accepted architecture, completed R7-A contract and non-authorizing R7-B preparation.
 3. [`AGENTS.md`](AGENTS.md) — repository operating rules and stop conditions.
 4. [`CHANGE_MAP.md`](CHANGE_MAP.md) — where each concept is authoritatively specified.
 5. [`docs/control-model.md`](docs/control-model.md) — the Revision 2 Control model.
