@@ -375,10 +375,11 @@ def test_quality_draft_rejects_reference_outside_canonical_basis():
 def test_quality_draft_rejects_novelty_claim_without_validated_knowledge_item():
     draft = _valid_draft()
     dimensions = dict(draft.dimensions)
+    novelty_reference = "evaluation:" + str(uuid4())
     dimensions["novelty_overlap"] = KnowledgeQualityDimension(
         disposition="supported",
         findings=["This candidate is novel."],
-        evidence_refs=["evaluation:" + str(uuid4())],
+        evidence_refs=[novelty_reference],
     )
     updated = _valid_draft(dimensions=dimensions)
 
@@ -386,4 +387,4 @@ def test_quality_draft_rejects_novelty_claim_without_validated_knowledge_item():
         KnowledgeQualityAssessmentError,
         match="knowledge_quality_novelty_requires_validated_knowledge_item",
     ):
-        validate_dimension_draft(updated, frozenset({"evaluation:" + str(uuid4())}))
+        validate_dimension_draft(updated, frozenset({novelty_reference}))
