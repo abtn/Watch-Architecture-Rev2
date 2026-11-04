@@ -309,9 +309,21 @@ def test_valid_model_proposal_is_submitted_only_through_strategy_service(
 
 def test_incomplete_model_output_is_durably_rejected_without_a_plan(
     session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
     proposer_fixture: _ProposerFixture,
 ) -> None:
     fixture = proposer_fixture
+    started_at = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=fixture.task_id,
+                type="task_started",
+                payload={"attempt_count": 1},
+                created_at=started_at,
+            )
+        )
     provider = _FakeGenerationProvider(
         {"objective_id": str(fixture.objective_id), "approach": "incomplete"}
     )
@@ -332,6 +344,26 @@ def test_incomplete_model_output_is_durably_rejected_without_a_plan(
                 select(Plan).where(Plan.created_by_task_id == fixture.task_id)
             )
         ) == []
+
+    terminal = TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.task_id,
+            attempt=1,
+            result_category="success_strategy_rejected",
+            observed_at=started_at,
+            strategy_event_id=result.disposition.event_id,
+        )
+    )
+    assert terminal.status == "done"
+    with session_factory() as session:
+        task = session.get(Task, fixture.task_id)
+        assert task is not None and task.status == "done"
+        assert session.scalar(
+            select(Outcome).where(Outcome.recorded_by_task_id == fixture.task_id)
+        ) is not None
+        assert session.scalar(
+            select(Plan.id).where(Plan.created_by_task_id == fixture.task_id)
+        ) is None
 
 
 def test_unsupported_action_is_rejected_by_application_validation(
