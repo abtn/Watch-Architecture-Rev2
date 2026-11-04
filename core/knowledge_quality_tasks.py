@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Protocol
 from uuid import UUID
 
@@ -194,7 +194,7 @@ class KnowledgeQualityAssessmentTaskRunner:
                 task_id=task_id,
                 attempt=admission.attempt_count,
                 result_category="success_knowledge_quality_assessed",
-                observed_at=self._attempt_started_at(task_id, admission.attempt_count),
+                observed_at=datetime.now(timezone.utc),
                 knowledge_quality_assessment_id=recorded.assessment_id,
             )
         )
