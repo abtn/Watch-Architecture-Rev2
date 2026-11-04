@@ -567,6 +567,8 @@ def _request_fingerprint(
     decision: str,
     rejection_reason: str | None,
     operator_id: str,
+    quality_assessment_id: UUID | None,
+    quality_assessment_hash: str | None,
 ) -> str:
     canonical = json.dumps(
         {
@@ -576,6 +578,10 @@ def _request_fingerprint(
             "decision": decision,
             "rejection_reason": rejection_reason,
             "operator_id": operator_id,
+            "knowledge_quality_assessment_id": (
+                str(quality_assessment_id) if quality_assessment_id else None
+            ),
+            "knowledge_quality_assessment_hash": quality_assessment_hash,
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -593,9 +599,11 @@ def _request_event_payload(
     idempotency_key_hash: str,
     request_fingerprint: str,
     policy_version: int,
+    quality_assessment_id: UUID | None,
+    quality_assessment_hash: str | None,
 ) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "operation": _APPROVAL_ACTION,
         "learning_change_id": str(learning_change_id),
         "decision": decision,
@@ -604,6 +612,10 @@ def _request_event_payload(
         "idempotency_key_hash": idempotency_key_hash,
         "request_fingerprint": request_fingerprint,
         "policy_version": policy_version,
+        "knowledge_quality_assessment_id": (
+            str(quality_assessment_id) if quality_assessment_id else None
+        ),
+        "knowledge_quality_assessment_hash": quality_assessment_hash,
     }
 
 
@@ -617,6 +629,8 @@ def _verify_existing_request(
     operator_id: str,
     idempotency_key_hash: str,
     request_fingerprint: str,
+    quality_assessment_id: UUID | None,
+    quality_assessment_hash: str | None,
 ) -> OperatorTaskRequestResult:
     if (
         task.id != _approval_task_id(team_id, request.idempotency_key)
@@ -669,6 +683,8 @@ def _verify_existing_request(
         idempotency_key_hash=idempotency_key_hash,
         request_fingerprint=request_fingerprint,
         policy_version=policy_version,
+        quality_assessment_id=quality_assessment_id,
+        quality_assessment_hash=quality_assessment_hash,
     )
     if payload != expected_payload:
         raise OperatorTaskRequestCorrupt("approval_request_event_payload_mismatch")
