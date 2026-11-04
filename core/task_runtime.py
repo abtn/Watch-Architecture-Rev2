@@ -1217,6 +1217,12 @@ class TaskRuntime:
                 recovered_observation = (
                     self._committed_operator_decision_observation(session, task)
                 )
+            elif self._is_knowledge_quality_task(session, task):
+                recovered_observation = (
+                    self._committed_knowledge_quality_assessment_observation(
+                        session, task
+                    )
+                )
             elif self._is_r6g_evaluation_task(session, task):
                 recovered_observation = self._committed_evaluation_observation(
                     session, task
