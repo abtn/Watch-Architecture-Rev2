@@ -336,7 +336,7 @@ class TaskRuntime:
             elif self._is_knowledge_quality_task(session, task):
                 try:
                     self._validate_knowledge_quality_task_request(
-                        session, task, require_proposed=True
+                        session, task, require_proposed=False
                     )
                 except TaskNotFinalizable as error:
                     raise TaskNotEligible(str(error)) from error
