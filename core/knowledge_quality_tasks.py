@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Protocol
 from uuid import UUID
 
@@ -92,8 +92,10 @@ class KnowledgeQualityAssessmentTaskRunner:
                 raise TaskNotEligible(str(error)) from error
 
             if task.status == "done":
-                observation = TaskRuntime._committed_knowledge_quality_assessment_observation(
-                    session, task
+                observation = (
+                    TaskRuntime._committed_knowledge_quality_assessment_observation(
+                        session, task
+                    )
                 )
                 if observation is None:
                     raise TaskNotEligible(
@@ -105,14 +107,7 @@ class KnowledgeQualityAssessmentTaskRunner:
                         KnowledgeQualityAssessment.team_id == task.team_id,
                     )
                 )
-                outcome = session.scalar(
-                    select(Outcome).where(
-                        Outcome.recorded_by_task_id == task.id,
-                        Outcome.outcome_type == "task_execution",
-                    )
-                )
                 assessment_id = assessment.id if assessment is not None else None
-                outcome_id = outcome.id if outcome is not None else None
                 result = self._runtime.finalize(observation)
                 return KnowledgeQualityTaskRunResult(
                     task_id=task_id,
@@ -147,7 +142,9 @@ class KnowledgeQualityAssessmentTaskRunner:
                 raise TaskNotEligible("knowledge_quality_learning_change_missing")
             rejected_before_assessment = learning_change.status == "rejected"
             if learning_change.status not in {"proposed", "rejected"}:
-                raise TaskNotEligible("knowledge_quality_learning_change_already_decided")
+                raise TaskNotEligible(
+                    "knowledge_quality_learning_change_already_decided"
+                )
             if not rejected_before_assessment:
                 try:
                     _, pack = self._distiller.validate_learning_change(
