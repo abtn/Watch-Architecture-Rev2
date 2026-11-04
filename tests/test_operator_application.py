@@ -176,6 +176,17 @@ def _seed_quality_assessment(
                 Event(
                     id=uuid4(),
                     task_id=task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 1,
+                    },
+                    created_at=recorded_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=task_id,
                     type=RECORDED_EVENT_TYPE,
                     payload=recorded_assessment_event_payload(assessment),
                     created_at=recorded_at,
