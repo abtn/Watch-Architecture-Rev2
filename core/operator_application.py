@@ -675,19 +675,57 @@ def _verify_existing_request(
     ):
         raise OperatorTaskRequestCorrupt("approval_request_policy_pin_mismatch")
 
-    expected_payload = _request_event_payload(
-        learning_change_id=request.learning_change_id,
-        decision=request.decision,
-        rejection_reason=rejection_reason,
-        operator_id=operator_id,
-        idempotency_key_hash=idempotency_key_hash,
-        request_fingerprint=request_fingerprint,
-        policy_version=policy_version,
-        quality_assessment_id=quality_assessment_id,
-        quality_assessment_hash=quality_assessment_hash,
-    )
-    if payload != expected_payload:
-        raise OperatorTaskRequestCorrupt("approval_request_event_payload_mismatch")
+    if payload.get("schema_version") == 1:
+        if request.decision != "reject" or (
+            quality_assessment_id is not None
+            or quality_assessment_hash is not None
+        ):
+            raise OperatorTaskRequestCorrupt(
+                "legacy_acceptance_request_missing_quality_assessment"
+            )
+        legacy_fingerprint_payload = json.dumps(
+            {
+                "operation": _APPROVAL_ACTION,
+                "team_id": str(team_id),
+                "learning_change_id": str(request.learning_change_id),
+                "decision": request.decision,
+                "rejection_reason": rejection_reason,
+                "operator_id": operator_id,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        legacy_fingerprint = _sha256(legacy_fingerprint_payload)
+        expected_legacy_payload = {
+            "schema_version": 1,
+            "operation": _APPROVAL_ACTION,
+            "learning_change_id": str(request.learning_change_id),
+            "decision": request.decision,
+            "rejection_reason": rejection_reason,
+            "operator_id": operator_id,
+            "idempotency_key_hash": idempotency_key_hash,
+            "request_fingerprint": legacy_fingerprint,
+            "policy_version": policy_version,
+        }
+        if payload != expected_legacy_payload:
+            raise OperatorTaskRequestCorrupt(
+                "legacy_approval_request_event_payload_mismatch"
+            )
+    else:
+        expected_payload = _request_event_payload(
+            learning_change_id=request.learning_change_id,
+            decision=request.decision,
+            rejection_reason=rejection_reason,
+            operator_id=operator_id,
+            idempotency_key_hash=idempotency_key_hash,
+            request_fingerprint=request_fingerprint,
+            policy_version=policy_version,
+            quality_assessment_id=quality_assessment_id,
+            quality_assessment_hash=quality_assessment_hash,
+        )
+        if payload != expected_payload:
+            raise OperatorTaskRequestCorrupt("approval_request_event_payload_mismatch")
 
     return OperatorTaskRequestResult(
         task_id=task.id,
