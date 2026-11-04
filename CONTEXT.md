@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. The R6-G implementation and formal closeout are merged to main; R6 verification and limitations are recorded in PLAN.md and docs/testing.md. R7-0 remains documentation/design work only. ADR-0032 and the entry gate have been revised against the current models and create-only commit/TaskRuntime invariants; they remain Proposed. The proposed Task/write-scope matrix is non-active, and active INV-12/current Task grants are unchanged. R7-A/B/C implementation is not authorized. The R6-G approval does not authorize R7.
+R6 is complete through R6-G. The R6-G implementation and formal closeout are merged to main; R6 verification and limitations are recorded in PLAN.md and docs/testing.md. R7-0 remains documentation/design work only. ADR-0032 and the entry gate have been revised against the current models and create-only commit/TaskRuntime invariants; ADR-0032 was accepted on 2026-11-04 and R7-A alone is authorized. The proposed Task/write-scope matrix remains non-active; active INV-12/current Task grants are unchanged. R7-B/C remain unauthorized. The R6-G approval does not authorize R7.
 
 ## Open the smallest relevant set of documents
 
