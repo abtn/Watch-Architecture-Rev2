@@ -9,7 +9,7 @@ milestone status.
 
 - **R6-A through R6-E are complete.** R6-D's embedding provider decision and R6-E's generation provider decision are recorded in their governing ADRs. The Cloudflare provider selected for R6-E remains authorized for R6-E only and outside automatic Task dispatch.
 - **R6-F Checkpoints 1–4 are complete and merged.** Checkpoints 1–2 merged through PRs #29/#30; C3 create-only Operator approval/canonical commit was separately authorized on 2026-11-01 and merged by PR #31; C4 Team Experience projection/retrieval was separately authorized on 2026-11-02 and merged by PR #32. Combined C3+C4 operator-local verification passed against the exact source tree merged by PR #33; see `docs/testing.md` for evidence and timing. D10 remains create-only: revise/retire proposal production and commitment are deferred to separately authorized lifecycle work. No production R6-F distillation provider/model is approved; deterministic fakes remain the test path.
-- **R6-G remains outside this authorization.** The integrated R6 exit gate requires a separate explicit operator decision. Readiness assessment and planning do not authorize implementation.
+- **R6-G implementation is explicitly authorized and in progress** on `r6g-implementation-20261103` / draft PR #35. Exact-head hosted CI and programmer-local disposable-PostgreSQL verification passed on 2026-11-04; see `PLAN.md` and `docs/testing.md`. This authorization covers the bounded implementation scope only. It does not authorize merge or R6 closure: the ten-proof acceptance review and a separate explicit operator decision on the R6 exit gate remain required.
 
 ## Automatic advancement
 
