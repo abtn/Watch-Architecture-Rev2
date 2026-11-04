@@ -662,7 +662,10 @@ def _verify_existing_request(
     payload = events[0].payload
     if payload.get("idempotency_key_hash") != idempotency_key_hash:
         raise OperatorTaskRequestCorrupt("approval_request_key_hash_mismatch")
-    if payload.get("request_fingerprint") != request_fingerprint:
+    if (
+        payload.get("schema_version") != 1
+        and payload.get("request_fingerprint") != request_fingerprint
+    ):
         raise OperatorTaskRequestConflict(
             "idempotency_key_reused_with_different_request"
         )
