@@ -563,7 +563,7 @@ Starting points, tuned during M2; per-Task values may override downward, never u
 | `activate_team` | 0 | 0 | — |
 
 
-### R6-F Checkpoint 1–4 authority boundary
+## 6. R6-F Checkpoint 1–4 authority boundary
 
 For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeItem writes plus exact application-managed Events; it has **no TeamPolicy write grant**. The legacy `seed_knowledge` row remains a separately documented Task type but is not implemented by R6-F. Evaluation worker output cannot set its own status: trusted application service code validates and records/rejects the proposal. ExperienceDistiller output likewise remains an untrusted candidate; Checkpoint 2 creates only proposed LearningChanges for KnowledgeItem creation. Checkpoint 3 performs explicit Operator review and canonical commit through a trusted application identity boundary and an ordinary same-Team approval Task; TaskRuntime remains the sole owner of Task lifecycle transitions. D7's interval is read-only policy input pinned to the approval Task; it does not grant a TeamPolicy write. Checkpoint 4 implements the separate `team_experience_chunks` projection, current-canonical index/rebuild and dual-core retrieval, Context v2 with per-core provenance, and canonical review-date eligibility. `review_knowledge` owns only the `active → needs_review` transition through TaskRuntime; `approve_learning_change` remains read-only on TeamPolicy and pins the rule version used to compute `review_after`.
 
