@@ -235,7 +235,7 @@ class KnowledgeQualityAssessmentTaskRunner:
                 task_id=task_id,
                 attempt=admission.attempt_count,
                 result_category="success_knowledge_quality_assessed",
-                observed_at=datetime.now(timezone.utc),
+                observed_at=recorded.recorded_at,
                 knowledge_quality_assessment_id=recorded.assessment_id,
             )
         )
