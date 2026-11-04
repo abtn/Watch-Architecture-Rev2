@@ -2,7 +2,7 @@
 
 ## Status
 
-**Proposed for Operator review — 2026-11-04.** This ADR records the proposed R7 architecture direction and the decisions that must be accepted or resolved before implementation. It does not authorize R7-A, a schema migration, a production model/provider, or a change to any Task write scope.
+**Accepted — 2026-11-04.** The Operator accepted the revised architecture and explicitly authorized R7-A implementation. Acceptance establishes the design direction in this ADR; it authorizes only the bounded R7-A phase described in the R7 entry gate. R7-B and R7-C, lifecycle commits, production providers, and unrelated Task/write-scope changes remain unauthorized. Acceptance does not itself establish implementation correctness or a local verification result.
 
 **Predecessors:** ADR-0028 (Knowledge Cores and retrieval), ADR-0029 (Experience Distillation), ADR-0030 (Task lifecycle and Outcomes), and ADR-0031 (R6-E generation provider). R6 is formally complete through R6-G; its closure does not authorize R7.
 
