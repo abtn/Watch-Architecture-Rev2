@@ -231,6 +231,25 @@ def test_case_lineage_marks_shared_signal_related():
     assert f"signal:{signal_id}" in report["pairs"][0]["shared_anchor_reasons"]
 
 
+def test_disjoint_complete_plan_actions_are_independent():
+    team_id = uuid4()
+    session = _LineageSession(team_id)
+    cases = []
+    for _ in range(2):
+        plan_id, action_id = uuid4(), uuid4()
+        session.add(Plan, plan_id, SimpleNamespace(id=plan_id, team_id=team_id))
+        session.add(
+            PlanAction,
+            (plan_id, action_id),
+            SimpleNamespace(plan_id=plan_id, action_id=action_id),
+        )
+        cases.append(_case(plan_id=plan_id, action_id=action_id))
+
+    report = _report(session, team_id, cases)
+
+    assert report["pairs"][0]["relationship"] == "independent"
+
+
 def test_case_lineage_marks_shared_plan_action_related():
     team_id, plan_id, action_id = uuid4(), uuid4(), uuid4()
     session = _LineageSession(team_id)
