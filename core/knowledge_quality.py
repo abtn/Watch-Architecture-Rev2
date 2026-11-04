@@ -381,7 +381,7 @@ def build_case_lineage_report(
 
 def evidence_reference_set(
     learning_change: LearningChange,
-    pack: ExperienceEvidencePack,
+    pack: ExperienceEvidencePack | list[dict[str, Any]],
 ) -> frozenset[str]:
     """Build the assessment's allowed evidence keys from verified canonical basis."""
     references: set[str] = set()
