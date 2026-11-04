@@ -1290,6 +1290,70 @@ class TaskRuntime:
         return "failed"
 
     @staticmethod
+    def _committed_knowledge_quality_assessment_observation(
+        session: Session, task: Task
+    ) -> TerminalObservation | None:
+        from core.knowledge_quality import (
+            KnowledgeQualityAssessmentError,
+            require_recorded_assessment,
+        )
+
+        if not TaskRuntime._is_knowledge_quality_task(session, task):
+            return None
+        request = TaskRuntime._validate_knowledge_quality_task_request(
+            session, task, require_proposed=task.status == "running"
+        )
+        assessment = session.scalar(
+            select(KnowledgeQualityAssessment).where(
+                KnowledgeQualityAssessment.creating_task_id == task.id,
+                KnowledgeQualityAssessment.team_id == task.team_id,
+            )
+        )
+        if assessment is None:
+            return None
+        learning_change = session.get(LearningChange, assessment.learning_change_id)
+        if learning_change is None:
+            raise TaskNotFinalizable("knowledge_quality_learning_change_missing")
+        try:
+            require_recorded_assessment(
+                session,
+                learning_change,
+                require_task_done=task.status == "done",
+            )
+        except KnowledgeQualityAssessmentError as error:
+            raise TaskNotFinalizable(str(error)) from error
+        if (
+            request.get("learning_change_id") != str(learning_change.id)
+            or assessment.creating_task_id != task.id
+        ):
+            raise TaskNotFinalizable("knowledge_quality_assessment_request_mismatch")
+        if task.status == "done":
+            outcomes = list(
+                session.scalars(
+                    select(Outcome).where(
+                        Outcome.recorded_by_task_id == task.id,
+                        Outcome.outcome_type == "task_execution",
+                    )
+                )
+            )
+            if len(outcomes) != 1 or outcomes[0].observed_at is None:
+                raise TaskNotFinalizable("knowledge_quality_task_outcome_missing")
+            observed_at = outcomes[0].observed_at
+        elif task.status == "running":
+            observed_at = TaskRuntime._current_attempt_start(session, task)
+            if observed_at is None:
+                raise TaskNotFinalizable("knowledge_quality_task_start_missing")
+        else:
+            return None
+        return TerminalObservation(
+            task_id=task.id,
+            attempt=task.attempt_count,
+            result_category="success_knowledge_quality_assessed",
+            observed_at=observed_at,
+            knowledge_quality_assessment_id=assessment.id,
+        )
+
+    @staticmethod
     def _committed_operator_decision_observation(
         session: Session, task: Task
     ) -> TerminalObservation | None:
