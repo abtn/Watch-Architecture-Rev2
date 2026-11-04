@@ -56,7 +56,9 @@ _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES = frozenset(
     }
 )
 _KNOWLEDGE_REVIEW_SUCCESS_CATEGORIES = frozenset({"success_knowledge_reviewed"})
-_KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES = frozenset({"success_knowledge_quality_assessed"})
+_KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES = frozenset(
+    {"success_knowledge_quality_assessed"}
+)
 _KNOWLEDGE_QUALITY_TASK_TYPE = "assess_knowledge_quality"
 _KNOWLEDGE_QUALITY_REQUEST_EVENT_TYPE = "knowledge_quality_assessment_task_requested"
 _KNOWLEDGE_QUALITY_RECORDED_EVENT_TYPE = "knowledge_quality_assessment_recorded"
@@ -145,7 +147,9 @@ class TerminalObservation:
         "success_signal_created", "success_no_change", "success_evaluation_recorded",
         "success_evaluation_rejected", "success_learning_change_proposed",
         "success_learning_change_accepted", "success_learning_change_rejected",
-        "success_knowledge_reviewed", "success_knowledge_quality_assessed", "success_strategy_accepted",
+        "success_knowledge_reviewed",
+        "success_knowledge_quality_assessed",
+        "success_strategy_accepted",
         "success_strategy_rejected", "success_plan_created", "terminal_failure"
     ]
     observed_at: datetime
@@ -690,7 +694,10 @@ class TaskRuntime:
                     raise TaskNotEligible(
                         "operator_quality_assessment_reference_invalid"
                     )
-            elif quality_assessment_id_value is not None or quality_assessment_hash is not None:
+            elif (
+                quality_assessment_id_value is not None
+                or quality_assessment_hash is not None
+            ):
                 raise TaskNotEligible(
                     "operator_quality_assessment_reference_invalid"
                 )
@@ -1024,9 +1031,13 @@ class TaskRuntime:
                 task.task_type == "propose_learning_change"
                 and observation.result_category == "success_learning_change_proposed"
             ):
-                learning_change = session.get(LearningChange, observation.learning_change_id)
+                learning_change = session.get(
+                    LearningChange, observation.learning_change_id
+                )
                 if learning_change is None:
-                    raise TaskNotFinalizable("learning_change_not_found_for_quality_task")
+                    raise TaskNotFinalizable(
+                        "learning_change_not_found_for_quality_task"
+                    )
                 self._create_knowledge_quality_task_request(
                     session, task, learning_change
                 )
@@ -1473,7 +1484,9 @@ class TaskRuntime:
                     failure_reason="learning_change_rejected_before_quality_assessment",
                 )
             if learning_change.status != "proposed":
-                raise TaskNotFinalizable("knowledge_quality_assessment_missing_for_decided_change")
+                raise TaskNotFinalizable(
+                    "knowledge_quality_assessment_missing_for_decided_change"
+                )
             return None
         learning_change = session.get(LearningChange, assessment.learning_change_id)
         if learning_change is None:
@@ -1506,7 +1519,9 @@ class TaskRuntime:
         elif task.status == "running":
             observed_at = assessment.recorded_at
             if observed_at.tzinfo is None:
-                raise TaskNotFinalizable("knowledge_quality_assessment_timestamp_invalid")
+                raise TaskNotFinalizable(
+                    "knowledge_quality_assessment_timestamp_invalid"
+                )
         else:
             return None
         return TerminalObservation(
@@ -1716,6 +1731,10 @@ class TaskRuntime:
         source_task: Task,
         learning_change: LearningChange,
     ) -> Task:
+        from core.experience_distiller import (
+            ExperienceDistiller,
+            ExperienceDistillerError,
+        )
         from core.knowledge_quality import (
             ALLOWED_WRITES,
             REQUEST_EVENT_TYPE,
@@ -1724,10 +1743,6 @@ class TaskRuntime:
             TASK_TYPE,
             build_quality_task_request,
             validate_quality_task_request,
-        )
-        from core.experience_distiller import (
-            ExperienceDistiller,
-            ExperienceDistillerError,
         )
 
         if self._snapshot_store is None:
@@ -2750,7 +2765,10 @@ class TaskRuntime:
                 raise TaskNotFinalizable(
                     "operator_quality_assessment_reference_invalid"
                 )
-        elif quality_assessment_id_value is not None or quality_assessment_hash is not None:
+        elif (
+            quality_assessment_id_value is not None
+            or quality_assessment_hash is not None
+        ):
             raise TaskNotFinalizable("operator_quality_assessment_reference_invalid")
         learning_change_id_value = request_payload.get("learning_change_id")
         try:
