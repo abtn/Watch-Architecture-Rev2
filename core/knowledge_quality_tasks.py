@@ -205,11 +205,30 @@ class KnowledgeQualityAssessmentTaskRunner:
                 assessment_id=None,
                 outcome_id=None,
             )
-        if not isinstance(draft, KnowledgeQualityAssessmentDraft):
-            raise KnowledgeQualityAssessmentError(
-                "knowledge_quality_provider_output_invalid"
+        try:
+            if not isinstance(draft, KnowledgeQualityAssessmentDraft):
+                raise KnowledgeQualityAssessmentError(
+                    "knowledge_quality_provider_output_invalid"
+                )
+            recorded = self._service.record(task_id, draft)
+        except KnowledgeQualityAssessmentError as error:
+            failed = self._runtime.finalize(
+                TerminalObservation(
+                    task_id=task_id,
+                    attempt=admission.attempt_count,
+                    result_category="terminal_failure",
+                    observed_at=self._attempt_started_at(
+                        task_id, admission.attempt_count
+                    ),
+                    failure_reason=error.reason,
+                )
             )
-        recorded = self._service.record(task_id, draft)
+            return KnowledgeQualityTaskRunResult(
+                task_id=task_id,
+                status=failed.status,
+                assessment_id=None,
+                outcome_id=failed.outcome_id,
+            )
 
         finalized = self._runtime.finalize(
             TerminalObservation(
