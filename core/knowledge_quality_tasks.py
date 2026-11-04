@@ -83,10 +83,10 @@ class KnowledgeQualityAssessmentTaskRunner:
             if task is None:
                 raise TaskNotEligible("task_not_found")
             try:
-                TaskRuntime._validate_knowledge_quality_task_request(
+                request = TaskRuntime._validate_knowledge_quality_task_request(
                     session,
                     task,
-                    require_proposed=task.status != "done",
+                    require_proposed=False,
                 )
             except TaskNotFinalizable as error:
                 raise TaskNotEligible(str(error)) from error
@@ -138,27 +138,47 @@ class KnowledgeQualityAssessmentTaskRunner:
             if task.status != "pending":
                 raise TaskNotEligible("knowledge_quality_task_already_running")
 
-            request = TaskRuntime._validate_knowledge_quality_task_request(
-                session, task, require_proposed=True
-            )
+            if request.get("learning_change_id") is None:
+                raise TaskNotEligible("knowledge_quality_learning_change_missing")
             learning_change = session.get(
                 LearningChange, UUID(request["learning_change_id"])
             )
             if learning_change is None or learning_change.team_id != task.team_id:
                 raise TaskNotEligible("knowledge_quality_learning_change_missing")
-            try:
-                _, pack = self._distiller.validate_learning_change(
-                    session, learning_change
+            if learning_change.status != "proposed":
+                admission = None
+            else:
+                admission = "pending"
+                try:
+                    _, pack = self._distiller.validate_learning_change(
+                        session, learning_change
+                    )
+                except ExperienceDistillerError as error:
+                    raise TaskNotEligible(error.reason) from error
+                lineage_report = build_case_lineage_report(
+                    session, task.team_id, pack.evidence_basis
                 )
-            except ExperienceDistillerError as error:
-                raise TaskNotEligible(error.reason) from error
-            lineage_report = build_case_lineage_report(
-                session, task.team_id, pack.evidence_basis
-            )
-            if pack.basis_hash != request["evidence_basis_hash"]:
-                raise TaskNotEligible("knowledge_quality_evidence_basis_stale")
+                if pack.basis_hash != request["evidence_basis_hash"]:
+                    raise TaskNotEligible("knowledge_quality_evidence_basis_stale")
 
         admission = self._runtime.admit(task_id)
+        if admission is None:
+            started_at = self._attempt_started_at(task_id, 1)
+            failed = self._runtime.finalize(
+                TerminalObservation(
+                    task_id=task_id,
+                    attempt=1,
+                    result_category="terminal_failure",
+                    observed_at=started_at,
+                    failure_reason="learning_change_rejected_before_quality_assessment",
+                )
+            )
+            return KnowledgeQualityTaskRunResult(
+                task_id=task_id,
+                status=failed.status,
+                assessment_id=None,
+                outcome_id=failed.outcome_id,
+            )
         try:
             draft = self._provider.assess(
                 task_id=task_id,
