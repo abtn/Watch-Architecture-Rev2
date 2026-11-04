@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.dispatcher import TaskDispatcher
-from core.models import Event, Signal
+from core.models import Evaluation, Event, Signal
 from core.rule_evaluator import IngestSourceRuleEvaluator, RuleEvaluationError
 from core.snapshot_store import SnapshotStore
 from core.source_fetch import SourceFetchError
@@ -141,6 +141,93 @@ def test_terminal_source_failure_produces_failed_evaluation(
     assert "source_blocked" in draft.findings.observed_result
     assert len(draft.evidence) == 1
     assert draft.evidence[0].source_kind == "outcome"
+
+
+def test_terminal_event_mismatch_fails_closed_without_evaluation(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    dispatch_fixture: DispatchFixture,
+) -> None:
+    evaluator_task_id = _dispatch(
+        session_factory, snapshot_store, dispatch_fixture, FakeFetcher()
+    )
+    with session_factory() as session:
+        request = session.scalar(
+            select(Event).where(
+                Event.task_id == evaluator_task_id,
+                Event.type == "evaluation_task_requested",
+            )
+        )
+        assert request is not None
+        source_task_id = UUID(request.payload["source_task_id"])
+    with session_factory.begin() as session:
+        terminal = session.scalar(
+            select(Event).where(
+                Event.task_id == source_task_id,
+                Event.type == "task_completed",
+            )
+        )
+        assert terminal is not None
+        payload = dict(terminal.payload)
+        payload["observation_hash"] = "sha256:" + ("f" * 64)
+        terminal.payload = payload
+
+    with pytest.raises(RuleEvaluationError, match="evaluation_terminal_event_mismatch"):
+        IngestSourceRuleEvaluator(
+            session_factory, snapshot_store
+        ).evaluate(evaluator_task_id)
+
+    with session_factory() as session:
+        assert session.scalar(
+            select(Evaluation.id).where(
+                Evaluation.created_by_task_id == evaluator_task_id
+            )
+        ) is None
+
+
+def test_cross_domain_signal_fails_closed_without_evaluation(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    dispatch_fixture: DispatchFixture,
+) -> None:
+    evaluator_task_id = _dispatch(
+        session_factory, snapshot_store, dispatch_fixture, FakeFetcher()
+    )
+    with session_factory() as session:
+        request = session.scalar(
+            select(Event).where(
+                Event.task_id == evaluator_task_id,
+                Event.type == "evaluation_task_requested",
+            )
+        )
+        assert request is not None
+        source_task_id = UUID(request.payload["source_task_id"])
+        ingestion = session.scalar(
+            select(Event).where(
+                Event.task_id == source_task_id,
+                Event.type == "signal_ingested",
+            )
+        )
+        assert ingestion is not None
+        signal_id = UUID(ingestion.payload["signal_id"])
+    with session_factory.begin() as session:
+        signal = session.get(Signal, signal_id)
+        assert signal is not None
+        signal.domain = "another_domain"
+
+    with pytest.raises(
+        RuleEvaluationError, match="evaluation_signal_business_record_mismatch"
+    ):
+        IngestSourceRuleEvaluator(
+            session_factory, snapshot_store
+        ).evaluate(evaluator_task_id)
+
+    with session_factory() as session:
+        assert session.scalar(
+            select(Evaluation.id).where(
+                Evaluation.created_by_task_id == evaluator_task_id
+            )
+        ) is None
 
 
 def test_contradictory_success_business_event_fails_closed(
