@@ -623,6 +623,18 @@ def test_legacy_v1_learning_change_reconstructs_without_new_basis_marker(
         assert rebuilt.evidence_basis == legacy_pack.evidence_basis
         assert rebuilt.basis_hash == legacy_pack.basis_hash
 
+        change.evidence_basis = [
+            {
+                **legacy_pack.evidence_basis[0],
+                "schema_version": "r7-unknown-evidence-pack-v3",
+            }
+        ]
+        with pytest.raises(
+            ExperienceDistillerError,
+            match="learning_change_evidence_version_invalid",
+        ):
+            distiller.validate_learning_change(session, change)
+
 
 def test_reservation_is_committed_before_provider_call(
     session_factory, snapshot_store, distillation_fixture
