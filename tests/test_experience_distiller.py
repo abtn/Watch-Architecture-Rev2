@@ -1617,6 +1617,10 @@ def test_operator_adapter_decides_and_finalizes_the_same_task(
             learning_change_id=proposal.learning_change_id,
         )
     )
+    if decision == "accept":
+        _run_quality_assessment(
+            session_factory, snapshot_store, proposal.learning_change_id
+        )
     principal = _approval_principal(fixture.team_id)
     request = LearningChangeDecisionRequest(
         learning_change_id=proposal.learning_change_id,
@@ -1705,6 +1709,9 @@ def test_competing_approval_tasks_terminalize_the_losing_request(
             observed_at=datetime.now(timezone.utc),
             learning_change_id=proposal.learning_change_id,
         )
+    )
+    _run_quality_assessment(
+        session_factory, snapshot_store, proposal.learning_change_id
     )
 
     principal = _approval_principal(fixture.team_id)
@@ -1843,6 +1850,9 @@ def test_operator_recovery_finalizes_a_committed_decision_after_crash(
             observed_at=datetime.now(timezone.utc),
             learning_change_id=proposal.learning_change_id,
         )
+    )
+    _run_quality_assessment(
+        session_factory, snapshot_store, proposal.learning_change_id
     )
     principal = _approval_principal(fixture.team_id)
     request = LearningChangeDecisionRequest(
@@ -2034,6 +2044,9 @@ def test_operator_terminal_result_is_fenced_and_must_match_decision(
             observed_at=datetime.now(timezone.utc),
             learning_change_id=proposal.learning_change_id,
         )
+    )
+    _run_quality_assessment(
+        session_factory, snapshot_store, proposal.learning_change_id
     )
     principal = _approval_principal(fixture.team_id)
     request = LearningChangeDecisionRequest(
