@@ -600,6 +600,42 @@ class LearningCommitService:
         recorded_decision: Decision = (
             "accept" if learning_change.status == "accepted" else "reject"
         )
+        request_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == _REQUEST_EVENT_TYPE,
+                )
+            )
+        )
+        if len(request_events) != 1 or not isinstance(request_events[0].payload, dict):
+            raise LearningCommitCorrupt("operator_request_event_invalid")
+        request_payload = request_events[0].payload
+        quality_assessment_id = request_payload.get(
+            "knowledge_quality_assessment_id"
+        )
+        quality_assessment_hash = request_payload.get(
+            "knowledge_quality_assessment_hash"
+        )
+        if recorded_decision == "accept":
+            try:
+                quality_assessment = require_recorded_assessment(
+                    session, learning_change, require_task_done=True
+                )
+            except KnowledgeQualityAssessmentError as error:
+                raise LearningCommitCorrupt(str(error)) from error
+            if (
+                quality_assessment_id != str(quality_assessment.id)
+                or quality_assessment_hash
+                != quality_assessment.assessment_payload_hash
+            ):
+                raise LearningCommitCorrupt(
+                    "operator_quality_assessment_binding_invalid"
+                )
+        elif quality_assessment_id is not None or quality_assessment_hash is not None:
+            raise LearningCommitCorrupt(
+                "operator_quality_assessment_not_allowed_for_rejection"
+            )
         if (
             recorded_decision != requested_decision
             or learning_change.decision_reason != rejection_reason
@@ -697,6 +733,12 @@ class LearningCommitService:
             item_id = item.id
             expected_payload["knowledge_item_id"] = str(item.id)
             expected_payload["knowledge_item_version"] = 1
+            expected_payload["knowledge_quality_assessment_id"] = (
+                quality_assessment_id
+            )
+            expected_payload["knowledge_quality_assessment_hash"] = (
+                quality_assessment_hash
+            )
             if (
                 item.team_id != learning_change.team_id
                 or item.version != 1
