@@ -202,8 +202,8 @@ Tests now cover accepted Strategy finalization/replay, rejected Strategy finaliz
 | Test module | Implemented proof |
 |---|---|
 | `tests/test_rule_evaluator.py` | D9 new-Signal, no-change and terminal-failure mappings; deterministic rule draft and contradictory-business-event fail-closed check. |
-| `tests/test_evaluation_tasks.py` | Atomic source-terminal enqueue, exact request Task/Event binding, concurrent duplicate terminal replay producing one evaluator request, request tamper rejection, committed-Evaluation recovery and terminal runner replay. |
-| `tests/test_experience_distiller.py` and `tests/test_r6g_distillation.py` | Failed-source provenance, claim-relative contrary evidence, canonical EvidenceLink stance preservation, per-case v2 marker/hash and legacy unmarked-v1 reconstruction. |
+| `tests/test_evaluation_tasks.py` | Atomic source-terminal enqueue, rollback on enqueue failure, concurrent duplicate terminal finalization producing one Outcome/request, exact request Task/Event binding, tamper rejection, committed-Evaluation recovery and terminal runner replay. |
+| `tests/test_experience_distiller.py` and `tests/test_r6g_distillation.py` | Failed-source provenance, claim-relative contrary evidence, canonical EvidenceLink stance preservation, per-case v2 marker/hash, legacy unmarked-v1 reconstruction, and unknown-version rejection. |
 | `tests/test_r6g_vertical_slice.py` | Objective Context → Strategy → Plan → three source Tasks → Outcomes/Evaluations → reassessment → distillation → Operator reject/accept → Team Experience projection → later-Task retrieval. |
 
 Additional component suites remain part of the acceptance evidence: `test_r6b_dispatcher.py`, `test_knowledge_index.py`, `test_team_experience.py`, `test_context_assembly.py`, `test_strategy_proposer.py`, `test_strategy.py`, `test_plans.py`, `test_task_lifecycle_retry.py`, `test_task_lifecycle_recovery.py`, `test_task_runtime.py`, `test_evaluations.py`, `test_operator_application.py` and `test_generation_cost.py.
