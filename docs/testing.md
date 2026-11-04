@@ -261,7 +261,7 @@ Restore both database environment variables and remove only the disposable conta
 - `git diff --check origin/main...HEAD`: passed on the tested feature branch.
 - Final local synchronization: `main` and `origin/main` both at `de1af38d67a7e79d71110bdda7155244717fbf73`; working tree clean.
 
-**C4 local verification disposition:** PASS for the exact merged source tree. The operator-local run happened immediately before merge rather than after the merge commit; tree identity was explicitly verified, and the subsequent fast-forward synchronization confirmed the local `main` snapshot. Do not describe this as a post-merge test rerun. R6-G has separate implementation authorization; its integrated exit gate remains open.
+**C4 local verification disposition:** PASS for the exact merged source tree. The operator-local run happened immediately before merge rather than after the merge commit; tree identity was explicitly verified, and the subsequent fast-forward synchronization confirmed the local `main` snapshot. Do not describe this as a post-merge test rerun. R6-G was separately authorized, verified and formally closed after explicit Operator approval and merge of PR #35 on 2026-11-04.
 
 ## R6-F Checkpoint 1 — Evaluation and canonical learning schema
 
@@ -280,15 +280,15 @@ git diff --check
 ```
 
 Use a fresh disposable PostgreSQL database. Confirm one Alembic head and a successful upgrade from `0011_task_generation_cost`; never use the persistent `watch` database. The Evaluation tests cover same-Team Outcome references, domain-scoped Signal references, exact Snapshot/hash/quote validation, evaluator identity/revision, proposal idempotency, recorded/rejected dispositions, Task write scope, and TaskRuntime terminal finalization. This checkpoint deliberately does not implement ExperienceDistiller, LearningChange proposal/approval writes, KnowledgeItem commits, or Team Experience indexing.
-## R6-G implementation, verification and technical acceptance review (2026-11-04; Operator exit approval pending)
+## R6-G implementation, verification and formal closeout (2026-11-04; COMPLETE)
 
-**Implementation status:** R6-G implementation was explicitly authorized and is present on `r6g-implementation-20261103`, PR #35 (draft/open, unmerged). This section maps implemented behavior and required proof; it does not record R6-G closure.
+**Implementation status: COMPLETE and formally closed 2026-11-04.** The bounded implementation on `r6g-implementation-20261103` was verified, the ten-proof review passed, and the Operator explicitly approved the exit gate. PR #35 merged to `main` at `56745b613b5b77a21a514b4e261d3450f90c0df1`. The implementation code head was `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3`; subsequent PR commits were documentation-only.
 
 ### Three-step resolution
 
 1. **Evaluator source — implemented.** Use deterministic code-defined rules for `ingest_source` terminal Outcomes only. Validate terminal result category, current attempt, Task status, terminal Event payload, ingestion business Event, and canonical same-Team/domain Signal/Snapshot identity/hash. Map valid `success_signal_created` and `success_no_change` to `worked`; map a consistent `terminal_failure` to `failed`. Reject inconsistent, stale, cross-Team, corrupt or unsupported evidence without creating an Evaluation. The conclusion is execution-contract conformance only, not source truth or Objective success. Persist the fixed rule identity/revision. No human/model Evaluation producer is included.
 2. **Integrated fixture/service sequence — implemented.** `tests/test_r6g_vertical_slice.py` builds one Team/Objective and three Plan-materialized ingestion cases (new Signal, legitimate no-change, terminal failure), baseline Domain Knowledge indexed by deterministic fake embeddings, real hybrid Context retrieval, fake StrategyProposer, StrategyService, PlanService and TaskDispatcher. TaskRuntime creates each evaluator Task and immutable request Event atomically with source terminalization; the pure D9 evaluator proposes, EvaluationService records, and TaskRuntime finalizes or recovers the Evaluation Task. ExperienceDistiller includes the failed Task in a versioned v2 evidence pack as contrary evidence while preserving canonical EvidenceLink stance and historical v1 reconstruction. The fixture continues through separate one-case rejection and three-case Operator acceptance, canonical Team Experience indexing, and later-Task retrieval. The implementation retains one TaskRuntime, a narrow ingestion-only TaskDispatcher, and no production R6-G provider.
-3. **Acceptance mapping — implemented tests; technical review complete, Operator exit approval pending.** The focused R6-G test modules now exist: `tests/test_rule_evaluator.py`, `tests/test_evaluation_tasks.py`, `tests/test_r6g_distillation.py`, and `tests/test_r6g_vertical_slice.py`; Strategy, Plan and ExperienceDistiller suites also contain R6-G coverage. See the table below for the ten proofs and the component/integrated test boundaries.
+3. **Acceptance mapping — implemented tests; technical review and Operator exit approval complete.** The focused R6-G test modules now exist: `tests/test_rule_evaluator.py`, `tests/test_evaluation_tasks.py`, `tests/test_r6g_distillation.py`, and `tests/test_r6g_vertical_slice.py`; Strategy, Plan and ExperienceDistiller suites also contain R6-G coverage. See the table below for the ten proofs and the component/integrated test boundaries.
 
 ### Ten acceptance criteria mapped to tests
 
@@ -310,7 +310,7 @@ Use a fresh disposable PostgreSQL database. Confirm one Alembic head and a succe
 
 **Review disposition: 10/10 PASS — supported by implementation and test evidence.**
 
-This is a code/test review of implementation commit `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3`, not a claim that the Operator has approved R6 closure. Review checked the integrated fixture, the mapped component tests, and the relevant failure/recovery/replay paths.
+This is a code/test review of implementation commit `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3`, followed by explicit Operator approval of the R6 exit gate on 2026-11-04. Review checked the integrated fixture, mapped component tests and relevant failure/recovery/replay paths.
 
 | # | Review disposition | Evidence reviewed |
 |---:|---|---|
@@ -332,7 +332,7 @@ This is a code/test review of implementation commit `2a55acfeadaf37e23b9f2cffd88
 - One test docstring in `tests/test_r6b_dispatcher.py::test_dispatcher_uses_the_configured_source_not_a_caller_supplied_url` says a `RestrictedFetcher` is bound, while the test currently injects `FakeFetcher`. The assertion still checks that the configured PlanAction URL is the one passed to the fetcher; URL/DNS/HTTP safety is covered by separate tests. This is a test-description inconsistency, not an implementation or acceptance blocker.
 - No uncovered blocking gap was found against the ten documented criteria.
 
-**Review disposition:** all ten criteria are supported by the code and tests. The Operator's explicit R6 exit decision remains outstanding; this review does not close R6-G or authorize PR merge.
+**Review disposition: ACCEPTED.** All ten criteria are supported by the code and tests; no blocking gap was found. The Operator explicitly approved the R6 exit gate on 2026-11-04, and PR #35 is merged. R6-G is formally closed.
 
 ### New test boundaries and execution rules
 
@@ -354,7 +354,7 @@ This is a code/test review of implementation commit `2a55acfeadaf37e23b9f2cffd88
 - `uv run pytest -q` (full suite): **614 passed in 74.48s**.
 - `git diff --check` passed; disposable container cleanup succeeded; final `git status --short --branch` was clean and `HEAD` remained `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3`.
 
-This is operator-reported local evidence, recorded distinctly from hosted CI. It verifies the exact implementation code head; the technical acceptance review is recorded above, but explicit Operator exit approval remains outstanding.
-- Existing component tests do not satisfy integrated R6-G acceptance by themselves. Do not close R6-G until all ten proofs pass and the Operator explicitly approves the R6 exit gate.
+This is operator-reported local evidence, recorded distinctly from hosted CI. It verifies implementation commit `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3`; the technical review and Operator approval are recorded above. The final PR-head CI run after documentation-only updates is [41788001379](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41788001379). PR #35 merged at `56745b613b5b77a21a514b4e261d3450f90c0df1`.
+- Existing component tests do not satisfy integrated R6-G acceptance by themselves. The integrated and mapped component proofs were reviewed together before the Operator approved closure.
 
-**Exit boundary:** implementation authorization is in force; R6-G is not closed. Exact-head local verification and the technical ten-proof review are complete. Do not close R6-G or merge PR #35 until the Operator explicitly approves the R6 exit gate.
+**Exit boundary: CLOSED — 2026-11-04.** Exact-head hosted and operator-local verification passed, the ten-proof technical review found no blocker, the Operator approved the exit gate, and PR #35 merged to `main`. The fake-provider/offline qualification and all scope non-goals remain part of the accepted record.
