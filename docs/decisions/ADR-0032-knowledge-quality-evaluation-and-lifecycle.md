@@ -162,7 +162,7 @@ No transcript, retrieved chunk, vector rank, model confidence, or free-form self
 R7-A is authorized. Its implementation contracts are frozen in [the R7-A implementation plan](../development/r7-a-implementation-plan.md): (1) exact case-lineage field/normalization/rule definitions and `independent`/`related`/`unknown` truth table; (2) KnowledgeQualityAssessment schema, evidence-reference contract, rubric revision/disposition rules, stable evaluator identity/revision and assessment Task lifecycle/idempotency; (3) deterministic application validation and the exact create-approval gate that enforces the accepted INV-12 amendment; and (4) deterministic fixtures, failure/replay tests, and the no-provider boundary. The following later-phase decisions remain intentionally deferred and are not R7-A blockers:
 
 1. **Knowledge-use trace (R7-C):** TaskKnowledgeReference schema, claim identity, exact Context-manifest binding, KnowledgeUseAssessment vocabulary/recording contract. Reuse Context manifest v2 for included passages; do not duplicate inclusion.
-2. **Version history and lifecycle (R7-B):** current_learning_change_id implementation, immutable reconstruction proof, content-version semantics, legal transitions, successor relation, concurrency/replay, canonicality consumers, D7 review dates, and projection invalidation/republishing.
+2. **Version history and lifecycle (R7-B):** current_learning_change_id implementation, immutable reconstruction proof, content-version semantics, legal transitions, successor relation, concurrency/replay, canonicality consumers, D7 review dates, and projection invalidation/republishing. Preparation sequence and open implementation decisions are in [r7-b-implementation-plan.md](../development/r7-b-implementation-plan.md); this does not authorize implementation.
 3. **Retrieval benchmark (R7-C):** corpus ownership/size, label provenance, synthetic/real separation, held-out split, small-n reporting, and hard-zero scope/status/provenance checks.
 4. **Provider/cost (separately gated):** any production provider/model, data handling, rate card, maximum reservation, and failure semantics. No provider is selected by this ADR.
 
@@ -189,5 +189,5 @@ Rejected alternatives:
 - Use retrieval similarity or a single quality score as truth/commit authority: rejected because ranking and heuristic scores are derived signals.
 - Add a broad knowledge graph, generic scheduler, or new runtime to make R7 convenient: rejected as disproportionate and outside the established architecture.
 
-**Implementation boundary:** this ADR is Accepted and R7-A alone is authorized. R7-B and R7-C remain separately gated and unauthorized. Acceptance and phase authorization do not substitute for hosted/local verification or establish that the implementation is correct.
+**Implementation boundary:** this ADR is Accepted. R7-A is complete and merged. R7-B is in documentation preparation only; implementation requires Operator resolution of open design dispositions and separate authorization. R7-C remains separately gated and unauthorized. Acceptance/authorization do not replace verification.
 
