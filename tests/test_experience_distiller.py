@@ -12,7 +12,7 @@ from typing import Any, Callable, Iterator
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.evaluations import (
@@ -32,6 +32,18 @@ from core.generation import (
     GenerationUsage,
 )
 from core.generation_cost import TaskGenerationCostService
+from core.knowledge_quality import (
+    DIMENSIONS as KNOWLEDGE_QUALITY_DIMENSIONS,
+)
+from core.knowledge_quality import (
+    RUBRIC_IDENTITY,
+    RUBRIC_REVISION,
+    KnowledgeQualityAssessmentDraft,
+    KnowledgeQualityAssessmentService,
+    KnowledgeQualityDimension,
+    build_case_lineage_report,
+)
+from core.knowledge_quality_tasks import KnowledgeQualityAssessmentTaskRunner
 from core.learning_commit import (
     LearningCommitCorrupt,
     LearningCommitError,
@@ -42,6 +54,7 @@ from core.models import (
     Event,
     EvidenceLink,
     KnowledgeItem,
+    KnowledgeQualityAssessment,
     LearningChange,
     Outcome,
     Task,
@@ -51,6 +64,7 @@ from core.models import (
 )
 from core.operator_application import (
     LearningChangeDecisionRequest,
+    LearningChangeNotApprovable,
     OperatorApplicationAdapter,
     OperatorGrant,
     OperatorTaskRequestConflict,
@@ -274,6 +288,10 @@ def distillation_fixture(
                     Task.task_type == "approve_learning_change",
                     Task.team_id == fixture.team_id,
                 )
+                quality_task_ids = select(Task.id).where(
+                    Task.task_type == "assess_knowledge_quality",
+                    Task.team_id == fixture.team_id,
+                )
                 proposal_owner = (
                     LearningChange.proposed_by_task_id
                     == fixture.distillation_task_id
@@ -287,6 +305,13 @@ def distillation_fixture(
                 session.execute(
                     delete(KnowledgeItem).where(
                         KnowledgeItem.origin_learning_change_id.in_(learning_change_ids)
+                    )
+                )
+                session.execute(
+                    delete(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.learning_change_id.in_(
+                            learning_change_ids
+                        )
                     )
                 )
                 session.execute(
@@ -311,6 +336,15 @@ def distillation_fixture(
                         TaskGenerationCharge.task_id.in_(all_task_ids)
                     )
                 )
+                session.execute(
+                    delete(Outcome).where(
+                        Outcome.recorded_by_task_id.in_(quality_task_ids)
+                    )
+                )
+                session.execute(
+                    delete(Event).where(Event.task_id.in_(quality_task_ids))
+                )
+                session.execute(delete(Task).where(Task.id.in_(quality_task_ids)))
                 session.execute(
                     delete(Outcome).where(
                         Outcome.recorded_by_task_id.in_(all_task_ids)
@@ -1050,6 +1084,83 @@ def test_concurrent_duplicate_proposals_reserve_and_commit_exactly_once(
         assert len(events) == 1
 
 
+
+
+class _FakeKnowledgeQualityAssessmentProvider:
+    def assess(
+        self,
+        *,
+        task_id: UUID,
+        learning_change: LearningChange,
+        evidence_document: dict[str, object],
+        lineage_report: dict[str, object],
+    ) -> KnowledgeQualityAssessmentDraft:
+        del task_id, evidence_document, lineage_report
+        return KnowledgeQualityAssessmentDraft(
+            learning_change_id=learning_change.id,
+            proposal_hash=learning_change.proposed_state["proposal_hash"],
+            evidence_basis_hash=learning_change.evidence_basis_hash,
+            rubric_identity=RUBRIC_IDENTITY,
+            rubric_revision=RUBRIC_REVISION,
+            dimensions={
+                name: KnowledgeQualityDimension(
+                    disposition="insufficient_evidence",
+                    findings=[
+                        "The deterministic test evaluator records no positive claim."
+                    ],
+                    evidence_refs=[],
+                )
+                for name in KNOWLEDGE_QUALITY_DIMENSIONS
+            },
+            narrative=(
+                "Deterministic test assessment: the quality contract is recorded "
+                "without asserting a positive knowledge conclusion."
+            ),
+        )
+
+
+def _run_quality_assessment(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    learning_change_id: UUID,
+) -> UUID:
+    from core.knowledge_quality import REQUEST_EVENT_TYPE, TASK_TYPE
+
+    with session_factory() as session:
+        tasks = list(
+            session.scalars(
+                select(Task)
+                .where(Task.task_type == TASK_TYPE)
+                .order_by(Task.created_at)
+            )
+        )
+        task_id = None
+        for task in tasks:
+            request = session.scalar(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == REQUEST_EVENT_TYPE,
+                )
+            )
+            if (
+                request is not None
+                and request.payload.get("learning_change_id")
+                == str(learning_change_id)
+            ):
+                task_id = task.id
+                break
+    if task_id is None:
+        raise AssertionError("knowledge quality assessment Task was not created")
+    result = KnowledgeQualityAssessmentTaskRunner(
+        session_factory,
+        snapshot_store,
+        _FakeKnowledgeQualityAssessmentProvider(),
+    ).run(task_id)
+    assert result.status == "done"
+    assert result.assessment_id is not None
+    return result.assessment_id
+
+
 def _approval_principal(team_id: UUID, subject: str = "operator-commit-1"):
     return TrustedOperatorPrincipal(
         issuer="https://host.example/identity",
@@ -1062,12 +1173,17 @@ def _approval_principal(team_id: UUID, subject: str = "operator-commit-1"):
 
 def _create_admitted_approval_task(
     session_factory,
+    snapshot_store: SnapshotStore,
     team_id: UUID,
     learning_change_id: UUID,
     *,
     decision: str = "accept",
     reason: str | None = None,
 ):
+    if decision == "accept":
+        _run_quality_assessment(
+            session_factory, snapshot_store, learning_change_id
+        )
     request = LearningChangeDecisionRequest(
         learning_change_id=learning_change_id,
         decision=decision,  # type: ignore[arg-type]
@@ -1080,6 +1196,320 @@ def _create_admitted_approval_task(
     admission = TaskRuntime(session_factory).admit(result.task_id)
     return result.task_id, admission.attempt_count, _approval_principal(team_id)
 
+
+
+
+
+
+def test_quality_assessment_recovery_finalizes_same_record_without_duplicate(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(2, include_contrary=False)
+    proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    runtime.finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+
+    from core.knowledge_quality import REQUEST_EVENT_TYPE, TASK_TYPE
+
+    with session_factory() as session:
+        learning_change = session.get(LearningChange, proposal.learning_change_id)
+        assert learning_change is not None
+        quality_task = session.scalar(
+            select(Task).where(
+                Task.task_type == TASK_TYPE,
+                Task.team_id == fixture.team_id,
+            )
+        )
+        assert quality_task is not None
+        _, pack = ExperienceDistiller(
+            session_factory, snapshot_store, provider=None
+        ).validate_learning_change(session, learning_change)
+        lineage = build_case_lineage_report(
+            session, fixture.team_id, pack.evidence_basis
+        )
+        request_event = session.scalar(
+            select(Event).where(
+                Event.task_id == quality_task.id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+        assert request_event is not None
+    admission = runtime.admit(quality_task.id)
+    draft = _FakeKnowledgeQualityAssessmentProvider().assess(
+        task_id=quality_task.id,
+        learning_change=learning_change,
+        evidence_document=pack.document,
+        lineage_report=lineage,
+    )
+    recorded = KnowledgeQualityAssessmentService(
+        session_factory, snapshot_store
+    ).record(quality_task.id, draft)
+
+    with session_factory.begin() as session:
+        start_event = session.scalar(
+            select(Event).where(
+                Event.task_id == quality_task.id,
+                Event.type == "task_started",
+            )
+        )
+        assert start_event is not None
+        start_event.created_at = recorded.recorded_at - timedelta(seconds=61)
+
+    recovery = runtime.recover_interrupted(now=recorded.recorded_at)
+    assert recovery.completed == (quality_task.id,)
+    assert recovery.retried == ()
+    assert recovery.failed == ()
+
+    with session_factory() as session:
+        completed = session.get(Task, quality_task.id)
+        assert completed is not None and completed.status == "done"
+        assert completed.attempt_count == admission.attempt_count == 1
+        assert completed.completed_at == recorded.recorded_at
+        assert session.scalar(
+            select(func.count(KnowledgeQualityAssessment.id)).where(
+                KnowledgeQualityAssessment.learning_change_id
+                == proposal.learning_change_id
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == quality_task.id,
+                Event.type == "knowledge_quality_assessment_recorded",
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == quality_task.id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) == 1
+
+    replay = KnowledgeQualityAssessmentTaskRunner(
+        session_factory,
+        snapshot_store,
+        _FakeKnowledgeQualityAssessmentProvider(),
+        runtime,
+    ).run(quality_task.id)
+    assert replay.status == "done"
+    assert replay.assessment_id == recorded.assessment_id
+    assert replay.outcome_id is not None
+    assert replay.replayed
+
+def test_accepted_create_requires_recorded_quality_assessment(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(2, include_contrary=False)
+    proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    principal = _approval_principal(fixture.team_id)
+    with pytest.raises(
+        LearningChangeNotApprovable,
+        match="knowledge_quality_assessment_required",
+    ):
+        adapter.request_learning_change_decision(
+            principal,
+            LearningChangeDecisionRequest(
+                learning_change_id=proposal.learning_change_id,
+                decision="accept",
+                idempotency_key=uuid4(),
+            ),
+        )
+
+    with session_factory() as session:
+        assessment_task = session.scalar(
+            select(Task).where(
+                Task.task_type == "assess_knowledge_quality",
+                Task.team_id == fixture.team_id,
+            )
+        )
+        assert assessment_task is not None
+        assert assessment_task.status == "pending"
+        assert session.scalar(
+            select(Task.id).where(
+                Task.task_type == "approve_learning_change",
+                Task.team_id == fixture.team_id,
+            )
+        ) is None
+
+    _run_quality_assessment(
+        session_factory, snapshot_store, proposal.learning_change_id
+    )
+    approval_task_id, attempt, trusted_principal = _create_admitted_approval_task(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        proposal.learning_change_id,
+    )
+    result = LearningCommitService(
+        session_factory, snapshot_store
+    ).decide(approval_task_id, attempt, trusted_principal)
+    assert result.status == "accepted"
+    assert result.knowledge_item_id is not None
+
+    with session_factory() as session:
+        learning_change = session.get(LearningChange, proposal.learning_change_id)
+        assert learning_change is not None
+        assert learning_change.status == "accepted"
+        item = session.get(KnowledgeItem, result.knowledge_item_id)
+        assert item is not None
+        assert item.version == 1
+        accepted_event = session.scalar(
+            select(Event).where(
+                Event.task_id == approval_task_id,
+                Event.type == "learning_change_accepted",
+            )
+        )
+        assert accepted_event is not None
+        assert accepted_event.payload["knowledge_quality_assessment_id"]
+        assert accepted_event.payload["knowledge_quality_assessment_hash"]
+
+
+
+def test_recorded_quality_assessment_is_completed_by_interrupted_recovery(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(2, include_contrary=False)
+    proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+
+    with session_factory() as session:
+        request_event = session.scalar(
+            select(Event).where(
+                Event.type == "knowledge_quality_assessment_task_requested",
+                Event.payload["learning_change_id"].as_string()
+                == str(proposal.learning_change_id),
+            )
+        )
+        assert request_event is not None
+        quality_task_id = request_event.task_id
+
+    class CrashAfterAssessmentRecordRuntime(TaskRuntime):
+        def finalize(self, observation):
+            if observation.result_category == "success_knowledge_quality_assessed":
+                raise RuntimeError("simulated_process_loss_after_assessment_commit")
+            return super().finalize(observation)
+
+    runner = KnowledgeQualityAssessmentTaskRunner(
+        session_factory,
+        snapshot_store,
+        _FakeKnowledgeQualityAssessmentProvider(),
+        runtime=CrashAfterAssessmentRecordRuntime(
+            session_factory, snapshot_store
+        ),
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="simulated_process_loss_after_assessment_commit",
+    ):
+        runner.run(quality_task_id)
+
+    with session_factory() as session:
+        assessment = session.scalar(
+            select(KnowledgeQualityAssessment).where(
+                KnowledgeQualityAssessment.learning_change_id
+                == proposal.learning_change_id
+            )
+        )
+        task = session.get(Task, quality_task_id)
+        assert assessment is not None
+        assert task is not None and task.status == "running"
+        assessed_at = assessment.recorded_at
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == quality_task_id
+            )
+        ) == 0
+
+    recovery = TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+        now=assessed_at + timedelta(seconds=120)
+    )
+    assert recovery.completed == (quality_task_id,)
+    assert recovery.failed == ()
+    assert recovery.retried == ()
+
+    with session_factory() as session:
+        assessment_rows = list(
+            session.scalars(
+                select(KnowledgeQualityAssessment).where(
+                    KnowledgeQualityAssessment.learning_change_id
+                    == proposal.learning_change_id
+                )
+            )
+        )
+        task = session.get(Task, quality_task_id)
+        outcomes = list(
+            session.scalars(
+                select(Outcome).where(
+                    Outcome.recorded_by_task_id == quality_task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+        )
+        terminal_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == quality_task_id,
+                    Event.type == "task_completed",
+                )
+            )
+        )
+        assert len(assessment_rows) == 1
+        assert task is not None and task.status == "done"
+        assert task.completed_at == assessed_at
+        assert len(outcomes) == 1
+        assert outcomes[0].observed_at == assessed_at
+        assert len(terminal_events) == 1
+        assert (
+            terminal_events[0].payload["knowledge_quality_assessment_id"]
+            == str(assessment_rows[0].id)
+        )
 
 def test_learning_commit_accepts_real_create_proposal_atomically(
     session_factory, snapshot_store, distillation_fixture
@@ -1099,7 +1529,7 @@ def test_learning_commit_accepts_real_create_proposal_atomically(
         )
     )
     task_id, attempt, principal = _create_admitted_approval_task(
-        session_factory, fixture.team_id, proposal.learning_change_id
+        session_factory, snapshot_store, fixture.team_id, proposal.learning_change_id
     )
 
     result = LearningCommitService(session_factory, snapshot_store).decide(
@@ -1164,6 +1594,13 @@ def test_learning_commit_accepts_real_create_proposal_atomically(
                     )
                 )
                 session.execute(
+                    delete(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
                     delete(LearningChange).where(
                         LearningChange.id.in_(committed_change_ids)
                     )
@@ -1190,6 +1627,7 @@ def test_learning_commit_rejection_is_durable_without_knowledge_item(
     )
     task_id, attempt, principal = _create_admitted_approval_task(
         session_factory,
+        snapshot_store,
         fixture.team_id,
         proposal.learning_change_id,
         decision="reject",
@@ -1243,6 +1681,13 @@ def test_learning_commit_rejection_is_durable_without_knowledge_item(
                     )
                 )
                 session.execute(
+                    delete(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
                     delete(LearningChange).where(
                         LearningChange.id.in_(committed_change_ids)
                     )
@@ -1268,7 +1713,7 @@ def test_learning_commit_rejects_stale_or_tampered_evidence_without_partial_stat
         )
     )
     task_id, attempt, principal = _create_admitted_approval_task(
-        session_factory, fixture.team_id, proposal.learning_change_id
+        session_factory, snapshot_store, fixture.team_id, proposal.learning_change_id
     )
     try:
         with session_factory.begin() as session:
@@ -1321,6 +1766,13 @@ def test_learning_commit_rejects_stale_or_tampered_evidence_without_partial_stat
                     )
                 )
                 session.execute(
+                    delete(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
                     delete(LearningChange).where(
                         LearningChange.id.in_(committed_change_ids)
                     )
@@ -1346,7 +1798,7 @@ def test_learning_commit_rejects_wrong_operator_and_stale_policy(
         )
     )
     task_id, attempt, principal = _create_admitted_approval_task(
-        session_factory, fixture.team_id, proposal.learning_change_id
+        session_factory, snapshot_store, fixture.team_id, proposal.learning_change_id
     )
     try:
         wrong_principal = _approval_principal(fixture.team_id, "other-operator")
@@ -1394,6 +1846,13 @@ def test_learning_commit_rejects_wrong_operator_and_stale_policy(
                     )
                 )
                 session.execute(
+                    delete(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
                     delete(LearningChange).where(
                         LearningChange.id.in_(committed_change_ids)
                     )
@@ -1422,7 +1881,7 @@ def test_learning_commit_event_failure_rolls_back_canonical_decision(
         )
     )
     task_id, attempt, principal = _create_admitted_approval_task(
-        session_factory, fixture.team_id, proposal.learning_change_id
+        session_factory, snapshot_store, fixture.team_id, proposal.learning_change_id
     )
     suffix = uuid4().hex
     function = f"fail_learning_decision_{suffix}"
@@ -1478,6 +1937,13 @@ def test_learning_commit_event_failure_rolls_back_canonical_decision(
                     )
                 )
                 session.execute(
+                    delete(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
                     delete(LearningChange).where(
                         LearningChange.id.in_(committed_change_ids)
                     )
@@ -1498,6 +1964,11 @@ def _cleanup_operator_decision_task(
             )
         )
         if change_ids:
+            session.execute(
+                delete(KnowledgeQualityAssessment).where(
+                    KnowledgeQualityAssessment.learning_change_id.in_(change_ids)
+                )
+            )
             session.execute(
                 delete(KnowledgeItem).where(
                     KnowledgeItem.origin_learning_change_id.in_(change_ids)
@@ -1530,6 +2001,10 @@ def test_operator_adapter_decides_and_finalizes_the_same_task(
             learning_change_id=proposal.learning_change_id,
         )
     )
+    if decision == "accept":
+        _run_quality_assessment(
+            session_factory, snapshot_store, proposal.learning_change_id
+        )
     principal = _approval_principal(fixture.team_id)
     request = LearningChangeDecisionRequest(
         learning_change_id=proposal.learning_change_id,
@@ -1618,6 +2093,9 @@ def test_competing_approval_tasks_terminalize_the_losing_request(
             observed_at=datetime.now(timezone.utc),
             learning_change_id=proposal.learning_change_id,
         )
+    )
+    _run_quality_assessment(
+        session_factory, snapshot_store, proposal.learning_change_id
     )
 
     principal = _approval_principal(fixture.team_id)
@@ -1756,6 +2234,9 @@ def test_operator_recovery_finalizes_a_committed_decision_after_crash(
             observed_at=datetime.now(timezone.utc),
             learning_change_id=proposal.learning_change_id,
         )
+    )
+    _run_quality_assessment(
+        session_factory, snapshot_store, proposal.learning_change_id
     )
     principal = _approval_principal(fixture.team_id)
     request = LearningChangeDecisionRequest(
@@ -1948,6 +2429,9 @@ def test_operator_terminal_result_is_fenced_and_must_match_decision(
             learning_change_id=proposal.learning_change_id,
         )
     )
+    _run_quality_assessment(
+        session_factory, snapshot_store, proposal.learning_change_id
+    )
     principal = _approval_principal(fixture.team_id)
     request = LearningChangeDecisionRequest(
         learning_change_id=proposal.learning_change_id,
@@ -2040,7 +2524,7 @@ def test_learning_commit_replay_rejects_tampered_canonical_records(
         )
     )
     task_id, attempt, principal = _create_admitted_approval_task(
-        session_factory, fixture.team_id, proposal.learning_change_id
+        session_factory, snapshot_store, fixture.team_id, proposal.learning_change_id
     )
     try:
         result = LearningCommitService(session_factory, snapshot_store).decide(
@@ -2086,6 +2570,13 @@ def test_learning_commit_replay_rejects_tampered_canonical_records(
                 session.execute(
                     delete(KnowledgeItem).where(
                         KnowledgeItem.origin_learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
+                    delete(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.learning_change_id.in_(
                             committed_change_ids
                         )
                     )

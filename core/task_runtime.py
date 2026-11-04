@@ -16,6 +16,7 @@ from core.models import (
     Event,
     EvidenceLink,
     KnowledgeItem,
+    KnowledgeQualityAssessment,
     LearningChange,
     Outcome,
     Plan,
@@ -33,8 +34,10 @@ from core.state_assessment import _canonical_json, _timestamp
 _TERMINAL_EVENTS = ("task_completed", "task_failed")
 _RETRY_EVENTS = ("task_attempt_failed", "task_retry_scheduled")
 _TERMINAL_STATUSES = frozenset({"done", "failed"})
-_EVALUATION_SUCCESS_CATEGORIES = frozenset({"success_evaluation_recorded",
-    "success_evaluation_rejected"})
+_EVALUATION_SUCCESS_CATEGORIES = frozenset({
+    "success_evaluation_recorded",
+    "success_evaluation_rejected",
+})
 _STRATEGY_SUCCESS_CATEGORIES = frozenset(
     {"success_strategy_accepted", "success_strategy_rejected"}
 )
@@ -52,6 +55,19 @@ _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES = frozenset(
     }
 )
 _KNOWLEDGE_REVIEW_SUCCESS_CATEGORIES = frozenset({"success_knowledge_reviewed"})
+_KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES = frozenset(
+    {"success_knowledge_quality_assessed"}
+)
+_KNOWLEDGE_QUALITY_TASK_TYPE = "assess_knowledge_quality"
+_KNOWLEDGE_QUALITY_REQUEST_EVENT_TYPE = "knowledge_quality_assessment_task_requested"
+_KNOWLEDGE_QUALITY_RECORDED_EVENT_TYPE = "knowledge_quality_assessment_recorded"
+_KNOWLEDGE_QUALITY_ALLOWED_WRITES = ["KnowledgeQualityAssessment"]
+_KNOWLEDGE_QUALITY_MAX_ATTEMPTS = 3
+_KNOWLEDGE_QUALITY_BUDGET = {
+    "max_tool_calls": 0,
+    "max_cost_usd": 0.0,
+    "deadline_seconds": 30,
+}
 _OPERATOR_DECISION_EVENT_TYPES = (
     "learning_change_accepted",
     "learning_change_rejected",
@@ -62,6 +78,7 @@ _SUCCESS_CATEGORIES = (
     | _LEARNING_CHANGE_SUCCESS_CATEGORIES
     | _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES
     | _KNOWLEDGE_REVIEW_SUCCESS_CATEGORIES
+    | _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES
     | _CONTROL_TASK_SUCCESS_CATEGORIES
 )
 _RESULT_CATEGORIES = _SUCCESS_CATEGORIES | {"terminal_failure"}
@@ -129,7 +146,9 @@ class TerminalObservation:
         "success_signal_created", "success_no_change", "success_evaluation_recorded",
         "success_evaluation_rejected", "success_learning_change_proposed",
         "success_learning_change_accepted", "success_learning_change_rejected",
-        "success_knowledge_reviewed", "success_strategy_accepted",
+        "success_knowledge_reviewed",
+        "success_knowledge_quality_assessed",
+        "success_strategy_accepted",
         "success_strategy_rejected", "success_plan_created", "terminal_failure"
     ]
     observed_at: datetime
@@ -140,6 +159,7 @@ class TerminalObservation:
     strategy_event_id: UUID | None = None
     plan_id: UUID | None = None
     plan_event_id: UUID | None = None
+    knowledge_quality_assessment_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -319,6 +339,71 @@ class TaskRuntime:
                     self._validate_evaluation_task_request(session, task)
                 except TaskNotFinalizable as error:
                     raise TaskNotEligible(str(error)) from error
+            elif self._is_knowledge_quality_task(session, task):
+                try:
+                    quality_request = self._validate_knowledge_quality_task_request(
+                        session, task, require_proposed=False
+                    )
+                except TaskNotFinalizable as error:
+                    raise TaskNotEligible(str(error)) from error
+                learning_change = session.scalar(
+                    select(LearningChange)
+                    .where(
+                        LearningChange.id == UUID(
+                            quality_request["learning_change_id"]
+                        ),
+                        LearningChange.team_id == task.team_id,
+                    )
+                    .with_for_update(read=True)
+                )
+                if learning_change is None:
+                    raise TaskNotEligible(
+                        "knowledge_quality_learning_change_missing"
+                    )
+                if learning_change.status == "proposed":
+                    if self._snapshot_store is None:
+                        raise TaskNotEligible(
+                            "knowledge_quality_snapshot_store_required"
+                        )
+                    from core.experience_distiller import (
+                        ExperienceDistiller,
+                        ExperienceDistillerError,
+                    )
+                    from core.knowledge_quality import (
+                        KnowledgeQualityAssessmentError,
+                        build_case_lineage_report,
+                        sha256_json,
+                    )
+
+                    try:
+                        _, canonical_pack = ExperienceDistiller(
+                            self._session_factory,
+                            self._snapshot_store,
+                            provider=None,
+                        ).validate_learning_change(session, learning_change)
+                        canonical_lineage = build_case_lineage_report(
+                            session,
+                            task.team_id,
+                            canonical_pack.evidence_basis,
+                        )
+                    except (
+                        ExperienceDistillerError,
+                        KnowledgeQualityAssessmentError,
+                    ) as error:
+                        raise TaskNotEligible(str(error)) from error
+                    if (
+                        canonical_pack.basis_hash
+                        != quality_request["evidence_basis_hash"]
+                        or sha256_json(canonical_lineage)
+                        != quality_request["lineage_report_hash"]
+                    ):
+                        raise TaskNotEligible(
+                            "knowledge_quality_canonical_evidence_stale"
+                        )
+                elif learning_change.status != "rejected":
+                    raise TaskNotEligible(
+                        "knowledge_quality_learning_change_already_decided"
+                    )
 
             self._require_prerequisites(session, task)
 
@@ -479,7 +564,7 @@ class TaskRuntime:
             raise TaskNotEligible("operator_task_request_event_invalid")
 
         payload = request_events[0].payload
-        expected_keys = {
+        legacy_keys = {
             "schema_version",
             "operation",
             "learning_change_id",
@@ -490,14 +575,25 @@ class TaskRuntime:
             "request_fingerprint",
             "policy_version",
         }
-        if set(payload) != expected_keys:
-            raise TaskNotEligible("operator_task_request_payload_invalid")
-
+        assessment_keys = {
+            "knowledge_quality_assessment_id",
+            "knowledge_quality_assessment_hash",
+        }
         schema_version = payload.get("schema_version")
+        is_legacy_rejection = (
+            schema_version == 1
+            and set(payload) == legacy_keys
+            and payload.get("decision") == "reject"
+        )
+        is_assessment_request = (
+            schema_version == 2
+            and set(payload) == legacy_keys | assessment_keys
+        )
+        if not (is_legacy_rejection or is_assessment_request):
+            raise TaskNotEligible("operator_task_request_payload_invalid")
         policy_version = payload.get("policy_version")
         if (
             isinstance(schema_version, bool)
-            or schema_version != 1
             or not isinstance(schema_version, int)
             or payload.get("operation") != _OPERATOR_TASK_TYPE
             or isinstance(policy_version, bool)
@@ -565,6 +661,48 @@ class TaskRuntime:
             ):
                 raise TaskNotEligible("operator_task_request_payload_invalid")
 
+        quality_assessment_id_value = payload.get(
+            "knowledge_quality_assessment_id"
+        )
+        quality_assessment_hash = payload.get(
+            "knowledge_quality_assessment_hash"
+        )
+        if is_assessment_request:
+            if decision == "accept":
+                if (
+                    not isinstance(quality_assessment_id_value, str)
+                    or len(quality_assessment_id_value) != 36
+                    or not isinstance(quality_assessment_hash, str)
+                    or len(quality_assessment_hash) != 71
+                    or not quality_assessment_hash.startswith("sha256:")
+                    or any(
+                        character not in "0123456789abcdef"
+                        for character in quality_assessment_hash[7:]
+                    )
+                ):
+                    raise TaskNotEligible(
+                        "operator_quality_assessment_reference_invalid"
+                    )
+                try:
+                    quality_assessment_id = UUID(quality_assessment_id_value)
+                except ValueError as error:
+                    raise TaskNotEligible(
+                        "operator_quality_assessment_reference_invalid"
+                    ) from error
+                if str(quality_assessment_id) != quality_assessment_id_value:
+                    raise TaskNotEligible(
+                        "operator_quality_assessment_reference_invalid"
+                    )
+            elif (
+                quality_assessment_id_value is not None
+                or quality_assessment_hash is not None
+            ):
+                raise TaskNotEligible(
+                    "operator_quality_assessment_reference_invalid"
+                )
+        elif decision == "accept":
+            raise TaskNotEligible("operator_quality_assessment_required")
+
         fingerprint_payload = {
             "operation": _OPERATOR_TASK_TYPE,
             "team_id": str(task.team_id),
@@ -573,6 +711,13 @@ class TaskRuntime:
             "rejection_reason": rejection_reason,
             "operator_id": operator_id,
         }
+        if is_assessment_request:
+            fingerprint_payload["knowledge_quality_assessment_id"] = (
+                quality_assessment_id_value
+            )
+            fingerprint_payload["knowledge_quality_assessment_hash"] = (
+                quality_assessment_hash
+            )
         expected_fingerprint = "sha256:" + hashlib.sha256(
             json.dumps(
                 fingerprint_payload,
@@ -609,6 +754,23 @@ class TaskRuntime:
             or learning_change.target_id is not None
         ):
             raise TaskNotEligible("operator_task_request_target_invalid")
+        if decision == "accept":
+            from core.knowledge_quality import (
+                KnowledgeQualityAssessmentError,
+                require_recorded_assessment,
+            )
+
+            try:
+                assessment = require_recorded_assessment(
+                    session, learning_change, require_task_done=True
+                )
+            except KnowledgeQualityAssessmentError as error:
+                raise TaskNotEligible(str(error)) from error
+            if (
+                str(assessment.id) != quality_assessment_id_value
+                or assessment.assessment_payload_hash != quality_assessment_hash
+            ):
+                raise TaskNotEligible("operator_quality_assessment_binding_invalid")
 
     def finalize(self, observation: TerminalObservation) -> FinalizationResult:
         """Commit one terminal `task_execution` Outcome for a running Task.
@@ -632,7 +794,16 @@ class TaskRuntime:
 
             if self._is_r6g_evaluation_task(session, task):
                 self._validate_evaluation_task_request(session, task)
-
+            if self._is_knowledge_quality_task(session, task):
+                self._validate_knowledge_quality_task_request(
+                    session,
+                    task,
+                    require_proposed=(
+                        task.status == "running"
+                        and observation.result_category
+                        in _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES
+                    ),
+                )
             if (
                 observation.result_category == "success_knowledge_reviewed"
                 and task.task_type != "review_knowledge"
@@ -640,6 +811,16 @@ class TaskRuntime:
                 raise TaskNotFinalizable("knowledge_review_result_wrong_task_type")
 
             review_event: Event | None = None
+
+            if observation.result_category in _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES:
+                self._validate_knowledge_quality_result(
+                    session,
+                    task,
+                    observation,
+                    allow_completed=task.status == "done",
+                )
+            elif observation.knowledge_quality_assessment_id is not None:
+                raise TaskNotFinalizable("knowledge_quality_assessment_id_not_allowed")
 
             if (
                 observation.result_category
@@ -708,6 +889,15 @@ class TaskRuntime:
             ):
                 raise TaskNotFinalizable(
                     "learning_change_task_requires_learning_change_result"
+                )
+            if (
+                task.task_type == _KNOWLEDGE_QUALITY_TASK_TYPE
+                and observation.result_category in _SUCCESS_CATEGORIES
+                and observation.result_category
+                not in _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES
+            ):
+                raise TaskNotFinalizable(
+                    "knowledge_quality_task_requires_assessment_result"
                 )
             if (
                 task.task_type == "review_knowledge"
@@ -808,6 +998,15 @@ class TaskRuntime:
                             if observation.plan_event_id is not None
                             else {}
                         ),
+                        **(
+                            {
+                                "knowledge_quality_assessment_id": str(
+                                    observation.knowledge_quality_assessment_id
+                                )
+                            }
+                            if observation.knowledge_quality_assessment_id is not None
+                            else {}
+                        ),
                     },
                 )
                 for event_type in event_types
@@ -825,6 +1024,21 @@ class TaskRuntime:
             if task.task_type == "ingest_source" and task.plan_id is not None:
                 self._create_evaluation_task_request(
                     session, task, outcome, observation.result_category
+                )
+                session.flush()
+            if (
+                task.task_type == "propose_learning_change"
+                and observation.result_category == "success_learning_change_proposed"
+            ):
+                learning_change = session.get(
+                    LearningChange, observation.learning_change_id
+                )
+                if learning_change is None:
+                    raise TaskNotFinalizable(
+                        "learning_change_not_found_for_quality_task"
+                    )
+                self._create_knowledge_quality_task_request(
+                    session, task, learning_change
                 )
                 session.flush()
 
@@ -1154,6 +1368,12 @@ class TaskRuntime:
                 recovered_observation = (
                     self._committed_operator_decision_observation(session, task)
                 )
+            elif self._is_knowledge_quality_task(session, task):
+                recovered_observation = (
+                    self._committed_knowledge_quality_assessment_observation(
+                        session, task
+                    )
+                )
             elif self._is_r6g_evaluation_task(session, task):
                 recovered_observation = self._committed_evaluation_observation(
                     session, task
@@ -1225,6 +1445,91 @@ class TaskRuntime:
                 return "skipped"
             raise
         return "failed"
+
+    @staticmethod
+    def _committed_knowledge_quality_assessment_observation(
+        session: Session, task: Task
+    ) -> TerminalObservation | None:
+        from core.knowledge_quality import (
+            KnowledgeQualityAssessmentError,
+            require_recorded_assessment,
+        )
+
+        if not TaskRuntime._is_knowledge_quality_task(session, task):
+            return None
+        request = TaskRuntime._validate_knowledge_quality_task_request(
+            session, task, require_proposed=False
+        )
+        assessment = session.scalar(
+            select(KnowledgeQualityAssessment).where(
+                KnowledgeQualityAssessment.creating_task_id == task.id,
+                KnowledgeQualityAssessment.team_id == task.team_id,
+            )
+        )
+        if assessment is None:
+            learning_change_id = UUID(request["learning_change_id"])
+            learning_change = session.get(LearningChange, learning_change_id)
+            if learning_change is None:
+                raise TaskNotFinalizable("knowledge_quality_learning_change_missing")
+            if learning_change.status == "rejected" and task.status == "running":
+                started_at = TaskRuntime._current_attempt_start(session, task)
+                if started_at is None:
+                    raise TaskNotFinalizable("knowledge_quality_task_start_missing")
+                return TerminalObservation(
+                    task_id=task.id,
+                    attempt=task.attempt_count,
+                    result_category="terminal_failure",
+                    observed_at=started_at,
+                    failure_reason="learning_change_rejected_before_quality_assessment",
+                )
+            if learning_change.status != "proposed":
+                raise TaskNotFinalizable(
+                    "knowledge_quality_assessment_missing_for_decided_change"
+                )
+            return None
+        learning_change = session.get(LearningChange, assessment.learning_change_id)
+        if learning_change is None:
+            raise TaskNotFinalizable("knowledge_quality_learning_change_missing")
+        try:
+            require_recorded_assessment(
+                session,
+                learning_change,
+                require_task_done=task.status == "done",
+            )
+        except KnowledgeQualityAssessmentError as error:
+            raise TaskNotFinalizable(str(error)) from error
+        if (
+            request.get("learning_change_id") != str(learning_change.id)
+            or assessment.creating_task_id != task.id
+        ):
+            raise TaskNotFinalizable("knowledge_quality_assessment_request_mismatch")
+        if task.status == "done":
+            outcomes = list(
+                session.scalars(
+                    select(Outcome).where(
+                        Outcome.recorded_by_task_id == task.id,
+                        Outcome.outcome_type == "task_execution",
+                    )
+                )
+            )
+            if len(outcomes) != 1 or outcomes[0].observed_at is None:
+                raise TaskNotFinalizable("knowledge_quality_task_outcome_missing")
+            observed_at = outcomes[0].observed_at
+        elif task.status == "running":
+            observed_at = assessment.recorded_at
+            if observed_at.tzinfo is None:
+                raise TaskNotFinalizable(
+                    "knowledge_quality_assessment_timestamp_invalid"
+                )
+        else:
+            return None
+        return TerminalObservation(
+            task_id=task.id,
+            attempt=task.attempt_count,
+            result_category="success_knowledge_quality_assessed",
+            observed_at=observed_at,
+            knowledge_quality_assessment_id=assessment.id,
+        )
 
     @staticmethod
     def _committed_operator_decision_observation(
@@ -1389,6 +1694,110 @@ class TaskRuntime:
             and task.max_attempts == _EVALUATION_MAX_ATTEMPTS
         )
         return exact_shape or bool(request_events)
+
+    @staticmethod
+    def _is_knowledge_quality_task(session: Session, task: Task) -> bool:
+        if task.task_type == _KNOWLEDGE_QUALITY_TASK_TYPE:
+            return True
+        return session.scalar(
+            select(Event.id).where(
+                Event.task_id == task.id,
+                Event.type == _KNOWLEDGE_QUALITY_REQUEST_EVENT_TYPE,
+            )
+        ) is not None
+
+    @staticmethod
+    def _validate_knowledge_quality_task_request(
+        session: Session,
+        task: Task,
+        *,
+        require_proposed: bool = True,
+    ) -> dict[str, Any]:
+        from core.knowledge_quality import (
+            KnowledgeQualityAssessmentError,
+            validate_quality_task_request,
+        )
+
+        try:
+            return validate_quality_task_request(
+                session, task, require_proposed=require_proposed
+            )
+        except KnowledgeQualityAssessmentError as error:
+            raise TaskNotFinalizable(error.reason) from error
+
+    def _create_knowledge_quality_task_request(
+        self, session: Session,
+        source_task: Task,
+        learning_change: LearningChange,
+    ) -> Task:
+        from core.experience_distiller import (
+            ExperienceDistiller,
+            ExperienceDistillerError,
+        )
+        from core.knowledge_quality import (
+            ALLOWED_WRITES,
+            REQUEST_EVENT_TYPE,
+            TASK_BUDGET,
+            TASK_MAX_ATTEMPTS,
+            TASK_TYPE,
+            build_quality_task_request,
+            validate_quality_task_request,
+        )
+
+        if self._snapshot_store is None:
+            raise TaskNotFinalizable("knowledge_quality_snapshot_store_required")
+        try:
+            _, canonical_pack = ExperienceDistiller(
+                self._session_factory, self._snapshot_store, provider=None
+            ).validate_learning_change(session, learning_change)
+        except ExperienceDistillerError as error:
+            raise TaskNotFinalizable(error.reason) from error
+        if canonical_pack.basis_hash != learning_change.evidence_basis_hash:
+            raise TaskNotFinalizable("knowledge_quality_evidence_basis_stale")
+
+        task_id, payload = build_quality_task_request(
+            session, source_task, learning_change, require_proposed=True
+        )
+        existing = session.get(Task, task_id)
+        if existing is not None:
+            try:
+                validate_quality_task_request(
+                    session, existing, require_proposed=True
+                )
+            except Exception as error:
+                raise TaskNotFinalizable(
+                    "knowledge_quality_task_existing_request_corrupt"
+                ) from error
+            return existing
+
+        task = Task(
+            id=task_id,
+            team_id=source_task.team_id,
+            task_type=TASK_TYPE,
+            status="pending",
+            attempt_count=0,
+            policy_version=source_task.policy_version,
+            objective_id=None,
+            plan_id=None,
+            plan_action_id=None,
+            allowed_writes=list(ALLOWED_WRITES),
+            budget=dict(TASK_BUDGET),
+            completed_at=None,
+            max_attempts=TASK_MAX_ATTEMPTS,
+        )
+        session.add(task)
+        session.flush()
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=task.id,
+                type=REQUEST_EVENT_TYPE,
+                payload=payload,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        session.flush()
+        return task
 
     @staticmethod
     def _source_action_for_evaluation(
@@ -2221,6 +2630,57 @@ class TaskRuntime:
             raise TaskNotFinalizable("evaluation_not_recorded")
 
     @staticmethod
+    def _validate_knowledge_quality_result(
+        session: Session,
+        task: Task,
+        observation: TerminalObservation,
+        *,
+        allow_completed: bool = False,
+    ) -> None:
+        from core.knowledge_quality import (
+            KnowledgeQualityAssessmentError,
+            require_recorded_assessment,
+        )
+
+        if (
+            task.task_type != _KNOWLEDGE_QUALITY_TASK_TYPE
+            or task.team_id is None
+            or task.allowed_writes != _KNOWLEDGE_QUALITY_ALLOWED_WRITES
+            or task.objective_id is not None
+            or task.plan_id is not None
+            or task.plan_action_id is not None
+            or task.max_attempts != _KNOWLEDGE_QUALITY_MAX_ATTEMPTS
+            or task.budget != _KNOWLEDGE_QUALITY_BUDGET
+            or task.status != ("done" if allow_completed else "running")
+            or task.attempt_count != observation.attempt
+            or observation.knowledge_quality_assessment_id is None
+        ):
+            raise TaskNotFinalizable("knowledge_quality_result_task_shape_invalid")
+        assessment = session.scalar(
+            select(KnowledgeQualityAssessment).where(
+                KnowledgeQualityAssessment.id
+                == observation.knowledge_quality_assessment_id,
+                KnowledgeQualityAssessment.team_id == task.team_id,
+                KnowledgeQualityAssessment.creating_task_id == task.id,
+            )
+        )
+        if assessment is None:
+            raise TaskNotFinalizable("knowledge_quality_assessment_not_recorded")
+        learning_change = session.get(LearningChange, assessment.learning_change_id)
+        if learning_change is None or learning_change.team_id != task.team_id:
+            raise TaskNotFinalizable("knowledge_quality_learning_change_missing")
+        try:
+            require_recorded_assessment(
+                session,
+                learning_change,
+                require_task_done=allow_completed,
+            )
+        except KnowledgeQualityAssessmentError as error:
+            raise TaskNotFinalizable(str(error)) from error
+        if allow_completed and task.completed_at != observation.observed_at:
+            raise TaskNotFinalizable("knowledge_quality_terminal_timestamp_mismatch")
+
+    @staticmethod
     def _validate_learning_change_decision_result(
         session: Session,
         task: Task,
@@ -2277,6 +2737,38 @@ class TaskRuntime:
         )
         if requested_decision != expected_decision:
             raise TaskNotFinalizable("learning_change_decision_result_mismatch")
+        quality_assessment_id_value = request_payload.get(
+            "knowledge_quality_assessment_id"
+        )
+        quality_assessment_hash = request_payload.get(
+            "knowledge_quality_assessment_hash"
+        )
+        if expected_decision == "accept":
+            from core.knowledge_quality import (
+                KnowledgeQualityAssessmentError,
+                require_recorded_assessment,
+            )
+
+            if (
+                not isinstance(quality_assessment_id_value, str)
+                or not isinstance(quality_assessment_hash, str)
+            ):
+                raise TaskNotFinalizable("operator_quality_assessment_required")
+            try:
+                quality_assessment_id = UUID(quality_assessment_id_value)
+            except ValueError as error:
+                raise TaskNotFinalizable(
+                    "operator_quality_assessment_reference_invalid"
+                ) from error
+            if str(quality_assessment_id) != quality_assessment_id_value:
+                raise TaskNotFinalizable(
+                    "operator_quality_assessment_reference_invalid"
+                )
+        elif (
+            quality_assessment_id_value is not None
+            or quality_assessment_hash is not None
+        ):
+            raise TaskNotFinalizable("operator_quality_assessment_reference_invalid")
         learning_change_id_value = request_payload.get("learning_change_id")
         try:
             learning_change_id = UUID(learning_change_id_value)
@@ -2299,6 +2791,25 @@ class TaskRuntime:
             .with_for_update()
         )
         expected_status = "accepted" if expected_decision == "accept" else "rejected"
+        if learning_change is None or learning_change.team_id != task.team_id:
+            raise TaskNotFinalizable("learning_change_not_found_for_task_team")
+        if expected_decision == "accept":
+            from core.knowledge_quality import (
+                KnowledgeQualityAssessmentError,
+                require_recorded_assessment,
+            )
+
+            try:
+                quality_assessment = require_recorded_assessment(
+                    session, learning_change, require_task_done=True
+                )
+            except KnowledgeQualityAssessmentError as error:
+                raise TaskNotFinalizable(str(error)) from error
+            if (
+                str(quality_assessment.id) != quality_assessment_id_value
+                or quality_assessment.assessment_payload_hash != quality_assessment_hash
+            ):
+                raise TaskNotFinalizable("operator_quality_assessment_binding_invalid")
         if (
             learning_change is None
             or learning_change.status != expected_status
@@ -2396,6 +2907,12 @@ class TaskRuntime:
         }
 
         if expected_decision == "accept":
+            expected_payload["knowledge_quality_assessment_id"] = (
+                quality_assessment_id_value
+            )
+            expected_payload["knowledge_quality_assessment_hash"] = (
+                quality_assessment_hash
+            )
             items = list(
                 session.scalars(
                     select(KnowledgeItem).where(
@@ -2629,11 +3146,24 @@ class TaskRuntime:
                     or observation.strategy_event_id is not None
                 ):
                     raise TaskNotFinalizable("terminal_evidence_not_allowed")
+            elif observation.result_category in _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES:
+                if observation.knowledge_quality_assessment_id is None:
+                    raise TaskNotFinalizable("knowledge_quality_assessment_id_required")
+                if (
+                    observation.signals
+                    or observation.evaluation_id is not None
+                    or observation.learning_change_id is not None
+                    or observation.strategy_event_id is not None
+                    or observation.plan_id is not None
+                    or observation.plan_event_id is not None
+                ):
+                    raise TaskNotFinalizable("terminal_evidence_not_allowed")
             elif (observation.signals or observation.evaluation_id is not None
                 or observation.learning_change_id is not None
                 or observation.strategy_event_id is not None
                 or observation.plan_id is not None
-                or observation.plan_event_id is not None):
+                or observation.plan_event_id is not None
+                or observation.knowledge_quality_assessment_id is not None):
                 raise TaskNotFinalizable("terminal_evidence_not_allowed")
             return
 
@@ -2643,6 +3173,7 @@ class TaskRuntime:
             or observation.strategy_event_id is not None
             or observation.plan_id is not None
             or observation.plan_event_id is not None
+            or observation.knowledge_quality_assessment_id is not None
         ):
             raise TaskNotFinalizable("terminal_evidence_not_allowed")
         if not observation.failure_reason or not observation.failure_reason.strip():
@@ -2676,6 +3207,10 @@ class TaskRuntime:
             payload["plan_id"] = str(observation.plan_id)
         if observation.plan_event_id is not None:
             payload["plan_event_id"] = str(observation.plan_event_id)
+        if observation.knowledge_quality_assessment_id is not None:
+            payload["knowledge_quality_assessment_id"] = str(
+                observation.knowledge_quality_assessment_id
+            )
         return payload
 
     def _store_snapshot(self, content: bytes) -> tuple[str, str]:

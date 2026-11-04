@@ -27,6 +27,7 @@ from core.models import (
     EvidenceLink,
     KnowledgeChunk,
     KnowledgeItem,
+    KnowledgeQualityAssessment,
     LearningChange,
     Objective,
     Outcome,
@@ -52,7 +53,10 @@ from core.source_fetch import SourceFetchError
 from core.strategy import StrategyService
 from core.strategy_proposer import StrategyProposer
 from core.task_runtime import TaskRuntime, TerminalObservation
-from tests.test_experience_distiller import _FakeDistillationProvider
+from tests.test_experience_distiller import (
+    _FakeDistillationProvider,
+    _run_quality_assessment,
+)
 from tests.test_r6b_dispatcher import FakeFetcher
 from tests.test_strategy_proposer import _FakeGenerationProvider
 from tests.test_team_experience import FakeEmbeddingProvider
@@ -528,6 +532,9 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
             )
         )
         assert proposal_terminal.status == "done"
+        _run_quality_assessment(
+            session_factory, snapshot_store, accepted_change_id
+        )
 
         single_case_task_id = _new_distillation_task(
             session_factory, team_id, 1
@@ -688,6 +695,11 @@ def test_r6g_integrated_strategy_ingestion_evaluation_and_team_experience(
             )
             session.execute(
                 delete(KnowledgeItem).where(KnowledgeItem.team_id == team_id)
+            )
+            session.execute(
+                delete(KnowledgeQualityAssessment).where(
+                    KnowledgeQualityAssessment.team_id == team_id
+                )
             )
             session.execute(
                 delete(LearningChange).where(LearningChange.team_id == team_id)

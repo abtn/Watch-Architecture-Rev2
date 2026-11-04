@@ -31,15 +31,17 @@ R7 starts from the current main tree after the R6-G closeout merge:
 
 The base commit is a repository baseline reference, not proof of the Operator's local branch, HEAD, worktree, or database. The R7-A preflight must be performed against the actual local checkout.
 
-## 3. Scope and proposed delivery sequence
+## 3. Scope and authorized delivery sequence
 
-R7 is proposed as three bounded implementation phases after R7-0 is accepted.
+R7-0 documentation is complete and merged. ADR-0032 is Accepted, and the Operator separately authorized R7-A on 2026-11-04. R7-A is now under implementation; R7-B and R7-C remain proposed and unauthorized.
 
-### R7-A — Evidence relationships and knowledge-quality evaluation
+### R7-A — Evidence relationships and knowledge-quality assessment
 
-**Purpose:** determine whether a proposed/current abstraction is justified by canonical evidence and whether its claimed generality is defensible.
+**Status:** AUTHORIZED / IMPLEMENTATION IN PROGRESS. The frozen source contract is [r7-a-implementation-plan.md](r7-a-implementation-plan.md).
 
-Proposed scope:
+**Purpose:** determine whether a proposed abstraction is traceable to canonical evidence and whether its claimed generality is defensible.
+
+Authorized scope:
 
 1. Define canonical case identity/lineage and deterministic relationship classification using source Signal IDs, Snapshot references/hashes, normalized source content, PlanAction identity, repeated underlying events, and common upstream evidence.
 2. Preserve the two-distinct-source-Task minimum from ADR-0029. Related and unknown cases with distinct Task IDs still count toward the minimum, but must be labelled, included, and reflected in the quality assessment; they may not be represented as independent.
@@ -62,6 +64,8 @@ Exit requirements:
 - R7-A adds no KnowledgeItem lifecycle write path; canonical lifecycle widening belongs to R7-B after this contract is accepted.
 
 ### R7-B — Canonical KnowledgeItem lifecycle
+
+**Status:** proposed; not authorized.
 
 **Purpose:** implement controlled transitions through LearningChange after R7-A establishes the evidence and assessment contract.
 
@@ -90,6 +94,8 @@ Exit requirements:
 - Scheduled review remains active → needs_review only; it never reactivates, revises, supersedes, or retires an item.
 
 ### R7-C — Retrieval quality and downstream-use evaluation
+
+**Status:** proposed; not authorized.
 
 **Purpose:** verify that eligible knowledge is retrieved appropriately, remains correctly scoped, and can be evaluated against later work without inventing causal claims.
 
@@ -135,7 +141,7 @@ The normative architecture is [ADR-0032](../decisions/ADR-0032-knowledge-quality
 | Retrieval benchmark | Record label provenance/rationale and synthetic-vs-real status; freeze held-out split, small-n reporting, and hard-zero safety checks. |
 | Provider and cost | No provider selected. Any production provider/model, data handling, rate card, maximum reservation and failure semantics require a separate decision; no R6-E inheritance. |
 
-**Proposed Task matrix:** docs/tasks.md must include a clearly marked non-active R7 matrix for assessment Tasks and the existing Operator lifecycle approval Task. It is design documentation only; it grants no current write scope.
+**Task matrix status:** docs/tasks.md retains the non-active R7 matrix while the implementation PR is under review. The R7-A `assess_knowledge_quality` row becomes an active Task contract only when the exact implementation and tests are merged. This PR does not activate R7-B or R7-C rows.
 
 **Invariant status:** the Operator accepted ADR-0032 on 2026-11-04 and the corresponding INV-12 amendment is now active in docs/invariants.md. R7-A implementation must enforce the quality-assessment portion of this invariant for the existing create approval path. R7-B lifecycle operations remain unauthorized.
 
@@ -160,14 +166,14 @@ R6-E's Cloudflare Workers AI selection is authorized for R6-E only. No productio
 
 If a production provider is needed, its separate decision must cover: model/provider identity and revision; data sent and retention/training handling; exact request bounds; pinned rate card; maximum pre-call reservation; usage reconciliation; unknown/overrun behavior; retry/recovery; secrets isolation; and an operator-approved smoke-test boundary. Until then, use deterministic fakes and synthetic cost cards only.
 
-## 7. R7-0 closeout and R7-A implementation entry checklist
+## 7. R7-0 closeout and R7-A implementation status
 
-R7-0 documentation acceptance:
+R7-0 documentation closeout:
 
 - [x] R6 predecessor is formally closed and current main baseline recorded.
 - [x] R7 scope, proposed phases, constraints, and non-goals are documented.
 - [x] Proposed ADR-0032 and this entry gate identify the decisions and code-level constraints before R7-A.
-- [x] A proposed, non-active R7 Task/write-scope matrix is recorded in docs/tasks.md; no current Task grant is changed.
+- [x] The R7 Task/write-scope matrix is recorded as non-active until the corresponding Task implementation and tests merge.
 - [x] Accepted INV-12 amendment is recorded in ADR-0032 and applied to docs/invariants.md.
 - [x] PLAN.md, README.md, CONTEXT.md, CHANGE_MAP.md, and docs/decisions.md point to the same authority chain.
 - [x] Operator explicitly accepted revised ADR-0032 on 2026-11-04.
@@ -181,12 +187,14 @@ R7-A implementation gate:
 - [ ] Local preflight on the actual checkout: current branch, HEAD, clean/known worktree, sync with intended base, merge status, and exact migration heads.
 - [ ] Confirm DATABASE_URL and TEST_DATABASE_URL are pointed only at an identified disposable PostgreSQL database before database-backed checks.
 - [ ] Complete current-source review and local preflight against the actual checkout, including migration chain, Task matrix, invariants, and tests.
-- [ ] Freeze deterministic fixtures, rubric revision, case-lineage rules, failure-injection/recovery tests, and acceptance evidence.
+- [x] Freeze deterministic fixtures, rubric revision, case-lineage rules, failure-injection/recovery contracts, and acceptance evidence in the implementation plan.
+- [ ] Exact-head hosted CI passes on the implementation PR.
+- [ ] Operator-local disposable-PostgreSQL verification passes on the exact merged implementation tree.
 - [ ] Any live provider decision is accepted before a real provider call; otherwise use deterministic fakes.
 
 ## 8. R7-0 documentation change record
 
-Expected R7-0 changes are documentation only:
+R7-0 was delivered as a separate documentation-only PR. It changed no source, test, or migration files; that PR is merged. R7-A source changes are delivered separately.
 
 - docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md
 - docs/development/r7-entry-gate.md
@@ -200,13 +208,6 @@ No source code, tests, migrations, schema, runtime configuration, provider confi
 
 ## 9. R7-0 closeout record
 
-R7-0 is ready to close only when:
+**R7-0: COMPLETE — 2026-11-04.** The Operator accepted ADR-0032 and separately authorized R7-A. The documentation-only PR #38 passed exact-head hosted CI and merged to `main` at `c09578302927471d20e2236bb6fbfb018fab76c4`. This closeout does not authorize R7-B or R7-C.
 
-1. The documentation-only PR passes required hosted checks and its exact file scope is reviewed.
-2. The Operator explicitly accepts or requests changes to ADR-0032 and the R7 entry gate.
-3. The unresolved architecture decisions required for R7-A are resolved in the applicable authority documents.
-4. A separate explicit Operator authorization names R7-A as the next implementation phase.
-
-Closing R7-0 or accepting ADR-0032 does not, by itself, authorize R7-A unless the Operator explicitly authorizes it.
-
-**Current gate:** R7-0 is complete. ADR-0032 is Accepted. The R7-A implementation contract is frozen and source implementation is authorized/in progress. Local preflight and disposable-PostgreSQL verification remain outstanding. R7-B and R7-C remain unauthorized.
+**Current gate:** R7-0 is complete and merged. ADR-0032 is Accepted. R7-A implementation PR #39 is open at `cd39b6a9756b0512a833c189a026c36bf1472354`. Exact-head hosted CI run [41841161645](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41841161645) passed fresh PostgreSQL migration, single-head validation, Ruff, Mypy, 631 tests, and disposable-container cleanup. Operator-local disposable-PostgreSQL verification remains outstanding. R7-B and R7-C remain unauthorized.

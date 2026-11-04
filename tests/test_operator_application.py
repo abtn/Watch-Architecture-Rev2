@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from threading import Barrier
 from typing import Iterator
 from uuid import UUID, uuid4
@@ -12,7 +13,34 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from core.models import Event, LearningChange, Task, Team, TeamPolicy
+from core.knowledge_quality import (
+    DIMENSIONS,
+    EVALUATOR_IDENTITY,
+    EVALUATOR_KIND,
+    EVALUATOR_REVISION,
+    RECORDED_EVENT_TYPE,
+    REQUEST_EVENT_TYPE,
+    RUBRIC_IDENTITY,
+    RUBRIC_REVISION,
+    assessment_payload_hash,
+    assessment_record_payload,
+    build_case_lineage_report,
+    build_quality_task_request,
+    recorded_assessment_event_payload,
+    sha256_json,
+)
+from core.knowledge_quality import TASK_BUDGET as QUALITY_TASK_BUDGET
+from core.knowledge_quality import TASK_MAX_ATTEMPTS as QUALITY_TASK_MAX_ATTEMPTS
+from core.knowledge_quality import TASK_TYPE as QUALITY_TASK_TYPE
+from core.models import (
+    Event,
+    KnowledgeQualityAssessment,
+    LearningChange,
+    Outcome,
+    Task,
+    Team,
+    TeamPolicy,
+)
 from core.operator_application import (
     InvalidOperatorPrincipal,
     LearningChangeDecisionRequest,
@@ -36,13 +64,169 @@ class ApprovalContext:
     proposer_task_id: UUID
 
 
+
+def _seed_quality_assessment(
+    session_factory: sessionmaker[Session],
+    team_id: UUID,
+    proposer_task_id: UUID,
+    learning_change_id: UUID,
+) -> None:
+    """Seed a minimal recorded assessment for Operator-adapter contract tests."""
+    from datetime import datetime, timezone
+
+    with session_factory.begin() as session:
+        learning_change = session.get(LearningChange, learning_change_id)
+        source_task = session.get(Task, proposer_task_id)
+        assert learning_change is not None and source_task is not None
+        task_id, request_payload = build_quality_task_request(
+            session, source_task, learning_change
+        )
+        lineage = build_case_lineage_report(
+            session, team_id, learning_change.evidence_basis
+        )
+        recorded_at = datetime.now(timezone.utc)
+        dimensions = {
+            name: {
+                "disposition": "insufficient_evidence",
+                "findings": ["Fixture records no positive quality conclusion."],
+                "evidence_refs": [],
+            }
+            for name in DIMENSIONS
+        }
+        evidence_reference_hash = sha256_json([])
+        payload = assessment_record_payload(
+            task_id=task_id,
+            team_id=team_id,
+            learning_change_id=learning_change_id,
+            proposal_hash=learning_change.proposed_state["proposal_hash"],
+            evidence_basis_hash=learning_change.evidence_basis_hash,
+            rubric_identity=RUBRIC_IDENTITY,
+            rubric_revision=RUBRIC_REVISION,
+            evaluator_kind=EVALUATOR_KIND,
+            evaluator_identity=EVALUATOR_IDENTITY,
+            evaluator_revision=EVALUATOR_REVISION,
+            dimensions=dimensions,
+            narrative=(
+                "Fixture-only assessment: insufficient evidence for a positive "
+                "conclusion."
+            ),
+            lineage_report=lineage,
+            evidence_reference_hash=evidence_reference_hash,
+            idempotency_key=request_payload["idempotency_key"],
+        )
+        assessment = KnowledgeQualityAssessment(
+            id=uuid4(),
+            team_id=team_id,
+            status="recorded",
+            learning_change_id=learning_change_id,
+            creating_task_id=task_id,
+            proposal_hash=learning_change.proposed_state["proposal_hash"],
+            evidence_basis_hash=learning_change.evidence_basis_hash,
+            rubric_identity=RUBRIC_IDENTITY,
+            rubric_revision=RUBRIC_REVISION,
+            evaluator_kind=EVALUATOR_KIND,
+            evaluator_identity=EVALUATOR_IDENTITY,
+            evaluator_revision=EVALUATOR_REVISION,
+            dimensions=dimensions,
+            narrative=payload["narrative"],
+            lineage_report=lineage,
+            lineage_report_hash=sha256_json(lineage),
+            evidence_reference_hash=evidence_reference_hash,
+            assessment_payload_hash=assessment_payload_hash(payload),
+            idempotency_key=request_payload["idempotency_key"],
+            recorded_at=recorded_at,
+        )
+        task = Task(
+            id=task_id,
+            team_id=team_id,
+            task_type=QUALITY_TASK_TYPE,
+            status="done",
+            attempt_count=1,
+            policy_version=source_task.policy_version,
+            objective_id=None,
+            plan_id=None,
+            plan_action_id=None,
+            allowed_writes=["KnowledgeQualityAssessment"],
+            budget=dict(QUALITY_TASK_BUDGET),
+            completed_at=recorded_at,
+            max_attempts=QUALITY_TASK_MAX_ATTEMPTS,
+        )
+        outcome_id = uuid4()
+        snapshot_digest = "b" * 64
+        outcome = Outcome(
+            id=outcome_id,
+            team_id=team_id,
+            subject_kind="task",
+            subject_id=task_id,
+            outcome_type="task_execution",
+            expected=None,
+            observation_snapshot_ref=f"snap://sha256/{snapshot_digest}",
+            observation_hash=f"sha256:{snapshot_digest}",
+            observed_at=recorded_at,
+            recorded_by_task_id=task_id,
+        )
+        session.add(task)
+        session.flush()
+        session.add_all([outcome, assessment])
+        session.flush()
+        session.add_all(
+            [
+                Event(
+                    id=uuid4(),
+                    task_id=task_id,
+                    type=REQUEST_EVENT_TYPE,
+                    payload=request_payload,
+                    created_at=recorded_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 1,
+                    },
+                    created_at=recorded_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=task_id,
+                    type=RECORDED_EVENT_TYPE,
+                    payload=recorded_assessment_event_payload(assessment),
+                    created_at=recorded_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=task_id,
+                    type="task_completed",
+                    payload={
+                        "result_category": "success_knowledge_quality_assessed",
+                        "to_status": "done",
+                        "attempt_count": 1,
+                        "outcome_id": str(outcome_id),
+                        "knowledge_quality_assessment_id": str(assessment.id),
+                    },
+                    created_at=recorded_at,
+                ),
+            ]
+        )
+        session.flush()
+
+
 @pytest.fixture
 def approval_context(
     session_factory: sessionmaker[Session],
 ) -> Iterator[ApprovalContext]:
-    team_id, other_team_id, proposer_task_id, learning_change_id = (
-        uuid4() for _ in range(4)
-    )
+    (
+        team_id,
+        other_team_id,
+        proposer_task_id,
+        learning_change_id,
+        outcome_id,
+        evaluation_id,
+        evaluation_task_outcome_id,
+    ) = (uuid4() for _ in range(7))
     policy_ids = [uuid4(), uuid4(), uuid4()]
     with session_factory.begin() as session:
         session.add_all(
@@ -76,6 +260,7 @@ def approval_context(
                     "max_cost_usd": 0.0,
                     "deadline_seconds": 60,
                 },
+                completed_at=datetime.now(timezone.utc),
             )
         )
         session.flush()
@@ -86,16 +271,79 @@ def approval_context(
                 target_kind="knowledge_item",
                 target_id=None,
                 operation="create",
-                proposed_state={"kind": "practice", "title": "Test practice"},
+                proposed_state={
+                    "kind": "practice",
+                    "title": "Test practice",
+                    "proposal_hash": "sha256:" + "a" * 64,
+                },
                 previous_state=None,
                 committed_state=None,
-                evidence_basis=[{"evaluation_id": str(uuid4())}],
+                evidence_basis=[
+                    {
+                        "evaluation_id": str(evaluation_id),
+                        "evaluation_task_outcome_id": str(evaluation_task_outcome_id),
+                        "outcome_id": str(outcome_id),
+                        "source_task_id": str(proposer_task_id),
+                        "source_task_provenance": {},
+                        "evidence_links": [],
+                    }
+                ],
                 evidence_basis_hash="sha256:" + "a" * 64,
                 status="proposed",
                 idempotency_key="operator-application-fixture",
                 proposed_by_task_id=proposer_task_id,
             )
         )
+        source_task = session.get(Task, proposer_task_id)
+        assert source_task is not None
+        source_task.completed_at = datetime.now(timezone.utc)
+        session.add(
+            Outcome(
+                id=outcome_id,
+                team_id=team_id,
+                subject_kind="task",
+                subject_id=proposer_task_id,
+                outcome_type="task_execution",
+                expected=None,
+                observation_snapshot_ref="snap://sha256/" + "c" * 64,
+                observation_hash="sha256:" + "c" * 64,
+                observed_at=source_task.completed_at,
+                recorded_by_task_id=proposer_task_id,
+            )
+        )
+        session.flush()
+        session.add_all(
+            [
+                Event(
+                    id=uuid4(),
+                    task_id=proposer_task_id,
+                    type="learning_change_proposed",
+                    payload={
+                        "learning_change_id": str(learning_change_id),
+                        "proposal_hash": "sha256:" + "a" * 64,
+                        "evidence_basis_hash": "sha256:" + "a" * 64,
+                    },
+                    created_at=source_task.completed_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=proposer_task_id,
+                    type="task_completed",
+                    payload={
+                        "result_category": "success_learning_change_proposed",
+                        "to_status": "done",
+                        "attempt_count": 1,
+                        "outcome_id": str(outcome_id),
+                        "learning_change_id": str(learning_change_id),
+                    },
+                    created_at=source_task.completed_at,
+                ),
+            ]
+        )
+
+    _seed_quality_assessment(
+        session_factory, team_id, proposer_task_id, learning_change_id
+    )
 
     try:
         yield ApprovalContext(
@@ -108,6 +356,14 @@ def approval_context(
         with session_factory.begin() as session:
             task_ids = select(Task.id).where(Task.team_id == team_id)
             session.execute(delete(Event).where(Event.task_id.in_(task_ids)))
+            session.execute(
+                delete(KnowledgeQualityAssessment).where(
+                    KnowledgeQualityAssessment.team_id == team_id
+                )
+            )
+            session.execute(
+                delete(Outcome).where(Outcome.recorded_by_task_id.in_(task_ids))
+            )
             session.execute(
                 delete(LearningChange).where(LearningChange.team_id == team_id)
             )
@@ -610,7 +866,9 @@ def test_task_runtime_rejects_operator_request_event_identity_tampering(
         )
         assert event is not None
         payload = dict(event.payload)
-        payload["operator_id"] = '{"iss":"https://host.example/identity","sub":"operator-43"}'
+        payload["operator_id"] = (
+            '{"iss":"https://host.example/identity","sub":"operator-43"}'
+        )
         event.payload = payload
 
     with pytest.raises(

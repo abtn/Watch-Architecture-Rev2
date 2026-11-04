@@ -16,6 +16,10 @@ from core.experience_distiller import (
     ExperienceDistiller,
     ExperienceDistillerError,
 )
+from core.knowledge_quality import (
+    KnowledgeQualityAssessmentError,
+    require_recorded_assessment,
+)
 from core.models import (
     Event,
     KnowledgeItem,
@@ -279,6 +283,36 @@ class LearningCommitService:
             self._validate_proposer_terminal(
                 session, learning_change, pack.task_id
             )
+            quality_assessment_id: str | None = None
+            quality_assessment_hash: str | None = None
+            if decision == "accept":
+                try:
+                    quality_assessment = require_recorded_assessment(
+                        session, learning_change, require_task_done=True
+                    )
+                except KnowledgeQualityAssessmentError as error:
+                    raise LearningCommitError(str(error)) from error
+                quality_assessment_id = request_payload.get(
+                    "knowledge_quality_assessment_id"
+                )
+                quality_assessment_hash = request_payload.get(
+                    "knowledge_quality_assessment_hash"
+                )
+                if (
+                    quality_assessment_id != str(quality_assessment.id)
+                    or quality_assessment_hash
+                    != quality_assessment.assessment_payload_hash
+                ):
+                    raise LearningCommitError(
+                        "operator_quality_assessment_binding_invalid"
+                    )
+            elif (
+                request_payload.get("knowledge_quality_assessment_id") is not None
+                or request_payload.get("knowledge_quality_assessment_hash") is not None
+            ):
+                raise LearningCommitError(
+                    "operator_quality_assessment_not_allowed_for_rejection"
+                )
             committed_at = datetime.datetime.now(datetime.timezone.utc)
             review_after: datetime.datetime | None = None
             if decision == "accept":
@@ -391,6 +425,12 @@ class LearningCommitService:
             if knowledge_item_id is not None:
                 event_payload["knowledge_item_id"] = str(knowledge_item_id)
                 event_payload["knowledge_item_version"] = 1
+                event_payload["knowledge_quality_assessment_id"] = (
+                    quality_assessment_id
+                )
+                event_payload["knowledge_quality_assessment_hash"] = (
+                    quality_assessment_hash
+                )
             if rejection_reason is not None:
                 event_payload["reason"] = rejection_reason
 
@@ -560,6 +600,42 @@ class LearningCommitService:
         recorded_decision: Decision = (
             "accept" if learning_change.status == "accepted" else "reject"
         )
+        request_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == _REQUEST_EVENT_TYPE,
+                )
+            )
+        )
+        if len(request_events) != 1 or not isinstance(request_events[0].payload, dict):
+            raise LearningCommitCorrupt("operator_request_event_invalid")
+        request_payload = request_events[0].payload
+        quality_assessment_id = request_payload.get(
+            "knowledge_quality_assessment_id"
+        )
+        quality_assessment_hash = request_payload.get(
+            "knowledge_quality_assessment_hash"
+        )
+        if recorded_decision == "accept":
+            try:
+                quality_assessment = require_recorded_assessment(
+                    session, learning_change, require_task_done=True
+                )
+            except KnowledgeQualityAssessmentError as error:
+                raise LearningCommitCorrupt(str(error)) from error
+            if (
+                quality_assessment_id != str(quality_assessment.id)
+                or quality_assessment_hash
+                != quality_assessment.assessment_payload_hash
+            ):
+                raise LearningCommitCorrupt(
+                    "operator_quality_assessment_binding_invalid"
+                )
+        elif quality_assessment_id is not None or quality_assessment_hash is not None:
+            raise LearningCommitCorrupt(
+                "operator_quality_assessment_not_allowed_for_rejection"
+            )
         if (
             recorded_decision != requested_decision
             or learning_change.decision_reason != rejection_reason
@@ -657,6 +733,12 @@ class LearningCommitService:
             item_id = item.id
             expected_payload["knowledge_item_id"] = str(item.id)
             expected_payload["knowledge_item_version"] = 1
+            expected_payload["knowledge_quality_assessment_id"] = (
+                quality_assessment_id
+            )
+            expected_payload["knowledge_quality_assessment_hash"] = (
+                quality_assessment_hash
+            )
             if (
                 item.team_id != learning_change.team_id
                 or item.version != 1

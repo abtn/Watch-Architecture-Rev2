@@ -4,7 +4,7 @@
 
 **Authorized implementation phase — 2026-11-04.** ADR-0032 is Accepted. The Operator authorized R7-A only. R7-B lifecycle operations and R7-C retrieval/citation/downstream-use work remain unauthorized.
 
-This plan freezes the R7-A implementation contract before source changes. It does not select a production evaluator provider or authorize live external model calls.
+This plan is the frozen R7-A implementation contract; source implementation is in progress under the separate Operator authorization. It does not select a production evaluator provider or authorize live external model calls.
 
 ## 1. Bounded deliverables
 
@@ -77,6 +77,7 @@ References are derived from, and must exactly resolve within, the current Learni
 
 - evaluation:<canonical-uuid>
 - outcome:<canonical-uuid>
+- evaluation_task_outcome:<canonical-uuid>
 - source_task:<canonical-uuid>
 - signal:<canonical-uuid>
 - snapshot:<sha256-digest>

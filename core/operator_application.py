@@ -18,6 +18,10 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
+from core.knowledge_quality import (
+    KnowledgeQualityAssessmentError,
+    require_recorded_assessment,
+)
 from core.models import Event, LearningChange, Task, Team, TeamPolicy
 from core.snapshot_store import SnapshotStore
 
@@ -174,12 +178,26 @@ class OperatorApplicationAdapter:
 
             task_id = _approval_task_id(team_id, request.idempotency_key)
             idempotency_key_hash = _sha256(str(request.idempotency_key))
+            quality_assessment_id: UUID | None = None
+            quality_assessment_hash: str | None = None
+            if request.decision == "accept":
+                try:
+                    assessment = require_recorded_assessment(
+                        session, learning_change, require_task_done=True
+                    )
+                except KnowledgeQualityAssessmentError as error:
+                    raise LearningChangeNotApprovable(str(error)) from error
+                quality_assessment_id = assessment.id
+                quality_assessment_hash = assessment.assessment_payload_hash
+
             request_fingerprint = _request_fingerprint(
                 team_id=team_id,
                 learning_change_id=learning_change.id,
                 decision=request.decision,
                 rejection_reason=rejection_reason,
                 operator_id=canonical_operator_id,
+                quality_assessment_id=quality_assessment_id,
+                quality_assessment_hash=quality_assessment_hash,
             )
 
             existing_task = session.scalar(
@@ -195,6 +213,8 @@ class OperatorApplicationAdapter:
                     operator_id=canonical_operator_id,
                     idempotency_key_hash=idempotency_key_hash,
                     request_fingerprint=request_fingerprint,
+                    quality_assessment_id=quality_assessment_id,
+                    quality_assessment_hash=quality_assessment_hash,
                 )
 
             if learning_change.status != "proposed":
@@ -233,6 +253,8 @@ class OperatorApplicationAdapter:
                 idempotency_key_hash=idempotency_key_hash,
                 request_fingerprint=request_fingerprint,
                 policy_version=policy.version,
+                quality_assessment_id=quality_assessment_id,
+                quality_assessment_hash=quality_assessment_hash,
             )
 
             inserted_task_id = session.scalar(
@@ -277,6 +299,8 @@ class OperatorApplicationAdapter:
                     operator_id=canonical_operator_id,
                     idempotency_key_hash=idempotency_key_hash,
                     request_fingerprint=request_fingerprint,
+                    quality_assessment_id=quality_assessment_id,
+                    quality_assessment_hash=quality_assessment_hash,
                 )
 
             session.add(
@@ -545,6 +569,8 @@ def _request_fingerprint(
     decision: str,
     rejection_reason: str | None,
     operator_id: str,
+    quality_assessment_id: UUID | None,
+    quality_assessment_hash: str | None,
 ) -> str:
     canonical = json.dumps(
         {
@@ -554,6 +580,10 @@ def _request_fingerprint(
             "decision": decision,
             "rejection_reason": rejection_reason,
             "operator_id": operator_id,
+            "knowledge_quality_assessment_id": (
+                str(quality_assessment_id) if quality_assessment_id else None
+            ),
+            "knowledge_quality_assessment_hash": quality_assessment_hash,
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -571,9 +601,11 @@ def _request_event_payload(
     idempotency_key_hash: str,
     request_fingerprint: str,
     policy_version: int,
+    quality_assessment_id: UUID | None,
+    quality_assessment_hash: str | None,
 ) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "operation": _APPROVAL_ACTION,
         "learning_change_id": str(learning_change_id),
         "decision": decision,
@@ -582,6 +614,10 @@ def _request_event_payload(
         "idempotency_key_hash": idempotency_key_hash,
         "request_fingerprint": request_fingerprint,
         "policy_version": policy_version,
+        "knowledge_quality_assessment_id": (
+            str(quality_assessment_id) if quality_assessment_id else None
+        ),
+        "knowledge_quality_assessment_hash": quality_assessment_hash,
     }
 
 
@@ -595,6 +631,8 @@ def _verify_existing_request(
     operator_id: str,
     idempotency_key_hash: str,
     request_fingerprint: str,
+    quality_assessment_id: UUID | None,
+    quality_assessment_hash: str | None,
 ) -> OperatorTaskRequestResult:
     if (
         task.id != _approval_task_id(team_id, request.idempotency_key)
@@ -626,7 +664,10 @@ def _verify_existing_request(
     payload = events[0].payload
     if payload.get("idempotency_key_hash") != idempotency_key_hash:
         raise OperatorTaskRequestCorrupt("approval_request_key_hash_mismatch")
-    if payload.get("request_fingerprint") != request_fingerprint:
+    if (
+        payload.get("schema_version") != 1
+        and payload.get("request_fingerprint") != request_fingerprint
+    ):
         raise OperatorTaskRequestConflict(
             "idempotency_key_reused_with_different_request"
         )
@@ -639,17 +680,57 @@ def _verify_existing_request(
     ):
         raise OperatorTaskRequestCorrupt("approval_request_policy_pin_mismatch")
 
-    expected_payload = _request_event_payload(
-        learning_change_id=request.learning_change_id,
-        decision=request.decision,
-        rejection_reason=rejection_reason,
-        operator_id=operator_id,
-        idempotency_key_hash=idempotency_key_hash,
-        request_fingerprint=request_fingerprint,
-        policy_version=policy_version,
-    )
-    if payload != expected_payload:
-        raise OperatorTaskRequestCorrupt("approval_request_event_payload_mismatch")
+    if payload.get("schema_version") == 1:
+        if request.decision != "reject" or (
+            quality_assessment_id is not None
+            or quality_assessment_hash is not None
+        ):
+            raise OperatorTaskRequestCorrupt(
+                "legacy_acceptance_request_missing_quality_assessment"
+            )
+        legacy_fingerprint_payload = json.dumps(
+            {
+                "operation": _APPROVAL_ACTION,
+                "team_id": str(team_id),
+                "learning_change_id": str(request.learning_change_id),
+                "decision": request.decision,
+                "rejection_reason": rejection_reason,
+                "operator_id": operator_id,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        legacy_fingerprint = _sha256(legacy_fingerprint_payload)
+        expected_legacy_payload = {
+            "schema_version": 1,
+            "operation": _APPROVAL_ACTION,
+            "learning_change_id": str(request.learning_change_id),
+            "decision": request.decision,
+            "rejection_reason": rejection_reason,
+            "operator_id": operator_id,
+            "idempotency_key_hash": idempotency_key_hash,
+            "request_fingerprint": legacy_fingerprint,
+            "policy_version": policy_version,
+        }
+        if payload != expected_legacy_payload:
+            raise OperatorTaskRequestCorrupt(
+                "legacy_approval_request_event_payload_mismatch"
+            )
+    else:
+        expected_payload = _request_event_payload(
+            learning_change_id=request.learning_change_id,
+            decision=request.decision,
+            rejection_reason=rejection_reason,
+            operator_id=operator_id,
+            idempotency_key_hash=idempotency_key_hash,
+            request_fingerprint=request_fingerprint,
+            policy_version=policy_version,
+            quality_assessment_id=quality_assessment_id,
+            quality_assessment_hash=quality_assessment_hash,
+        )
+        if payload != expected_payload:
+            raise OperatorTaskRequestCorrupt("approval_request_event_payload_mismatch")
 
     return OperatorTaskRequestResult(
         task_id=task.id,
