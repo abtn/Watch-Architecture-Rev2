@@ -116,11 +116,11 @@ Exit requirements:
 - Later outcomes are assessed as evidence, not proof that the knowledge caused success or failure.
 - Rebuild and stale-projection failure cannot re-expose obsolete content.
 
-## 4. Architecture decisions and hard gates before R7-A
+## 4. Architecture decisions and phase gates
 
-The normative proposal is [ADR-0032](../decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md). The following decisions are accepted by ADR-0032. Phase-specific implementation details still need to be frozen in the relevant implementation plan before source changes:
+The normative architecture is [ADR-0032](../decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md). R7-A-specific implementation contracts are frozen in [r7-a-implementation-plan.md](r7-a-implementation-plan.md). The remaining table entries identify the relevant R7-A implementation checks or later-phase gates:
 
-| Decision | Proposed resolution / remaining gate |
+| Decision | Accepted resolution / phase-specific gate |
 |---|---|
 | Execution vs. knowledge assessment | Keep D9/Evaluation Outcome-scoped. Create a distinct KnowledgeQualityAssessment; use a distinct KnowledgeUseAssessment for item-specific downstream judgments. No reuse of worked/mixed/failed as a knowledge verdict. Freeze each typed schema and evaluator identity/revision before implementation. |
 | Case identity and independence | Two separately recorded Outcomes from distinct Task IDs remain the minimum. Related/unknown cases still count but are annotated and constrain claims. Freeze the exact canonical lineage fields, normalization, and deterministic rules. |
@@ -139,7 +139,7 @@ The normative proposal is [ADR-0032](../decisions/ADR-0032-knowledge-quality-eva
 
 **Invariant status:** the Operator accepted ADR-0032 on 2026-11-04 and the corresponding INV-12 amendment is now active in docs/invariants.md. R7-A implementation must enforce the quality-assessment portion of this invariant for the existing create approval path. R7-B lifecycle operations remain unauthorized.
 
-Do not begin R7-A while any decision that changes canonical schema, authority, security, Task scopes, or lifecycle meaning remains unresolved.
+R7-A must implement the contracts frozen in the implementation plan. Unresolved R7-B/R7-C implementation details do not authorize those phases and are not blockers for the bounded R7-A slice.
 
 ## 5. Non-negotiable constraints
 
@@ -173,14 +173,14 @@ R7-0 documentation acceptance:
 - [x] Operator explicitly accepted revised ADR-0032 on 2026-11-04.
 - [x] Operator explicitly authorized R7-A implementation on 2026-11-04. R7-B and R7-C remain unauthorized.
 
-Before R7-A implementation:
+R7-A implementation gate:
 
 - [x] Operator acceptance of ADR-0032 and R7-A implementation authorization recorded.
-- [ ] Freeze remaining R7-A schema, evidence-reference, Task completion, retry/idempotency, and failure-injection contracts in the implementation plan before source changes.
+- [x] Freeze remaining R7-A schema, evidence-reference, Task completion, retry/idempotency, and failure-injection contracts in [r7-a-implementation-plan.md](r7-a-implementation-plan.md) before source changes.
 - [x] Separate explicit Operator instruction authorizes R7-A only; see §3 R7-A scope.
 - [ ] Local preflight on the actual checkout: current branch, HEAD, clean/known worktree, sync with intended base, merge status, and exact migration heads.
 - [ ] Confirm DATABASE_URL and TEST_DATABASE_URL are pointed only at an identified disposable PostgreSQL database before database-backed checks.
-- [ ] Review actual current code, migration chain, Task matrix, invariants, and tests; do not assume the current migration number or infer implementation from this plan.
+- [ ] Complete current-source review and local preflight against the actual checkout, including migration chain, Task matrix, invariants, and tests.
 - [ ] Freeze deterministic fixtures, rubric revision, case-lineage rules, failure-injection/recovery tests, and acceptance evidence.
 - [ ] Any live provider decision is accepted before a real provider call; otherwise use deterministic fakes.
 
@@ -209,4 +209,4 @@ R7-0 is ready to close only when:
 
 Closing R7-0 or accepting ADR-0032 does not, by itself, authorize R7-A unless the Operator explicitly authorizes it.
 
-**Current gate:** R7-0 is complete. ADR-0032 is Accepted. R7-A is authorized and in progress; R7-B and R7-C remain unauthorized.
+**Current gate:** R7-0 is complete. ADR-0032 is Accepted. The R7-A implementation contract is frozen and source implementation is authorized/in progress. Local preflight and disposable-PostgreSQL verification remain outstanding. R7-B and R7-C remain unauthorized.
