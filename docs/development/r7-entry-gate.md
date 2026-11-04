@@ -118,7 +118,7 @@ Exit requirements:
 
 ## 4. Architecture decisions and hard gates before R7-A
 
-The normative proposal is [ADR-0032](../decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md). The following decisions are proposed in ADR-0032 but still require explicit Operator acceptance and exact implementation-level freezing before the relevant phase:
+The normative proposal is [ADR-0032](../decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md). The following decisions are accepted by ADR-0032. Phase-specific implementation details still need to be frozen in the relevant implementation plan before source changes:
 
 | Decision | Proposed resolution / remaining gate |
 |---|---|
@@ -130,14 +130,14 @@ The normative proposal is [ADR-0032](../decisions/ADR-0032-knowledge-quality-eva
 | Canonicality consumers | Update Team Experience indexing/retrieval, Context assembly, LearningCommitService, OperatorApplicationAdapter, and TaskRuntime approval admission/finalization; no create-only assumption may remain on a widened path. |
 | Supersession | No new status: predecessor becomes retired with superseded_by_id to an already accepted same-Team successor. Freeze unique predecessor/successor rules, cycle prevention, and concurrency/replay behavior. |
 | Revalidation and review | Revalidation is an explicit LearningChange; preserve content/version/hash/confidence, update validation/review timestamps from pinned policy, and republish projection before retrieval. Preserve review_knowledge as active → needs_review only. |
-| INV-12 and write scopes | Accept the proposed INV-12 amendment in ADR-0032 and freeze the proposed R7 Task/write-scope matrix. Do not change the active invariant or active scope grants while ADR-0032 remains Proposed. |
+| INV-12 and write scopes | Accepted INV-12 amendment is now recorded in docs/invariants.md. The R7 Task matrix remains non-active until the relevant Task/service code and tests are implemented; no runtime grant is implied by this documentation row. |
 | Knowledge-use provenance | Context manifest v2 already records inclusion. Add only the missing application-owned per-claim citation reference and typed downstream-use assessment; bind exact Context/item version/Outcome. |
 | Retrieval benchmark | Record label provenance/rationale and synthetic-vs-real status; freeze held-out split, small-n reporting, and hard-zero safety checks. |
 | Provider and cost | No provider selected. Any production provider/model, data handling, rate card, maximum reservation and failure semantics require a separate decision; no R6-E inheritance. |
 
 **Proposed Task matrix:** docs/tasks.md must include a clearly marked non-active R7 matrix for assessment Tasks and the existing Operator lifecycle approval Task. It is design documentation only; it grants no current write scope.
 
-**Proposed invariant amendment:** ADR-0032 contains a complete proposed INV-12 replacement. Do not edit the active invariant until the Operator accepts ADR-0032. Upon acceptance, update docs/invariants.md before any implementation starts.
+**Invariant status:** the Operator accepted ADR-0032 on 2026-11-04 and the corresponding INV-12 amendment is now active in docs/invariants.md. R7-A implementation must enforce the quality-assessment portion of this invariant for the existing create approval path. R7-B lifecycle operations remain unauthorized.
 
 Do not begin R7-A while any decision that changes canonical schema, authority, security, Task scopes, or lifecycle meaning remains unresolved.
 
@@ -145,7 +145,7 @@ Do not begin R7-A while any decision that changes canonical schema, authority, s
 
 - Model/worker/evaluator output is a proposal, never authority to change canonical knowledge.
 - All KnowledgeItem content changes and explicit lifecycle decisions require a committed LearningChange and trusted Operator decision. The sole narrow maintenance exception remains the scheduled review_knowledge status-only active → needs_review transition; it cannot change content/confidence or reactivate an item.
-- INV-11/INV-13/INV-14 remain in force. INV-12 remains the active rule until ADR-0032 is accepted; the proposed amendment in ADR-0032 must be applied to docs/invariants.md before implementation. Canonical records govern, commits revalidate atomically, and Tasks stay within exact scope/budget.
+- INV-11/INV-13/INV-14 remain in force. INV-12 has been amended as accepted by the Operator on 2026-11-04; R7-A must implement and test its KnowledgeQualityAssessment gate before phase closure. Canonical records govern, commits revalidate atomically, and Tasks stay within exact scope/budget.
 - The existing host remains the authentication root. No Watch-owned authentication stack or public Operator API is part of this gate.
 - TaskRuntime remains the sole lifecycle authority. No second runtime, generalized dispatcher, scheduler, queue, or workflow engine.
 - TeamPolicy remains separate from learned Team Experience. No automatic TeamPolicy mutation or policy learning.
@@ -168,14 +168,15 @@ R7-0 documentation acceptance:
 - [x] R7 scope, proposed phases, constraints, and non-goals are documented.
 - [x] Proposed ADR-0032 and this entry gate identify the decisions and code-level constraints before R7-A.
 - [x] A proposed, non-active R7 Task/write-scope matrix is recorded in docs/tasks.md; no current Task grant is changed.
-- [x] Proposed INV-12 amendment is included in ADR-0032; active docs/invariants.md remains unchanged pending acceptance.
+- [x] Accepted INV-12 amendment is recorded in ADR-0032 and applied to docs/invariants.md.
 - [x] PLAN.md, README.md, CONTEXT.md, CHANGE_MAP.md, and docs/decisions.md point to the same authority chain.
 - [x] Operator explicitly accepted revised ADR-0032 on 2026-11-04.
 - [x] Operator explicitly authorized R7-A implementation on 2026-11-04. R7-B and R7-C remain unauthorized.
 
 Before R7-A implementation:
 
-- [x] Operator acceptance of ADR-0032 and R7-A implementation authorization recorded; remaining R7-A implementation details are frozen in the implementation plan before source changes.
+- [x] Operator acceptance of ADR-0032 and R7-A implementation authorization recorded.
+- [ ] Freeze remaining R7-A schema, evidence-reference, Task completion, retry/idempotency, and failure-injection contracts in the implementation plan before source changes.
 - [x] Separate explicit Operator instruction authorizes R7-A only; see §3 R7-A scope.
 - [ ] Local preflight on the actual checkout: current branch, HEAD, clean/known worktree, sync with intended base, merge status, and exact migration heads.
 - [ ] Confirm DATABASE_URL and TEST_DATABASE_URL are pointed only at an identified disposable PostgreSQL database before database-backed checks.
@@ -195,7 +196,7 @@ Expected R7-0 changes are documentation only:
 - docs/decisions.md — ADR index
 - README.md and CONTEXT.md — concise roadmap/orientation
 
-No source code, tests, migrations, schema, runtime configuration, provider configuration, active Task grants, or active invariant changes belong in R7-0. docs/tasks.md may contain only a clearly marked proposed/non-active R7 matrix; docs/invariants.md remains unchanged until ADR-0032 is accepted. If an architecture decision requires runtime changes, record it as a proposal and resolve it before implementation.
+No source code, tests, migrations, schema, runtime configuration, provider configuration, active Task grants, or active invariant changes belong in R7-0. docs/tasks.md may contain a clearly marked proposed/non-active R7 matrix until corresponding R7 Task/service code is implemented; docs/invariants.md now contains the accepted INV-12 amendment. If an architecture decision requires runtime changes, record it as a proposal and resolve it before implementation.
 
 ## 9. R7-0 exit criteria
 
