@@ -22,9 +22,6 @@ from core.knowledge_quality import (
     REQUEST_EVENT_TYPE,
     RUBRIC_IDENTITY,
     RUBRIC_REVISION,
-    TASK_BUDGET as QUALITY_TASK_BUDGET,
-    TASK_MAX_ATTEMPTS as QUALITY_TASK_MAX_ATTEMPTS,
-    TASK_TYPE as QUALITY_TASK_TYPE,
     assessment_payload_hash,
     assessment_record_payload,
     build_case_lineage_report,
@@ -32,6 +29,9 @@ from core.knowledge_quality import (
     recorded_assessment_event_payload,
     sha256_json,
 )
+from core.knowledge_quality import TASK_BUDGET as QUALITY_TASK_BUDGET
+from core.knowledge_quality import TASK_MAX_ATTEMPTS as QUALITY_TASK_MAX_ATTEMPTS
+from core.knowledge_quality import TASK_TYPE as QUALITY_TASK_TYPE
 from core.models import (
     Event,
     KnowledgeQualityAssessment,
@@ -106,7 +106,10 @@ def _seed_quality_assessment(
             evaluator_identity=EVALUATOR_IDENTITY,
             evaluator_revision=EVALUATOR_REVISION,
             dimensions=dimensions,
-            narrative="Fixture-only assessment: insufficient evidence for a positive conclusion.",
+            narrative=(
+                "Fixture-only assessment: insufficient evidence for a positive "
+                "conclusion."
+            ),
             lineage_report=lineage,
             evidence_reference_hash=evidence_reference_hash,
             idempotency_key=request_payload["idempotency_key"],
@@ -861,7 +864,9 @@ def test_task_runtime_rejects_operator_request_event_identity_tampering(
         )
         assert event is not None
         payload = dict(event.payload)
-        payload["operator_id"] = '{"iss":"https://host.example/identity","sub":"operator-43"}'
+        payload["operator_id"] = (
+            '{"iss":"https://host.example/identity","sub":"operator-43"}'
+        )
         event.payload = payload
 
     with pytest.raises(
