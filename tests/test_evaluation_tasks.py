@@ -185,6 +185,63 @@ def test_concurrent_terminal_replay_creates_one_evaluation_request(
     assert evaluator.attempt_count == 0
 
 
+def test_evaluator_enqueue_failure_rolls_back_source_terminalization(
+    session_factory: sessionmaker[Session],
+    snapshot_store,
+    dispatch_fixture: DispatchFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    admission = runtime.admit(dispatch_fixture.task_id)
+    observation = TerminalObservation(
+        task_id=dispatch_fixture.task_id,
+        attempt=admission.attempt_count,
+        result_category="success_no_change",
+        observed_at=datetime.now(timezone.utc),
+    )
+
+    def fail_enqueue(self, session, source_task, outcome, result_category):
+        raise RuntimeError("injected evaluator enqueue failure")
+
+    monkeypatch.setattr(
+        TaskRuntime, "_create_evaluation_task_request", fail_enqueue
+    )
+    with pytest.raises(RuntimeError, match="injected evaluator enqueue failure"):
+        runtime.finalize(observation)
+
+    with session_factory() as session:
+        source = session.get(Task, dispatch_fixture.task_id)
+        source_outcomes = list(
+            session.scalars(
+                select(Outcome).where(
+                    Outcome.subject_kind == "task",
+                    Outcome.subject_id == dispatch_fixture.task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+        )
+        terminal_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == dispatch_fixture.task_id,
+                    Event.type.in_(("task_completed", "task_failed")),
+                )
+            )
+        )
+        request_events = list(
+            session.scalars(
+                select(Event).where(Event.type == "evaluation_task_requested")
+            )
+        )
+
+    assert source is not None
+    assert source.status == "running"
+    assert source.completed_at is None
+    assert source_outcomes == []
+    assert terminal_events == []
+    assert request_events == []
+
+
 def test_terminal_failure_also_creates_one_evaluator_request(
     session_factory: sessionmaker[Session],
     snapshot_store,
