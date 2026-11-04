@@ -1594,6 +1594,13 @@ def test_learning_commit_accepts_real_create_proposal_atomically(
                     )
                 )
                 session.execute(
+                    delete(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
                     delete(LearningChange).where(
                         LearningChange.id.in_(committed_change_ids)
                     )
@@ -1669,6 +1676,13 @@ def test_learning_commit_rejection_is_durable_without_knowledge_item(
                 session.execute(
                     delete(KnowledgeItem).where(
                         KnowledgeItem.origin_learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
+                    delete(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.learning_change_id.in_(
                             committed_change_ids
                         )
                     )
@@ -1752,6 +1766,13 @@ def test_learning_commit_rejects_stale_or_tampered_evidence_without_partial_stat
                     )
                 )
                 session.execute(
+                    delete(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
                     delete(LearningChange).where(
                         LearningChange.id.in_(committed_change_ids)
                     )
@@ -1820,6 +1841,13 @@ def test_learning_commit_rejects_wrong_operator_and_stale_policy(
                 session.execute(
                     delete(KnowledgeItem).where(
                         KnowledgeItem.origin_learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
+                    delete(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.learning_change_id.in_(
                             committed_change_ids
                         )
                     )
@@ -1904,6 +1932,13 @@ def test_learning_commit_event_failure_rolls_back_canonical_decision(
                 session.execute(
                     delete(KnowledgeItem).where(
                         KnowledgeItem.origin_learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
+                    delete(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.learning_change_id.in_(
                             committed_change_ids
                         )
                     )
@@ -2535,6 +2570,13 @@ def test_learning_commit_replay_rejects_tampered_canonical_records(
                 session.execute(
                     delete(KnowledgeItem).where(
                         KnowledgeItem.origin_learning_change_id.in_(
+                            committed_change_ids
+                        )
+                    )
+                )
+                session.execute(
+                    delete(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.learning_change_id.in_(
                             committed_change_ids
                         )
                     )
