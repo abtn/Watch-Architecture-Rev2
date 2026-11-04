@@ -78,6 +78,8 @@ class KnowledgeQualityAssessmentTaskRunner:
         )
 
     def run(self, task_id: UUID) -> KnowledgeQualityTaskRunResult:
+        replay_observation: TerminalObservation | None = None
+        replay_assessment_id: UUID | None = None
         with self._session_factory() as session:
             task = session.get(Task, task_id)
             if task is None:
@@ -92,12 +94,12 @@ class KnowledgeQualityAssessmentTaskRunner:
                 raise TaskNotEligible(str(error)) from error
 
             if task.status == "done":
-                observation = (
+                replay_observation = (
                     TaskRuntime._committed_knowledge_quality_assessment_observation(
                         session, task
                     )
                 )
-                if observation is None:
+                if replay_observation is None:
                     raise TaskNotEligible(
                         "completed_knowledge_quality_assessment_missing"
                     )
@@ -107,16 +109,10 @@ class KnowledgeQualityAssessmentTaskRunner:
                         KnowledgeQualityAssessment.team_id == task.team_id,
                     )
                 )
-                assessment_id = assessment.id if assessment is not None else None
-                result = self._runtime.finalize(observation)
-                return KnowledgeQualityTaskRunResult(
-                    task_id=task_id,
-                    status=result.status,
-                    assessment_id=assessment_id,
-                    outcome_id=result.outcome_id,
-                    replayed=True,
+                replay_assessment_id = (
+                    assessment.id if assessment is not None else None
                 )
-            if task.status == "failed":
+            elif task.status == "failed":
                 outcome = session.scalar(
                     select(Outcome).where(
                         Outcome.recorded_by_task_id == task.id,
@@ -130,33 +126,50 @@ class KnowledgeQualityAssessmentTaskRunner:
                     outcome_id=outcome.id if outcome is not None else None,
                     replayed=True,
                 )
-            if task.status != "pending":
+            elif task.status != "pending":
                 raise TaskNotEligible("knowledge_quality_task_already_running")
-
-            if request.get("learning_change_id") is None:
-                raise TaskNotEligible("knowledge_quality_learning_change_missing")
-            learning_change = session.get(
-                LearningChange, UUID(request["learning_change_id"])
-            )
-            if learning_change is None or learning_change.team_id != task.team_id:
-                raise TaskNotEligible("knowledge_quality_learning_change_missing")
-            rejected_before_assessment = learning_change.status == "rejected"
-            if learning_change.status not in {"proposed", "rejected"}:
-                raise TaskNotEligible(
-                    "knowledge_quality_learning_change_already_decided"
+            else:
+                if request.get("learning_change_id") is None:
+                    raise TaskNotEligible("knowledge_quality_learning_change_missing")
+                learning_change = session.get(
+                    LearningChange, UUID(request["learning_change_id"])
                 )
-            if not rejected_before_assessment:
-                try:
-                    _, pack = self._distiller.validate_learning_change(
-                        session, learning_change
+                if (
+                    learning_change is None
+                    or learning_change.team_id != task.team_id
+                ):
+                    raise TaskNotEligible(
+                        "knowledge_quality_learning_change_missing"
                     )
-                except ExperienceDistillerError as error:
-                    raise TaskNotEligible(error.reason) from error
-                lineage_report = build_case_lineage_report(
-                    session, task.team_id, pack.evidence_basis
-                )
-                if pack.basis_hash != request["evidence_basis_hash"]:
-                    raise TaskNotEligible("knowledge_quality_evidence_basis_stale")
+                rejected_before_assessment = learning_change.status == "rejected"
+                if learning_change.status not in {"proposed", "rejected"}:
+                    raise TaskNotEligible(
+                        "knowledge_quality_learning_change_already_decided"
+                    )
+                if not rejected_before_assessment:
+                    try:
+                        _, pack = self._distiller.validate_learning_change(
+                            session, learning_change
+                        )
+                    except ExperienceDistillerError as error:
+                        raise TaskNotEligible(error.reason) from error
+                    lineage_report = build_case_lineage_report(
+                        session, task.team_id, pack.evidence_basis
+                    )
+                    if pack.basis_hash != request["evidence_basis_hash"]:
+                        raise TaskNotEligible(
+                            "knowledge_quality_evidence_basis_stale"
+                        )
+
+        if replay_observation is not None:
+            result = self._runtime.finalize(replay_observation)
+            return KnowledgeQualityTaskRunResult(
+                task_id=task_id,
+                status=result.status,
+                assessment_id=replay_assessment_id,
+                outcome_id=result.outcome_id,
+                replayed=True,
+            )
 
         admission = self._runtime.admit(task_id)
         if rejected_before_assessment:
