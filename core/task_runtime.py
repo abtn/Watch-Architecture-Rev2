@@ -34,8 +34,11 @@ from core.state_assessment import _canonical_json, _timestamp
 _TERMINAL_EVENTS = ("task_completed", "task_failed")
 _RETRY_EVENTS = ("task_attempt_failed", "task_retry_scheduled")
 _TERMINAL_STATUSES = frozenset({"done", "failed"})
-_EVALUATION_SUCCESS_CATEGORIES = frozenset({"success_evaluation_recorded",
-    "success_evaluation_rejected"})
+_EVALUATION_SUCCESS_CATEGORIES = frozenset({
+    "success_evaluation_recorded",
+    "success_evaluation_rejected",
+    "success_knowledge_quality_assessed",
+})
 _STRATEGY_SUCCESS_CATEGORIES = frozenset(
     {"success_strategy_accepted", "success_strategy_rejected"}
 )
