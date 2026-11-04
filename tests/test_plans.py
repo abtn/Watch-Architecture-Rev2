@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import Barrier
 from typing import Any, Iterator
 from uuid import UUID, uuid4
@@ -1215,3 +1215,58 @@ def test_plan_creation_terminalizes_through_task_runtime_and_replays(
         assert completed.payload["result_category"] == "success_plan_created"
         assert completed.payload["plan_id"] == str(result.plan_id)
         assert completed.payload["plan_event_id"] == str(result.event_id)
+
+
+
+def test_interrupted_plan_creation_recovers_committed_materialization(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    plan_request: dict[str, Any],
+) -> None:
+    started_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+    with session_factory.begin() as session:
+        task = session.get(Task, plan_request["task_id"])
+        assert task is not None
+        task.attempt_count = 1
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=task.id,
+                type="task_started",
+                payload={"attempt_count": 1},
+                created_at=started_at,
+            )
+        )
+
+    plan = PlanService(session_factory).create(**plan_request)
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    recovered = runtime.recover_interrupted(now=datetime.now(timezone.utc))
+
+    assert plan_request["task_id"] in recovered.completed
+    assert plan_request["task_id"] not in recovered.retried
+    with session_factory() as session:
+        task = session.get(Task, plan_request["task_id"])
+        assert task is not None and task.status == "done"
+        outcome = session.scalar(
+            select(Outcome).where(
+                Outcome.recorded_by_task_id == plan_request["task_id"],
+                Outcome.outcome_type == "task_execution",
+            )
+        )
+        assert outcome is not None
+        assert outcome.observed_at == started_at
+        completion = session.scalar(
+            select(Event).where(
+                Event.task_id == plan_request["task_id"],
+                Event.type == "task_completed",
+            )
+        )
+        assert completion is not None
+        assert completion.payload["result_category"] == "success_plan_created"
+        assert completion.payload["plan_id"] == str(plan.plan_id)
+        assert completion.payload["plan_event_id"] == str(plan.event_id)
+        assert session.scalar(
+            select(Outcome.id).where(
+                Outcome.recorded_by_task_id == plan_request["task_id"]
+            )
+        ) == outcome.id
