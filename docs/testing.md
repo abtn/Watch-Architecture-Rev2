@@ -261,7 +261,7 @@ Restore both database environment variables and remove only the disposable conta
 - `git diff --check origin/main...HEAD`: passed on the tested feature branch.
 - Final local synchronization: `main` and `origin/main` both at `de1af38d67a7e79d71110bdda7155244717fbf73`; working tree clean.
 
-**C4 local verification disposition:** PASS for the exact merged source tree. The operator-local run happened immediately before merge rather than after the merge commit; tree identity was explicitly verified, and the subsequent fast-forward synchronization confirmed the local `main` snapshot. Do not describe this as a post-merge test rerun. R6-G remains separately gated and not authorized.
+**C4 local verification disposition:** PASS for the exact merged source tree. The operator-local run happened immediately before merge rather than after the merge commit; tree identity was explicitly verified, and the subsequent fast-forward synchronization confirmed the local `main` snapshot. Do not describe this as a post-merge test rerun. R6-G has separate implementation authorization; its integrated exit gate remains open.
 
 ## R6-F Checkpoint 1 — Evaluation and canonical learning schema
 
@@ -280,7 +280,7 @@ git diff --check
 ```
 
 Use a fresh disposable PostgreSQL database. Confirm one Alembic head and a successful upgrade from `0011_task_generation_cost`; never use the persistent `watch` database. The Evaluation tests cover same-Team Outcome references, domain-scoped Signal references, exact Snapshot/hash/quote validation, evaluator identity/revision, proposal idempotency, recorded/rejected dispositions, Task write scope, and TaskRuntime terminal finalization. This checkpoint deliberately does not implement ExperienceDistiller, LearningChange proposal/approval writes, KnowledgeItem commits, or Team Experience indexing.
-## R6-G implementation and acceptance-to-test map (2026-11-04; exit verification pending)
+## R6-G implementation and acceptance-to-test map (2026-11-04; verification complete, acceptance review pending)
 
 **Implementation status:** R6-G implementation was explicitly authorized and is present on `r6g-implementation-20261103`, PR #35 (draft/open, unmerged). This section maps implemented behavior and required proof; it does not record R6-G closure.
 
@@ -312,7 +312,19 @@ Use a fresh disposable PostgreSQL database. Confirm one Alembic head and a succe
 - `tests/test_experience_distiller.py` covers failed-source provenance, claim-relative contrary evidence, per-case v2 version markers, legacy unmarked-v1 reconstruction, and rejection when contrary evidence is omitted.
 - `tests/test_r6g_vertical_slice.py` covers the integrated Objective Context → Strategy → Plan → three source Outcomes/Evaluations → distillation → Operator rejection/acceptance → Team Experience projection → later-Task retrieval path.
 - Use fake Strategy and distillation generation providers, synthetic R6-E/R6-F test cost cards, deterministic test embeddings, and a deterministic restricted fetcher. No production R6-G evaluator provider or production R6-F distillation provider is approved or needed.
-- CI on implementation head `8ddc0dbeeacfa5e218b9f442717abba9e387a02c` passed run [41780956806](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41780956806): fresh PostgreSQL migration and single-head validation, Ruff, Mypy, and 610 tests. Programmer-local verification of the exact head must still use a fresh disposable PostgreSQL database and the aligned Python 3.12 environment. Record exact commands and counts; never use persistent `watch`.
+- Hosted CI on exact implementation head `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3` passed run [41782439302](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41782439302): fresh PostgreSQL migration and single-head validation, Ruff, Mypy, and **614 tests in 44.93s**. The earlier 610-test CI run is superseded by this final-head result.
+**Programmer-local verification — 2026-11-04 (operator-reported on the exact implementation head).** On branch `r6g-implementation-20261103`, commit `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3`, the working tree was clean before and after verification.
+
+- Environment: Python 3.12.12; `uv sync --locked` passed.
+- Disposable PostgreSQL: container `watch-r6g-local-20261104-b`, image `pgvector/pgvector:pg16`, database `watch_r6g_check`, host binding `127.0.0.1:55466`. The database was confirmed fresh before migration (`0` user tables; no `alembic_version`). Both `DATABASE_URL` and `TEST_DATABASE_URL` targeted this database during the run and were restored afterwards. The container and its anonymous volume were removed after success; the persistent `watch` database was not targeted.
+- `uv run alembic upgrade head` passed. `uv run alembic heads` and `uv run alembic current` both reported the single revision `0013_team_experience_projection (head)`.
+- Focused R6-G suite (rule evaluator, evaluator Tasks, R6-G distillation/vertical slice, ExperienceDistiller, StrategyProposer and Plans): **134 passed in 32.23s**.
+- `uv run ruff check core tests migrations` passed.
+- `uv run mypy core` passed (29 source files).
+- `uv run pytest -q` (full suite): **614 passed in 74.48s**.
+- `git diff --check` passed; disposable container cleanup succeeded; final `git status --short --branch` was clean and `HEAD` remained `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3`.
+
+This is operator-reported local evidence, recorded distinctly from hosted CI. It verifies the exact PR head; it does not itself constitute acceptance of the ten proofs or R6 exit approval.
 - Existing component tests do not satisfy integrated R6-G acceptance by themselves. Do not close R6-G until all ten proofs pass and the Operator explicitly approves the R6 exit gate.
 
 **Exit boundary:** implementation authorization is in force; R6-G is not closed. Review all ten acceptance proofs, including the relevant existing component tests for failure-injection, rollback, projection staleness/rebuild, retry/recovery and replay. Do not close R6-G until the local verification record and all ten proofs are accepted and the Operator explicitly approves the R6 exit gate.
