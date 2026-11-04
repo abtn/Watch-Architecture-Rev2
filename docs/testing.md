@@ -361,7 +361,7 @@ This is operator-reported local evidence, recorded distinctly from hosted CI. It
 
 ## R7-A — Evidence lineage and knowledge-quality assessment (implementation in progress)
 
-R7-A adds migration `0014_knowledge_quality_assessment`, deterministic case-lineage classification, the immutable `KnowledgeQualityAssessment` record, a narrow TaskRuntime-managed `assess_knowledge_quality` Task, and an assessment-bound guard on accepted KnowledgeItem creates.
+R7-A adds migration `0014_knowledge_quality`, deterministic case-lineage classification, the immutable `KnowledgeQualityAssessment` record, a narrow TaskRuntime-managed `assess_knowledge_quality` Task, and an assessment-bound guard on accepted KnowledgeItem creates.
 
 Focused checks:
 
@@ -378,7 +378,7 @@ uv run pytest -q
 git diff --check
 ```
 
-Run database-backed checks only against a fresh, identified disposable PostgreSQL database. Confirm the single Alembic head is `0014_knowledge_quality_assessment`; never point `DATABASE_URL` or `TEST_DATABASE_URL` at the persistent `watch` database. Restore both variables and remove the disposable container/volume after verification.
+Run database-backed checks only against a fresh, identified disposable PostgreSQL database. Confirm the single Alembic head is `0014_knowledge_quality`; never point `DATABASE_URL` or `TEST_DATABASE_URL` at the persistent `watch` database. Restore both variables and remove the disposable container/volume after verification.
 
 `tests/test_knowledge_quality.py` covers deterministic pairwise `related`/`independent`/`unknown` classification, shared Signal/Outcome/Snapshot/PlanAction anchors, ordering/hash stability, repeated Task rejection, and strict seven-dimension rubric/evidence-reference validation. `tests/test_experience_distiller.py` covers assessment Task enqueue, exact recorded-assessment requirement before accepted create, the real TaskRunner/assessment service path, and interrupted recovery reusing one immutable assessment and one terminal Outcome. `tests/test_operator_application.py` keeps adapter contract tests auditable with a minimal same-Team recorded-assessment fixture; the R6-G integrated vertical fixture now executes the R7-A assessment Task before accepting its create proposal.
 
