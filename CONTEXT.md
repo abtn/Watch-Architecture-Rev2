@@ -8,17 +8,18 @@ Watch is a persistent, evidence-oriented team system. **Model intelligence is te
 
 Reactive and deliberative work converge on the same ordinary Task runtime. Tasks, Events, and committed records describe what actually happened; Plans describe intended work.
 
-## Current R6 design direction (architectural principles accepted; phase status in PLAN.md)
+## Current milestone snapshot (phase status in PLAN.md)
 
-R6-G0 and R6-A through R6-F are complete; R6-F Checkpoints 1–4 are merged. C3 was merged by PR #31 at `99f8b6bbd76521eaac47761dcf432ebb3c0d28e3`; its final local verification passed 85 focused/579 full-suite tests, Ruff, Mypy (27 files), one fresh `0012_learning_foundation` head, and `git diff --check`. The D12 competing-approval loser Task is terminalized and recoverable through TaskRuntime. C4 was merged by PR #32 at `c8e7317da6144a15725231e499b07f1c110c4c22`. PR #33 then merged the test-database fail-closed fix at `de1af38`. The combined C3+C4 verification passed against PR #33 head `7bd7c5df`: 118 focused tests, 594 full-suite tests, Ruff, Mypy, fresh migration/head validation at `0013_team_experience_projection`, and diff check, using a disposable PostgreSQL database. The tested commit and merge commit have identical tree SHA `5bca55cd`; the test run preceded merge, and local `main` was then synced cleanly. No separate post-merge rerun is claimed. C4 includes the separate Team Experience projection/publication ledger, canonical indexing/rebuild, dual-core PostgreSQL hybrid retrieval, Context v2 provenance with immutable v1 replay, D7 policy-pinned UTC review dates, and TaskRuntime-owned review completion. D10 remains create-only for C3; revise/retire are deferred. R6-G implementation was separately authorized, verified, reviewed 10/10 and explicitly approved; PR #35 merged on 2026-11-04 at `56745b613b5b77a21a514b4e261d3450f90c0df1`. R6 is complete through R6-G. R7 remains future work and requires separate authorization. The host owns authentication; no Watch-owned API/CLI or authentication subsystem is added.
+R6 is complete through R6-G. The R6-G implementation and formal closeout are merged to main; R6 verification and limitations are recorded in PLAN.md and docs/testing.md. R7-0 documentation is complete. ADR-0032 was accepted on 2026-11-04 and R7-A alone is authorized. The accepted INV-12 amendment is active in docs/invariants.md. The R7 Task/write-scope matrix documents the future contracts but does not register runtime Tasks or grant writes; R7-A will activate only its exact assessment Task through implementation. R7-B/C remain unauthorized. The R6-G approval did not authorize R7.
 
 ## Open the smallest relevant set of documents
 
 1. [`PLAN.md`](PLAN.md) — the only source for current milestone status, gates, and next action.
-2. [`AGENTS.md`](AGENTS.md) — repository operating rules and stop conditions.
-3. [`CHANGE_MAP.md`](CHANGE_MAP.md) — where each concept is authoritatively specified.
-4. [`docs/control-model.md`](docs/control-model.md) — the Revision 2 Control model.
-5. Read only the specific supporting source needed for the task:
+2. [`docs/development/r7-entry-gate.md`](docs/development/r7-entry-gate.md), [`ADR-0032`](docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md), [`docs/development/r7-a-implementation-plan.md`](docs/development/r7-a-implementation-plan.md), and the non-active R7 matrix in [`docs/tasks.md`](docs/tasks.md) — accepted architecture, R7-A contract, and separate phase gates.
+3. [`AGENTS.md`](AGENTS.md) — repository operating rules and stop conditions.
+4. [`CHANGE_MAP.md`](CHANGE_MAP.md) — where each concept is authoritatively specified.
+5. [`docs/control-model.md`](docs/control-model.md) — the Revision 2 Control model.
+6. Read only the specific supporting source needed for the task:
    - [`docs/invariants.md`](docs/invariants.md) — non-negotiable rules.
    - [`docs/tasks.md`](docs/tasks.md) — Task types, write scopes, and budgets.
    - [`docs/architecture.md`](docs/architecture.md) — the original/general architecture for concepts not replaced by Revision 2.

@@ -13,13 +13,13 @@ This file is the **single source of current milestone status**. Other documents 
 - **R6-C: COMPLETE — merged to `main` by PR #16** (merge commit `ee780cf`, 2026-10-29). `core/execution_assessment.py` reconstructs Plan intent and Task attempt history from the existing durable records, validates terminal Outcome/Snapshot/Event/Signal consistency, preserves the historical decision basis, and produces a deterministic SHA-256 hash. The derived view is read-only: it adds no migration, canonical Evaluation record, Outcome/Event write path, or provider dependency. The R6-C PR passed fresh PostgreSQL migration checks, Ruff, mypy, and the full suite (**444 passed**).
 - **R6-E: COMPLETE — formally closed 2026-11-01 after PR #28 merged** (merge commit `3130e70fd25a35a73034ea412ef8a5af11eba17a`). All three implementation checkpoints are integrated: bounded immutable Task Context assembly; Context-bound StrategyProposer through StrategyService; and Task-attributed generation cost reservation/reconciliation. Hosted CI passed on implementation head `936e4794` (fresh migrations to `0011_task_generation_cost`, one Alembic head, Ruff, mypy, 515 tests); operator-local verification passed all three checkpoints, including Step 3 disposable-PostgreSQL migration, 43 focused tests, Ruff, mypy, full suite, and `git diff --check`. Cloudflare Workers AI `@cf/meta/llama-3.1-8b-instruct-fp8` remains authorized for R6-E only and outside automatic Task dispatch.
 - **R6-F: COMPLETE — Checkpoints 1–4 merged; combined C3+C4 local verification recorded 2026-11-03.** C1–2 merged by PRs #29/#30; C3 create-only by PR #31 (`99f8b6b`) and C4 Team Experience projection/retrieval by PR #32 (`c8e7317`). PR #33 merged DB-test fail-closed configuration at `de1af38`. Local C3+C4 verification passed on the exact tree now merged to `main`: one `0013_team_experience_projection` head, 118 focused tests, Ruff, Mypy (27 files), 594 full-suite tests and diff check. Hosted CI run [41613573334](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41613573334) passed the same suite. D10 remains create-only; revise/retire is deferred. **R6-G is COMPLETE and formally closed 2026-11-04** after the ten-proof technical review and explicit Operator approval; PR #35 merged at `56745b613b5b77a21a514b4e261d3450f90c0df1`. Final PR-head hosted CI passed on `00d07c7337ceadac7211e0f7d01f015cf0134a00` ([run 41788001379](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41788001379)); the verified implementation head passed 614 tests, and operator-local disposable-PostgreSQL verification passed 134 focused/614 full-suite tests, Ruff, Mypy and migration/head checks. The full qualification and offline-provider limitations are recorded below and in `docs/testing.md`. No second runtime, general dispatcher, Watch auth stack, TeamPolicy write through C3, or production R6-F distillation provider is introduced.
-- **R7+:** future work; not authorized by the existence of code or proposed documents.
+- **R7-0: COMPLETE — 2026-11-04. R7-A: AUTHORIZED / IMPLEMENTATION IN PROGRESS.** Operator accepted revised ADR-0032 and explicitly authorized R7-A. R7-B and R7-C remain unauthorized; R7-A must stay within its bounded evidence-lineage and KnowledgeQualityAssessment scope.
 
 The supplied project ZIP has no Git metadata. Before taking repository action, verify branch, HEAD, merge status, and worktree on the actual checkout using `AGENTS.md`.
 
 ## Next actionable step
 
-**Next actionable step:** R6 is complete through R6-G. R7 remains future work and is not authorized by the R6-G approval or merge; any R7 design/implementation should begin only after a separate Operator request and its own entry gate.
+**Next actionable step:** complete R7-A implementation, hosted CI, and exact local verification on a disposable PostgreSQL database. Do not begin R7-B or R7-C without separate Operator authorization.
 
 ## Milestone overview
 
@@ -33,8 +33,8 @@ The supplied project ZIP has no Git metadata. Before taking repository action, v
 | R3 | Complete | Deterministic, read-only StateAssessment with provenance. |
 | R4 | **Complete** (closed 2026-10-20) | StrategyProposal boundary, multi-Vision/Workstream/Action semantics, deterministic validation and reconstruction. |
 | R5 | **Complete — closed 2026-10-24 by explicit operator decision** | Materialize one accepted Strategy as one durable Plan and ordinary Tasks; retain the Task-execution dependency for R6. |
-| R6 | **COMPLETE — G0 through R6-G; formally closed 2026-11-04.** | The integrated three-case source→Evaluation→distillation→Operator→Team Experience path passed the ten-proof technical review and received explicit Operator exit approval. PR #35 merged to `main` at `56745b613b5b77a21a514b4e261d3450f90c0df1`; final PR-head CI passed, and exact implementation-head hosted/local verification is recorded below. D10 remains create-only; R7+ remain future and separately gated. |
-| R7 | Future | Distillation quality, cross-case evaluation, and knowledge lifecycle. |
+| R6 | **COMPLETE — G0 through R6-G; formally closed 2026-11-04.** | The integrated three-case source→Evaluation→distillation→Operator→Team Experience path passed the ten-proof technical review and received explicit Operator exit approval. PR #35 merged to `main` at `56745b613b5b77a21a514b4e261d3450f90c0df1`; final PR-head CI passed, and exact implementation-head hosted/local verification is recorded below. D10 remains create-only; R7 implementation remains separately gated. |
+| R7 | **R7-0 complete; R7-A authorized/in progress; ADR-0032 Accepted 2026-11-04.** | R7-A is limited to canonical evidence-lineage classification and the typed KnowledgeQualityAssessment contract/task/service/tests. R7-B lifecycle commits/current-pointer enforcement and R7-C citation, downstream-use and retrieval benchmark remain unauthorized. |
 | R8 | Future | Multi-domain pressure test. |
 | R9 | Future | Codified agent-assisted production workflow. |
 
@@ -325,9 +325,27 @@ This is the evidence-based operational prerequisite required before R6-G0 could 
 
 **Boundary retained:** this closeout records the G0 gate only; it did not start R6-A, accept ADR-0027, or weaken any R5 constraint. At the time of this G0 closeout, provider selection was pending. Those provider prerequisites were subsequently satisfied: R6-D's embedding choice is recorded in ADR-0028, and R6-E's generation provider/model choice is recorded in ADR-0031. R6-A was authorized separately afterwards and is implemented end to end; R6-E was separately authorized, implemented, and verified, with formal phase closeout pending PR #28 merge.
 
-## R7 — Distillation quality and knowledge lifecycle (future)
+## R7 — Knowledge quality evaluation and lifecycle (R7-0 planning)
 
-Improve evaluation of abstractions across multiple cases, contradictory evidence and counterexamples, transferability tests, retrieval quality, review/expiry, staleness detection, supersession, and retirement. R7 may improve the learning loop but must preserve explicit provenance, canonical authority, and controlled commits; it does not imply autonomous TeamPolicy changes.
+R7-0 is complete. The Operator accepted revised ADR-0032 and authorized R7-A on 2026-11-04. The documentation review was grounded in current KnowledgeItem/LearningChange/Evaluation/EvidenceLink models, create-only commit/admission/finalization paths, Team Experience canonicality helper, Context manifest, and Task specifications. R7-A implementation must remain within the evidence-lineage and KnowledgeQualityAssessment scope; it does not implement KnowledgeItem lifecycle commits or retrieval/use evaluation.
+
+The proposed architecture now makes these boundaries explicit:
+
+- Execution conformance remains distinct from abstraction quality and downstream knowledge-use assessment. R7 proposes dedicated KnowledgeQualityAssessment and KnowledgeUseAssessment contracts; the existing Outcome-scoped Evaluation/EvidenceLink contract is not overloaded.
+- Two separately recorded Outcomes from distinct source Task IDs remain the minimum threshold. Related/unknown lineage cases still count but must be labelled and constrain the abstraction claim; they are not described as independent.
+- KnowledgeItem retains immutable origin_learning_change_id and gains a proposed current_learning_change_id pointer to the latest accepted lifecycle transition. Content version increments only on revise; lifecycle-only transitions preserve content version/hash.
+- Supersession is represented as predecessor status retired plus a validated successor pointer, not a new superseded status. Revalidation preserves confidence exactly; only an accepted revise may change it.
+- Context manifest v2 already records included item ID/version/hash/origin. R7 adds only the missing application-owned per-claim citation and item-specific use assessment, not a duplicate inclusion record.
+- The accepted INV-12 amendment is active in docs/invariants.md. The R7 Task/write-scope matrix remains non-active until corresponding R7 Task/service code is implemented; no runtime Task grants have changed yet.
+- The retrieval benchmark must label synthetic versus canonical-derived/human-reviewed examples and report small-n results descriptively.
+
+Authorized traversal after R7-0 acceptance and the separate R7-A authorization:
+
+- **R7-A — Evidence relationships and knowledge-quality evaluation:** canonical lineage rules, typed quality assessment, rubric, confidence constraints, deterministic evidence and Task scopes.
+- **R7-B — Canonical KnowledgeItem lifecycle:** current-change pointer/history, revise/revalidate/supersede/retire, canonicality consumer updates, trusted Operator commit, D7 review and projection republishing.
+- **R7-C — Retrieval quality and downstream-use evaluation:** benchmark the current retriever, record application-validated per-claim citations, and evaluate later Task evidence without causal overclaiming.
+
+**Boundary:** ADR-0032 is Accepted and R7-A alone is authorized. R7-B and R7-C still require separate explicit Operator authorization. R7-A must pass hosted CI and exact local disposable-PostgreSQL verification before closure.
 
 ## R8 — Multi-domain pressure test (future)
 
