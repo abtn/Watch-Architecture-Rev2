@@ -213,9 +213,15 @@ def _seed_quality_assessment(
 def approval_context(
     session_factory: sessionmaker[Session],
 ) -> Iterator[ApprovalContext]:
-    team_id, other_team_id, proposer_task_id, learning_change_id, outcome_id, evaluation_id = (
-        uuid4() for _ in range(6)
-    )
+    (
+        team_id,
+        other_team_id,
+        proposer_task_id,
+        learning_change_id,
+        outcome_id,
+        evaluation_id,
+        evaluation_task_outcome_id,
+    ) = (uuid4() for _ in range(7))
     policy_ids = [uuid4(), uuid4(), uuid4()]
     with session_factory.begin() as session:
         session.add_all(
@@ -270,6 +276,7 @@ def approval_context(
                 evidence_basis=[
                     {
                         "evaluation_id": str(evaluation_id),
+                        "evaluation_task_outcome_id": str(evaluation_task_outcome_id),
                         "outcome_id": str(outcome_id),
                         "source_task_id": str(proposer_task_id),
                         "source_task_provenance": {},
