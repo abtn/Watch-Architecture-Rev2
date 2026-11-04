@@ -47,8 +47,8 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 
 Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for current milestone status.
 
-- **R6 next:** R6 is complete. R7 is the next future planning horizon, but requires its own explicit authorization and entry gate; the R6-G approval does not authorize R7 implementation. See [PLAN.md](PLAN.md) for current status.
-- **R7 — Distillation quality and knowledge lifecycle:** cross-case evaluation of abstractions, contradictory evidence and counterexamples, transferability tests, retrieval quality, review/expiry, staleness detection, supersession, and retirement — always preserving explicit provenance, canonical authority, and controlled commits.
+- **R7-0 — architecture planning in progress:** proposed ADR-0032 and the R7 entry gate define the knowledge-quality, evidence-lineage, retrieval/use, and lifecycle design. This is documentation only; R7-A/B/C implementation is not authorized. See [PLAN.md](PLAN.md) for the authoritative status.
+- **R7 — Knowledge quality evaluation and lifecycle:** distinguish execution evaluation from abstraction quality and downstream-use evaluation; preserve case lineage, contradictory evidence, applicability boundaries, exact knowledge-use provenance, retrieval quality, and controlled revision/revalidation/supersession/retirement. Proposed architecture: [ADR-0032](docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md); implementation gate: [R7 entry gate](docs/development/r7-entry-gate.md).
 - **R8 — Multi-domain pressure test:** exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge stays outside the Kernel.
 - **R9 — Agent-assisted production workflow:** codified task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.
 - **Deferred cross-cutting work:** execution security (per-worker filesystem/network/tool surface and secret isolation) and broader multi-domain experience-library work beyond the initial R6 slice.
@@ -61,6 +61,8 @@ Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for curre
 - [`docs/development/agent-delivery-protocol.md`](docs/development/agent-delivery-protocol.md) — standing delivery authorization, automatic advancement, and merge conditions.
 - [`docs/development/local-embeddings.md`](docs/development/local-embeddings.md) — local LM Studio / BGE-M3 embedding API setup and smoke gate.
 - [`docs/development/r6-entry-gate.md`](docs/development/r6-entry-gate.md) — R6 decisions, implementation boundaries, acceptance gates, and the integrated R6 exit criteria.
+- [`docs/development/r7-entry-gate.md`](docs/development/r7-entry-gate.md) — proposed R7-A/B/C architecture sequence, unresolved decisions, acceptance evidence, and implementation authorization boundary.
+- [`docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md`](docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md) — proposed knowledge-quality evaluation and lifecycle architecture.
 - [`docs/development/r6g-integrated-fixture-design.md`](docs/development/r6g-integrated-fixture-design.md) — detailed R6-G three-case fixture, service sequence, transaction/recovery boundaries, and required tests.
 - [`docs/development/r6-f-implementation-plan.md`](docs/development/r6-f-implementation-plan.md) — historical R6-F technical checkpoints, design decisions, and verification gates.
 - [`CHANGE_MAP.md`](CHANGE_MAP.md) — authority map for concepts.
