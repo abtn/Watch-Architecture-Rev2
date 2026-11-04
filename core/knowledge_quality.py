@@ -329,7 +329,7 @@ def build_case_lineage_report(
                 "snapshot_anchors": sorted(snapshot_anchors),
                 "related_anchors": sorted(related_anchors),
                 "plan_action_anchor": plan_action_anchor,
-                "lineage_complete": bool(snapshot_anchors) and not incomplete,
+                "lineage_complete": bool(snapshot_anchors or plan_action_anchor) and not incomplete,
             }
         )
 
