@@ -184,6 +184,17 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Validation:** all records and references are same-Team/domain as applicable; Outcome/Evaluation terminal Events, proposal hashes, EvidenceLink reference keys, Snapshot hashes, and quotes are revalidated; one case permits only a narrow low-confidence `practice`; `pattern`, `method`, or `playbook` requires at least two recorded Evaluations tied to distinct source Task IDs. Supporting, challenging, and mentioning links retain their canonical stance. **R6-G v2 behavior is implemented:** a source Task may be `done` with a D9 `worked` Evaluation or terminally `failed` with a D9 `failed` Evaluation only when its exact current-attempt terminal Events and Outcome agree; a failed case remains contrary evidence relative to a positive reusable-practice candidate. The pack stores raw EvidenceLink stance separately from derived case-relative stance and persists a version marker per evidence-basis case, included in the basis hash. Historical unmarked R6-F v1 basis records are reconstructed without adding a marker; unknown, mixed or mismatched markers fail closed. The exact deterministic evidence basis/hash is recomputed after provider return before the proposal is stored. Model references outside the supplied evidence pack, stale or altered evidence, malformed output, unknown usage, or cost overrun cannot yield a proposal.
 - **Provider boundary:** the provider is dependency-injected. Only a synthetic deterministic test card is allowed in this checkpoint; ADR-0031 authorizes Cloudflare for R6-E only. No production R6-F provider/model call is authorized until the separate provider decision is accepted.
 - **Not permitted:** approval/rejection, KnowledgeItem create/revise/retire, TeamPolicy mutation, indexing, retrieval publication, new dispatcher, or a second runtime. Those belong to later checkpoints and remain outside this Task's grants.
+### `assess_knowledge_quality` — evaluator proposal (R7-A; active)
+
+- **Purpose:** assess one exact proposed LearningChange create state before trusted Operator acceptance. Evaluator reports structured findings; it cannot accept/reject the LearningChange.
+- **Task creation:** TaskRuntime creates one ordinary same-Team assessment Task as a Kernel-managed side effect after successful create proposal finalization. Its request Event pins LearningChange, proposal/evidence hashes, rubric and evaluator identity/revision.
+- **Reads:** exact proposed LearningChange and rebuilt canonical evidence basis, source Task/Outcome/Evaluation/Signal/Snapshot lineage and same-Team KnowledgeItem refs in validated basis.
+- **Writes:** one untrusted typed KnowledgeQualityAssessment draft is proposed; application validates and records one immutable assessment and Task-attributed Events. Exact worker scope is `["KnowledgeQualityAssessment"]`; no LearningChange or KnowledgeItem write.
+- **Validation:** rebuild/hash canonical evidence; validate references, Team, lineage, seven rubric dimensions, evaluator identity/revision, proposal hash, idempotency and Task scope. "recorded" means stored, not approved. Accepted create requires exactly one recorded assessment for exact LearningChange and completed assessment Task.
+- **Task lifecycle:** TaskRuntime owns admission, attempt fencing, finalization, Outcome/Event and interrupted recovery. Three max attempts; zero tools/cost; 30-second deadline. Provider injected; tests use deterministic fakes; no production evaluator selected.
+- **Not permitted:** LearningChange disposition, KnowledgeItem, TeamPolicy, projection, Context, citation or approval writes; no direct worker DB write; no autonomous acceptance.
+- **Failure:** malformed, stale, cross-Team, mismatched-hash, unsupported-reference or changed-idempotency draft cannot create recorded assessment. Ordinary TaskRuntime retry/recovery applies.
+
 ### `approve_learning_change` — trusted Operator via host-invoked in-repository adapter (R6-F Checkpoint 3)
 - **Purpose:** explicitly accept or reject one proposed LearningChange through the only R6-F canonical learning-commit path.
 - **Caller and identity:** the host authenticates the Operator and authorizes the exact Team/action, then invokes the adapter in-process with a typed principal carrying stable issuer/subject. The adapter does not accept a bare `operator_id`, display name, email, request-body identity, or model output as proof. No deployed Watch API/CLI, login, token middleware, or user store is added.
@@ -261,28 +272,28 @@ Those are application-managed `K` lifecycle side effects, not worker-authored
 writes, and they never enter a worker's `allowed_writes`. They are generic
 TaskRuntime lifecycle records, distinct from the task-specific Signal Snapshot
 side effect in footnote ¹; footnote ¹ grants no worker Snapshot permission.
-| Task type | Team | Signal | SignalDisposition | Thread | Hypothesis | EvidenceLink | ConfidenceChange | Artifact | Outcome | Evaluation | KnowledgeItem | TeamPolicy | LearningChange | Trigger | Consultation | TeamDraft | Task (K) | Snapshot (K) | Event (K) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `ingest_source` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K²⁵ | K¹ | K²⁵ |
-| `manual_signal_ingest` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | K¹ | K |
-| `triage_signal` | — | — | W | C/W² | — | — | — | — | — | — | — | — | — | — | — | — | K²³ | — | K |
-| `update_thread` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | K | — | K |
-| `operator_update` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | K | — | K |
-| `apply_decay` | — | — | — | W⁵ | — | — | W | — | — | — | — | — | — | — | — | — | K | — | K |
-| `check_triggers` | — | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | K²⁰ | — | K |
-| `review_knowledge` | — | — | — | — | — | — | — | — | — | — | W⁶ | — | — | — | — | — | K | — | K |
-| `render_output` | — | — | — | — | — | — | — | W | — | — | — | — | — | — | — | — | K²¹ | K⁷ | K |
-| `record_outcome` | — | — | — | — | — | — | — | — | W | — | — | — | — | — | — | — | K | K⁸ | K |
-| `evaluate_outcome` | — | — | — | — | — | W⁹ | — | — | — | W | — | — | — | — | — | — | K | — | K |
-| `propose_learning_change` | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | — | K | — | K |
-| `approve_learning_change` | — | — | — | — | — | — | — | — | — | — | W | — | W | — | — | — | K | — | K |
-| `seed_knowledge` | — | — | — | — | — | — | — | — | — | — | W | W | W | — | — | — | K | — | K |
-| `request_consultation` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W¹⁰ | — | K | K¹¹ | K |
-| `answer_consultation` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W¹² | — | K²² | K¹³ | K |
-| `create_team` | W¹⁴ | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | K¹⁵ | K |
-| `configure_team` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W | K | K¹⁶ | K |
-| `activate_team` | W¹⁷ | — | — | C | — | — | — | — | — | — | — | W | — | — | — | W¹⁸ | K | K¹⁹ | K |
-| `transition_plan` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | — | K²⁴ |
+| Task type | Team | Signal | SignalDisposition | Thread | Hypothesis | EvidenceLink | ConfidenceChange | Artifact | Outcome | Evaluation | KnowledgeItem | TeamPolicy | LearningChange | KnowledgeQualityAssessment | Trigger | Consultation | TeamDraft | Task (K) | Snapshot (K) | Event (K) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `ingest_source` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K²⁵ | K¹ | K²⁵ |
+| `manual_signal_ingest` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | K¹ | K |
+| `triage_signal` | — | — | W | C/W² | — | — | — | — | — | — | — | — | — | — | — | — | — | K²³ | — | K |
+| `update_thread` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
+| `operator_update` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
+| `apply_decay` | — | — | — | W⁵ | — | — | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
+| `check_triggers` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | K²⁰ | — | K |
+| `review_knowledge` | — | — | — | — | — | — | — | — | — | — | W⁶ | — | — | — | — | — | — | K | — | K |
+| `render_output` | — | — | — | — | — | — | — | W | — | — | — | — | — | — | — | — | — | K²¹ | K⁷ | K |
+| `record_outcome` | — | — | — | — | — | — | — | — | W | — | — | — | — | — | — | — | — | K | K⁸ | K |
+| `evaluate_outcome` | — | — | — | — | — | W⁹ | — | — | — | W | — | — | — | — | — | — | — | K | — | K |
+| `propose_learning_change` | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | — | — | K | — | K |
+| `approve_learning_change` | — | — | — | — | — | — | — | — | — | — | W | — | W | — | — | — | — | K | — | K |
+| `seed_knowledge` | — | — | — | — | — | — | — | — | — | — | W | W | W | — | — | — | — | K | — | K |
+| `request_consultation` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W¹⁰ | — | K | K¹¹ | K |
+| `answer_consultation` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W¹² | — | K²² | K¹³ | K |
+| `create_team` | W¹⁴ | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | K¹⁵ | K |
+| `configure_team` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W | K | K¹⁶ | K |
+| `activate_team` | W¹⁷ | — | — | C | — | — | — | — | — | — | — | W | — | — | — | — | W¹⁸ | K | K¹⁹ | K |
+| `transition_plan` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | — | K²⁴ |
 ¹ Store only the immutable Snapshot for the Signal created by this ingestion
 operation. This footnote governs that ingestion side effect alone: it grants no
 worker Snapshot permission, and it does not limit the separate terminal
@@ -554,6 +565,8 @@ Starting points, tuned during M2; per-Task values may override downward, never u
 | `record_outcome` | 0 | 0 | — |
 | `evaluate_outcome` | 4 | 0.40 | 180 |
 | `propose_learning_change` | 4 | 0.40 | 180 |
+| `assess_knowledge_quality` | 0 | 0 | 30 |
+| `assess_knowledge_quality` | — | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | — | K | — | K |
 | `approve_learning_change` | 0 | 0 | — |
 | `seed_knowledge` | 0 | 0 | — |
 | `request_consultation` | 4 | 0.30 | 180 |
@@ -568,13 +581,13 @@ Starting points, tuned during M2; per-Task values may override downward, never u
 For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeItem writes plus exact application-managed Events; it has **no TeamPolicy write grant**. The legacy `seed_knowledge` row remains a separately documented Task type but is not implemented by R6-F. Evaluation worker output cannot set its own status: trusted application service code validates and records/rejects the proposal. ExperienceDistiller output likewise remains an untrusted candidate; Checkpoint 2 creates only proposed LearningChanges for KnowledgeItem creation. Checkpoint 3 performs explicit Operator review and canonical commit through a trusted application identity boundary and an ordinary same-Team approval Task; TaskRuntime remains the sole owner of Task lifecycle transitions. D7's interval is read-only policy input pinned to the approval Task; it does not grant a TeamPolicy write. Checkpoint 4 implements the separate `team_experience_chunks` projection, current-canonical index/rebuild and dual-core retrieval, Context v2 with per-core provenance, and canonical review-date eligibility. `review_knowledge` owns only the `active → needs_review` transition through TaskRuntime; `approve_learning_change` remains read-only on TeamPolicy and pins the rule version used to compute `review_after`.
 
 
-## 7. Proposed R7 Task/write-scope matrix — not active
+## 7. R7 Task/write-scope matrix — phase-gated extensions
 
-**Status:** architecture accepted; R7-A implementation authorized on 2026-11-04. This matrix remains non-active for runtime registration/grants until each exact Task implementation and tests are merged. These rows do not add Task types to the runtime registry, do not grant write scopes, and do not change the active §3 Task specifications or §4 write-scope matrix. R7 implementation must update those active sections only after its phase gate is accepted.
+**Status:** `assess_knowledge_quality` is active in §§3–5 and operative §4 after PR #39 merged. Remaining R7-B/R7-C rows below are non-active proposals; they add no Task registration, write grant or implementation authority.
 
 | Proposed Task / operation | Purpose and authority | Proposed worker write scope | Application / TaskRuntime side effects | Explicitly forbidden |
 |---|---|---|---|---|
-| **assess_knowledge_quality** | R7-A evaluator Task for one exact proposed create LearningChange state. | Untrusted typed KnowledgeQualityAssessment draft only; the worker never writes directly. | TaskRuntime creates/admit/finalizes the narrow Task. Application rebuilds canonical evidence, validates lineage/rubric/evaluator identity/revision and exact proposal/evidence hashes, then records one immutable `recorded` assessment and Task-attributed Event. `recorded` means the assessment was stored, not that the proposal passed or is accepted. | No LearningChange disposition, KnowledgeItem, TeamPolicy, index, Context, citation, or approval write. Only the trusted existing `approve_learning_change` Task may commit the KnowledgeItem create, and only after the exact assessment is verified. |
+| **assess_knowledge_quality — ACTIVE (R7-A)** | Implemented evaluator Task for one exact proposed create LearningChange state. | Exact worker proposal scope: KnowledgeQualityAssessment draft only. | TaskRuntime creates/admit/finalizes/recoveries the narrow Task; application rebuilds canonical evidence, validates lineage/rubric/evaluator identity/revision and proposal/evidence hashes, then records one immutable assessment and attributable Event. "recorded" means stored, not accepted. | No LearningChange disposition, KnowledgeItem, TeamPolicy, index, Context, citation or approval write. Accepted creates require exact completed assessment. |
 | **propose_learning_change — proposed R7 extension** | Extend the existing create-only proposal Task to propose create/revise/revalidate/supersede/retire after each operation's evidence contract is accepted. | LearningChange proposal only. | Application validates proposal shape and evidence-basis hash; TaskRuntime/cost ledger effects remain managed by the existing runtime. | No KnowledgeItem, TeamPolicy, projection, approval, or direct canonical write. Until separately implemented, the delivered R6 behavior remains create-only. |
 | **approve_learning_change — proposed R7 extension** | Existing trusted Operator Task, invoked through the host-authenticated typed-principal adapter; commits one exact proposed lifecycle change. | No model/worker business writes. | The application commit transaction may write the LearningChange disposition, KnowledgeItem current state/current pointer/successor link, and exact Task-attributed Events. TaskRuntime remains sole Task lifecycle authority. | No TeamPolicy write, seed bypass, arbitrary target/version, autonomous approval, or second commit path. The delivered R6 behavior remains create-only until R7-B is separately authorized and implemented. |
 | **review_knowledge — unchanged D7 exception** | Deterministic scheduled maintenance Task. | No worker business writes. | TaskRuntime/application service may perform only status active → needs_review and its Task-attributed Event. | No content/confidence change, LearningChange lifecycle operation, review-date extension, reactivation, revision, supersession, or retirement. |
@@ -582,4 +595,4 @@ For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeI
 
 A TaskKnowledgeReference is not a new worker write grant or separate approval Task. It is an application-owned, Task-attributed reference recorded only after code validates a worker-nominated claim reference against the immutable Context manifest. The model cannot write a citation record directly.
 
-The proposed lifecycle reuses approve_learning_change; it does not introduce a separate approve_knowledge_lifecycle Task type. Only the R7-A assess_knowledge_quality row is within the current authorization; it becomes an active Task contract only when its implementation and tests are merged. The proposed R7-B lifecycle extension and R7-C assess_knowledge_use row remain inactive and unauthorized. TaskRuntime admission/finalization and exact write-scope enforcement are required before activating the R7-A row.
+The proposed lifecycle reuses approve_learning_change; it does not introduce a separate approve_knowledge_lifecycle Task type. The R7-A assessment Task is active in §§3–5 and operative scope matrix. R7-B lifecycle extensions and R7-C assess_knowledge_use remain non-active and unauthorized.
