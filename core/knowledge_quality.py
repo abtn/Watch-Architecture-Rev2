@@ -92,7 +92,9 @@ class KnowledgeQualityDimension(BaseModel):
     @field_validator("findings")
     @classmethod
     def nonblank_findings(cls, values: list[str]) -> list[str]:
-        normalized = [value.strip() if isinstance(value, str) else value for value in values]
+        normalized = [
+            value.strip() if isinstance(value, str) else value for value in values
+        ]
         if any(not isinstance(value, str) or not value for value in normalized):
             raise ValueError("knowledge_quality_finding_required")
         return normalized
@@ -109,7 +111,7 @@ class KnowledgeQualityDimension(BaseModel):
 
 
 class KnowledgeQualityAssessmentDraft(BaseModel):
-    """Untrusted assessment proposal; lineage/evaluator identity are application-owned."""
+    """Untrusted assessment proposal; lineage and evaluator identity are application-owned."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -198,14 +200,22 @@ def build_case_lineage_report(
     evidence_basis: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Classify pairs from canonical source lineage, never worker-provided labels."""
-    if not isinstance(evidence_basis, list) or not evidence_basis or len(evidence_basis) > 8:
-        raise KnowledgeQualityAssessmentError("knowledge_quality_evidence_basis_invalid")
+    if (
+        not isinstance(evidence_basis, list)
+        or not evidence_basis
+        or len(evidence_basis) > 8
+    ):
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_evidence_basis_invalid"
+        )
 
     cases: list[dict[str, Any]] = []
     seen_tasks: set[str] = set()
     for basis in evidence_basis:
         if not isinstance(basis, dict):
-            raise KnowledgeQualityAssessmentError("knowledge_quality_evidence_case_invalid")
+            raise KnowledgeQualityAssessmentError(
+                "knowledge_quality_evidence_case_invalid"
+            )
         evaluation_id = _canonical_uuid(basis.get("evaluation_id"))
         outcome_id = _canonical_uuid(basis.get("outcome_id"))
         source_task_id = _canonical_uuid(basis.get("source_task_id"))
@@ -223,7 +233,9 @@ def build_case_lineage_report(
         seen_tasks.add(source_task_id)
         source_task = session.get(Task, UUID(source_task_id))
         if source_task is None or source_task.team_id != team_id:
-            raise KnowledgeQualityAssessmentError("knowledge_quality_source_task_invalid")
+            raise KnowledgeQualityAssessmentError(
+                "knowledge_quality_source_task_invalid"
+            )
 
         snapshot_anchors: set[str] = set()
         related_anchors: set[str] = set()
@@ -329,7 +341,9 @@ def build_case_lineage_report(
                 "snapshot_anchors": sorted(snapshot_anchors),
                 "related_anchors": sorted(related_anchors),
                 "plan_action_anchor": plan_action_anchor,
-                "lineage_complete": bool(snapshot_anchors or plan_action_anchor) and not incomplete,
+                "lineage_complete": (
+                    bool(snapshot_anchors or plan_action_anchor) and not incomplete
+                ),
             }
         )
 
@@ -398,7 +412,9 @@ def evidence_reference_set(
         if not all(
             (evaluation_id, outcome_id, source_task_id, evaluation_task_outcome_id)
         ):
-            raise KnowledgeQualityAssessmentError("knowledge_quality_reference_basis_invalid")
+            raise KnowledgeQualityAssessmentError(
+                "knowledge_quality_reference_basis_invalid"
+            )
         references.update(
             {
                 f"evaluation:{evaluation_id}",
@@ -407,12 +423,17 @@ def evidence_reference_set(
                 f"source_task:{source_task_id}",
             }
         )
-        for digest in (item.get("outcome_snapshot_hash"), item.get("evaluation_task_snapshot_hash")):
+        for digest in (
+            item.get("outcome_snapshot_hash"),
+            item.get("evaluation_task_snapshot_hash"),
+        ):
             if isinstance(digest, str) and _HASH_RE.fullmatch(digest):
                 references.add(f"snapshot:{digest}")
         for link in item.get("evidence_links", []):
             if not isinstance(link, dict):
-                raise KnowledgeQualityAssessmentError("knowledge_quality_reference_basis_invalid")
+                raise KnowledgeQualityAssessmentError(
+                    "knowledge_quality_reference_basis_invalid"
+                )
             reference_key = link.get("reference_key")
             source_kind = link.get("source_kind")
             source_id = (
@@ -497,12 +518,17 @@ def build_quality_task_request(
         or source_task.team_id != learning_change.team_id
         or learning_change.proposed_by_task_id != source_task.id
         or (require_proposed and learning_change.status != "proposed")
-        or (not require_proposed and learning_change.status not in {"proposed", "accepted", "rejected"})
+        or (
+            not require_proposed
+            and learning_change.status not in {"proposed", "accepted", "rejected"}
+        )
         or learning_change.operation != "create"
         or learning_change.target_kind != "knowledge_item"
         or learning_change.target_id is not None
     ):
-        raise KnowledgeQualityAssessmentError("knowledge_quality_source_proposal_invalid")
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_source_proposal_invalid"
+        )
     lineage = build_case_lineage_report(
         session, learning_change.team_id, learning_change.evidence_basis
     )
@@ -549,12 +575,16 @@ def validate_quality_task_request(
         )
     )
     if len(events) != 1 or not isinstance(events[0].payload, dict):
-        raise KnowledgeQualityAssessmentError("knowledge_quality_task_request_event_invalid")
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_task_request_event_invalid"
+        )
     payload = events[0].payload
     try:
         learning_change_id = UUID(payload.get("learning_change_id"))
     except (TypeError, ValueError) as error:
-        raise KnowledgeQualityAssessmentError("knowledge_quality_task_target_invalid") from error
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_task_target_invalid"
+        ) from error
     learning_change = session.scalar(
         select(LearningChange).where(
             LearningChange.id == learning_change_id,
@@ -570,7 +600,9 @@ def validate_quality_task_request(
         or learning_change.status not in {"proposed", "accepted", "rejected"}
         or (require_proposed and learning_change.status != "proposed")
     ):
-        raise KnowledgeQualityAssessmentError("knowledge_quality_learning_change_invalid")
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_learning_change_invalid"
+        )
     source_task = session.get(Task, learning_change.proposed_by_task_id)
     if (
         source_task is None
@@ -600,7 +632,9 @@ def validate_quality_task_request(
         )
     )
     if len(proposal_events) != 1:
-        raise KnowledgeQualityAssessmentError("knowledge_quality_proposal_event_missing")
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_proposal_event_missing"
+        )
     proposal = proposal_events[0].payload
     if (
         not isinstance(proposal, dict)
@@ -609,7 +643,9 @@ def validate_quality_task_request(
         != learning_change.proposed_state.get("proposal_hash")
         or proposal.get("evidence_basis_hash") != learning_change.evidence_basis_hash
     ):
-        raise KnowledgeQualityAssessmentError("knowledge_quality_proposal_event_mismatch")
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_proposal_event_mismatch"
+        )
     terminal_events = list(
         session.scalars(
             select(Event).where(
@@ -634,7 +670,9 @@ def validate_quality_task_request(
         != str(learning_change.id)
         or len(source_outcomes) != 1
     ):
-        raise KnowledgeQualityAssessmentError("knowledge_quality_source_terminal_invalid")
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_source_terminal_invalid"
+        )
     return payload
 
 
@@ -684,7 +722,9 @@ def require_recorded_assessment(
         != assessment_payload_hash(assessment_payload_from_row(assessment))
         or assessment.lineage_report_hash != sha256_json(assessment.lineage_report)
     ):
-        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_binding_invalid")
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_assessment_binding_invalid"
+        )
     try:
         stored_draft = KnowledgeQualityAssessmentDraft(
             learning_change_id=assessment.learning_change_id,
@@ -728,7 +768,9 @@ def require_recorded_assessment(
         or request.get("evidence_basis_hash") != assessment.evidence_basis_hash
         or request.get("lineage_report_hash") != assessment.lineage_report_hash
     ):
-        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_request_mismatch")
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_assessment_request_mismatch"
+        )
     started = list(
         session.scalars(
             select(Event).where(
@@ -764,7 +806,9 @@ def require_recorded_assessment(
         or recorded[0].payload != recorded_assessment_event_payload(assessment)
         or recorded[0].created_at != assessment.recorded_at
     ):
-        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_record_event_invalid")
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_assessment_record_event_invalid"
+        )
     terminal = list(
         session.scalars(
             select(Event).where(
@@ -797,9 +841,13 @@ def require_recorded_assessment(
             or outcomes[0].observed_at != assessment.recorded_at
             or task.completed_at != outcomes[0].observed_at
         ):
-            raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_task_incomplete")
+            raise KnowledgeQualityAssessmentError(
+                "knowledge_quality_assessment_task_incomplete"
+            )
     elif terminal or outcomes:
-        raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_task_already_terminal")
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_assessment_task_already_terminal"
+        )
     return assessment
 
 
@@ -813,14 +861,20 @@ def validate_dimension_draft(
     for name in DIMENSIONS:
         dimension = draft.dimensions[name]
         if dimension.disposition not in DISPOSITIONS:
-            raise KnowledgeQualityAssessmentError("knowledge_quality_disposition_invalid")
+            raise KnowledgeQualityAssessmentError(
+                "knowledge_quality_disposition_invalid"
+            )
         if any(ref not in allowed_references for ref in dimension.evidence_refs):
-            raise KnowledgeQualityAssessmentError("knowledge_quality_reference_not_in_basis")
+            raise KnowledgeQualityAssessmentError(
+                "knowledge_quality_reference_not_in_basis"
+            )
         if (
             dimension.disposition != "insufficient_evidence"
             and not dimension.evidence_refs
         ):
-            raise KnowledgeQualityAssessmentError("knowledge_quality_evidence_reference_required")
+            raise KnowledgeQualityAssessmentError(
+                "knowledge_quality_evidence_reference_required"
+            )
         if name == "novelty_overlap" and (
             dimension.disposition != "insufficient_evidence"
             or dimension.evidence_refs
@@ -941,7 +995,9 @@ class KnowledgeQualityAssessmentService:
                 select(Task).where(Task.id == task_id).with_for_update()
             )
             if task is None:
-                raise KnowledgeQualityAssessmentError("knowledge_quality_task_not_found")
+                raise KnowledgeQualityAssessmentError(
+                    "knowledge_quality_task_not_found"
+                )
             if (
                 task.task_type != TASK_TYPE
                 or task.status != "running"
@@ -953,7 +1009,9 @@ class KnowledgeQualityAssessmentService:
                 or task.max_attempts != TASK_MAX_ATTEMPTS
                 or task.budget != TASK_BUDGET
             ):
-                raise KnowledgeQualityAssessmentError("knowledge_quality_task_not_eligible")
+                raise KnowledgeQualityAssessmentError(
+                    "knowledge_quality_task_not_eligible"
+                )
             try:
                 request = TaskRuntime._validate_knowledge_quality_task_request(
                     session, task, require_proposed=True
@@ -979,7 +1037,9 @@ class KnowledgeQualityAssessmentService:
                 or draft.rubric_identity != request["rubric_identity"]
                 or draft.rubric_revision != request["rubric_revision"]
             ):
-                raise KnowledgeQualityAssessmentError("knowledge_quality_draft_request_mismatch")
+                raise KnowledgeQualityAssessmentError(
+                    "knowledge_quality_draft_request_mismatch"
+                )
 
             start_events = list(
                 session.scalars(
@@ -1012,12 +1072,16 @@ class KnowledgeQualityAssessmentService:
             except ExperienceDistillerError as error:
                 raise KnowledgeQualityAssessmentError(error.reason) from error
             if pack.basis_hash != learning_change.evidence_basis_hash:
-                raise KnowledgeQualityAssessmentError("knowledge_quality_evidence_basis_stale")
+                raise KnowledgeQualityAssessmentError(
+                    "knowledge_quality_evidence_basis_stale"
+                )
             lineage = build_case_lineage_report(
                 session, task.team_id, pack.evidence_basis
             )
             if sha256_json(lineage) != request["lineage_report_hash"]:
-                raise KnowledgeQualityAssessmentError("knowledge_quality_lineage_report_mismatch")
+                raise KnowledgeQualityAssessmentError(
+                    "knowledge_quality_lineage_report_mismatch"
+                )
             allowed_references = evidence_reference_set(learning_change, pack)
             dimensions = validate_dimension_draft(draft, allowed_references)
             used_references = sorted(
@@ -1067,7 +1131,9 @@ class KnowledgeQualityAssessmentService:
                         recorded_at=prior.recorded_at,
                         replayed=True,
                     )
-                raise KnowledgeQualityConflict("knowledge_quality_assessment_already_recorded")
+                raise KnowledgeQualityConflict(
+                    "knowledge_quality_assessment_already_recorded"
+                )
 
             assessment = KnowledgeQualityAssessment(
                 id=uuid4(),
