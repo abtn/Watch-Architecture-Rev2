@@ -24,6 +24,8 @@ from core.models import (
     KnowledgeQualityAssessment,
     LearningChange,
     Outcome,
+    Plan,
+    PlanAction,
     Signal,
     Task,
     Team,
@@ -218,6 +220,9 @@ def build_case_lineage_report(
         ):
             raise KnowledgeQualityAssessmentError("knowledge_quality_evidence_case_invalid")
         seen_tasks.add(source_task_id)
+        source_task = session.get(Task, UUID(source_task_id))
+        if source_task is None or source_task.team_id != team_id:
+            raise KnowledgeQualityAssessmentError("knowledge_quality_source_task_invalid")
 
         snapshot_anchors: set[str] = set()
         related_anchors: set[str] = set()
@@ -280,18 +285,26 @@ def build_case_lineage_report(
             else:
                 incomplete = True
 
-        plan_action = provenance.get("plan_action")
         plan_action_anchor: str | None = None
-        if plan_action is not None:
-            if not isinstance(plan_action, dict):
+        if (source_task.plan_id is None) != (source_task.plan_action_id is None):
+            incomplete = True
+        elif source_task.plan_id is not None and source_task.plan_action_id is not None:
+            plan = session.get(Plan, source_task.plan_id)
+            action = session.get(
+                PlanAction, (source_task.plan_id, source_task.plan_action_id)
+            )
+            if (
+                plan is None
+                or plan.team_id != team_id
+                or action is None
+                or action.plan_id != source_task.plan_id
+                or action.action_id != source_task.plan_action_id
+            ):
                 incomplete = True
             else:
-                plan_id = _canonical_uuid(plan_action.get("plan_id"))
-                action_id = _canonical_uuid(plan_action.get("action_id"))
-                if plan_id is None or action_id is None:
-                    incomplete = True
-                else:
-                    plan_action_anchor = f"plan_action:{plan_id}:{action_id}"
+                plan_action_anchor = (
+                    f"plan_action:{source_task.plan_id}:{source_task.plan_action_id}"
+                )
 
         cases.append(
             {
@@ -449,6 +462,8 @@ def build_quality_task_request(
     session: Session,
     source_task: Task,
     learning_change: LearningChange,
+    *,
+    require_proposed: bool = True,
 ) -> tuple[UUID, dict[str, Any]]:
     if (
         source_task.task_type != "propose_learning_change"
@@ -457,7 +472,8 @@ def build_quality_task_request(
         or source_task.allowed_writes != ["LearningChange"]
         or source_task.team_id != learning_change.team_id
         or learning_change.proposed_by_task_id != source_task.id
-        or learning_change.status != "proposed"
+        or (require_proposed and learning_change.status != "proposed")
+        or (not require_proposed and learning_change.status not in {"proposed", "accepted", "rejected"})
         or learning_change.operation != "create"
         or learning_change.target_kind != "knowledge_item"
         or learning_change.target_id is not None
@@ -539,7 +555,7 @@ def validate_quality_task_request(
     ):
         raise KnowledgeQualityAssessmentError("knowledge_quality_source_task_invalid")
     task_id, expected = build_quality_task_request(
-        session, source_task, learning_change
+        session, source_task, learning_change, require_proposed=require_proposed
     )
     if task.id != task_id or task.team_id != learning_change.team_id:
         raise KnowledgeQualityAssessmentError("knowledge_quality_task_identity_invalid")
