@@ -505,6 +505,11 @@ def test_single_case_proposes_only_narrow_practice_and_replays(
     )
     assert pack.case_count == 1
     assert len(pack.basis_hash) == len("sha256:") + 64
+    assert pack.document["schema_version"] == "r6f-experience-evidence-pack-v1"
+    assert all(
+        item["schema_version"] == "r6f-experience-evidence-pack-v1"
+        for item in pack.evidence_basis
+    )
 
     result = distiller.propose(
         fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
@@ -561,6 +566,62 @@ def test_single_case_proposes_only_narrow_practice_and_replays(
                 Event.type == "learning_change_proposed",
             )
         ) is not None
+
+
+def test_legacy_v1_learning_change_reconstructs_without_new_basis_marker(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False)
+    distiller = _distiller(session_factory, snapshot_store, _provider())
+    evaluation_id = fixture.cases[0].evaluation_id
+    result = distiller.propose(fixture.distillation_task_id, [evaluation_id])
+
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=result.learning_change_id,
+        )
+    )
+
+    # Rebuild the exact pre-marker R6-F representation to model a LearningChange
+    # already persisted by an earlier deployment. Its old hash must still replay.
+    with session_factory.begin() as session:
+        change = session.get(LearningChange, result.learning_change_id)
+        proposer = session.get(Task, fixture.distillation_task_id)
+        team = session.get(Team, fixture.team_id)
+        assert change is not None and proposer is not None and team is not None
+        legacy_pack = distiller._build_pack(
+            session,
+            proposer,
+            team,
+            (evaluation_id,),
+            allow_completed_task=True,
+            include_version_marker=False,
+        )
+        assert legacy_pack.document["schema_version"] == (
+            "r6f-experience-evidence-pack-v1"
+        )
+        assert all("schema_version" not in item for item in legacy_pack.evidence_basis)
+        change.evidence_basis = legacy_pack.evidence_basis
+        change.evidence_basis_hash = legacy_pack.basis_hash
+        change.proposed_state = {
+            **change.proposed_state,
+            "evidence_basis_hash": legacy_pack.basis_hash,
+        }
+        change.idempotency_key = (
+            "r6f-distill-v1:" + legacy_pack.basis_hash.removeprefix("sha256:")
+        )
+
+        draft, rebuilt = distiller.validate_learning_change(session, change)
+        assert draft.kind == "practice"
+        assert rebuilt.document["schema_version"] == (
+            "r6f-experience-evidence-pack-v1"
+        )
+        assert rebuilt.evidence_basis == legacy_pack.evidence_basis
+        assert rebuilt.basis_hash == legacy_pack.basis_hash
 
 
 def test_reservation_is_committed_before_provider_call(
