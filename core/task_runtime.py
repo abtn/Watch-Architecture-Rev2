@@ -16,6 +16,7 @@ from core.models import (
     Event,
     EvidenceLink,
     KnowledgeItem,
+    KnowledgeQualityAssessment,
     LearningChange,
     Outcome,
     Plan,
@@ -52,6 +53,17 @@ _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES = frozenset(
     }
 )
 _KNOWLEDGE_REVIEW_SUCCESS_CATEGORIES = frozenset({"success_knowledge_reviewed"})
+_KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES = frozenset({"success_knowledge_quality_assessed"})
+_KNOWLEDGE_QUALITY_TASK_TYPE = "assess_knowledge_quality"
+_KNOWLEDGE_QUALITY_REQUEST_EVENT_TYPE = "knowledge_quality_assessment_task_requested"
+_KNOWLEDGE_QUALITY_RECORDED_EVENT_TYPE = "knowledge_quality_assessment_recorded"
+_KNOWLEDGE_QUALITY_ALLOWED_WRITES = ["KnowledgeQualityAssessment"]
+_KNOWLEDGE_QUALITY_MAX_ATTEMPTS = 3
+_KNOWLEDGE_QUALITY_BUDGET = {
+    "max_tool_calls": 0,
+    "max_cost_usd": 0.0,
+    "deadline_seconds": 30,
+}
 _OPERATOR_DECISION_EVENT_TYPES = (
     "learning_change_accepted",
     "learning_change_rejected",
@@ -62,6 +74,7 @@ _SUCCESS_CATEGORIES = (
     | _LEARNING_CHANGE_SUCCESS_CATEGORIES
     | _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES
     | _KNOWLEDGE_REVIEW_SUCCESS_CATEGORIES
+    | _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES
     | _CONTROL_TASK_SUCCESS_CATEGORIES
 )
 _RESULT_CATEGORIES = _SUCCESS_CATEGORIES | {"terminal_failure"}
@@ -129,7 +142,7 @@ class TerminalObservation:
         "success_signal_created", "success_no_change", "success_evaluation_recorded",
         "success_evaluation_rejected", "success_learning_change_proposed",
         "success_learning_change_accepted", "success_learning_change_rejected",
-        "success_knowledge_reviewed", "success_strategy_accepted",
+        "success_knowledge_reviewed", "success_knowledge_quality_assessed", "success_strategy_accepted",
         "success_strategy_rejected", "success_plan_created", "terminal_failure"
     ]
     observed_at: datetime
@@ -140,6 +153,7 @@ class TerminalObservation:
     strategy_event_id: UUID | None = None
     plan_id: UUID | None = None
     plan_event_id: UUID | None = None
+    knowledge_quality_assessment_id: UUID | None = None
 
 
 @dataclass(frozen=True)
