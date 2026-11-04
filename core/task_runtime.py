@@ -653,7 +653,15 @@ class TaskRuntime:
 
             if self._is_r6g_evaluation_task(session, task):
                 self._validate_evaluation_task_request(session, task)
+            if self._is_knowledge_quality_task(session, task):
+                self._validate_knowledge_quality_task_request(
+                    session, task, require_proposed=task.status == "running"
+                )
 
+            if self._is_knowledge_quality_task(session, task):
+                self._validate_knowledge_quality_task_request(
+                    session, task, require_proposed=task.status == "running"
+                )
             if (
                 observation.result_category == "success_knowledge_reviewed"
                 and task.task_type != "review_knowledge"
@@ -661,6 +669,16 @@ class TaskRuntime:
                 raise TaskNotFinalizable("knowledge_review_result_wrong_task_type")
 
             review_event: Event | None = None
+
+            if observation.result_category in _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES:
+                self._validate_knowledge_quality_result(
+                    session,
+                    task,
+                    observation,
+                    allow_completed=task.status == "done",
+                )
+            elif observation.knowledge_quality_assessment_id is not None:
+                raise TaskNotFinalizable("knowledge_quality_assessment_id_not_allowed")
 
             if (
                 observation.result_category
@@ -729,6 +747,15 @@ class TaskRuntime:
             ):
                 raise TaskNotFinalizable(
                     "learning_change_task_requires_learning_change_result"
+                )
+            if (
+                task.task_type == _KNOWLEDGE_QUALITY_TASK_TYPE
+                and observation.result_category in _SUCCESS_CATEGORIES
+                and observation.result_category
+                not in _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES
+            ):
+                raise TaskNotFinalizable(
+                    "knowledge_quality_task_requires_assessment_result"
                 )
             if (
                 task.task_type == "review_knowledge"
@@ -829,6 +856,15 @@ class TaskRuntime:
                             if observation.plan_event_id is not None
                             else {}
                         ),
+                        **(
+                            {
+                                "knowledge_quality_assessment_id": str(
+                                    observation.knowledge_quality_assessment_id
+                                )
+                            }
+                            if observation.knowledge_quality_assessment_id is not None
+                            else {}
+                        ),
                     },
                 )
                 for event_type in event_types
@@ -846,6 +882,17 @@ class TaskRuntime:
             if task.task_type == "ingest_source" and task.plan_id is not None:
                 self._create_evaluation_task_request(
                     session, task, outcome, observation.result_category
+                )
+                session.flush()
+            if (
+                task.task_type == "propose_learning_change"
+                and observation.result_category == "success_learning_change_proposed"
+            ):
+                learning_change = session.get(LearningChange, observation.learning_change_id)
+                if learning_change is None:
+                    raise TaskNotFinalizable("learning_change_not_found_for_quality_task")
+                self._create_knowledge_quality_task_request(
+                    session, task, learning_change
                 )
                 session.flush()
 
