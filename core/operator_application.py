@@ -299,6 +299,8 @@ class OperatorApplicationAdapter:
                     operator_id=canonical_operator_id,
                     idempotency_key_hash=idempotency_key_hash,
                     request_fingerprint=request_fingerprint,
+                    quality_assessment_id=quality_assessment_id,
+                    quality_assessment_hash=quality_assessment_hash,
                 )
 
             session.add(
