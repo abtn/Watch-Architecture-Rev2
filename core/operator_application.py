@@ -213,6 +213,8 @@ class OperatorApplicationAdapter:
                     operator_id=canonical_operator_id,
                     idempotency_key_hash=idempotency_key_hash,
                     request_fingerprint=request_fingerprint,
+                    quality_assessment_id=quality_assessment_id,
+                    quality_assessment_hash=quality_assessment_hash,
                 )
 
             if learning_change.status != "proposed":
@@ -251,6 +253,8 @@ class OperatorApplicationAdapter:
                 idempotency_key_hash=idempotency_key_hash,
                 request_fingerprint=request_fingerprint,
                 policy_version=policy.version,
+                quality_assessment_id=quality_assessment_id,
+                quality_assessment_hash=quality_assessment_hash,
             )
 
             inserted_task_id = session.scalar(
