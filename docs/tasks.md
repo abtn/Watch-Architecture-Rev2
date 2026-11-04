@@ -570,7 +570,7 @@ For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeI
 
 ## 7. Proposed R7 Task/write-scope matrix — not active
 
-**Status:** design proposal only, pending Operator acceptance of ADR-0032 and separate phase authorization. These rows do not add Task types to the runtime registry, do not grant write scopes, and do not change the active §3 Task specifications or §4 write-scope matrix. R7 implementation must update those active sections only after its phase gate is accepted.
+**Status:** architecture accepted; R7-A implementation authorized on 2026-11-04. This matrix remains non-active for runtime registration/grants until each exact Task implementation and tests are merged. These rows do not add Task types to the runtime registry, do not grant write scopes, and do not change the active §3 Task specifications or §4 write-scope matrix. R7 implementation must update those active sections only after its phase gate is accepted.
 
 | Proposed Task / operation | Purpose and authority | Proposed worker write scope | Application / TaskRuntime side effects | Explicitly forbidden |
 |---|---|---|---|---|
@@ -582,4 +582,4 @@ For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeI
 
 A TaskKnowledgeReference is not a new worker write grant or separate approval Task. It is an application-owned, Task-attributed reference recorded only after code validates a worker-nominated claim reference against the immutable Context manifest. The model cannot write a citation record directly.
 
-The proposed lifecycle reuses approve_learning_change; it does not introduce a separate approve_knowledge_lifecycle Task type. All R7 rows remain non-active until the corresponding ADR decision, exact Task registration/write-scope changes, TaskRuntime admission/finalization rules, and tests are separately authorized.
+The proposed lifecycle reuses approve_learning_change; it does not introduce a separate approve_knowledge_lifecycle Task type. Only the R7-A assess_knowledge_quality row is within the current authorization; it becomes an active Task contract only when its implementation and tests are merged. The proposed R7-B lifecycle extension and R7-C assess_knowledge_use row remain inactive and unauthorized. TaskRuntime admission/finalization and exact write-scope enforcement are required before activating the R7-A row.
