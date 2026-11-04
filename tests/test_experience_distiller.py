@@ -12,7 +12,7 @@ from typing import Any, Callable, Iterator
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.evaluations import (
