@@ -45,7 +45,7 @@ An Evaluation of one category must not silently stand in for another. In particu
 
 ADR-0029's threshold remains a minimum eligibility rule: cross-case Pattern, Method, or Playbook proposals need at least two recorded Outcomes from distinct Task IDs, each with a corresponding recorded Evaluation. That threshold permits a proposal; it does not establish statistically independent evidence or general transfer.
 
-The evidence review must also examine lineage that may make apparently separate cases related: shared source Signals or Snapshot hashes, duplicate/near-duplicate content, common PlanAction or Objective, repeated processing of the same underlying event, and common upstream evidence. A shared Team or task class alone does not automatically make cases duplicates.
+The evidence review must also examine lineage that may make apparently separate cases related: shared source Signals or Snapshot hashes, duplicate/near-duplicate content, the same PlanAction, repeated processing of the same underlying event, and common upstream evidence. A shared Team, Objective, or task class alone does not automatically make cases duplicates; shared specific actions, sources, or observations are lineage signals to assess, not automatic duplicate verdicts.
 
 **Proposed resolution:** classify case relationships conservatively as independent, related, or unknown, with deterministic rules and preserved provenance. Only claim independence when the available lineage supports it. Do not silently drop related or unknown cases; include them with their relationship and limitations, or make bounded selection/omission visible. R7-A must define the exact lineage fields and comparison rules before implementation.
 

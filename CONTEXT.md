@@ -8,7 +8,7 @@ Watch is a persistent, evidence-oriented team system. **Model intelligence is te
 
 Reactive and deliberative work converge on the same ordinary Task runtime. Tasks, Events, and committed records describe what actually happened; Plans describe intended work.
 
-## Current R6 design direction (architectural principles accepted; phase status in PLAN.md)
+## Current milestone snapshot (phase status in PLAN.md)
 
 R6 is complete through R6-G. The R6-G implementation and formal closeout are merged to main; R6 verification and limitations are recorded in PLAN.md and docs/testing.md. R7-0 is now in progress as documentation/design work only: proposed ADR-0032 and the R7 entry gate are available for Operator review. R7-A/B/C implementation is not authorized. The R6-G approval does not authorize R7.
 
@@ -19,7 +19,7 @@ R6 is complete through R6-G. The R6-G implementation and formal closeout are mer
 3. [`AGENTS.md`](AGENTS.md) — repository operating rules and stop conditions.
 4. [`CHANGE_MAP.md`](CHANGE_MAP.md) — where each concept is authoritatively specified.
 5. [`docs/control-model.md`](docs/control-model.md) — the Revision 2 Control model.
-5. Read only the specific supporting source needed for the task:
+6. Read only the specific supporting source needed for the task:
    - [`docs/invariants.md`](docs/invariants.md) — non-negotiable rules.
    - [`docs/tasks.md`](docs/tasks.md) — Task types, write scopes, and budgets.
    - [`docs/architecture.md`](docs/architecture.md) — the original/general architecture for concepts not replaced by Revision 2.

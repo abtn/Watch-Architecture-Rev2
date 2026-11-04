@@ -108,7 +108,7 @@ Exit requirements:
 
 ## 4. Architecture decisions to resolve before R7-A
 
-The normative proposal is ADR-0032. These items are hard design gates, not implementation details:
+The normative proposal is [ADR-0032](../decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md). These items are hard design gates, not implementation details:
 
 | Decision | Required resolution |
 |---|---|
