@@ -527,6 +527,10 @@ def validate_quality_task_request(
         or task.max_attempts != TASK_MAX_ATTEMPTS
         or task.attempt_count < 0
         or task.attempt_count > task.max_attempts
+        or (
+            task.status in {"running", "done", "failed"}
+            and task.attempt_count < 1
+        )
         or (task.completed_at is not None and task.status != "done")
     ):
         raise KnowledgeQualityAssessmentError("knowledge_quality_task_shape_invalid")
@@ -935,6 +939,7 @@ class KnowledgeQualityAssessmentService:
             if (
                 task.task_type != TASK_TYPE
                 or task.status != "running"
+                or task.attempt_count < 1
                 or task.allowed_writes != ALLOWED_WRITES
                 or task.objective_id is not None
                 or task.plan_id is not None
@@ -969,6 +974,30 @@ class KnowledgeQualityAssessmentService:
                 or draft.rubric_revision != request["rubric_revision"]
             ):
                 raise KnowledgeQualityAssessmentError("knowledge_quality_draft_request_mismatch")
+
+            start_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == "task_started",
+                        Event.payload["attempt_count"].as_integer()
+                        == task.attempt_count,
+                    )
+                )
+            )
+            if (
+                len(start_events) != 1
+                or start_events[0].payload
+                != {
+                    "from_status": "pending",
+                    "to_status": "running",
+                    "attempt_count": task.attempt_count,
+                }
+                or start_events[0].created_at.tzinfo is None
+            ):
+                raise KnowledgeQualityAssessmentError(
+                    "knowledge_quality_task_start_event_invalid"
+                )
 
             try:
                 _, pack = self._distiller.validate_learning_change(
