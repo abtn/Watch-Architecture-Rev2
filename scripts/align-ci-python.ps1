@@ -83,6 +83,7 @@ $previousCondaPrefix = $env:CONDA_PREFIX
 
 $backupPath = $null
 $backupCreated = $false
+$venvRebuildStarted = $false
 $completed = $false
 
 try {
@@ -183,6 +184,8 @@ try {
         Write-Host "No existing .venv was found; a new one will be created."
     }
 
+    $venvRebuildStarted = $true
+
     # The old .venv has been moved aside. Remove active-environment hints
     # temporarily so python find cannot select the old interpreter.
     Remove-Item Env:VIRTUAL_ENV -ErrorAction SilentlyContinue
@@ -273,10 +276,9 @@ try {
     Write-Host "No project dependencies or lockfile entries were changed."
 }
 finally {
-    # If creation or synchronization failed, preserve the partial new
-    # environment for inspection and restore the previous .venv.
-    if (-not $completed -and $backupCreated -and
-        (Test-Path -LiteralPath $backupPath)) {
+    # If creation or synchronization failed, preserve any partial new
+    # environment for inspection, then restore the previous .venv when present.
+    if (-not $completed -and $venvRebuildStarted) {
         try {
             if (Test-Path -LiteralPath $venvPath) {
                 $failedSuffix = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -291,11 +293,15 @@ finally {
                 Write-Warning "Partial environment preserved for inspection at: $failedPath"
             }
 
-            Move-Item -LiteralPath $backupPath -Destination $venvPath -ErrorAction Stop
-            Write-Warning "The previous .venv has been restored."
+            if ($backupCreated -and (Test-Path -LiteralPath $backupPath)) {
+                Move-Item -LiteralPath $backupPath -Destination $venvPath -ErrorAction Stop
+                Write-Warning "The previous .venv has been restored."
+            }
         }
         catch {
-            Write-Warning "Automatic rollback was incomplete. Previous environment backup remains at: $backupPath"
+            if ($backupCreated) {
+                Write-Warning "Automatic rollback was incomplete. Previous environment backup remains at: $backupPath"
+            }
             Write-Warning $_
         }
     }
