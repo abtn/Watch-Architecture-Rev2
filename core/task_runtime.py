@@ -500,7 +500,7 @@ class TaskRuntime:
             raise TaskNotEligible("operator_task_request_event_invalid")
 
         payload = request_events[0].payload
-        expected_keys = {
+        legacy_keys = {
             "schema_version",
             "operation",
             "learning_change_id",
@@ -511,14 +511,25 @@ class TaskRuntime:
             "request_fingerprint",
             "policy_version",
         }
-        if set(payload) != expected_keys:
-            raise TaskNotEligible("operator_task_request_payload_invalid")
-
+        assessment_keys = {
+            "knowledge_quality_assessment_id",
+            "knowledge_quality_assessment_hash",
+        }
         schema_version = payload.get("schema_version")
+        is_legacy_rejection = (
+            schema_version == 1
+            and set(payload) == legacy_keys
+            and payload.get("decision") == "reject"
+        )
+        is_assessment_request = (
+            schema_version == 2
+            and set(payload) == legacy_keys | assessment_keys
+        )
+        if not (is_legacy_rejection or is_assessment_request):
+            raise TaskNotEligible("operator_task_request_payload_invalid")
         policy_version = payload.get("policy_version")
         if (
             isinstance(schema_version, bool)
-            or schema_version != 1
             or not isinstance(schema_version, int)
             or payload.get("operation") != _OPERATOR_TASK_TYPE
             or isinstance(policy_version, bool)
@@ -586,6 +597,45 @@ class TaskRuntime:
             ):
                 raise TaskNotEligible("operator_task_request_payload_invalid")
 
+        quality_assessment_id_value = payload.get(
+            "knowledge_quality_assessment_id"
+        )
+        quality_assessment_hash = payload.get(
+            "knowledge_quality_assessment_hash"
+        )
+        if is_assessment_request:
+            if decision == "accept":
+                if (
+                    not isinstance(quality_assessment_id_value, str)
+                    or len(quality_assessment_id_value) != 36
+                    or not isinstance(quality_assessment_hash, str)
+                    or len(quality_assessment_hash) != 71
+                    or not quality_assessment_hash.startswith("sha256:")
+                    or any(
+                        character not in "0123456789abcdef"
+                        for character in quality_assessment_hash[7:]
+                    )
+                ):
+                    raise TaskNotEligible(
+                        "operator_quality_assessment_reference_invalid"
+                    )
+                try:
+                    quality_assessment_id = UUID(quality_assessment_id_value)
+                except ValueError as error:
+                    raise TaskNotEligible(
+                        "operator_quality_assessment_reference_invalid"
+                    ) from error
+                if str(quality_assessment_id) != quality_assessment_id_value:
+                    raise TaskNotEligible(
+                        "operator_quality_assessment_reference_invalid"
+                    )
+            elif quality_assessment_id_value is not None or quality_assessment_hash is not None:
+                raise TaskNotEligible(
+                    "operator_quality_assessment_reference_invalid"
+                )
+        elif decision == "accept":
+            raise TaskNotEligible("operator_quality_assessment_required")
+
         fingerprint_payload = {
             "operation": _OPERATOR_TASK_TYPE,
             "team_id": str(task.team_id),
@@ -594,6 +644,13 @@ class TaskRuntime:
             "rejection_reason": rejection_reason,
             "operator_id": operator_id,
         }
+        if is_assessment_request:
+            fingerprint_payload["knowledge_quality_assessment_id"] = (
+                quality_assessment_id_value
+            )
+            fingerprint_payload["knowledge_quality_assessment_hash"] = (
+                quality_assessment_hash
+            )
         expected_fingerprint = "sha256:" + hashlib.sha256(
             json.dumps(
                 fingerprint_payload,
@@ -630,6 +687,23 @@ class TaskRuntime:
             or learning_change.target_id is not None
         ):
             raise TaskNotEligible("operator_task_request_target_invalid")
+        if decision == "accept":
+            from core.knowledge_quality import (
+                KnowledgeQualityAssessmentError,
+                require_recorded_assessment,
+            )
+
+            try:
+                assessment = require_recorded_assessment(
+                    session, learning_change, require_task_done=True
+                )
+            except KnowledgeQualityAssessmentError as error:
+                raise TaskNotEligible(str(error)) from error
+            if (
+                str(assessment.id) != quality_assessment_id_value
+                or assessment.assessment_payload_hash != quality_assessment_hash
+            ):
+                raise TaskNotEligible("operator_quality_assessment_binding_invalid")
 
     def finalize(self, observation: TerminalObservation) -> FinalizationResult:
         """Commit one terminal `task_execution` Outcome for a running Task.
