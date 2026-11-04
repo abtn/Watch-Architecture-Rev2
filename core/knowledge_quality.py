@@ -156,6 +156,7 @@ class KnowledgeQualityAssessmentResult:
     assessment_id: UUID
     status: str
     assessment_payload_hash: str
+    recorded_at: datetime
     replayed: bool = False
 
 
@@ -1051,6 +1052,7 @@ class KnowledgeQualityAssessmentService:
                         assessment_id=prior.id,
                         status="recorded",
                         assessment_payload_hash=prior.assessment_payload_hash,
+                        recorded_at=prior.recorded_at,
                         replayed=True,
                     )
                 raise KnowledgeQualityConflict("knowledge_quality_assessment_already_recorded")
@@ -1092,4 +1094,5 @@ class KnowledgeQualityAssessmentService:
                 assessment_id=assessment.id,
                 status="recorded",
                 assessment_payload_hash=assessment.assessment_payload_hash,
+                recorded_at=assessment.recorded_at,
             )
