@@ -719,6 +719,28 @@ def require_recorded_assessment(
         or request.get("lineage_report_hash") != assessment.lineage_report_hash
     ):
         raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_request_mismatch")
+    started = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == "task_started",
+                Event.payload["attempt_count"].as_integer() == task.attempt_count,
+            )
+        )
+    )
+    if (
+        len(started) != 1
+        or started[0].payload
+        != {
+            "from_status": "pending",
+            "to_status": "running",
+            "attempt_count": task.attempt_count,
+        }
+        or started[0].created_at > assessment.recorded_at
+    ):
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_assessment_task_start_event_invalid"
+        )
     recorded = list(
         session.scalars(
             select(Event).where(
