@@ -259,6 +259,8 @@ def build_case_lineage_report(
                     link_ref is not None and not _complete_snapshot(link_ref, link_hash)
                 ):
                     incomplete = True
+                elif isinstance(link_hash, str):
+                    snapshot_anchors.add(f"snapshot:{link_hash}")
             elif source_kind == "signal":
                 source_id = _canonical_uuid(link.get("signal_id"))
                 if source_id is None:
