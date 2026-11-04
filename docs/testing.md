@@ -359,29 +359,24 @@ This is operator-reported local evidence, recorded distinctly from hosted CI. It
 
 **Exit boundary: CLOSED — 2026-11-04.** Exact-head hosted and operator-local verification passed, the ten-proof technical review found no blocker, the Operator approved the exit gate, and PR #35 merged to `main`. The fake-provider/offline qualification and all scope non-goals remain part of the accepted record.
 
-## R7-A — Evidence lineage and knowledge-quality assessment (implementation PR #39; hosted CI PASS)
+## R7-A — Evidence lineage and knowledge-quality assessment (COMPLETE — PR #39 merged 2026-11-04)
 
-R7-A adds migration `0014_knowledge_quality`, deterministic case-lineage classification, the immutable `KnowledgeQualityAssessment` record, a narrow TaskRuntime-managed `assess_knowledge_quality` Task, and an assessment-bound guard on accepted KnowledgeItem creates.
+R7-A adds migration 0014_knowledge_quality, deterministic case-lineage classification, immutable KnowledgeQualityAssessment, narrow TaskRuntime-managed assess_knowledge_quality, and the assessment-bound guard on accepted KnowledgeItem creates.
 
-Focused checks:
+Focused coverage: `tests/test_knowledge_quality.py` validates lineage/rubric; `tests/test_experience_distiller.py` validates enqueue, binding and recovery; `tests/test_operator_application.py` validates trusted adapter binding; `tests/test_r6g_vertical_slice.py` verifies integrated assessment-before-acceptance.
 
-```bash
-uv run pytest tests/test_knowledge_quality.py
-uv run pytest tests/test_experience_distiller.py
-uv run pytest tests/test_operator_application.py
-uv run pytest tests/test_r6g_vertical_slice.py
-uv run ruff check core tests migrations
-uv run mypy core
-uv run alembic upgrade head
-uv run alembic heads
-uv run pytest -q
-git diff --check
-```
+### Hosted exact-head verification
 
-Run database-backed checks only against a fresh, identified disposable PostgreSQL database. Confirm the single Alembic head is `0014_knowledge_quality`; never point `DATABASE_URL` or `TEST_DATABASE_URL` at the persistent `watch` database. Restore both variables and remove the disposable container/volume after verification.
+PR #39 tested head `47ffa532dacbc10b146ac7b0768302761a2a0b1b`. Hosted CI [41844600681](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41844600681) passed fresh disposable PostgreSQL migration to the single `0014_knowledge_quality` head, Ruff, Mypy, full suite and container cleanup.
 
-`tests/test_knowledge_quality.py` covers deterministic pairwise `related`/`independent`/`unknown` classification, shared Signal/Outcome/Snapshot/PlanAction anchors, ordering/hash stability, repeated Task rejection, and strict seven-dimension rubric/evidence-reference validation. `tests/test_experience_distiller.py` covers assessment Task enqueue, exact recorded-assessment requirement before accepted create, the real TaskRunner/assessment service path, and interrupted recovery reusing one immutable assessment and one terminal Outcome. `tests/test_operator_application.py` keeps adapter contract tests auditable with a minimal same-Team recorded-assessment fixture; the R6-G integrated vertical fixture now executes the R7-A assessment Task before accepting its create proposal.
+### Operator-local exact-tree verification
 
-No production evaluator provider is wired or selected. All new assessment execution tests inject a deterministic fake. Do not make live model calls or claim production evaluator qualification. R7-B lifecycle operations and R7-C citations/retrieval/downstream-use remain unauthorized.
+The committed `scripts/test-disposable-postgres.ps1` ran on the same PR-head tree, identical to merge commit `75122a7b34c15e2445b81a2a719020667b55bf06`:
 
-**Hosted CI — exact implementation head:** [run 41841161645](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41841161645), commit `cd39b6a9756b0512a833c189a026c36bf1472354` — **PASS**. Fresh disposable PostgreSQL migration to the single head `0014_knowledge_quality`, Ruff, Mypy, and the full suite (**631 passed in 46.99s**) all passed. The workflow stopped its disposable PostgreSQL container successfully. This is hosted evidence only; Operator-local verification is still required before phase closure.
+- Fresh disposable pgvector/pg16 container; both DATABASE_URL and TEST_DATABASE_URL targeted the same temporary database.
+- Fresh migration passed; `alembic heads` reported the single `0014_knowledge_quality` head.
+- Ruff passed; Mypy had no issues in 31 source files.
+- Full suite: **631 passed in 79.22s**.
+- Script restored both database environment variables and removed its disposable container.
+
+No production evaluator provider was wired or selected; tests used deterministic fakes and no live model calls occurred. R7-A is complete and merged. R7-B is in documentation preparation only and is not authorized; R7-C citations/retrieval/downstream use remain unauthorized.
