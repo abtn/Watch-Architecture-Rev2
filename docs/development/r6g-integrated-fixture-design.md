@@ -2,33 +2,33 @@
 
 ## Status and authority
 
-**Prepared 2026-11-03; design only.** This document makes the integrated R6-G fixture, service calls, durability boundaries and tests concrete. It does not implement R6-G, authorize a code branch or migration, approve a production provider, merge a PR, or close the R6 gate. The separate authorization recorded in PLAN.md remains mandatory.
+**Design prepared 2026-11-03; implementation authorized and in progress 2026-11-04.** This document records the R6-G service boundaries and intended integrated fixture, together with the implemented behavior on `r6g-implementation-20261103` / PR #35. It does not itself close R6-G or authorize a merge. PLAN.md remains the only milestone-status authority.
 
 PLAN.md owns milestone status. The R6 entry gate and ADR-0028/0029/0030/0031 govern architecture. docs/tasks.md owns Task types, write scopes and budgets. The accepted D9 choice is unchanged: evaluator_kind rule, evaluator_identity watch.r6g.ingest-source-rules, evaluator_revision 1; configured-source ingest_source terminal Outcomes only; no model/human Evaluation producer. The evaluator returns an EvaluationDraft only; EvaluationService validates and records it; TaskRuntime owns Task lifecycle. No general dispatcher, second runtime, or production provider is introduced.
 
-## 1. Implementation gaps found during design
+## 1. Implemented corrections to the original gaps
 
-The prior outline required two successes and one terminal failure to reach ExperienceDistiller. Inspection of the current code found that this cannot work unchanged. Three integration corrections are required.
+The implementation closes the three integration gaps identified during design:
 
 ### 1.1 Enqueue the Evaluation Task atomically with source terminalization
 
-Creating an evaluator Task in a separate transaction after the source Outcome commits creates a crash gap: the source Outcome can be durable while the follow-up Task is never created. There is no general scheduler or dispatcher authorized to repair the missing enqueue.
+**Implemented:** TaskRuntime.finalize creates exactly one ordinary `evaluate_outcome` Task and its `evaluation_task_requested` Event in the same database transaction as a terminal `task_execution` Outcome for a Plan-linked configured-source `ingest_source` Task. The source Outcome ID, observation Snapshot reference/hash, source attempt/result, PlanAction provenance and pinned policy version are bound in the immutable request. A database rollback leaves neither terminal source state nor evaluator request. The content-addressed Snapshot blob remains outside the database transaction, as in R6-A; a rollback may leave only an unreferenced blob.
 
-**Required design:** when TaskRuntime.finalize commits a terminal task_execution Outcome for a configured-source ingest_source Task, it also creates exactly one ordinary evaluate_outcome Task and its evaluation_task_requested Event in the same database transaction. The source Outcome ID, observation Snapshot reference/hash, source attempt/result, PlanAction provenance and pinned policy version are then known. A PostgreSQL rollback leaves neither terminal source state nor evaluator request; a committed source finalization cannot exist without its evaluator request. The immutable Snapshot blob is outside the database transaction, as in R6-A: rollback may leave an unreferenced content-addressed object, but without a committed Outcome/reference it is not canonical and must never be consumed.
+**Boundary:** this is a narrow TaskRuntime-managed side effect, not a second lifecycle owner. The request Event is owned by the evaluator Task. A terminal source replay verifies the deterministic Task ID and exact request Task/Event; it does not repair missing or contradictory records.
 
 This is a narrow TaskRuntime-managed K side effect, not a second lifecycle owner. The request Event is owned by the new evaluator Task. A replay of the source terminal result verifies the exact evaluator Task/Event; it never repairs or duplicates missing or contradictory records.
 
-Use a fixed UUIDv5 namespace. Derive the evaluator Task ID from Team ID, target Outcome ID, evaluator identity and revision. Hash canonical JSON containing Team, source Task, attempt/result, Plan/Action references, pinned policy version, Outcome ID, Snapshot reference/hash, and evaluator identity/revision. Atomic Task/Event creation plus the Task primary key is the idempotency boundary. Do not add an idempotency column or migration unless PostgreSQL concurrency tests demonstrate an integrity gap. The integrated driver obtains the target Outcome ID from the source DispatchResult, reads the source Team, derives the evaluator Task ID using the shared identity helper, verifies the persisted Task and request Event, and invokes that exact Task ID. Do not expand DispatchResult/TaskDispatcher to carry evaluator IDs and do not add a startup poller; automatic evaluator discovery is outside this slice.
+Evaluator Task identity uses the fixed UUIDv5 namespace and binds Team ID, Outcome ID, evaluator identity and revision. The canonical request fingerprint covers Team, source Task, attempt/result, Plan/Action references, policy pin, Outcome ID, Snapshot reference/hash and evaluator identity/revision. The Task primary key plus source-Task row lock and transaction are the idempotency boundary. Do not expand DispatchResult/TaskDispatcher or add a startup poller.
 
 ### 1.2 Preserve terminal failed cases in distillation
 
-Current ExperienceDistiller accepts source Tasks only when status is done and requires a task_completed Event. D9 correctly records terminal ingestion failure as status failed with task_attempt_failed and task_failed Events. A failed D9 Evaluation therefore currently raises source_task_not_eligible.
+**Implemented:** ExperienceDistiller now admits a worked case only when its source Task is done, the current-attempt `task_completed` Event matches the terminal Outcome/Snapshot, and the recorded D9 Evaluation conclusion is `worked`. A failed case is admitted only when its source Task is failed, the current-attempt `task_attempt_failed` and `task_failed` Events match the attempt/reason/Outcome/Snapshot, the immutable observation Snapshot verifies, the D9 Evaluation conclusion is `failed`, and no contradictory successful ingestion business Event exists. Retryable attempts that leave a source Task pending are not cases. Missing, corrupt, stale, cross-Team/domain or contradictory evidence fails closed.
 
-**Required design:** extend canonical evidence reconstruction so it admits:
+**Evidence interpretation:** ADR-0029 requires disconfirming cases to remain inspectable. Each worked Evaluation and primary Outcome is classified as supporting the candidate execution practice; each failed Evaluation and primary Outcome is contrary. The canonical EvidenceLink stance is never changed. The evidence pack retains original `stance` and adds a derived `case_relative_stance`; for failed cases, `supports` and `challenges` are inverted relative to the positive practice, while `mentions` remains context. Failure reason and limitations remain visible. Two successes do not prove causation, source truth, universal reliability or Objective achievement.
 - a worked case only when its source Task is done, the current-attempt task_completed Event matches the terminal Outcome/Snapshot, and the recorded D9 Evaluation conclusion is worked;
 - a failed case only when its source Task is failed, the current-attempt task_attempt_failed and task_failed Events match the attempt/reason/Outcome/Snapshot, the immutable observation Snapshot verifies, and the recorded D9 Evaluation conclusion is failed.
 
-A failed case is eligible only if no contradictory successful ingestion business Event exists for that source Task. Retryable attempts that leave the source Task pending have no terminal Outcome and no Evaluation request; they are not cases. Missing, corrupt, stale, cross-Team/domain or contradictory evidence fails closed.
+Pack versions are explicit. New evidence-basis case records carry their schema marker, and the marker participates in the basis hash. Historical R6-F basis records that predate the marker are detected as v1 and reconstructed without adding or interpreting a marker. Mixed, unknown or mismatched markers fail closed. New v2 packs preserve the terminal-failure case and its case-relative contrary evidence.
 
 ADR-0029 requires disconfirming cases to remain inspectable. For this first positive-experience fixture, classify each Evaluation case relative to the proposed reusable execution practice:
 - Evaluation conclusion worked: its Evaluation and primary Outcome are supporting case references.
@@ -39,9 +39,9 @@ The failure reason and its limitations must remain visible. Two successes do not
 
 ### 1.3 Recover a recorded Evaluation before failing its Task
 
-EvaluationService.propose and EvaluationService.record commit separately from TaskRuntime.finalize. A crash after Evaluation is recorded but before Task finalization leaves a durable result. The current generic interrupted-task path may eventually fail the Task at attempt exhaustion without first reconciling that Evaluation.
+**Implemented:** before retry scheduling or terminal failure, TaskRuntime checks the immutable evaluator request and reconstructs an already recorded or rejected Evaluation only when its Task/request binding, creating/resolving Task, evaluator identity/revision, proposal hash, disposition Event and canonical EvidenceLinks validate. It finalizes through the ordinary TaskRuntime path using the current-attempt `task_started` timestamp for deterministic `observed_at`. A proposed but unrecorded Evaluation is not promoted: the runner can replay its deterministic proposal and record it while attempts remain; when attempts are exhausted before record, the evaluator Task fails and the proposal is not distillation evidence. Corruption fails closed. Terminal runner replay is read-only.
 
-**Required design:** add a narrow committed-Evaluation recovery check in TaskRuntime, analogous to committed Operator-decision recovery. Before retry scheduling or terminal failure, validate the request Event, exact Evaluation for the Task/request, recorded/rejected status, creating/resolving Task, evaluator identity/revision, proposal hash, disposition Event and canonical EvidenceLinks. If complete, reconstruct the typed success TerminalObservation and finalize through TaskRuntime. Use the durable current-attempt task_started timestamp for observed_at so recovery is deterministic. If only a proposed Evaluation exists, retry while Task attempts remain; the deterministic draft and request idempotency must replay through EvaluationService and complete record/finalize. If attempts are exhausted before record, the evaluator Task fails and the Evaluation remains proposed/non-recorded; it is not distillation evidence and TaskRuntime must not promote it. Corruption fails closed.
+**Recovery boundary:** TaskRuntime remains the only authority for retry, exhaustion, terminal Outcome and Task state. EvaluationService owns proposal/record state; the rule runner only orchestrates the existing services.
 
 After the evaluator Task is already terminal, repeated runner invocation is read-only replay. It must not admit another attempt or create another Evaluation/Outcome.
 
@@ -204,39 +204,39 @@ No database transaction spans fetch, snapshot object-store operations, embedding
 
 Deterministic evidence/validation errors are non-retryable. Only classified transient operational failures may retry. Never catch arbitrary exceptions and convert them to a generic successful result.
 
-## 6. Control-Task lifecycle caveat
+## 6. Typed Strategy and Plan Task completion
 
-There is a separate current-contract gap for propose_strategy and create_plan producer Tasks. TaskContextAssembler and PlanService require running Tasks, and current component fixtures construct them in that state. TaskRuntime has no dedicated typed success result for a Strategy disposition or Plan materialization. Do not mark these Tasks done directly, and do not borrow success_no_change or an ingestion result category to make the integrated test appear complete.
+**Implemented decision:** service-protocol records for `propose_strategy` and `create_plan` are terminalized by narrow typed TaskRuntime results; they are not treated as ingestion outcomes or Objective-achievement evidence. Strategy disposition results bind to the exact accepted/rejected Strategy Event. Plan creation binds to the exact `Plan` and `plan_created` Event and reuses PlanService's full reconstruction validator. Rejected Strategy proposals are valid completed producer Tasks with no Plan. Interrupted Strategy/Plan Tasks are reconciled from their committed disposition through TaskRuntime recovery before retry/exhaustion.
 
-**Recommendation before R6-G is represented as a fully closed Task-level vertical slice:** explicitly decide whether these are service-protocol records outside terminal Task execution, or add narrow TaskRuntime terminal results tied respectively to the exact Strategy disposition Event and plan_created Event. The latter better preserves the principle that Tasks are the execution unit, but is an additional R6-G design choice and must be included in the separate implementation authorization. In either case, exclude these producer Tasks from the three ingestion cases and never treat their status as evidence of Objective achievement.
+Tests now cover accepted Strategy finalization/replay, rejected Strategy finalization, Plan creation finalization/replay, and interrupted Plan materialization recovery. These producer Tasks remain outside the three source-ingestion Evaluation cases.
 
-## 7. Required tests
+## 7. Implemented test coverage
 
-| Test | Proof |
+| Test module | Implemented proof |
 |---|---|
-| tests/test_rule_evaluator.py | all three D9 mappings; deterministic drafts; event/attempt/status/hash checks; fail-closed corruption, cross-Team/domain and contradictions |
-| tests/test_evaluation_tasks.py | atomic source-terminal enqueue; exact Task/Event; UUIDv5 replay/concurrency; admission fencing; tamper rejection; propose/record/finalize replay; committed-Evaluation recovery |
-| tests/test_experience_distiller.py | failed source provenance; claim-relative contrary evidence; v2 hashing; v1 historical replay; omission of contrary evidence rejected |
-| tests/test_r6g_vertical_slice.py | Objective Context → fake Strategy → Plan → three source Tasks → Outcomes/Evaluations → distillation → Operator reject/accept → projection → later-Task retrieval |
+| `tests/test_rule_evaluator.py` | D9 new-Signal, no-change and terminal-failure mappings; deterministic rule draft and contradictory-business-event fail-closed check. |
+| `tests/test_evaluation_tasks.py` | Atomic source-terminal enqueue, exact request Task/Event binding, request tamper rejection, committed-Evaluation recovery and terminal runner replay. |
+| `tests/test_experience_distiller.py` and `tests/test_r6g_distillation.py` | Failed-source provenance, claim-relative contrary evidence, canonical EvidenceLink stance preservation, per-case v2 marker/hash and legacy unmarked-v1 reconstruction. |
+| `tests/test_r6g_vertical_slice.py` | Objective Context → Strategy → Plan → three source Tasks → Outcomes/Evaluations → reassessment → distillation → Operator reject/accept → Team Experience projection → later-Task retrieval. |
 
-Reuse component coverage in test_r6b_dispatcher.py, test_knowledge_index.py, test_team_experience.py, test_context_assembly.py, test_strategy_proposer.py, test_strategy.py, test_plans.py, test_task_lifecycle_retry.py, test_task_lifecycle_recovery.py, test_task_runtime.py, test_evaluations.py, test_operator_application.py and test_generation_cost.py.
+Additional component suites remain part of the acceptance evidence: `test_r6b_dispatcher.py`, `test_knowledge_index.py`, `test_team_experience.py`, `test_context_assembly.py`, `test_strategy_proposer.py`, `test_strategy.py`, `test_plans.py`, `test_task_lifecycle_retry.py`, `test_task_lifecycle_recovery.py`, `test_task_runtime.py`, `test_evaluations.py`, `test_operator_application.py` and `test_generation_cost.py.
 
-In addition to the ten acceptance criteria in docs/testing.md, R6-G must prove atomic enqueue, failed-case inclusion, committed-Evaluation recovery, Task/Event concurrency and tamper safety, and an explicit decision about control-Task terminal semantics.
+R6-G exit still requires evidence mapped to all ten criteria in `docs/testing.md`, successful exact-head programmer-local verification with disposable PostgreSQL, review of the relevant failure-injection/replay cases, and explicit operator approval. Existing component coverage may satisfy a criterion; the integrated test does not need to duplicate every lower-level fault test.
 
-## 8. Implementation order after separate authorization
+## 8. Implementation and verification status
 
-1. Preflight branch, HEAD, worktree and current docs authority. Reinspect the current TaskRuntime/EvaluationService transaction boundaries.
-2. Implement the immutable request contract and in-transaction evaluator Task enqueue in source TaskRuntime terminalization; validate exact request shape before evaluator admission.
-3. Implement the pure D9 evaluator and narrow runner.
-4. Add committed-Evaluation recovery and replay/concurrency tests.
-5. Extend ExperienceDistiller with a versioned v2 evidence pack and retain v1 historical reconstruction.
-6. Resolve propose_strategy/create_plan terminal semantics within authorized scope.
-7. Build the integrated fixture with fake Strategy/distillation providers, synthetic cost cards, deterministic embeddings and deterministic fetcher only.
-8. Run focused tests, Ruff, Mypy, full suite, fresh disposable-PostgreSQL migrations/integration tests and git diff --check. Add a migration only if testing demonstrates an integrity constraint cannot be met using existing schema.
-9. Record actual commands/results and request explicit R6-G exit approval. Code, tests or merge alone do not close R6.
+1. **Implemented:** branch/authority preflight and service-boundary review.
+2. **Implemented:** immutable evaluator request contract, deterministic Task identity and atomic evaluator Task/Event enqueue.
+3. **Implemented:** pure D9 rule evaluator and narrow Task runner.
+4. **Implemented:** committed-Evaluation recovery, tamper validation and replay tests.
+5. **Implemented:** versioned v2 evidence pack for failed-source cases and historical v1 reconstruction.
+6. **Implemented:** typed TaskRuntime completion/recovery results for Strategy and Plan producer Tasks.
+7. **Implemented:** integrated three-case fixture through later-Task Team Experience retrieval.
+8. **CI passed on implementation head** `8ddc0dbeeacfa5e218b9f442717abba9e387a02c`, run [41780956806](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41780956806): fresh PostgreSQL migration/head check, Ruff, Mypy and 610 tests. Programmer-local full-suite/disposable-PostgreSQL verification and final acceptance matrix review remain.
+9. **Pending:** record local verification, close any uncovered acceptance proof, and request explicit R6-G exit approval. Code, CI or merge alone does not close R6.
 
 ## 9. Explicit non-goals
 
 No production R6-G evaluator/provider; no human/model evaluator; no production R6-F distillation provider; no new model SDK/credentials; no general dispatcher, scheduler, queue or second runtime; no arbitrary source URL or wider network access; no D10 revise/retire; no TeamPolicy mutation; no automatic LearningChange acceptance; no new knowledge entity family; no weakening of R5 Plan prerequisites/completion rules; no use of the persistent watch database for tests.
 
-**Authorization boundary:** this is a prepared design only. It authorizes no R6-G implementation branch, application code, migration, production provider invocation, PR, merge or R6 closure. A separate explicit operator decision remains required.
+**Current gate:** implementation was separately authorized and is in progress on PR #35 (draft/open, unmerged). No merge or R6 closure is implied. The explicit non-goals below remain binding.
