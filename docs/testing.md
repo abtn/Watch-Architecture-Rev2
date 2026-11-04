@@ -305,6 +305,35 @@ Use a fresh disposable PostgreSQL database. Confirm one Alembic head and a succe
 | 9 | Current eligible Team Experience is published and retrieved by a later Task without transcript carry-over; stale rows excluded/rebuilt. | `tests/test_team_experience.py`, `tests/test_context_assembly.py` | Integrated fixture indexes the accepted canonical item and retrieves its current version/provenance in a different later Task; Team Experience component tests cover stale, due, NULL-dated, cross-Team and unpublished exclusion/rebuild. |
 | 10 | Provider, transaction, projection, recovery and replay failures preserve canonical atomicity. | `tests/test_generation_cost.py`, `tests/test_experience_distiller.py`, `tests/test_operator_application.py`, `tests/test_team_experience.py`, `tests/test_task_runtime.py` | R6-G enqueue tests prove rollback on request creation failure, concurrent duplicate finalization and one request; component suites cover provider/commit failure, projection staleness/rebuild, committed-record recovery and terminal replay. |
 
+
+### Technical acceptance review — 2026-11-04
+
+<badge>10/10 supported by implementation and test evidence</badge>
+
+This is a code/test review of implementation commit `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3`, not a claim that the Operator has approved R6 closure. Review checked the integrated fixture, the mapped component tests, and the relevant failure/recovery/replay paths.
+
+| # | Review disposition | Evidence reviewed |
+|---:|---|---|
+| 1 | **PASS** | The integrated fixture dispatches only PlanAction-configured sources. Dispatcher tests reject missing/unconfigured sources before admission and verify the configured URL is passed to the fetcher. RestrictedFetcher tests cover HTTPS/canonical URL validation, DNS/private/loopback/metadata screening, redirects, HTTP status, media type, content encoding and size limits. |
+| 2 | **PASS** | Domain Knowledge tests cover current source allowlist, Team/domain scope, Snapshot/hash and tampered chunk rejection, semantic/vector retrieval and eight-passage/8,000-character limits. Context assembly rechecks retrieved material against current policy. Team Experience filters are covered separately in item 9. |
+| 3 | **PASS** | Context tests verify content-addressed immutable Snapshot plus Task-attributed manifest Event, exact replay, changed-context conflict, current-policy revocation and bounds. The integrated Strategy consumes the assembled Context. |
+| 4 | **PASS** | StrategyProposer routes proposals through StrategyService. Rejected proposals produce a durable rejection and no Plan; accepted proposals materialize immutable Plan Actions and ordinary Tasks. TaskRuntime typed completion, replay and interrupted recovery are tested. |
+| 5 | **PASS** | The integrated fixture uses one TaskRuntime and the narrow configured-source TaskDispatcher, then rebuilds a deterministic read-only Plan assessment across two successful cases and one terminal failure. R6-B/lifecycle component tests cover retry/exhaustion, crash recovery, attempt fencing and no duplicate Signal, ingestion Event or Outcome. |
+| 6 | **PASS** | The D9 evaluator is deterministic and bound to exact configured-source request, current attempt, terminal Outcome, Events, business Event and canonical Signal/Snapshot hashes. Tests cover all three mappings, tampering, cross-domain evidence, contradictory business Events, atomic enqueue rollback, concurrent duplicate finalization, committed-Evaluation recovery, Evaluation evidence revalidation and terminal replay. |
+| 7 | **PASS** | The R6-G distillation test builds two distinct successful source cases plus one terminal-failure case; the evidence-basis hash is order-independent; each v2 basis case is marked; failed evidence becomes case-relative contrary evidence without changing canonical EvidenceLink stance. Omitting contrary evidence is rejected. |
+| 8 | **PASS** | The integrated fixture rejects a one-case proposal and proves it creates no KnowledgeItem, then accepts a separate three-case create proposal. Component tests verify trusted Operator identity/grant, create-only preconditions, atomic LearningChange/KnowledgeItem/Event commit, replay and rollback when the decision Event fails. |
+| 9 | **PASS** | Team Experience tests verify eligible canonical publication, idempotent indexing, stale publication exclusion and rebuild after provider failure, due/NULL/review-status exclusion, tamper/canonical-change invalidation, and retrieval by a separate later Task through immutable Context. The integrated fixture verifies the same path with the accepted KnowledgeItem and provenance. |
+| 10 | **PASS** | Failure evidence spans evaluator-request transaction rollback and concurrent replay, provider/cost failure, LearningChange decision-Event rollback, publication staleness/rebuild, typed TaskRuntime recovery for Evaluation/Strategy/Plan/Operator results, and terminal/request/projection replay. |
+
+**Qualifications and non-blocking observations**
+
+- The integrated fixture deliberately uses deterministic fake fetch, Strategy, distillation and embedding providers; it does not make live outbound network or real model-provider calls. The actual RestrictedFetcher URL/DNS/HTTP safety components and hybrid retrieval behavior are tested in component suites. This is an offline deterministic qualification, not live-provider qualification.
+- “Worked” means configured-source execution-contract consistency only. It does not establish source truth, causal impact or Objective achievement. The failed case is preserved as contrary operational evidence, not treated as scientific proof of a causal counterexample.
+- One test docstring in `tests/test_r6b_dispatcher.py::test_dispatcher_uses_the_configured_source_not_a_caller_supplied_url` says a `RestrictedFetcher` is bound, while the test currently injects `FakeFetcher`. The assertion still checks that the configured PlanAction URL is the one passed to the fetcher; URL/DNS/HTTP safety is covered by separate tests. This is a test-description inconsistency, not an implementation or acceptance blocker.
+- No uncovered blocking gap was found against the ten documented criteria.
+
+**Review disposition:** all ten criteria are supported by the code and tests. The Operator's explicit R6 exit decision remains outstanding; this review does not close R6-G or authorize PR merge.
+
 ### New test boundaries and execution rules
 
 - `tests/test_rule_evaluator.py` tests all three D9 mappings, deterministic drafts and fail-closed terminal-event mismatch, cross-domain Signal and contradictory-business-event checks; it makes no model or network call.
@@ -328,4 +357,4 @@ Use a fresh disposable PostgreSQL database. Confirm one Alembic head and a succe
 This is operator-reported local evidence, recorded distinctly from hosted CI. It verifies the exact PR head; it does not itself constitute acceptance of the ten proofs or R6 exit approval.
 - Existing component tests do not satisfy integrated R6-G acceptance by themselves. Do not close R6-G until all ten proofs pass and the Operator explicitly approves the R6 exit gate.
 
-**Exit boundary:** implementation authorization is in force; R6-G is not closed. Review all ten acceptance proofs, including the relevant existing component tests for failure-injection, rollback, projection staleness/rebuild, retry/recovery and replay. Do not close R6-G until the local verification record and all ten proofs are accepted and the Operator explicitly approves the R6 exit gate.
+**Exit boundary:** implementation authorization is in force; R6-G is not closed. Exact-head local verification and the technical ten-proof review are complete. Do not close R6-G or merge PR #35 until the Operator explicitly approves the R6 exit gate.
