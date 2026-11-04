@@ -267,7 +267,10 @@ def test_case_lineage_marks_shared_plan_action_related():
     report = _report(session, team_id, cases)
 
     assert report["pairs"][0]["relationship"] == "related"
-    assert f"plan_action:{plan_id}:{action_id}" in report["pairs"][0]["shared_anchor_reasons"]
+    assert (
+        f"plan_action:{plan_id}:{action_id}"
+        in report["pairs"][0]["shared_anchor_reasons"]
+    )
 
 
 def test_case_lineage_report_order_and_hash_are_deterministic():
