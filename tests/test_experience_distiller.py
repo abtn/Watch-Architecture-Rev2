@@ -1185,7 +1185,7 @@ def test_learning_commit_accepts_real_create_proposal_atomically(
         )
     )
     task_id, attempt, principal = _create_admitted_approval_task(
-        session_factory, fixture.team_id, proposal.learning_change_id
+        session_factory, snapshot_store, fixture.team_id, proposal.learning_change_id
     )
 
     result = LearningCommitService(session_factory, snapshot_store).decide(
@@ -1355,7 +1355,7 @@ def test_learning_commit_rejects_stale_or_tampered_evidence_without_partial_stat
         )
     )
     task_id, attempt, principal = _create_admitted_approval_task(
-        session_factory, fixture.team_id, proposal.learning_change_id
+        session_factory, snapshot_store, fixture.team_id, proposal.learning_change_id
     )
     try:
         with session_factory.begin() as session:
@@ -1433,7 +1433,7 @@ def test_learning_commit_rejects_wrong_operator_and_stale_policy(
         )
     )
     task_id, attempt, principal = _create_admitted_approval_task(
-        session_factory, fixture.team_id, proposal.learning_change_id
+        session_factory, snapshot_store, fixture.team_id, proposal.learning_change_id
     )
     try:
         wrong_principal = _approval_principal(fixture.team_id, "other-operator")
@@ -1509,7 +1509,7 @@ def test_learning_commit_event_failure_rolls_back_canonical_decision(
         )
     )
     task_id, attempt, principal = _create_admitted_approval_task(
-        session_factory, fixture.team_id, proposal.learning_change_id
+        session_factory, snapshot_store, fixture.team_id, proposal.learning_change_id
     )
     suffix = uuid4().hex
     function = f"fail_learning_decision_{suffix}"
@@ -2127,7 +2127,7 @@ def test_learning_commit_replay_rejects_tampered_canonical_records(
         )
     )
     task_id, attempt, principal = _create_admitted_approval_task(
-        session_factory, fixture.team_id, proposal.learning_change_id
+        session_factory, snapshot_store, fixture.team_id, proposal.learning_change_id
     )
     try:
         result = LearningCommitService(session_factory, snapshot_store).decide(
