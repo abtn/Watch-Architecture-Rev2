@@ -4,7 +4,7 @@
 
 **R7-0: COMPLETE — 2026-11-04. R7-A: AUTHORIZED / IMPLEMENTATION IN PROGRESS.**
 
-- This document is the proposed R7 implementation entry gate. It is not an implementation authorization.
+- This document records the accepted R7 architecture and phase gates. It authorizes R7-A only; it does not authorize R7-B or R7-C.
 - ADR-0032 is **Accepted — 2026-11-04**. The Operator authorized R7-A only; R7-B and R7-C remain unauthorized.
 - PLAN.md remains the sole authority for milestone status and next action.
 - R6 is formally complete through R6-G. R6-G approval and merge do not authorize R7.
@@ -116,7 +116,7 @@ Exit requirements:
 - Later outcomes are assessed as evidence, not proof that the knowledge caused success or failure.
 - Rebuild and stale-projection failure cannot re-expose obsolete content.
 
-## 4. Architecture decisions and phase gates
+## 4. Accepted architecture decisions and phase gates
 
 The normative architecture is [ADR-0032](../decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md). R7-A-specific implementation contracts are frozen in [r7-a-implementation-plan.md](r7-a-implementation-plan.md). The remaining table entries identify the relevant R7-A implementation checks or later-phase gates:
 
@@ -160,7 +160,7 @@ R6-E's Cloudflare Workers AI selection is authorized for R6-E only. No productio
 
 If a production provider is needed, its separate decision must cover: model/provider identity and revision; data sent and retention/training handling; exact request bounds; pinned rate card; maximum pre-call reservation; usage reconciliation; unknown/overrun behavior; retry/recovery; secrets isolation; and an operator-approved smoke-test boundary. Until then, use deterministic fakes and synthetic cost cards only.
 
-## 7. R7-0 acceptance and implementation entry checklist
+## 7. R7-0 closeout and R7-A implementation entry checklist
 
 R7-0 documentation acceptance:
 
@@ -184,7 +184,7 @@ R7-A implementation gate:
 - [ ] Freeze deterministic fixtures, rubric revision, case-lineage rules, failure-injection/recovery tests, and acceptance evidence.
 - [ ] Any live provider decision is accepted before a real provider call; otherwise use deterministic fakes.
 
-## 8. R7-0 file and change boundary
+## 8. R7-0 documentation change record
 
 Expected R7-0 changes are documentation only:
 
@@ -198,7 +198,7 @@ Expected R7-0 changes are documentation only:
 
 No source code, tests, migrations, schema, runtime configuration, provider configuration, active Task grants, or active invariant changes belong in R7-0. docs/tasks.md may contain a clearly marked proposed/non-active R7 matrix until corresponding R7 Task/service code is implemented; docs/invariants.md now contains the accepted INV-12 amendment. If an architecture decision requires runtime changes, record it as a proposal and resolve it before implementation.
 
-## 9. R7-0 exit criteria
+## 9. R7-0 closeout record
 
 R7-0 is ready to close only when:
 
