@@ -335,11 +335,69 @@ class TaskRuntime:
                     raise TaskNotEligible(str(error)) from error
             elif self._is_knowledge_quality_task(session, task):
                 try:
-                    self._validate_knowledge_quality_task_request(
+                    quality_request = self._validate_knowledge_quality_task_request(
                         session, task, require_proposed=False
                     )
                 except TaskNotFinalizable as error:
                     raise TaskNotEligible(str(error)) from error
+                learning_change = session.scalar(
+                    select(LearningChange)
+                    .where(
+                        LearningChange.id == UUID(
+                            quality_request["learning_change_id"]
+                        ),
+                        LearningChange.team_id == task.team_id,
+                    )
+                    .with_for_update(read=True)
+                )
+                if learning_change is None:
+                    raise TaskNotEligible(
+                        "knowledge_quality_learning_change_missing"
+                    )
+                if learning_change.status == "proposed":
+                    if self._snapshot_store is None:
+                        raise TaskNotEligible(
+                            "knowledge_quality_snapshot_store_required"
+                        )
+                    from core.experience_distiller import (
+                        ExperienceDistiller,
+                        ExperienceDistillerError,
+                    )
+                    from core.knowledge_quality import (
+                        KnowledgeQualityAssessmentError,
+                        build_case_lineage_report,
+                        sha256_json,
+                    )
+
+                    try:
+                        _, canonical_pack = ExperienceDistiller(
+                            self._session_factory,
+                            self._snapshot_store,
+                            provider=None,
+                        ).validate_learning_change(session, learning_change)
+                        canonical_lineage = build_case_lineage_report(
+                            session,
+                            task.team_id,
+                            canonical_pack.evidence_basis,
+                        )
+                    except (
+                        ExperienceDistillerError,
+                        KnowledgeQualityAssessmentError,
+                    ) as error:
+                        raise TaskNotEligible(str(error)) from error
+                    if (
+                        canonical_pack.basis_hash
+                        != quality_request["evidence_basis_hash"]
+                        or sha256_json(canonical_lineage)
+                        != quality_request["lineage_report_hash"]
+                    ):
+                        raise TaskNotEligible(
+                            "knowledge_quality_canonical_evidence_stale"
+                        )
+                elif learning_change.status != "rejected":
+                    raise TaskNotEligible(
+                        "knowledge_quality_learning_change_already_decided"
+                    )
 
             self._require_prerequisites(session, task)
 
