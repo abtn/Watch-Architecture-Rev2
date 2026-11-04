@@ -50,6 +50,7 @@ from core.models import (
     Event,
     EvidenceLink,
     KnowledgeItem,
+    KnowledgeQualityAssessment,
     LearningChange,
     Outcome,
     Task,
@@ -282,6 +283,10 @@ def distillation_fixture(
                     Task.task_type == "approve_learning_change",
                     Task.team_id == fixture.team_id,
                 )
+                quality_task_ids = select(Task.id).where(
+                    Task.task_type == "assess_knowledge_quality",
+                    Task.team_id == fixture.team_id,
+                )
                 proposal_owner = (
                     LearningChange.proposed_by_task_id
                     == fixture.distillation_task_id
@@ -295,6 +300,13 @@ def distillation_fixture(
                 session.execute(
                     delete(KnowledgeItem).where(
                         KnowledgeItem.origin_learning_change_id.in_(learning_change_ids)
+                    )
+                )
+                session.execute(
+                    delete(KnowledgeQualityAssessment).where(
+                        KnowledgeQualityAssessment.learning_change_id.in_(
+                            learning_change_ids
+                        )
                     )
                 )
                 session.execute(
@@ -319,6 +331,13 @@ def distillation_fixture(
                         TaskGenerationCharge.task_id.in_(all_task_ids)
                     )
                 )
+                session.execute(
+                    delete(Outcome).where(
+                        Outcome.recorded_by_task_id.in_(quality_task_ids)
+                    )
+                )
+                session.execute(delete(Event).where(Event.task_id.in_(quality_task_ids)))
+                session.execute(delete(Task).where(Task.id.in_(quality_task_ids)))
                 session.execute(
                     delete(Outcome).where(
                         Outcome.recorded_by_task_id.in_(all_task_ids)
@@ -1585,6 +1604,11 @@ def _cleanup_operator_decision_task(
             )
         )
         if change_ids:
+            session.execute(
+                delete(KnowledgeQualityAssessment).where(
+                    KnowledgeQualityAssessment.learning_change_id.in_(change_ids)
+                )
+            )
             session.execute(
                 delete(KnowledgeItem).where(
                     KnowledgeItem.origin_learning_change_id.in_(change_ids)
