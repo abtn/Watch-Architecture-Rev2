@@ -899,3 +899,92 @@ class EvidenceLink(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
         nullable=False, server_default=func.now())
 
+
+class KnowledgeQualityAssessment(Base):
+    """Immutable, evidence-bound quality assessment of one create proposal."""
+
+    __tablename__ = "knowledge_quality_assessments"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_knowledge_quality_assessments_learning_change_team",
+        ),
+        ForeignKeyConstraint(
+            ["creating_task_id", "team_id"],
+            ["tasks.id", "tasks.team_id"],
+            name="fk_knowledge_quality_assessments_task_team",
+        ),
+        UniqueConstraint(
+            "learning_change_id",
+            name="uq_knowledge_quality_assessments_learning_change",
+        ),
+        UniqueConstraint(
+            "id",
+            "team_id",
+            name="uq_knowledge_quality_assessments_id_team",
+        ),
+        UniqueConstraint(
+            "creating_task_id",
+            "idempotency_key",
+            name="uq_knowledge_quality_assessments_task_idempotency",
+        ),
+        CheckConstraint(
+            "evaluator_kind IN ('rule', 'human', 'model')",
+            name="ck_knowledge_quality_assessments_evaluator_kind",
+        ),
+        CheckConstraint(
+            "length(rubric_identity) > 0 AND length(rubric_revision) > 0 "
+            "AND length(evaluator_identity) > 0 "
+            "AND length(evaluator_revision) > 0 "
+            "AND length(idempotency_key) > 0",
+            name="ck_knowledge_quality_assessments_identity",
+        ),
+        CheckConstraint(
+            "proposal_hash ~ '^sha256:[0-9a-f]{64}$' AND "
+            "evidence_basis_hash ~ '^sha256:[0-9a-f]{64}$' AND "
+            "lineage_report_hash ~ '^sha256:[0-9a-f]{64}$' AND "
+            "evidence_reference_hash ~ '^sha256:[0-9a-f]{64}$' AND "
+            "assessment_payload_hash ~ '^sha256:[0-9a-f]{64}$'",
+            name="ck_knowledge_quality_assessments_hashes",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(dimensions) = 'object' AND "
+            "jsonb_typeof(lineage_report) = 'object' AND "
+            "length(narrative) > 0",
+            name="ck_knowledge_quality_assessments_payload",
+        ),
+        Index(
+            "ix_knowledge_quality_assessments_team_learning_change",
+            "team_id",
+            "learning_change_id",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False
+    )
+    learning_change_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
+    creating_task_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
+    proposal_hash: Mapped[str] = mapped_column(String, nullable=False)
+    evidence_basis_hash: Mapped[str] = mapped_column(String, nullable=False)
+    rubric_identity: Mapped[str] = mapped_column(String(255), nullable=False)
+    rubric_revision: Mapped[str] = mapped_column(String(64), nullable=False)
+    evaluator_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    evaluator_identity: Mapped[str] = mapped_column(String(255), nullable=False)
+    evaluator_revision: Mapped[str] = mapped_column(String(255), nullable=False)
+    dimensions: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    narrative: Mapped[str] = mapped_column(Text, nullable=False)
+    lineage_report: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    lineage_report_hash: Mapped[str] = mapped_column(String, nullable=False)
+    evidence_reference_hash: Mapped[str] = mapped_column(String, nullable=False)
+    assessment_payload_hash: Mapped[str] = mapped_column(String, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
