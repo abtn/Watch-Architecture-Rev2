@@ -32,6 +32,14 @@ from core.generation import (
     GenerationUsage,
 )
 from core.generation_cost import TaskGenerationCostService
+from core.knowledge_quality import (
+    DIMENSIONS as KNOWLEDGE_QUALITY_DIMENSIONS,
+    RUBRIC_IDENTITY,
+    RUBRIC_REVISION,
+    KnowledgeQualityAssessmentDraft,
+    KnowledgeQualityDimension,
+)
+from core.knowledge_quality_tasks import KnowledgeQualityAssessmentTaskRunner
 from core.learning_commit import (
     LearningCommitCorrupt,
     LearningCommitError,
@@ -1050,6 +1058,79 @@ def test_concurrent_duplicate_proposals_reserve_and_commit_exactly_once(
         assert len(events) == 1
 
 
+
+
+class _FakeKnowledgeQualityAssessmentProvider:
+    def assess(
+        self,
+        *,
+        task_id: UUID,
+        learning_change: LearningChange,
+        evidence_document: dict[str, object],
+        lineage_report: dict[str, object],
+    ) -> KnowledgeQualityAssessmentDraft:
+        del task_id, evidence_document, lineage_report
+        return KnowledgeQualityAssessmentDraft(
+            learning_change_id=learning_change.id,
+            proposal_hash=learning_change.proposed_state["proposal_hash"],
+            evidence_basis_hash=learning_change.evidence_basis_hash,
+            rubric_identity=RUBRIC_IDENTITY,
+            rubric_revision=RUBRIC_REVISION,
+            dimensions={
+                name: KnowledgeQualityDimension(
+                    disposition="insufficient_evidence",
+                    findings=["The deterministic test evaluator records no positive claim."],
+                    evidence_refs=[],
+                )
+                for name in KNOWLEDGE_QUALITY_DIMENSIONS
+            },
+            narrative=(
+                "Deterministic test assessment: the quality contract is recorded "
+                "without asserting a positive knowledge conclusion."
+            ),
+        )
+
+
+def _run_quality_assessment(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    learning_change_id: UUID,
+) -> UUID:
+    from core.knowledge_quality import REQUEST_EVENT_TYPE, TASK_TYPE
+
+    with session_factory() as session:
+        tasks = list(
+            session.scalars(
+                select(Task).where(Task.task_type == TASK_TYPE).order_by(Task.created_at)
+            )
+        )
+        task_id = None
+        for task in tasks:
+            request = session.scalar(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == REQUEST_EVENT_TYPE,
+                )
+            )
+            if (
+                request is not None
+                and request.payload.get("learning_change_id")
+                == str(learning_change_id)
+            ):
+                task_id = task.id
+                break
+    if task_id is None:
+        raise AssertionError("knowledge quality assessment Task was not created")
+    result = KnowledgeQualityAssessmentTaskRunner(
+        session_factory,
+        snapshot_store,
+        _FakeKnowledgeQualityAssessmentProvider(),
+    ).run(task_id)
+    assert result.status == "done"
+    assert result.assessment_id is not None
+    return result.assessment_id
+
+
 def _approval_principal(team_id: UUID, subject: str = "operator-commit-1"):
     return TrustedOperatorPrincipal(
         issuer="https://host.example/identity",
@@ -1062,12 +1143,17 @@ def _approval_principal(team_id: UUID, subject: str = "operator-commit-1"):
 
 def _create_admitted_approval_task(
     session_factory,
+    snapshot_store: SnapshotStore,
     team_id: UUID,
     learning_change_id: UUID,
     *,
     decision: str = "accept",
     reason: str | None = None,
 ):
+    if decision == "accept":
+        _run_quality_assessment(
+            session_factory, snapshot_store, learning_change_id
+        )
     request = LearningChangeDecisionRequest(
         learning_change_id=learning_change_id,
         decision=decision,  # type: ignore[arg-type]
@@ -1190,6 +1276,7 @@ def test_learning_commit_rejection_is_durable_without_knowledge_item(
     )
     task_id, attempt, principal = _create_admitted_approval_task(
         session_factory,
+        snapshot_store,
         fixture.team_id,
         proposal.learning_change_id,
         decision="reject",
