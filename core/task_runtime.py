@@ -1443,9 +1443,9 @@ class TaskRuntime:
                 raise TaskNotFinalizable("knowledge_quality_task_outcome_missing")
             observed_at = outcomes[0].observed_at
         elif task.status == "running":
-            observed_at = TaskRuntime._current_attempt_start(session, task)
-            if observed_at is None:
-                raise TaskNotFinalizable("knowledge_quality_task_start_missing")
+            observed_at = assessment.recorded_at
+            if observed_at.tzinfo is None:
+                raise TaskNotFinalizable("knowledge_quality_assessment_timestamp_invalid")
         else:
             return None
         return TerminalObservation(
