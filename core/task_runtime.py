@@ -333,6 +333,13 @@ class TaskRuntime:
                     self._validate_evaluation_task_request(session, task)
                 except TaskNotFinalizable as error:
                     raise TaskNotEligible(str(error)) from error
+            elif self._is_knowledge_quality_task(session, task):
+                try:
+                    self._validate_knowledge_quality_task_request(
+                        session, task, require_proposed=True
+                    )
+                except TaskNotFinalizable as error:
+                    raise TaskNotEligible(str(error)) from error
 
             self._require_prerequisites(session, task)
 
