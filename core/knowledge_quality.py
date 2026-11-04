@@ -705,7 +705,12 @@ def require_recorded_assessment(
             != "success_knowledge_quality_assessed"
             or terminal[0].payload.get("knowledge_quality_assessment_id")
             != str(assessment.id)
-            or task.completed_at != terminal[0].created_at
+            or terminal[0].payload.get("outcome_id") != str(outcomes[0].id)
+            or terminal[0].payload.get("to_status") != "done"
+            or terminal[0].payload.get("attempt_count") != task.attempt_count
+            or outcomes[0].recorded_by_task_id != task.id
+            or outcomes[0].observed_at is None
+            or task.completed_at != outcomes[0].observed_at
         ):
             raise KnowledgeQualityAssessmentError("knowledge_quality_assessment_task_incomplete")
     elif terminal or outcomes:
