@@ -165,7 +165,9 @@ def _seed_quality_assessment(
             observed_at=recorded_at,
             recorded_by_task_id=task_id,
         )
-        session.add_all([task, outcome, assessment])
+        session.add(task)
+        session.flush()
+        session.add_all([outcome, assessment])
         session.flush()
         session.add_all(
             [
