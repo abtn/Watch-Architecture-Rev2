@@ -280,7 +280,7 @@ git diff --check
 ```
 
 Use a fresh disposable PostgreSQL database. Confirm one Alembic head and a successful upgrade from `0011_task_generation_cost`; never use the persistent `watch` database. The Evaluation tests cover same-Team Outcome references, domain-scoped Signal references, exact Snapshot/hash/quote validation, evaluator identity/revision, proposal idempotency, recorded/rejected dispositions, Task write scope, and TaskRuntime terminal finalization. This checkpoint deliberately does not implement ExperienceDistiller, LearningChange proposal/approval writes, KnowledgeItem commits, or Team Experience indexing.
-## R6-G implementation and acceptance-to-test map (2026-11-04; verification complete, acceptance review pending)
+## R6-G implementation and acceptance-to-test map (2026-11-04; exact-head verification passed, acceptance review pending)
 
 **Implementation status:** R6-G implementation was explicitly authorized and is present on `r6g-implementation-20261103`, PR #35 (draft/open, unmerged). This section maps implemented behavior and required proof; it does not record R6-G closure.
 
@@ -313,6 +313,7 @@ Use a fresh disposable PostgreSQL database. Confirm one Alembic head and a succe
 - `tests/test_r6g_vertical_slice.py` covers the integrated Objective Context → Strategy → Plan → three source Outcomes/Evaluations → distillation → Operator rejection/acceptance → Team Experience projection → later-Task retrieval path.
 - Use fake Strategy and distillation generation providers, synthetic R6-E/R6-F test cost cards, deterministic test embeddings, and a deterministic restricted fetcher. No production R6-G evaluator provider or production R6-F distillation provider is approved or needed.
 - Hosted CI on exact implementation head `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3` passed run [41782439302](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41782439302): fresh PostgreSQL migration and single-head validation, Ruff, Mypy, and **614 tests in 44.93s**. The earlier 610-test CI run is superseded by this final-head result.
+
 **Programmer-local verification — 2026-11-04 (operator-reported on the exact implementation head).** On branch `r6g-implementation-20261103`, commit `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3`, the working tree was clean before and after verification.
 
 - Environment: Python 3.12.12; `uv sync --locked` passed.
