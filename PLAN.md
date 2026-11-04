@@ -336,10 +336,10 @@ The proposed architecture now makes these boundaries explicit:
 - KnowledgeItem retains immutable origin_learning_change_id and gains a proposed current_learning_change_id pointer to the latest accepted lifecycle transition. Content version increments only on revise; lifecycle-only transitions preserve content version/hash.
 - Supersession is represented as predecessor status retired plus a validated successor pointer, not a new superseded status. Revalidation preserves confidence exactly; only an accepted revise may change it.
 - Context manifest v2 already records included item ID/version/hash/origin. R7 adds only the missing application-owned per-claim citation and item-specific use assessment, not a duplicate inclusion record.
-- The proposed INV-12 amendment and non-active R7 Task/write-scope matrix are recorded for review. Active INV-12 and current Task grants are unchanged until ADR-0032 is accepted.
+- The accepted INV-12 amendment is active in docs/invariants.md. The R7 Task/write-scope matrix remains non-active until corresponding R7 Task/service code is implemented; no runtime Task grants have changed yet.
 - The retrieval benchmark must label synthetic versus canonical-derived/human-reviewed examples and report small-n results descriptively.
 
-Proposed traversal after R7-0 is accepted and separately authorized:
+Authorized traversal after R7-0 acceptance and the separate R7-A authorization:
 
 - **R7-A — Evidence relationships and knowledge-quality evaluation:** canonical lineage rules, typed quality assessment, rubric, confidence constraints, deterministic evidence and Task scopes.
 - **R7-B — Canonical KnowledgeItem lifecycle:** current-change pointer/history, revise/revalidate/supersede/retire, canonicality consumer updates, trusted Operator commit, D7 review and projection republishing.
