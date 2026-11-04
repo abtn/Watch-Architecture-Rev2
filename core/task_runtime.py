@@ -1731,11 +1731,13 @@ class TaskRuntime:
         )
 
         try:
-            ExperienceDistiller(
+            _, canonical_pack = ExperienceDistiller(
                 self._session_factory, self._snapshot_store, provider=None
             ).validate_learning_change(session, learning_change)
         except ExperienceDistillerError as error:
             raise TaskNotFinalizable(error.reason) from error
+        if canonical_pack.basis_hash != learning_change.evidence_basis_hash:
+            raise TaskNotFinalizable("knowledge_quality_evidence_basis_stale")
 
         task_id, payload = build_quality_task_request(
             session, source_task, learning_change, require_proposed=True
