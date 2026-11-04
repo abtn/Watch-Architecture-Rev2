@@ -159,7 +159,7 @@ No transcript, retrieved chunk, vector rank, model confidence, or free-form self
 
 ## 4. Required decisions before implementation
 
-R7-A is authorized. Before its source implementation, freeze the R7-A-specific contracts in the R7-A implementation plan: (1) exact case-lineage field/normalization/rule definitions and `independent`/`related`/`unknown` truth table; (2) KnowledgeQualityAssessment schema, evidence-reference contract, rubric revision/disposition rules, stable evaluator identity/revision and assessment Task lifecycle/idempotency; (3) deterministic application validation and the exact create-approval gate that enforces the accepted INV-12 amendment; and (4) deterministic fixtures, failure/replay tests, and the no-provider boundary. The following later-phase decisions remain intentionally deferred and are not R7-A blockers:
+R7-A is authorized. Its implementation contracts are frozen in [the R7-A implementation plan](../development/r7-a-implementation-plan.md): (1) exact case-lineage field/normalization/rule definitions and `independent`/`related`/`unknown` truth table; (2) KnowledgeQualityAssessment schema, evidence-reference contract, rubric revision/disposition rules, stable evaluator identity/revision and assessment Task lifecycle/idempotency; (3) deterministic application validation and the exact create-approval gate that enforces the accepted INV-12 amendment; and (4) deterministic fixtures, failure/replay tests, and the no-provider boundary. The following later-phase decisions remain intentionally deferred and are not R7-A blockers:
 
 1. **Knowledge-use trace (R7-C):** TaskKnowledgeReference schema, claim identity, exact Context-manifest binding, KnowledgeUseAssessment vocabulary/recording contract. Reuse Context manifest v2 for included passages; do not duplicate inclusion.
 2. **Version history and lifecycle (R7-B):** current_learning_change_id implementation, immutable reconstruction proof, content-version semantics, legal transitions, successor relation, concurrency/replay, canonicality consumers, D7 review dates, and projection invalidation/republishing.
@@ -168,7 +168,7 @@ R7-A is authorized. Before its source implementation, freeze the R7-A-specific c
 
 **Accepted INV-12 amendment (effective 2026-11-04):** Team memory changes remain possible only through the authorized learning path. Creating, revising, revalidating, superseding, or retiring a KnowledgeItem requires a proposed LearningChange, operation-specific evidence and assessment, application validation against the exact current target/pointer/version, and a committed trusted-Operator decision through the authorized Task. Create retains its recorded Evaluation or explicit Operator-seed evidence basis and additionally requires the R7 KnowledgeQualityAssessment gate when that gate is in force. Revise requires a KnowledgeQualityAssessment bound to its exact proposed state. Revalidate requires fresh/rechecked evidence and a typed revalidation assessment, and must preserve content, content hash, content version, and confidence. Supersede requires a separately accepted same-Team successor plus an explicit predecessor link; retire requires reason/evidence and no successor. No assessment Task, worker, model, indexer, or retrieval path may write KnowledgeItem directly. TeamPolicy changes remain separate and require explicit Operator approval. The only scheduled-maintenance exception is review_knowledge performing status-only active → needs_review; it cannot change content/confidence, extend review dates, or reactivate an item. No other write path exists.
 
-Do not begin R7-A while any decision that changes canonical schema, authority, security, Task scopes, or lifecycle meaning remains unresolved.
+R7-A is limited to the frozen implementation plan. The lifecycle, successor-link, current-pointer, revalidation, retrieval, and knowledge-use details listed above remain gates for separately authorized R7-B/R7-C work.
 
 ## 5. Non-goals
 
@@ -191,4 +191,3 @@ Rejected alternatives:
 
 **Implementation boundary:** this ADR is Accepted and R7-A alone is authorized. R7-B and R7-C remain separately gated and unauthorized. Acceptance and phase authorization do not substitute for hosted/local verification or establish that the implementation is correct.
 
-**Implementation boundary:** this ADR is proposed. Its acceptance would establish design authority only; R7 implementation still requires a separate explicit Operator authorization and a verified local preflight.
