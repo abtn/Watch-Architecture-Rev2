@@ -732,7 +732,8 @@ class TaskRuntime:
                     session,
                     task,
                     require_proposed=(
-                        observation.result_category
+                        task.status == "running"
+                        and observation.result_category
                         in _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES
                     ),
                 )
@@ -1649,9 +1650,8 @@ class TaskRuntime:
         except KnowledgeQualityAssessmentError as error:
             raise TaskNotFinalizable(error.reason) from error
 
-    @staticmethod
     def _create_knowledge_quality_task_request(
-        session: Session,
+        self, session: Session,
         source_task: Task,
         learning_change: LearningChange,
     ) -> Task:
@@ -1664,6 +1664,17 @@ class TaskRuntime:
             build_quality_task_request,
             validate_quality_task_request,
         )
+        from core.experience_distiller import (
+            ExperienceDistiller,
+            ExperienceDistillerError,
+        )
+
+        try:
+            ExperienceDistiller(
+                self._session_factory, self._snapshot_store, provider=None
+            ).validate_learning_change(session, learning_change)
+        except ExperienceDistillerError as error:
+            raise TaskNotFinalizable(error.reason) from error
 
         task_id, payload = build_quality_task_request(
             session, source_task, learning_change, require_proposed=True
