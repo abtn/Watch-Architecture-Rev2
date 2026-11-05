@@ -157,7 +157,9 @@ def knowledge_item_state(item: KnowledgeItem) -> dict[str, Any]:
         "origin_learning_change_id": str(item.origin_learning_change_id),
         "current_learning_change_id": str(item.current_learning_change_id),
         "supersedes_item_id": (
-            str(item.supersedes_item_id) if item.supersedes_item_id is not None else None
+            str(item.supersedes_item_id)
+            if item.supersedes_item_id is not None
+            else None
         ),
         "superseded_by_id": (
             str(item.superseded_by_id) if item.superseded_by_id is not None else None
