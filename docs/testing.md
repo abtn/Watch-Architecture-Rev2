@@ -379,7 +379,7 @@ The committed `scripts/test-disposable-postgres.ps1` ran on the same PR-head tre
 - Full suite: **631 passed in 79.22s**.
 - Script restored both database environment variables and removed its disposable container.
 
-No production evaluator provider was wired or selected; tests used deterministic fakes and no live model calls occurred. R7-A is complete and merged. R7-B is in documentation preparation only and is not authorized; R7-C citations/retrieval/downstream use remain unauthorized.
+No production evaluator provider was wired or selected; tests used deterministic fakes and no live model calls occurred. R7-A and R7-B B0 are complete and merged. B1 implementation was separately authorized on 2026-11-05 and is in progress; B2–B6 and R7-C remain unauthorized.
 
 
 ## R7-B B0 — design-freeze and documentation validation record (2026-11-05)
@@ -389,3 +389,19 @@ The Operator accepted all five B0 decisions, the R7-B D1 typed-assessment extens
 **Accepted design checks:** confidence is part of semantic content identity; confidence-only revise is content-changing and clears validation; existing canonical evidence may support revalidation only while temporally relevant and source-valid; the trusted host identity remains bound in the approval-request fingerprint and decision record; the exact snapshot/content domain separators are frozen; and the complete D5 candidate, abandonment, edge-case, visibility, and graph-lock contracts are accepted. Snapshot-first history reconstruction remains conditional on B1 proof; any failure requires a separate Operator decision on the smallest append-only history record.
 
 **Scope and verification boundary:** this record concerns documentation and architecture acceptance only. No source files, migrations, tests, Task registrations, provider configuration, active write scopes, or runtime behavior are changed by B0. No code test suite, database migration, or local disposable-PostgreSQL run is claimed by this documentation-only checkpoint. B0 closeout requires the documentation-only PR to pass its checks and merge. B1 remains unauthorized pending separate written Operator implementation authorization.
+
+
+## R7-B B1 — snapshot-first history reconstruction (implementation in progress)
+
+**Authorization:** the Operator separately authorized B1 on 2026-11-05 after B0/PR #41 closed. The grant covers the B1 current-pointer and reciprocal-link schema/backfill, atomic create-pointer rollout, full-state versioned snapshots, legacy snapshot decoding, pointer-chain reconstruction, D7 review Event validation, historical create replay correction, and B1 tests. It does not activate revise/revalidate/supersede/retire commit operations, add lifecycle Task registrations or active write scopes, or authorize B2–B6/R7-C.
+
+**Implementation currently present on branch `r7b-b1-snapshot-history-20261105`:**
+
+- Migration `0015_knowledge_item_history` adds same-Team current/supersession pointers, validates accepted create origins before backfill, applies uniqueness/self-link constraints, and expands LearningChange operation/target database checks.
+- New `core.knowledge_history` defines the B1 snapshot envelope/hash, exact legacy root decoder with explicit reconstructed-field markers, accepted-change chain reconstruction, D7 review-event overlay handling, provenance checks, supersession-reference checks, and fail-closed corruption errors.
+- New create commits write the current pointer atomically and store the versioned root snapshot; review Events now include the current pointer per item under schema version 2 while schema-v1 Events remain readable.
+- Historical create replay now validates the original root against the reconstructed chain rather than requiring the live item to remain at version 1/active.
+- `tests/test_knowledge_history.py` covers legacy decoding, snapshot hash tampering, legacy/new review Event handling, review followed by revise, missing parents, forks, ambiguous legacy Event placement, live-state drift, and LearningChange operation/target constraints.
+
+**Verification state:** no B1 test-suite, Ruff, Mypy, migration-upgrade, or hosted-CI result is recorded yet. These remain required before B1 can close. The B1 branch's migration must be tested both on a fresh database and by upgrading a populated disposable database at the prior `0014_knowledge_quality` head. Never use the persistent `watch` database.
+
