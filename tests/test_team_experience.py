@@ -11,12 +11,12 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.context_assembly import TaskContextAssembler
-from core.learning_history import reconstruct_knowledge_item_history
 from core.embeddings import EmbeddingBatch, EmbeddingSpace
 from core.knowledge_index import (
     HybridKnowledgeRetriever,
     TeamExperienceIndexer,
 )
+from core.learning_history import reconstruct_knowledge_item_history
 from core.models import (
     Event,
     KnowledgeItem,
