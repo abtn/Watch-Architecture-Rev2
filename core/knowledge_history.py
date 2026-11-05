@@ -279,7 +279,10 @@ def decode_knowledge_item_snapshot(
             or payload.get("snapshot_version") != SNAPSHOT_VERSION
         ):
             raise KnowledgeHistoryError("knowledge_snapshot_version_unsupported")
-        state = _normalize_state(payload.get("state"))
+        raw_state = payload.get("state")
+        state = _normalize_state(raw_state)
+        if raw_state != state:
+            raise KnowledgeHistoryError("knowledge_snapshot_state_not_canonical")
         digest_value = payload.get("snapshot_hash")
         expected = _snapshot_digest(
             {
@@ -336,6 +339,160 @@ def _parse_time(value: object) -> datetime:
     if parsed.utcoffset() != timedelta(0):
         raise KnowledgeHistoryError("knowledge_review_event_timestamp_not_utc")
     return parsed.astimezone(timezone.utc)
+
+
+def _validate_operator_request(
+    session: Session, task: Task, change: LearningChange
+) -> dict[str, Any]:
+    """Verify the immutable host-authenticated approval request and fingerprint."""
+    requests = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == "operator_task_requested",
+            )
+        )
+    )
+    if len(requests) != 1 or not isinstance(requests[0].payload, dict):
+        raise KnowledgeHistoryError("knowledge_history_operator_request_invalid")
+    payload = requests[0].payload
+    if (
+        payload.get("schema_version") != 2
+        or payload.get("operation") != "approve_learning_change"
+        or payload.get("learning_change_id") != str(change.id)
+        or payload.get("decision") != "accept"
+        or payload.get("rejection_reason") is not None
+        or payload.get("operator_id") != change.operator_id
+        or payload.get("policy_version") != task.policy_version
+    ):
+        raise KnowledgeHistoryError("knowledge_history_operator_request_mismatch")
+
+    assessment_id = payload.get("knowledge_quality_assessment_id")
+    assessment_hash = payload.get("knowledge_quality_assessment_hash")
+    try:
+        parsed_assessment_id = UUID(str(assessment_id))
+    except (TypeError, ValueError, AttributeError) as error:
+        raise KnowledgeHistoryError(
+            "knowledge_history_operator_assessment_binding_invalid"
+        ) from error
+    if (
+        str(parsed_assessment_id) != assessment_id
+        or not isinstance(assessment_hash, str)
+        or len(assessment_hash) != 71
+        or not assessment_hash.startswith("sha256:")
+        or any(character not in "0123456789abcdef" for character in assessment_hash[7:])
+    ):
+        raise KnowledgeHistoryError(
+            "knowledge_history_operator_assessment_binding_invalid"
+        )
+
+    idempotency_hash = payload.get("idempotency_key_hash")
+    if (
+        not isinstance(idempotency_hash, str)
+        or len(idempotency_hash) != 71
+        or not idempotency_hash.startswith("sha256:")
+        or any(character not in "0123456789abcdef" for character in idempotency_hash[7:])
+    ):
+        raise KnowledgeHistoryError("knowledge_history_operator_request_hash_invalid")
+
+    fingerprint_payload = json.dumps(
+        {
+            "operation": "approve_learning_change",
+            "team_id": str(change.team_id),
+            "learning_change_id": str(change.id),
+            "decision": "accept",
+            "rejection_reason": None,
+            "operator_id": change.operator_id,
+            "knowledge_quality_assessment_id": str(parsed_assessment_id),
+            "knowledge_quality_assessment_hash": assessment_hash,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    expected_fingerprint = "sha256:" + hashlib.sha256(
+        fingerprint_payload.encode("utf-8")
+    ).hexdigest()
+    if payload.get("request_fingerprint") != expected_fingerprint:
+        raise KnowledgeHistoryError("knowledge_history_operator_fingerprint_invalid")
+    return payload
+
+
+def _validate_proposer_provenance(
+    session: Session, change: LearningChange
+) -> None:
+    """Verify the durable proposal Task and its terminal Outcome/Event pair."""
+    proposer = session.get(Task, change.proposed_by_task_id)
+    if (
+        proposer is None
+        or proposer.team_id != change.team_id
+        or proposer.task_type != "propose_learning_change"
+        or proposer.status != "done"
+        or proposer.completed_at is None
+        or proposer.attempt_count < 1
+        or proposer.allowed_writes != ["LearningChange"]
+        or proposer.id == change.committed_by_task_id
+    ):
+        raise KnowledgeHistoryError("knowledge_history_proposer_task_invalid")
+
+    starts = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == proposer.id,
+                Event.type == "task_started",
+                Event.payload["attempt_count"].as_integer() == proposer.attempt_count,
+            )
+        )
+    )
+    completions = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == proposer.id,
+                Event.type == "task_completed",
+            )
+        )
+    )
+    outcomes = list(
+        session.scalars(
+            select(Outcome).where(
+                Outcome.recorded_by_task_id == proposer.id,
+                Outcome.outcome_type == "task_execution",
+            )
+        )
+    )
+    if (
+        len(starts) != 1
+        or starts[0].payload
+        != {
+            "from_status": "pending",
+            "to_status": "running",
+            "attempt_count": proposer.attempt_count,
+        }
+        or len(completions) != 1
+        or len(outcomes) != 1
+    ):
+        raise KnowledgeHistoryError("knowledge_history_proposer_terminal_invalid")
+
+    payload = completions[0].payload
+    outcome = outcomes[0]
+    if (
+        not isinstance(payload, dict)
+        or payload.get("to_status") != "done"
+        or payload.get("attempt_count") != proposer.attempt_count
+        or payload.get("result_category") != "success_learning_change_proposed"
+        or payload.get("learning_change_id") != str(change.id)
+        or payload.get("outcome_id") != str(outcome.id)
+        or payload.get("observation_snapshot_ref") != outcome.observation_snapshot_ref
+        or payload.get("observation_hash") != outcome.observation_hash
+        or proposer.completed_at != outcome.observed_at
+        or outcome.team_id != change.team_id
+        or outcome.subject_kind != "task"
+        or outcome.subject_id != proposer.id
+        or outcome.observation_snapshot_ref is None
+        or outcome.observation_hash is None
+        or outcome.observed_at is None
+    ):
+        raise KnowledgeHistoryError("knowledge_history_proposer_terminal_invalid")
 
 
 def _validate_learning_change_provenance(
@@ -406,6 +563,9 @@ def _validate_learning_change_provenance(
     if change.operation == "revise" and state["last_validated_at"] is not None:
         raise KnowledgeHistoryError("knowledge_history_validation_date_mismatch")
 
+    request_payload = _validate_operator_request(session, task, change)
+    _validate_proposer_provenance(session, change)
+
     starts = list(
         session.scalars(
             select(Event).where(
@@ -472,6 +632,10 @@ def _validate_learning_change_provenance(
         or payload.get("attempt_count") != task.attempt_count
         or payload.get("evidence_basis_hash") != change.evidence_basis_hash
         or payload.get("proposal_hash") != proposal_hash
+        or payload.get("knowledge_quality_assessment_id")
+        != request_payload.get("knowledge_quality_assessment_id")
+        or payload.get("knowledge_quality_assessment_hash")
+        != request_payload.get("knowledge_quality_assessment_hash")
         or payload.get("knowledge_item_id") != state["id"]
         or payload.get("knowledge_item_version") != state["version"]
         or _parse_time(payload.get("committed_at")) != _parse_time(change.committed_at)
