@@ -1040,9 +1040,10 @@ def _validate_supersession_references(
         if predecessor_id_value in seen:
             raise KnowledgeHistoryError("knowledge_history_supersession_cycle")
         seen.add(predecessor_id_value)
-        cursor = session.get(KnowledgeItem, predecessor_id_value)
-        if cursor is None or cursor.team_id != item.team_id:
+        predecessor = session.get(KnowledgeItem, predecessor_id_value)
+        if predecessor is None or predecessor.team_id != item.team_id:
             raise KnowledgeHistoryError("knowledge_history_predecessor_invalid")
+        cursor = predecessor
 
 
 def reconstruct_knowledge_item_history(
