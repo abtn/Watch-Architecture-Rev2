@@ -408,6 +408,7 @@ def _validate_learning_change_provenance(
         or payload.get("proposal_hash") != proposal_hash
         or payload.get("knowledge_item_id") != state["id"]
         or payload.get("knowledge_item_version") != state["version"]
+        or _parse_time(payload.get("committed_at")) != _parse_time(change.committed_at)
         or _parse_time(decisions[0].created_at) != _parse_time(change.committed_at)
     ):
         raise KnowledgeHistoryError("knowledge_history_operator_decision_event_invalid")
@@ -664,8 +665,11 @@ def _validate_transition(
             committed["version"] != previous["version"] + 1
             or committed["status"] != previous["status"]
             or committed["last_validated_at"] is not None
-            or _same_semantic_content(previous, committed) and
-            previous["review_after"] == committed["review_after"]
+            or committed["superseded_by_id"] != previous["superseded_by_id"]
+            or (
+                _same_semantic_content(previous, committed)
+                and previous["review_after"] == committed["review_after"]
+            )
         ):
             raise KnowledgeHistoryError("knowledge_history_revise_transition_invalid")
     elif operation == "revalidate":
