@@ -783,8 +783,10 @@ def test_review_knowledge_task_atomically_marks_due_items_and_replays_once(
         assert [entry["knowledge_item_id"] for entry in events[0].payload["items"]] == [
             str(due_item)
         ]
-        assert events[0].payload["items"][0]["current_learning_change_id"]
-        == str(due.origin_learning_change_id)
+        assert (
+            events[0].payload["items"][0]["current_learning_change_id"]
+            == str(due.origin_learning_change_id)
+        )
         history = reconstruct_knowledge_item_history(session, due)
         assert history.state["status"] == "needs_review"
         assert history.learning_change_ids == (due.origin_learning_change_id,)
