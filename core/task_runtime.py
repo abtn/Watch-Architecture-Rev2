@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.learning_history import (
     KnowledgeHistoryError,
-    decode_state_snapshot,
     knowledge_item_state,
     reconstruct_knowledge_item_history,
 )
@@ -2942,20 +2941,14 @@ class TaskRuntime:
             expected_payload["knowledge_item_id"] = str(item.id)
             expected_payload["knowledge_item_version"] = 1
             try:
-                committed_state, _ = decode_state_snapshot(
-                    learning_change.committed_state,
-                    learning_change_id=learning_change.id,
-                    operation="create",
-                    allow_legacy_root=True,
-                )
+                history = reconstruct_knowledge_item_history(session, item)
             except KnowledgeHistoryError as error:
                 raise TaskNotFinalizable(str(error)) from error
             if (
                 learning_change.decision_reason is not None
                 or item.team_id != task.team_id
-                or item.version != 1
-                or item.status != "active"
-                or committed_state != knowledge_item_state(item)
+                or not history.learning_change_ids
+                or history.learning_change_ids[0] != learning_change.id
             ):
                 raise TaskNotFinalizable("committed_knowledge_item_mismatch")
         else:
