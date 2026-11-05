@@ -139,6 +139,20 @@ def distillation_fixture(
                     },
                 )
             )
+            session.flush()
+            session.add(
+                Event(
+                    id=uuid4(),
+                    task_id=distillation_task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 1,
+                    },
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
 
         cases: list[_Case] = []
         for index in range(case_count):
