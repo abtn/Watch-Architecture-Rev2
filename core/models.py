@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+import sqlalchemy as sa
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
