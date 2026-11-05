@@ -310,6 +310,118 @@ def _parse_time(value: object) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _validate_learning_change_provenance(
+    session: Session,
+    change: LearningChange,
+    state: dict[str, Any],
+) -> None:
+    """Verify the trusted Operator decision and terminal Task evidence for one node."""
+    task = session.get(Task, change.committed_by_task_id)
+    if (
+        task is None
+        or task.team_id != change.team_id
+        or task.task_type != "approve_learning_change"
+        or task.status != "done"
+        or task.completed_at is None
+        or task.attempt_count < 1
+        or task.allowed_writes != ["LearningChange", "KnowledgeItem"]
+        or change.operator_id is None
+        or not change.operator_id
+        or change.decision_reason is not None
+        or change.committed_at is None
+        or _parse_time(task.completed_at) != _parse_time(change.committed_at)
+        or change.committed_state is None
+    ):
+        raise KnowledgeHistoryError("knowledge_history_operator_provenance_invalid")
+
+    starts = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == "task_started",
+                Event.payload["attempt_count"].as_integer() == task.attempt_count,
+            )
+        )
+    )
+    decisions = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == "learning_change_accepted",
+            )
+        )
+    )
+    completions = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == "task_completed",
+            )
+        )
+    )
+    outcomes = list(
+        session.scalars(
+            select(Outcome).where(
+                Outcome.recorded_by_task_id == task.id,
+                Outcome.outcome_type == "task_execution",
+            )
+        )
+    )
+    if (
+        len(starts) != 1
+        or starts[0].payload
+        != {
+            "from_status": "pending",
+            "to_status": "running",
+            "attempt_count": task.attempt_count,
+        }
+        or len(decisions) != 1
+        or len(completions) != 1
+        or len(outcomes) != 1
+    ):
+        raise KnowledgeHistoryError("knowledge_history_operator_task_events_invalid")
+
+    payload = decisions[0].payload
+    proposal_hash = (
+        change.proposed_state.get("proposal_hash")
+        if isinstance(change.proposed_state, dict)
+        else None
+    )
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema_version") != 1
+        or payload.get("learning_change_id") != str(change.id)
+        or payload.get("operation") != change.operation
+        or payload.get("decision") != "accept"
+        or payload.get("operator_id") != change.operator_id
+        or payload.get("approval_task_id") != str(task.id)
+        or payload.get("attempt_count") != task.attempt_count
+        or payload.get("evidence_basis_hash") != change.evidence_basis_hash
+        or payload.get("proposal_hash") != proposal_hash
+        or payload.get("knowledge_item_id") != state["id"]
+        or payload.get("knowledge_item_version") != state["version"]
+        or _parse_time(decisions[0].created_at) != _parse_time(change.committed_at)
+    ):
+        raise KnowledgeHistoryError("knowledge_history_operator_decision_event_invalid")
+
+    completion_payload = completions[0].payload
+    outcome = outcomes[0]
+    if (
+        not isinstance(completion_payload, dict)
+        or completion_payload.get("from_status") != "running"
+        or completion_payload.get("to_status") != "done"
+        or completion_payload.get("result_category")
+        != "success_learning_change_accepted"
+        or completion_payload.get("learning_change_id") != str(change.id)
+        or completion_payload.get("outcome_id") != str(outcome.id)
+        or outcome.team_id != task.team_id
+        or outcome.subject_kind != "task"
+        or outcome.subject_id != task.id
+        or _parse_time(outcome.observed_at) != _parse_time(task.completed_at)
+    ):
+        raise KnowledgeHistoryError("knowledge_history_operator_terminal_invalid")
+
+
 def _review_event_task_is_valid(
     session: Session, event: Event, payload: dict[str, Any]
 ) -> tuple[Task, datetime]:
@@ -641,6 +753,7 @@ def reconstruct_knowledge_item_history(
     except KnowledgeHistoryError:
         raise
     root_state = root_decoded.state
+    _validate_learning_change_provenance(session, root, root_state)
     if (
         root_state["id"] != str(item.id)
         or root_state["team_id"] != str(item.team_id)
@@ -718,6 +831,7 @@ def reconstruct_knowledge_item_history(
         parent_by_child[change_id] = parent_id
         decoded_previous[change_id] = previous
         decoded_commits[change_id] = committed
+        _validate_learning_change_provenance(session, change, committed)
         _validate_transition(change.operation, previous, committed)
 
     children: dict[UUID, list[UUID]] = {}
