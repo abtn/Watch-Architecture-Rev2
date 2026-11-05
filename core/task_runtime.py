@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.learning_history import (
     KnowledgeHistoryError,
+    decode_state_snapshot,
+    knowledge_item_state,
     reconstruct_knowledge_item_history,
 )
 from core.models import (
@@ -2939,13 +2941,21 @@ class TaskRuntime:
             item = items[0]
             expected_payload["knowledge_item_id"] = str(item.id)
             expected_payload["knowledge_item_version"] = 1
+            try:
+                committed_state, _ = decode_state_snapshot(
+                    learning_change.committed_state,
+                    learning_change_id=learning_change.id,
+                    operation="create",
+                    allow_legacy_root=True,
+                )
+            except KnowledgeHistoryError as error:
+                raise TaskNotFinalizable(str(error)) from error
             if (
                 learning_change.decision_reason is not None
                 or item.team_id != task.team_id
                 or item.version != 1
                 or item.status != "active"
-                or learning_change.committed_state
-                != TaskRuntime._knowledge_item_state(item)
+                or committed_state != knowledge_item_state(item)
             ):
                 raise TaskNotFinalizable("committed_knowledge_item_mismatch")
         else:
@@ -2976,36 +2986,8 @@ class TaskRuntime:
 
     @staticmethod
     def _knowledge_item_state(item: KnowledgeItem) -> dict[str, Any]:
-        """Reconstruct every canonical field captured by LearningCommitService."""
-        return {
-            "id": str(item.id),
-            "team_id": str(item.team_id),
-            "kind": item.kind,
-            "title": item.title,
-            "statement": item.statement,
-            "body": item.body,
-            "applicability": item.applicability,
-            "preconditions": item.preconditions,
-            "assumptions": item.assumptions,
-            "limitations": item.limitations,
-            "non_applicability": item.non_applicability,
-            "failure_modes": item.failure_modes,
-            "known_counterexamples": item.known_counterexamples,
-            "missing_information": item.missing_information,
-            "uncertainty": item.uncertainty,
-            "confidence": str(item.confidence),
-            "status": item.status,
-            "version": item.version,
-            "last_validated_at": (
-                item.last_validated_at.isoformat()
-                if item.last_validated_at is not None
-                else None
-            ),
-            "review_after": (
-                item.review_after.isoformat() if item.review_after is not None else None
-            ),
-            "origin_learning_change_id": str(item.origin_learning_change_id),
-        }
+        """Return the canonical KnowledgeItem state shared with history validation."""
+        return knowledge_item_state(item)
 
     @staticmethod
     def _validate_learning_change_result(
