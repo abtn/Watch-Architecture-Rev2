@@ -9,11 +9,10 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from _database_config import resolve_test_database_url
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine, create_engine, text
-
-from _database_config import resolve_test_database_url
 
 
 @dataclass(frozen=True)
@@ -59,7 +58,9 @@ def pre_0015_schema(
         command.upgrade(Config(str(config_path)), "0014_knowledge_quality")
 
         with scoped_engine.connect() as connection:
-            revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
+            revision = connection.scalar(
+                text("SELECT version_num FROM alembic_version")
+            )
         assert revision == "0014_knowledge_quality"
 
         yield MigrationSandbox(engine=scoped_engine, schema=schema)
@@ -69,7 +70,9 @@ def pre_0015_schema(
 
         if schema_created:
             with admin_engine.begin() as connection:
-                connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+                connection.execute(
+                    text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+                )
 
         admin_engine.dispose()
 
