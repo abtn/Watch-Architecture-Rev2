@@ -4,7 +4,7 @@ B1 keeps immutable LearningChange snapshots as the lifecycle history. The live
 KnowledgeItem row is checked against the chain tip; D7 review Events are the
 only permitted status overlay that does not advance the current pointer.
 """
-from __future__ import annotations
+from __future__ import annotations  # noqa: I001
 
 import hashlib
 import json
@@ -126,7 +126,9 @@ def _timestamp_text(value: object, *, nullable: bool = False) -> str | None:
         try:
             parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError as error:
-            raise KnowledgeHistoryError("knowledge_snapshot_timestamp_invalid") from error
+            raise KnowledgeHistoryError(
+                "knowledge_snapshot_timestamp_invalid"
+            ) from error
     else:
         raise KnowledgeHistoryError("knowledge_snapshot_timestamp_invalid")
     if parsed.tzinfo is None or parsed.utcoffset() is None:
@@ -336,7 +338,9 @@ def _parse_time(value: object) -> datetime:
     try:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError as error:
-        raise KnowledgeHistoryError("knowledge_review_event_timestamp_invalid") from error
+        raise KnowledgeHistoryError(
+            "knowledge_review_event_timestamp_invalid"
+        ) from error
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise KnowledgeHistoryError("knowledge_review_event_timestamp_naive")
     if parsed.utcoffset() != timedelta(0):
@@ -394,7 +398,10 @@ def _validate_operator_request(
         not isinstance(idempotency_hash, str)
         or len(idempotency_hash) != 71
         or not idempotency_hash.startswith("sha256:")
-        or any(character not in "0123456789abcdef" for character in idempotency_hash[7:])
+        or any(
+            character not in "0123456789abcdef"
+            for character in idempotency_hash[7:]
+        )
     ):
         raise KnowledgeHistoryError("knowledge_history_operator_request_hash_invalid")
 
@@ -798,7 +805,11 @@ def _load_review_entries(
     result: list[_ReviewEntry] = []
     for event in events:
         payload = event.payload
-        schema_version = payload.get("schema_version") if isinstance(payload, dict) else None
+        schema_version = (
+            payload.get("schema_version")
+            if isinstance(payload, dict)
+            else None
+        )
         if (
             not isinstance(payload, dict)
             or isinstance(schema_version, bool)
@@ -839,7 +850,9 @@ def _load_review_entries(
                 }
             )
             if set(entry) != expected_keys:
-                raise KnowledgeHistoryError("knowledge_review_event_entry_shape_invalid")
+                raise KnowledgeHistoryError(
+                    "knowledge_review_event_entry_shape_invalid"
+                )
             entry_item_id = _parse_uuid(
                 entry.get("knowledge_item_id"),
                 "knowledge_review_event_item_id_invalid",
@@ -968,7 +981,9 @@ def _validate_transition(
             or committed["last_validated_at"] is None
             or committed["superseded_by_id"] != previous["superseded_by_id"]
         ):
-            raise KnowledgeHistoryError("knowledge_history_revalidate_transition_invalid")
+            raise KnowledgeHistoryError(
+                "knowledge_history_revalidate_transition_invalid"
+            )
     elif operation == "supersede":
         if (
             previous["status"] not in {"active", "needs_review"}
@@ -978,7 +993,9 @@ def _validate_transition(
             or previous["superseded_by_id"] is not None
             or committed["superseded_by_id"] is None
         ):
-            raise KnowledgeHistoryError("knowledge_history_supersede_transition_invalid")
+            raise KnowledgeHistoryError(
+                "knowledge_history_supersede_transition_invalid"
+            )
     elif operation == "retire":
         if (
             previous["status"] not in {"active", "needs_review"}
