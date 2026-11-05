@@ -732,7 +732,15 @@ class LearningCommitService:
                     root_learning_change_id=learning_change.id,
                 )
             except KnowledgeHistoryError as error:
-                raise LearningCommitCorrupt(str(error)) from error
+                legacy_reason = {
+                    "knowledge_history_final_state_mismatch": (
+                        "committed_knowledge_item_mismatch"
+                    ),
+                    "knowledge_history_operator_decision_event_invalid": (
+                        "learning_change_decision_event_mismatch"
+                    ),
+                }.get(error.reason, str(error))
+                raise LearningCommitCorrupt(legacy_reason) from error
             if (
                 item.team_id != learning_change.team_id
                 or history.pointer_order[0] != learning_change.id
