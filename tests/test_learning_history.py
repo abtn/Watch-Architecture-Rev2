@@ -70,7 +70,9 @@ def _change(
 
 def _legacy_root(item_id, team_id, root_id, committed_at=None):
     state = _state(item_id, team_id, root_id)
-    legacy_state = {key: value for key, value in state.items() if key in LEGACY_STATE_FIELDS}
+    legacy_state = {
+        key: value for key, value in state.items() if key in LEGACY_STATE_FIELDS
+    }
     change = _change(
         root_id,
         team_id,
