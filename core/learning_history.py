@@ -1004,6 +1004,10 @@ def _parse_timestamp(value: object, field: str) -> dt.datetime:
 
 
 def _aware_datetime(value: object, field: str) -> dt.datetime:
-    if not isinstance(value, dt.datetime) or value.tzinfo is None or value.utcoffset() is None:
+    if (
+        not isinstance(value, dt.datetime)
+        or value.tzinfo is None
+        or value.utcoffset() is None
+    ):
         raise KnowledgeHistoryError(f"{field}_timestamp_not_aware")
     return value.astimezone(dt.timezone.utc)
