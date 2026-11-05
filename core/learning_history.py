@@ -388,7 +388,7 @@ def reconstruct_history(
         if ordered[index].id in overlays:
             raise KnowledgeHistoryError("duplicate_review_overlay_for_history_node")
         reviewed_at = _aware_datetime(marker.reviewed_at, "reviewed_at")
-        review_after = _aware_datetime(marker.review_after, "review_after")
+        review_after = _parse_timestamp(marker.review_after, "review_after")
         if review_after > reviewed_at:
             raise KnowledgeHistoryError("review_event_before_due_date")
         node_committed_at = _aware_datetime(
