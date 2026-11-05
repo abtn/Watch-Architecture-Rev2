@@ -181,6 +181,28 @@ def _normalize_state(state: object) -> dict[str, Any]:
         or normalized["version"] < 1
     ):
         raise KnowledgeHistoryError("knowledge_snapshot_version_invalid")
+    if normalized["kind"] not in {"practice", "pattern", "method", "playbook"}:
+        raise KnowledgeHistoryError("knowledge_snapshot_kind_invalid")
+    for field in ("title", "statement", "body"):
+        if not isinstance(normalized[field], str) or not normalized[field].strip():
+            raise KnowledgeHistoryError("knowledge_snapshot_content_invalid")
+    if not isinstance(normalized["applicability"], dict):
+        raise KnowledgeHistoryError("knowledge_snapshot_applicability_invalid")
+    for field in (
+        "preconditions",
+        "assumptions",
+        "limitations",
+        "non_applicability",
+        "failure_modes",
+        "known_counterexamples",
+        "missing_information",
+        "uncertainty",
+    ):
+        if not isinstance(normalized[field], list):
+            raise KnowledgeHistoryError("knowledge_snapshot_array_invalid")
+    confidence = Decimal(normalized["confidence"])
+    if confidence < 0 or confidence > 1:
+        raise KnowledgeHistoryError("knowledge_snapshot_confidence_out_of_range")
     if normalized["status"] not in {"active", "needs_review", "retired"}:
         raise KnowledgeHistoryError("knowledge_snapshot_status_invalid")
     if normalized["supersedes_item_id"] == normalized["id"]:
@@ -252,7 +274,10 @@ def decode_knowledge_item_snapshot(
         raise KnowledgeHistoryError("knowledge_snapshot_payload_invalid")
 
     if set(payload) == {"snapshot_version", "state", "snapshot_hash"}:
-        if payload.get("snapshot_version") != SNAPSHOT_VERSION:
+        if (
+            isinstance(payload.get("snapshot_version"), bool)
+            or payload.get("snapshot_version") != SNAPSHOT_VERSION
+        ):
             raise KnowledgeHistoryError("knowledge_snapshot_version_unsupported")
         state = _normalize_state(payload.get("state"))
         digest_value = payload.get("snapshot_hash")
@@ -475,7 +500,9 @@ def _review_event_task_is_valid(
         or task.plan_id is not None
         or task.plan_action_id is not None
         or not isinstance(task.budget, dict)
+        or isinstance(task.budget.get("max_tool_calls"), bool)
         or task.budget.get("max_tool_calls") != 0
+        or isinstance(task.budget.get("max_cost_usd"), bool)
         or task.budget.get("max_cost_usd") != 0
         or isinstance(task.budget.get("deadline_seconds"), bool)
         or not isinstance(task.budget.get("deadline_seconds"), int)
@@ -583,7 +610,21 @@ def _load_review_entries(
     result: list[_ReviewEntry] = []
     for event in events:
         payload = event.payload
-        if not isinstance(payload, dict) or payload.get("schema_version") not in {1, 2}:
+        schema_version = payload.get("schema_version") if isinstance(payload, dict) else None
+        if (
+            not isinstance(payload, dict)
+            or isinstance(schema_version, bool)
+            or schema_version not in {1, 2}
+            or set(payload)
+            != {
+                "schema_version",
+                "team_id",
+                "task_id",
+                "attempt_count",
+                "reviewed_at",
+                "items",
+            }
+        ):
             raise KnowledgeHistoryError("knowledge_review_event_schema_invalid")
         task, reviewed_at = _review_event_task_is_valid(session, event, payload)
         entries = payload.get("items")
@@ -615,6 +656,9 @@ def _load_review_entries(
                 entry.get("knowledge_item_id"),
                 "knowledge_review_event_item_id_invalid",
             )
+            referenced_item = session.get(KnowledgeItem, entry_item_id)
+            if referenced_item is None or referenced_item.team_id != team_id:
+                raise KnowledgeHistoryError("knowledge_review_event_cross_team_item")
             if entry_item_id in seen:
                 raise KnowledgeHistoryError("knowledge_review_event_duplicate_item")
             seen.add(entry_item_id)
