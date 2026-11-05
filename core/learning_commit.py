@@ -20,6 +20,12 @@ from core.knowledge_quality import (
     KnowledgeQualityAssessmentError,
     require_recorded_assessment,
 )
+from core.learning_history import (
+    KnowledgeHistoryError,
+    encode_state_snapshot,
+    knowledge_item_state,
+    reconstruct_knowledge_item_history,
+)
 from core.models import (
     Event,
     KnowledgeItem,
@@ -374,6 +380,7 @@ class LearningCommitService:
                     "supersedes_item_id": None,
                     "superseded_by_id": None,
                 }
+                committed_state = encode_state_snapshot(committed_state)
                 session.add(
                     KnowledgeItem(
                         id=knowledge_item_id,
