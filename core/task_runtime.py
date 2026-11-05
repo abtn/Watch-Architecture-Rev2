@@ -11,6 +11,10 @@ from uuid import UUID, uuid4, uuid5
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from core.learning_history import (
+    KnowledgeHistoryError,
+    reconstruct_knowledge_item_history,
+)
 from core.models import (
     Evaluation,
     Event,
@@ -1113,6 +1117,12 @@ class TaskRuntime:
                 session, item, learning_change
             ):
                 raise TaskNotFinalizable("knowledge_review_canonical_state_invalid")
+            try:
+                reconstruct_knowledge_item_history(session, item)
+            except KnowledgeHistoryError as error:
+                raise TaskNotFinalizable(
+                    f"knowledge_review_history_invalid:{error.reason}"
+                ) from error
             review_after = item.review_after
             if (
                 review_after is None
@@ -1127,6 +1137,7 @@ class TaskRuntime:
                     "version": item.version,
                     "review_after": review_after.astimezone(timezone.utc).isoformat(),
                     "origin_learning_change_id": str(item.origin_learning_change_id),
+                    "current_learning_change_id": str(item.current_learning_change_id),
                 }
             )
             item.status = "needs_review"
