@@ -564,43 +564,8 @@ class LearningCommitService:
 
     @staticmethod
     def _knowledge_item_state(item: KnowledgeItem) -> dict[str, object]:
-        """Reconstruct the exact canonical fields captured at create time."""
-        return {
-            "id": str(item.id),
-            "team_id": str(item.team_id),
-            "kind": item.kind,
-            "title": item.title,
-            "statement": item.statement,
-            "body": item.body,
-            "applicability": item.applicability,
-            "preconditions": item.preconditions,
-            "assumptions": item.assumptions,
-            "limitations": item.limitations,
-            "non_applicability": item.non_applicability,
-            "failure_modes": item.failure_modes,
-            "known_counterexamples": item.known_counterexamples,
-            "missing_information": item.missing_information,
-            "uncertainty": item.uncertainty,
-            "confidence": str(item.confidence),
-            "status": item.status,
-            "version": item.version,
-            "last_validated_at": (
-                item.last_validated_at.isoformat()
-                if item.last_validated_at is not None
-                else None
-            ),
-            "review_after": (
-                item.review_after.isoformat() if item.review_after is not None else None
-            ),
-            "origin_learning_change_id": str(item.origin_learning_change_id),
-            "current_learning_change_id": str(item.current_learning_change_id),
-            "supersedes_item_id": (
-                str(item.supersedes_item_id) if item.supersedes_item_id else None
-            ),
-            "superseded_by_id": (
-                str(item.superseded_by_id) if item.superseded_by_id else None
-            ),
-        }
+        """Return the full canonical state used by versioned history snapshots."""
+        return knowledge_item_state(item)
 
     def _replay_decision(
         self,
@@ -759,12 +724,14 @@ class LearningCommitService:
             expected_payload["knowledge_quality_assessment_hash"] = (
                 quality_assessment_hash
             )
+            try:
+                history = reconstruct_knowledge_item_history(session, item)
+            except KnowledgeHistoryError as error:
+                raise LearningCommitCorrupt(str(error)) from error
             if (
                 item.team_id != learning_change.team_id
-                or item.version != 1
-                or learning_change.committed_state is None
-                or learning_change.committed_state
-                != self._knowledge_item_state(item)
+                or not history.learning_change_ids
+                or history.learning_change_ids[0] != learning_change.id
             ):
                 raise LearningCommitCorrupt("committed_knowledge_item_mismatch")
         else:
