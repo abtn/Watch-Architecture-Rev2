@@ -2,9 +2,9 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status:** **B0 design decisions ACCEPTED by the Operator on 2026-11-05; documentation integration and validation are in progress.** B0 is documentation-only. **B1–B6 implementation is NOT authorized.** Completing or merging B0 does not authorize B1; B1 requires separate written Operator implementation authorization.
+**Status:** **B0 COMPLETE — PR #41 merged 2026-11-05. B1 implementation separately authorized by the Operator on 2026-11-05 and IN PROGRESS.** This implementation is limited to B1 schema/backfill, full-state snapshot versioning, legacy decoding, pointer-chain reconstruction, D7 review overlays, create replay validation, and B1 tests. **B2–B6 and R7-C remain unauthorized.**
 
-**Baseline:** PR #40 merged to `main` at `15a3fbaa8ab520ad1f6f4906a27b894356fb21f7`. Revision 3 is the accepted B0 design baseline. The local checkout remains independently subject to the read-only programmer preflight.
+**B0 baseline:** PR #41 merged to `main` at `64d5fb19be541d80b3cb8941ce3359d4b69565c1`. B1 implementation branch: `r7b-b1-snapshot-history-20261105`. This branch is the implementation proposal; do not infer local checkout or disposable-database verification from its existence.
 
 > Class, file, function and constraint names come from the review and ADR text. Verify each against the repository before relying on it. If a name or behavior differs, record the discrepancy in the PR and do not guess.
 
@@ -34,7 +34,7 @@
 ---
 
 
-## Verified repository baseline (2026-11-05)
+## Verified pre-B1 repository baseline (2026-11-05; main before B1 changes)
 
 The following discrepancies were checked against the R7-A `main` baseline at `75122a7b34c15e2445b81a2a719020667b55bf06`. Recheck them at B1 preflight; they are planning facts, not implementation authorization.
 
@@ -175,11 +175,13 @@ B0 closes when:
 - Documentation validation passes: the diff is docs-only; phase names, status statements, task scopes, and authority rules agree; changed-file references and anchors resolve; no proposed design is represented as implemented or active; and the Operator's acceptance is recorded.
 - The documentation-only integration is merged and the B0 closeout is recorded in PLAN.md.
 
-**B0 completion does not authorize B1.** B1 requires separate written Operator implementation authorization after B0 closes. Until then, no source, schema, migration, tests, Task registration, provider, active write scope, or runtime change may begin.
+**B0 completion did not itself authorize B1.** The Operator separately authorized the bounded B1 implementation on 2026-11-05. That authorization does not authorize B2–B6, any lifecycle Task registration or active write-scope expansion, a provider, or R7-C.
 
 ---
 
 ## Phase B1: Schema, create-pointer rollout, legacy decoder, chain reconstruction and D7 overlay
+
+**Implementation authorization:** explicitly granted by the Operator on 2026-11-05. B1 is active on branch `r7b-b1-snapshot-history-20261105`; phase completion still requires migration/backfill fixtures, the complete reconstruction/replay test matrix, static checks, and full-suite/hosted validation. No B2 work is included.
 
 **Goal:** prove lifecycle history is reconstructable from existing snapshots plus the current pointer, with the authorized D7 overlay, before committing to any history table.
 
