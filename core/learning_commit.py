@@ -16,16 +16,16 @@ from core.experience_distiller import (
     ExperienceDistiller,
     ExperienceDistillerError,
 )
-from core.knowledge_quality import (
-    KnowledgeQualityAssessmentError,
-    require_recorded_assessment,
-)
 from core.knowledge_history import (
     KnowledgeHistoryError,
     build_knowledge_item_snapshot,
     decode_knowledge_item_snapshot,
     knowledge_item_snapshot_state,
     reconstruct_knowledge_item_history,
+)
+from core.knowledge_quality import (
+    KnowledgeQualityAssessmentError,
+    require_recorded_assessment,
 )
 from core.models import (
     Event,
