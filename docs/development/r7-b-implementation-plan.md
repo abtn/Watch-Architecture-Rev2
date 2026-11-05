@@ -4,7 +4,7 @@
 **Sources:** "R7-B decision review" (PR #40), ADR-0032 (accepted 2026-11-04, R7-A only), INV-12/13, ADR-0029 D7, and the reviews of Revisions 1 and 2.
 **Status:** conditional approval, pending B0 freeze. **Implementation is NOT authorized.** B0 is documentation-only. B1 onward start only after the Operator accepts the B0 outputs and gives separate written authorization.
 
-**Baseline:** PR #40 is open and unmerged at `a2e713c`, based on the R7-A merge. The repository's ADR-0032 does not yet contain the D5 publication-gate amendment.
+**Initial review baseline:** when Revision 3 was supplied, PR #40 was open and unmerged at `a2e713c`, based on the R7-A merge. This integration adds the D5 publication-gate amendment as a proposed, non-effective B0 addendum; the original ADR acceptance remains R7-A-only.
 
 > Class, file, function and constraint names come from the review and ADR text. Verify each against the repository before relying on it. If a name or behavior differs, record the discrepancy in the PR and do not guess.
 
