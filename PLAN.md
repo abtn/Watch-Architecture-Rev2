@@ -14,13 +14,13 @@ This file is the **single source of current milestone status**. Other documents 
 - **R6-E: COMPLETE — formally closed 2026-11-01 after PR #28 merged** (merge commit `3130e70fd25a35a73034ea412ef8a5af11eba17a`). All three implementation checkpoints are integrated: bounded immutable Task Context assembly; Context-bound StrategyProposer through StrategyService; and Task-attributed generation cost reservation/reconciliation. Hosted CI passed on implementation head `936e4794` (fresh migrations to `0011_task_generation_cost`, one Alembic head, Ruff, mypy, 515 tests); operator-local verification passed all three checkpoints, including Step 3 disposable-PostgreSQL migration, 43 focused tests, Ruff, mypy, full suite, and `git diff --check`. Cloudflare Workers AI `@cf/meta/llama-3.1-8b-instruct-fp8` remains authorized for R6-E only and outside automatic Task dispatch.
 - **R6-F: COMPLETE — Checkpoints 1–4 merged; combined C3+C4 local verification recorded 2026-11-03.** C1–2 merged by PRs #29/#30; C3 create-only by PR #31 (`99f8b6b`) and C4 Team Experience projection/retrieval by PR #32 (`c8e7317`). PR #33 merged DB-test fail-closed configuration at `de1af38`. Local C3+C4 verification passed on the exact tree now merged to `main`: one `0013_team_experience_projection` head, 118 focused tests, Ruff, Mypy (27 files), 594 full-suite tests and diff check. Hosted CI run [41613573334](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41613573334) passed the same suite. D10 remains create-only; revise/retire is deferred. **R6-G is COMPLETE and formally closed 2026-11-04** after the ten-proof technical review and explicit Operator approval; PR #35 merged at `56745b613b5b77a21a514b4e261d3450f90c0df1`. Final PR-head hosted CI passed on `00d07c7337ceadac7211e0f7d01f015cf0134a00` ([run 41788001379](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41788001379)); the verified implementation head passed 614 tests, and operator-local disposable-PostgreSQL verification passed 134 focused/614 full-suite tests, Ruff, Mypy and migration/head checks. The full qualification and offline-provider limitations are recorded below and in `docs/testing.md`. No second runtime, general dispatcher, Watch auth stack, TeamPolicy write through C3, or production R6-F distillation provider is introduced.
 - **R7-0: COMPLETE; R7-A: COMPLETE — merged 2026-11-04.** PR [#39](https://github.com/abtn/Watch-Architecture-Rev2/pull/39) merged to main at 75122a7b34c15e2445b81a2a719020667b55bf06. Tested PR head 47ffa532dacbc10b146ac7b0768302761a2a0b1b has the same Git tree as the merge commit. Exact-head hosted CI [41844600681](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41844600681) passed. Operator-local disposable-PostgreSQL verification on the same tree passed fresh migration/single head 0014_knowledge_quality, Ruff, Mypy (31 source files), and **631 tests in 79.22s**; runner restored database environment variables and removed its disposable container.
-- **R7-B B0 design decisions ACCEPTED 2026-11-05; documentation integration in progress.** The Operator accepted all five B0 decisions, the D1 assessment extension, and D5 reciprocal-successor/publication-gate amendment. B0 remains documentation-only; B1–B6 implementation is blocked pending separate written Operator authorization. R7-C remains unauthorized.
+- **R7-B B0: COMPLETE — PR #41 merged 2026-11-05 at 64d5fb19be541d80b3cb8941ce3359d4b69565c1. B1: IMPLEMENTATION AUTHORIZED 2026-11-05; in progress.** The Operator accepted all five B0 decisions, the D1 assessment extension, and D5 reciprocal-successor/publication-gate amendment. The Operator separately authorized the bounded B1 snapshot-first history implementation on 2026-11-05. B2–B6 and R7-C remain unauthorized.
 
 The supplied project ZIP has no Git metadata. Before taking repository action, verify branch, HEAD, merge status, and worktree on the actual checkout using `AGENTS.md`.
 
 ## Next actionable step
 
-**Next actionable step:** complete and validate the documentation-only B0 integration recording the Operator's 2026-11-05 acceptance of all five decisions and the D1/D5 design extensions; merge the B0 documentation PR after its scope and CI checks pass. B0 completion does not authorize B1. B1–B6 require separate written Operator implementation authorization; R7-C remains separately gated.
+**Next actionable step:** complete the authorized R7-B B1 snapshot-first history implementation and prove populated backfill, legacy decoding, pointer-chain continuity, D7 review overlay placement, and replay after later commits. Do not start B2–B6 or R7-C without separate written authorization.
 
 ## Milestone overview
 
@@ -35,7 +35,7 @@ The supplied project ZIP has no Git metadata. Before taking repository action, v
 | R4 | **Complete** (closed 2026-10-20) | StrategyProposal boundary, multi-Vision/Workstream/Action semantics, deterministic validation and reconstruction. |
 | R5 | **Complete — closed 2026-10-24 by explicit operator decision** | Materialize one accepted Strategy as one durable Plan and ordinary Tasks; retain the Task-execution dependency for R6. |
 | R6 | **COMPLETE — G0 through R6-G; formally closed 2026-11-04.** | The integrated three-case source→Evaluation→distillation→Operator→Team Experience path passed the ten-proof technical review and received explicit Operator exit approval. PR #35 merged to `main` at `56745b613b5b77a21a514b4e261d3450f90c0df1`; final PR-head CI passed, and exact implementation-head hosted/local verification is recorded below. D10 remains create-only; R7 implementation remains separately gated. |
-| R7 | **R7-0 and R7-A complete; R7-B B0 design accepted 2026-11-05, documentation integration in progress; B1+ unauthorized; R7-C unauthorized.** | The Operator accepted the five B0 decisions and D1/D5 design extensions. B0 remains documentation-only through its integration/validation PR. B1 implementation requires separate written authorization. See this section and the R7-B implementation plan. |
+| R7 | **R7-0 and R7-A complete; R7-B B0 complete (PR #41); B1 implementation authorized and in progress; B2–B6 and R7-C unauthorized.** | B0 decisions and D1/D5 extensions are merged. B1 proves snapshot-first lifecycle reconstruction without introducing a separate history table unless the proof fails. See this section and the R7-B implementation plan. |
 | R8 | Future | Multi-domain pressure test. |
 | R9 | Future | Codified agent-assisted production workflow. |
 
@@ -338,9 +338,9 @@ PR [#39](https://github.com/abtn/Watch-Architecture-Rev2/pull/39) merged on 2026
 
 **Verification:** hosted exact-head CI [41844600681](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41844600681) passed. Operator-local verification on the same tree passed fresh disposable-PostgreSQL migration to the single 0014_knowledge_quality head, Ruff, Mypy (31 source files), and 631 tests in 79.22s. The committed runner restored both database environment variables and removed its temporary container. Full evidence is in docs/testing.md. No production evaluator provider was selected.
 
-### R7-B — Canonical KnowledgeItem lifecycle — B0 DESIGN ACCEPTED; DOCUMENTATION INTEGRATION IN PROGRESS
+### R7-B — Canonical KnowledgeItem lifecycle — B0 COMPLETE; B1 IMPLEMENTATION AUTHORIZED AND IN PROGRESS
 
-**Status:** On 2026-11-05, the Operator explicitly accepted all five B0 decisions, the D1 typed-assessment extension, and the D5 reciprocal-successor/publication-gate amendment. The accepted design is recorded in ADR-0032 and the R7-B implementation plan on the B0 documentation branch. The integration remains documentation-only until merged. **B1–B6 implementation is not authorized.**
+**Status:** B0 closed when PR #41 merged to `main` on 2026-11-05 at `64d5fb19be541d80b3cb8941ce3359d4b69565c1`. On 2026-11-05, the Operator separately authorized B1 implementation: schema/backfill, versioned and legacy snapshot handling, chain reconstruction, D7 overlay validation, create replay correction, and B1 tests. B1 is in progress on `r7b-b1-snapshot-history-20261105`; implementation and test results are not complete until verified. **B2–B6 and R7-C remain unauthorized.**
 
 **Accepted B0 decisions:**
 - Confidence participates in semantic content identity. A confidence-only revise changes content hash/version and clears `last_validated_at`; revalidation preserves confidence, version, and hash.
@@ -351,7 +351,7 @@ PR [#39](https://github.com/abtn/Watch-Architecture-Rev2/pull/39) merged on 2026
 
 Snapshot-first history reconstruction is conditionally accepted, subject to B1 proof from immutable snapshots, the validated current pointer, and the D7 overlay. If proof fails, stop and seek a separate Operator decision on the smallest append-only history record.
 
-**B0 — Design freeze (documentation only):** complete cross-document integration, cross-reference and authority checks, and the documentation-only PR. No source, schema, migration, test, runtime, provider, active Task-scope or Task-registration changes.
+**B0 — Design freeze: COMPLETE.** Accepted decisions and D1/D5 amendments were integrated documentation-only and merged through PR #41. Hosted validation passed before merge.
 
 **B1 — Schema and reconstruction proof:** add/backfill the current LearningChange pointer and both supersession links; update both LearningChange operation/target constraints; roll out create-pointer writes atomically; add the legacy snapshot decoder and D7-overlay-aware history validator. Stop if reconstruction cannot be proven; propose the smallest append-only history record rather than adding one unilaterally.
 
@@ -365,7 +365,7 @@ Snapshot-first history reconstruction is conditionally accepted, subject to B1 p
 
 **B6 — Legacy compatibility and hardening:** repeated review/revalidation history, legacy Events/snapshots, approval replay after later transitions, unauthorized drift rejection and full regression verification.
 
-**Boundary:** B0 design acceptance and documentation merge do not authorize implementation. B1–B6 require separate written Operator implementation authorization after B0 closeout. R7-C remains separately gated and unauthorized.
+**Boundary:** B0 completion did not itself authorize implementation. The Operator separately authorized B1 on 2026-11-05. This authorization is limited to B1; B2–B6 and R7-C remain separately gated and unauthorized.
 
 ### R7-C — Retrieval quality and downstream-use evaluation — NOT AUTHORIZED
 
