@@ -342,6 +342,7 @@ def _validate_learning_change_provenance(
     session: Session,
     change: LearningChange,
     state: dict[str, Any],
+    previous_state: dict[str, Any] | None = None,
 ) -> None:
     """Verify the trusted Operator decision and terminal Task evidence for one node."""
     task = session.get(Task, change.committed_by_task_id)
@@ -382,16 +383,27 @@ def _validate_learning_change_provenance(
         )
     except InvalidPolicyError as error:
         raise KnowledgeHistoryError("knowledge_history_policy_pin_invalid") from error
-    expected_review_after = (
-        change.committed_at + timedelta(days=interval_days)
-        if interval_days is not None
-        else None
-    )
-    if state["review_after"] != _timestamp_text(expected_review_after, nullable=True):
+    if change.operation in {"create", "revise", "revalidate"}:
+        expected_review_after = (
+            change.committed_at + timedelta(days=interval_days)
+            if interval_days is not None
+            else None
+        )
+    elif change.operation in {"supersede", "retire"}:
+        if previous_state is None:
+            raise KnowledgeHistoryError("knowledge_history_previous_state_missing")
+        expected_review_after = previous_state["review_after"]
+    else:
+        raise KnowledgeHistoryError("knowledge_history_operation_unsupported")
+    if state["review_after"] != _timestamp_text(
+        expected_review_after, nullable=True
+    ):
         raise KnowledgeHistoryError("knowledge_history_review_date_mismatch")
     if change.operation == "revalidate" and (
         state["last_validated_at"] != _timestamp_text(change.committed_at)
     ):
+        raise KnowledgeHistoryError("knowledge_history_validation_date_mismatch")
+    if change.operation == "revise" and state["last_validated_at"] is not None:
         raise KnowledgeHistoryError("knowledge_history_validation_date_mismatch")
 
     starts = list(
@@ -568,6 +580,10 @@ def _review_event_task_is_valid(
         or terminal_events[0].payload.get("result_category")
         != "success_knowledge_reviewed"
         or terminal_events[0].payload.get("outcome_id") != str(outcomes[0].id)
+        or terminal_events[0].payload.get("observation_snapshot_ref")
+        != outcomes[0].observation_snapshot_ref
+        or terminal_events[0].payload.get("observation_hash")
+        != outcomes[0].observation_hash
         or outcomes[0].team_id != task.team_id
         or outcomes[0].subject_kind != "task"
         or outcomes[0].subject_id != task.id
@@ -675,16 +691,21 @@ def _load_review_entries(
                     "knowledge_review_event_current_pointer_invalid",
                 )
                 pointer_change = session.get(LearningChange, pointer_id)
+                is_root_pointer = (
+                    pointer_change is not None
+                    and pointer_change.id == referenced_item.origin_learning_change_id
+                    and pointer_change.operation == "create"
+                    and pointer_change.target_id is None
+                )
+                targets_item = (
+                    pointer_change is not None
+                    and pointer_change.target_id == entry_item_id
+                )
                 if (
                     pointer_change is None
                     or pointer_change.team_id != team_id
                     or pointer_change.target_kind != "knowledge_item"
-                    or not (
-                        pointer_change.id == referenced_item.origin_learning_change_id
-                        and pointer_change.operation == "create"
-                        and pointer_change.target_id is None
-                    )
-                    and pointer_change.target_id != entry_item_id
+                    or not (is_root_pointer or targets_item)
                     or pointer_change.status != "accepted"
                 ):
                     raise KnowledgeHistoryError(
@@ -768,10 +789,7 @@ def _validate_transition(
             or committed["status"] != previous["status"]
             or committed["last_validated_at"] is not None
             or committed["superseded_by_id"] != previous["superseded_by_id"]
-            or (
-                _same_semantic_content(previous, committed)
-                and previous["review_after"] == committed["review_after"]
-            )
+            or _same_semantic_content(previous, committed)
         ):
             raise KnowledgeHistoryError("knowledge_history_revise_transition_invalid")
     elif operation == "revalidate":
@@ -946,7 +964,9 @@ def reconstruct_knowledge_item_history(
         parent_by_child[change_id] = parent_id
         decoded_previous[change_id] = previous
         decoded_commits[change_id] = committed
-        _validate_learning_change_provenance(session, change, committed)
+        _validate_learning_change_provenance(
+            session, change, committed, previous_state=previous
+        )
         _validate_transition(change.operation, previous, committed)
 
     children: dict[UUID, list[UUID]] = {}
