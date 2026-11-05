@@ -14,6 +14,11 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.embeddings import EmbeddingBatch, EmbeddingProvider, EmbeddingSpace
+from core.knowledge_history import (
+    KnowledgeHistoryError,
+    decode_knowledge_item_snapshot,
+    knowledge_item_snapshot_state,
+)
 from core.models import (
     Event,
     KnowledgeChunk,
@@ -351,16 +356,20 @@ def _knowledge_item_state(item: KnowledgeItem) -> dict[str, Any]:
 def knowledge_item_committed_state_matches(
     item: KnowledgeItem, learning_change: LearningChange
 ) -> bool:
-    """Compare immutable content/provenance while allowing lifecycle status changes."""
-    committed = learning_change.committed_state
-    if not isinstance(committed, dict):
+    """Verify the immutable create root, allowing only the D7 status overlay."""
+    try:
+        decoded = decode_knowledge_item_snapshot(
+            learning_change.committed_state,
+            root_learning_change_id=learning_change.id,
+        )
+        current = knowledge_item_snapshot_state(item)
+    except KnowledgeHistoryError:
         return False
-    current = _knowledge_item_state(item)
+    recorded = dict(decoded.state)
     for field in ("status", "last_validated_at"):
         current.pop(field, None)
-        committed = dict(committed)
-        committed.pop(field, None)
-    return current == committed
+        recorded.pop(field, None)
+    return current == recorded
 
 
 def knowledge_item_content_hash(item: KnowledgeItem) -> str:
