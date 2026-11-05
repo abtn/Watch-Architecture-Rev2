@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import delete
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.knowledge_history import (
@@ -822,3 +823,125 @@ def test_reconstruction_rejects_unrecorded_live_state_mutation(history_env):
             KnowledgeHistoryError, match="knowledge_history_final_state_mismatch"
         ):
             reconstruct_knowledge_item_history(session, item)
+
+
+
+def test_learning_change_operation_target_constraint_accepts_every_frozen_pair(
+    history_env,
+):
+    session_factory = history_env["session_factory"]
+    team_id = history_env["team_id"]
+    assert isinstance(session_factory, sessionmaker)
+    assert isinstance(team_id, UUID)
+    target_id = uuid4()
+    cases = (
+        ("create", None),
+        ("revise", target_id),
+        ("revalidate", target_id),
+        ("supersede", target_id),
+        ("retire", target_id),
+    )
+    with session_factory.begin() as session:
+        for operation, proposed_target in cases:
+            task_id = uuid4()
+            session.add(
+                Task(
+                    id=task_id,
+                    team_id=team_id,
+                    task_type="propose_learning_change",
+                    status="pending",
+                    attempt_count=0,
+                    policy_version=1,
+                    allowed_writes=["LearningChange"],
+                    budget={
+                        "max_tool_calls": 0,
+                        "max_cost_usd": 0.1,
+                        "deadline_seconds": 60,
+                    },
+                )
+            )
+            session.flush()
+            session.add(
+                LearningChange(
+                    id=uuid4(),
+                    team_id=team_id,
+                    target_kind="knowledge_item",
+                    target_id=proposed_target,
+                    operation=operation,
+                    proposed_state={"proposal_hash": "sha256:" + "e" * 64},
+                    previous_state=None,
+                    committed_state=None,
+                    evidence_basis=[],
+                    evidence_basis_hash="sha256:" + "f" * 64,
+                    status="proposed",
+                    idempotency_key=f"valid-{operation}-{task_id}",
+                    proposed_by_task_id=task_id,
+                    committed_by_task_id=None,
+                    operator_id=None,
+                    decision_reason=None,
+                    committed_at=None,
+                )
+            )
+        session.flush()
+
+
+@pytest.mark.parametrize(
+    ("operation", "target_id"),
+    [
+        ("create", uuid4()),
+        ("revise", None),
+        ("revalidate", None),
+        ("supersede", None),
+        ("retire", None),
+    ],
+)
+def test_learning_change_operation_target_constraint_rejects_invalid_pairs(
+    history_env, operation, target_id
+):
+    session_factory = history_env["session_factory"]
+    team_id = history_env["team_id"]
+    assert isinstance(session_factory, sessionmaker)
+    assert isinstance(team_id, UUID)
+    with session_factory.begin() as session:
+        task_id = uuid4()
+        session.add(
+            Task(
+                id=task_id,
+                team_id=team_id,
+                task_type="propose_learning_change",
+                status="pending",
+                attempt_count=0,
+                policy_version=1,
+                allowed_writes=["LearningChange"],
+                budget={
+                    "max_tool_calls": 0,
+                    "max_cost_usd": 0.1,
+                    "deadline_seconds": 60,
+                },
+            )
+        )
+        session.flush()
+        with pytest.raises(DBAPIError, match="ck_learning_changes_target_state"):
+            with session.begin_nested():
+                session.add(
+                    LearningChange(
+                        id=uuid4(),
+                        team_id=team_id,
+                        target_kind="knowledge_item",
+                        target_id=target_id,
+                        operation=operation,
+                        proposed_state={"proposal_hash": "sha256:" + "e" * 64},
+                        previous_state=None,
+                        committed_state=None,
+                        evidence_basis=[],
+                        evidence_basis_hash="sha256:" + "f" * 64,
+                        status="proposed",
+                        idempotency_key=f"invalid-{operation}-{task_id}",
+                        proposed_by_task_id=task_id,
+                        committed_by_task_id=None,
+                        operator_id=None,
+                        decision_reason=None,
+                        committed_at=None,
+                    )
+                )
+                session.flush()
