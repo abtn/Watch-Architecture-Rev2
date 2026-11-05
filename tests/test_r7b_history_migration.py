@@ -30,8 +30,8 @@ def pre_0015_schema(
     """Upgrade an empty isolated schema to the legacy 0014 database shape.
 
     The URL is resolved from TEST_DATABASE_URL only. Migration and verification
-    use the same explicitly schema-scoped connection. The schema is dropped
-    after the test; no existing application tables are modified.
+    use the same explicitly schema-scoped connection and version table. The
+    schema is dropped after the test; no existing application tables change.
     """
     database_url = resolve_test_database_url(os.environ)
     schema = f"r7b_migration_{uuid4().hex}"
@@ -58,11 +58,12 @@ def pre_0015_schema(
         with scoped_engine.begin() as connection:
             config = Config(str(config_path))
             config.attributes["connection"] = connection
+            config.attributes["version_table_schema"] = schema
             command.upgrade(config, "0014_knowledge_quality")
 
         with scoped_engine.connect() as connection:
             revision = connection.scalar(
-                text("SELECT version_num FROM alembic_version")
+                text(f'SELECT version_num FROM "{schema}".alembic_version')
             )
         assert revision == "0014_knowledge_quality"
 
@@ -85,7 +86,11 @@ def test_pre_0015_schema_is_isolated_and_has_legacy_knowledge_shape(
 ) -> None:
     """Step 1: establish the exact populated-migration starting revision."""
     with pre_0015_schema.engine.connect() as connection:
-        revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
+        revision = connection.scalar(
+            text(
+                f'SELECT version_num FROM "{pre_0015_schema.schema}".alembic_version'
+            )
+        )
         columns = set(
             connection.scalars(
                 text(
