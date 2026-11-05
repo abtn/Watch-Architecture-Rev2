@@ -560,7 +560,9 @@ def _validate_learning_change_approval(
         )
     )
     if len(events) != 1:
-        raise KnowledgeHistoryError("accepted_change_decision_event_missing_or_duplicate")
+        raise KnowledgeHistoryError(
+            "accepted_change_decision_event_missing_or_duplicate"
+        )
     payload = events[0].payload
     if (
         not isinstance(payload, dict)
