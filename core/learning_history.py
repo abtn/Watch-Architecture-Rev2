@@ -527,7 +527,8 @@ def _validated_review_markers(
     if not isinstance(payload, dict) or set(payload) != _REVIEW_TOP_LEVEL_FIELDS:
         raise KnowledgeHistoryError("review_event_payload_shape_invalid")
     if (
-        payload.get("schema_version") != 1
+        isinstance(payload.get("schema_version"), bool)
+        or payload.get("schema_version") != 1
         or payload.get("team_id") != str(task.team_id)
         or payload.get("task_id") != str(task.id)
         or task.task_type != "review_knowledge"
@@ -537,6 +538,14 @@ def _validated_review_markers(
         or task.objective_id is not None
         or task.plan_id is not None
         or task.plan_action_id is not None
+        or not isinstance(task.budget, dict)
+        or isinstance(task.budget.get("max_tool_calls"), bool)
+        or task.budget.get("max_tool_calls") != 0
+        or isinstance(task.budget.get("max_cost_usd"), bool)
+        or task.budget.get("max_cost_usd") != 0
+        or isinstance(task.budget.get("deadline_seconds"), bool)
+        or not isinstance(task.budget.get("deadline_seconds"), int)
+        or task.budget["deadline_seconds"] < 1
     ):
         raise KnowledgeHistoryError("review_event_task_provenance_invalid")
 
