@@ -10,7 +10,7 @@ from alembic import op
 
 
 revision: str = "0015_knowledge_item_history"
-down_revision: str | None = "0014_knowledge_quality_assessment"
+down_revision: str | None = "0014_knowledge_quality"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
