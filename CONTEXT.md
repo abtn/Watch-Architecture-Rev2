@@ -10,12 +10,12 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7-0 and R7-A are complete; R7-A merged by PR #39 at 75122a7b34c15e2445b81a2a719020667b55bf06 and passed exact-tree hosted/operator-local verification (631 tests, fresh 0014_knowledge_quality head, Ruff and Mypy). The original ADR-0032 acceptance remains scoped to R7-A. The Operator accepted all five R7-B B0 decisions and D1/D5 design extensions on 2026-11-05; documentation integration is in progress and remains docs-only. B1–B6 implementation and R7-C remain unauthorized. PLAN.md is the sole current status authority.
+R6 is complete through R6-G. R7-0 and R7-A are complete; R7-A merged by PR #39 at 75122a7b34c15e2445b81a2a719020667b55bf06 and passed exact-tree hosted/operator-local verification (631 tests, fresh 0014_knowledge_quality head, Ruff and Mypy). The original ADR-0032 acceptance remains scoped to R7-A. R7-B B0 is complete after PR #41 merged on 2026-11-05 at 64d5fb19be541d80b3cb8941ce3359d4b69565c1. The Operator separately authorized B1 implementation on 2026-11-05; B1 snapshot-first schema/history reconstruction is in progress. B2–B6 and R7-C remain unauthorized. PLAN.md is the sole current status authority.
 
 ## Open the smallest relevant set of documents
 
 1. [`PLAN.md`](PLAN.md) — the only source for current milestone status, gates, and next action.
-2. [`docs/development/r7-entry-gate.md`](docs/development/r7-entry-gate.md), [`ADR-0032`](docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md), [`docs/development/r7-a-implementation-plan.md`](docs/development/r7-a-implementation-plan.md), [`docs/development/r7-b-implementation-plan.md`](docs/development/r7-b-implementation-plan.md), and [`docs/tasks.md`](docs/tasks.md) — accepted architecture, completed R7-A contract and non-authorizing R7-B preparation.
+2. [`docs/development/r7-entry-gate.md`](docs/development/r7-entry-gate.md), [`ADR-0032`](docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md), [`docs/development/r7-a-implementation-plan.md`](docs/development/r7-a-implementation-plan.md), [`docs/development/r7-b-implementation-plan.md`](docs/development/r7-b-implementation-plan.md), and [`docs/tasks.md`](docs/tasks.md) — accepted architecture, completed R7-A contract, and the active bounded B1 phase gate.
 3. [`AGENTS.md`](AGENTS.md) — repository operating rules and stop conditions.
 4. [`CHANGE_MAP.md`](CHANGE_MAP.md) — where each concept is authoritatively specified.
 5. [`docs/control-model.md`](docs/control-model.md) — the Revision 2 Control model.
