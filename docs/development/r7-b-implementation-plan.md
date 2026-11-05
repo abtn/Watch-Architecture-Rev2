@@ -181,7 +181,7 @@ B0 closes when:
 
 ## Phase B1: Schema, create-pointer rollout, legacy decoder, chain reconstruction and D7 overlay
 
-**Implementation status (2026-11-05):** B1 is authorized and implemented for review in draft PR [#43](https://github.com/abtn/Watch-Architecture-Rev2/pull/43). The exact head `858681c341ec9ad0fb800785cef6fa8a0db653` passed hosted CI run [42012223240](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42012223240), including 641 tests. Programmer-local disposable-PostgreSQL verification, any migration/backfill-specific gap discovered there, and the final B1 closure review remain pending. Do not treat hosted CI alone as local verification or merge authorization.
+**Implementation status (2026-11-05):** B1 is authorized and implemented for review in draft PR [#43](https://github.com/abtn/Watch-Architecture-Rev2/pull/43). The exact head `858681c341ec9ad0fb800785cecef6fa8a0db653` passed hosted CI run [42012223240](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42012223240), including 641 tests. Programmer-local disposable-PostgreSQL verification, any migration/backfill-specific gap discovered there, and the final B1 closure review remain pending. Do not treat hosted CI alone as local verification or merge authorization.
 
 **Goal:** prove lifecycle history is reconstructable from existing snapshots plus the current pointer, with the authorized D7 overlay, before committing to any history table.
 
