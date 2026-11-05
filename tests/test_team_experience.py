@@ -241,6 +241,7 @@ class TeamExperienceEnv:
                         last_validated_at=None,
                         review_after=review_after,
                         origin_learning_change_id=learning_change_id,
+                        current_learning_change_id=learning_change_id,
                     ),
                     Outcome(
                         id=uuid4(),
@@ -266,6 +267,17 @@ class TeamExperienceEnv:
             assert outcome_id is not None
             session.add_all(
                 [
+                    Event(
+                        id=uuid4(),
+                        task_id=approval_task_id,
+                        type="task_started",
+                        payload={
+                            "from_status": "pending",
+                            "to_status": "running",
+                            "attempt_count": 1,
+                        },
+                        created_at=committed_time,
+                    ),
                     Event(
                         id=uuid4(),
                         task_id=approval_task_id,
