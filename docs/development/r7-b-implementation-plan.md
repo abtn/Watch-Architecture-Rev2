@@ -2,9 +2,9 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status:** **B0 design decisions ACCEPTED by the Operator on 2026-11-05; documentation integration and validation are in progress.** B0 is documentation-only. **B1–B6 implementation is NOT authorized.** Completing or merging B0 does not authorize B1; B1 requires separate written Operator implementation authorization.
+**Status:** **B0 design and documentation COMPLETE** (PR #41 merged 2026-11-05 at `64d5fb19be541d80b3cb8941ce3359d4b69565c1`). The Operator separately authorized **B1 implementation on 2026-11-05**. Draft PR #43 (`r7b-b1-snapshot-history-proof`) implements the schema, pointer rollout, snapshot decoder, reconstruction validator and D7 overlay. Exact head `858681c341ec9ad0fb800785cecef6fa8a0db653` passed hosted CI run [42012223240](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42012223240), including migrations, Ruff, mypy and 641 tests. Programmer-local disposable-PostgreSQL verification and final B1 closure remain pending; PR #43 is not merged. **B2–B6 are not authorized.**
 
-**Baseline:** PR #40 merged to `main` at `15a3fbaa8ab520ad1f6f4906a27b894356fb21f7`. Revision 3 is the accepted B0 design baseline. The local checkout remains independently subject to the read-only programmer preflight.
+**Baseline:** B0 PR #41 merged to `main` at `64d5fb19be541d80b3cb8941ce3359d4b69565c1`. Revision 3 is the accepted B0 design baseline. The local checkout remains independently subject to the read-only programmer preflight.
 
 > Class, file, function and constraint names come from the review and ADR text. Verify each against the repository before relying on it. If a name or behavior differs, record the discrepancy in the PR and do not guess.
 
@@ -175,11 +175,13 @@ B0 closes when:
 - Documentation validation passes: the diff is docs-only; phase names, status statements, task scopes, and authority rules agree; changed-file references and anchors resolve; no proposed design is represented as implemented or active; and the Operator's acceptance is recorded.
 - The documentation-only integration is merged and the B0 closeout is recorded in PLAN.md.
 
-**B0 completion does not authorize B1.** B1 requires separate written Operator implementation authorization after B0 closes. Until then, no source, schema, migration, tests, Task registration, provider, active write scope, or runtime change may begin.
+**B0 completion did not itself authorize B1. The Operator separately authorized B1 on 2026-11-05 after B0 closeout.** That authorization is limited to the B1 scope below. B2–B6 remain unauthorized; no later-phase Task registration, provider, active write scope or runtime change is authorized.
 
 ---
 
 ## Phase B1: Schema, create-pointer rollout, legacy decoder, chain reconstruction and D7 overlay
+
+**Implementation status (2026-11-05):** B1 is authorized and implemented for review in draft PR [#43](https://github.com/abtn/Watch-Architecture-Rev2/pull/43). The exact head `858681c341ec9ad0fb800785cef6fa8a0db653` passed hosted CI run [42012223240](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42012223240), including 641 tests. Programmer-local disposable-PostgreSQL verification, any migration/backfill-specific gap discovered there, and the final B1 closure review remain pending. Do not treat hosted CI alone as local verification or merge authorization.
 
 **Goal:** prove lifecycle history is reconstructable from existing snapshots plus the current pointer, with the authorized D7 overlay, before committing to any history table.
 
