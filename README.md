@@ -19,7 +19,7 @@ So Watch is not simply a chatbot with memory or a universal expert. It is a reus
 
 A Plan is intended work, not execution truth. Tasks and Events record execution. Derived assessments do not become authority merely because a model produced them.
 
-## Current state (snapshot 2026-11-04)
+## Current state (snapshot 2026-11-05)
 
 [`PLAN.md`](PLAN.md) is the single source of current milestone status; the summary below is a convenience snapshot, not an authority record.
 
@@ -47,8 +47,8 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 
 Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for current milestone status.
 
-- **R7-0 and R7-A — complete:** ADR-0032 is Accepted; R7-A evidence lineage and KnowledgeQualityAssessment are merged and passed exact-head hosted and operator-local disposable-PostgreSQL verification (631 tests). R7-B is documentation preparation only; its lifecycle plan records implementation sequence and remaining design decisions. R7-B implementation and R7-C remain separately gated. See PLAN.md.
-- **R7 — Knowledge quality evaluation and lifecycle:** R7-A is complete and merged. R7-B preparation covers current-LearningChange history, revise/revalidate/supersede/retire, trusted atomic commits, canonicality consumers, Context manifest v3 and projection republishing. Open decisions and checkpoints are in the [R7-B preparation plan](docs/development/r7-b-implementation-plan.md). R7-B implementation and R7-C remain unauthorized.
+- **R7-0 and R7-A — complete:** ADR-0032 is Accepted for the original R7 architecture and R7-A. R7-A evidence lineage and KnowledgeQualityAssessment are merged and passed exact-head hosted and operator-local disposable-PostgreSQL verification (631 tests). R7-B Revision 3 is integrated as documentation-only B0 preparation in PR #40; B0 decisions remain open, and B1+ implementation and R7-C remain unauthorized. See PLAN.md.
+- **R7 — Knowledge quality evaluation and lifecycle:** R7-A is complete and merged. The [R7-B Revision 3 plan](docs/development/r7-b-implementation-plan.md) sequences B0–B6, including current-pointer/history, stable content hashing, reciprocal successor publication gating, D7 overlays, assessments, trusted commits and Context v3/projection republishing. B0 is not frozen; B1+ implementation and R7-C remain unauthorized.
 - **R8 — Multi-domain pressure test:** exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge stays outside the Kernel.
 - **R9 — Agent-assisted production workflow:** codified task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.
 - **Deferred cross-cutting work:** execution security (per-worker filesystem/network/tool surface and secret isolation) and broader multi-domain experience-library work beyond the initial R6 slice.
