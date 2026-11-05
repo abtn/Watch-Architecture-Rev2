@@ -649,8 +649,10 @@ class LearningChange(Base):
             name="uq_learning_changes_task_idempotency"),
         CheckConstraint("target_kind = 'knowledge_item'",
             name="ck_learning_changes_target_kind"),
-        CheckConstraint("operation IN ('create', 'revise', 'revalidate', 'supersede', 'retire')",
-            name="ck_learning_changes_operation"),
+        CheckConstraint(
+            "operation IN ('create', 'revise', 'revalidate', 'supersede', 'retire')",
+            name="ck_learning_changes_operation",
+        ),
         CheckConstraint("(operation = 'create' AND target_id IS NULL) "
             "OR (operation IN ('revise', 'revalidate', 'supersede', 'retire') AND "
             "target_id IS NOT NULL)", name="ck_learning_changes_target_state"),
