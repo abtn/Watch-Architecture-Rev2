@@ -5,8 +5,8 @@ Revises: 0014_knowledge_quality_assessment
 """
 from typing import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 
 revision: str = "0015_knowledge_item_history"
