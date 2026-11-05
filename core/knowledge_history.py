@@ -203,7 +203,10 @@ def _normalize_state(state: object) -> dict[str, Any]:
     confidence = Decimal(normalized["confidence"])
     if confidence < 0 or confidence > 1:
         raise KnowledgeHistoryError("knowledge_snapshot_confidence_out_of_range")
-    if normalized["status"] not in {"active", "needs_review", "retired"}:
+    if (
+        not isinstance(normalized["status"], str)
+        or normalized["status"] not in {"active", "needs_review", "retired"}
+    ):
         raise KnowledgeHistoryError("knowledge_snapshot_status_invalid")
     if normalized["supersedes_item_id"] == normalized["id"]:
         raise KnowledgeHistoryError("knowledge_snapshot_self_supersession")
@@ -1075,19 +1078,21 @@ def reconstruct_knowledge_item_history(
             continue
         if change.target_id != item.id:
             # A create root is identified by the immutable origin pointer.
-            # Another accepted create snapshot naming this item is a duplicate root.
+            # Any accepted snapshot that claims this item under another target
+            # is corruption, even when it is not the current pointer.
             try:
                 candidate_state = decode_knowledge_item_snapshot(
                     change.committed_state, root_learning_change_id=change.id
                 ).state
             except KnowledgeHistoryError:
                 candidate_state = None
-            if (
-                change.operation == "create"
-                and candidate_state is not None
-                and candidate_state["id"] == str(item.id)
-            ):
-                raise KnowledgeHistoryError("knowledge_history_duplicate_root")
+            if candidate_state is not None and candidate_state["id"] == str(item.id):
+                reason = (
+                    "knowledge_history_duplicate_root"
+                    if change.operation == "create"
+                    else "knowledge_history_target_item_mismatch"
+                )
+                raise KnowledgeHistoryError(reason)
             continue
         if change.operation not in _LIFECYCLE_OPERATIONS:
             raise KnowledgeHistoryError("knowledge_history_operation_unsupported")
