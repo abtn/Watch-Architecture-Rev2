@@ -8,7 +8,7 @@
 - ADR-0032 is **Accepted — 2026-11-04 for the original R7 architecture and R7-A scope**. A proposed R7-B D5 addendum is included for B0 review but is not effective until explicit B0 acceptance.
 - PLAN.md remains the sole authority for milestone status and next action.
 - R6 is formally complete through R6-G. R6-G approval and merge do not authorize R7.
-- The completed R7-0 change was documentation-only. R7-A authorization now permits only its bounded evidence-lineage and KnowledgeQualityAssessment implementation scope; it does not authorize R7-B lifecycle commits or R7-C retrieval/use work.
+- The completed R7-0 change was documentation-only. R7-A was separately authorized, implemented and merged within its bounded evidence-lineage and KnowledgeQualityAssessment scope. That authorization is complete and does not carry forward to R7-B lifecycle commits or R7-C retrieval/use work.
 
 ## 1. Objective
 
