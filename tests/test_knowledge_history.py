@@ -65,6 +65,10 @@ def _state(
 
 def _legacy_state(state: dict[str, object]) -> dict[str, object]:
     legacy = dict(state)
+    for field in ("last_validated_at", "review_after"):
+        value = legacy[field]
+        if isinstance(value, datetime):
+            legacy[field] = value.isoformat()
     legacy.pop("current_learning_change_id")
     legacy.pop("supersedes_item_id")
     legacy.pop("superseded_by_id")
