@@ -370,6 +370,9 @@ class LearningCommitService:
                         review_after.isoformat() if review_after is not None else None
                     ),
                     "origin_learning_change_id": str(learning_change.id),
+                    "current_learning_change_id": str(learning_change.id),
+                    "supersedes_item_id": None,
+                    "superseded_by_id": None,
                 }
                 session.add(
                     KnowledgeItem(
@@ -394,6 +397,9 @@ class LearningCommitService:
                         last_validated_at=None,
                         review_after=review_after,
                         origin_learning_change_id=learning_change.id,
+                        current_learning_change_id=learning_change.id,
+                        supersedes_item_id=None,
+                        superseded_by_id=None,
                     )
                 )
 
@@ -580,6 +586,13 @@ class LearningCommitService:
                 item.review_after.isoformat() if item.review_after is not None else None
             ),
             "origin_learning_change_id": str(item.origin_learning_change_id),
+            "current_learning_change_id": str(item.current_learning_change_id),
+            "supersedes_item_id": (
+                str(item.supersedes_item_id) if item.supersedes_item_id else None
+            ),
+            "superseded_by_id": (
+                str(item.superseded_by_id) if item.superseded_by_id else None
+            ),
         }
 
     def _replay_decision(
