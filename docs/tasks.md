@@ -584,7 +584,7 @@ For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeI
 
 ## 7. R7 Task/write-scope matrix — phase-gated extensions
 
-**Status:** `assess_knowledge_quality` is active in §§3–5 and operative §4 after PR #39 merged. The R7-B contracts below are frozen design only following B0 acceptance on 2026-11-05. They remain non-active: no R7-B Task registration, worker write grant, application write scope, or implementation authority is added by this documentation.
+**Status:** `assess_knowledge_quality` is active in §§3–5 and operative §4 after PR #39 merged. The R7-B contracts below remain frozen design/non-active Task specifications following B0 acceptance on 2026-11-05. B1 implementation was separately authorized on 2026-11-05 for schema/history proof only; it does not activate an R7-B Task registration, worker write grant, application write scope, or lifecycle operation.
 
 | Proposed Task / operation | Purpose and authority | Proposed worker write scope | Application / TaskRuntime side effects | Explicitly forbidden |
 |---|---|---|---|---|
@@ -598,4 +598,4 @@ For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeI
 
 A TaskKnowledgeReference is not a new worker write grant or separate approval Task. It is an application-owned, Task-attributed reference recorded only after code validates a worker-nominated claim reference against the immutable Context manifest. The model cannot write a citation record directly.
 
-The frozen R7-B design reuses `approve_learning_change`; it does not introduce a separate `approve_knowledge_lifecycle` Task type. The R7-A `assess_knowledge_quality` Task remains the only active R7 assessment Task. R7-B proposal/approval extensions, `assess_knowledge_revalidation`, `assess_knowledge_lifecycle`, and R7-C `assess_knowledge_use` remain non-active and unauthorized. This design adds no rows to the operative §4 write-scope matrix and activates no Task grant.
+The frozen R7-B design reuses `approve_learning_change`; it does not introduce a separate `approve_knowledge_lifecycle` Task type. The R7-A `assess_knowledge_quality` Task remains the only active R7 assessment Task. B1's authorization covers schema/history reconstruction and tests only; the R7-B lifecycle extensions, `assess_knowledge_revalidation`, `assess_knowledge_lifecycle`, and R7-C `assess_knowledge_use` remain non-active. This design adds no rows to the operative §4 write-scope matrix and activates no Task grant.
