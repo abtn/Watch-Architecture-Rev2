@@ -13,7 +13,7 @@
 - **Legacy snapshot decoder** for immutable historical create snapshots (B0.3, B1).
 - **`ck_learning_changes_target_state`** updated alongside the operation constraint (B1).
 - **Candidate creation guards** now require a D7-eligible predecessor and a valid non-NULL future `review_after` on the candidate (B0.1, B5).
-- **Frozen contracts:** exact serialization and domain-separator literals; fuller approval fingerprint; "invalidated" defined as a derived disposition; Team-scoped lifecycle lock for graph changes (B0.3).
+- **Frozen contracts:** exact serialization and domain-separator literals; fuller approval fingerprint; stale defined as a derived disposition; Team-scoped lifecycle lock for graph changes (B0.3).
 - **New edge rule** for a scheduled review of the predecessor while a candidate is pending; B5 acceptance wording corrected.
 - **B1/B2 rollout:** B1 updates the create commit to set the current pointer atomically (no NULL-pointer intermediate state).
 
@@ -76,7 +76,7 @@ The following discrepancies were checked against the R7-A `main` baseline at `75
 |---|---|
 | Candidate abandoned | Retire it through an ordinary `LearningChange` with a retirement assessment. Its immutable `supersedes_item_id` is preserved as history. |
 | A replacement candidate is needed | Allowed only after the previous candidate is retired, and only if the predecessor passes the creation guards above (D7-eligible, no committed successor). |
-| Predecessor revised or revalidated first | Candidate stays withheld. The pending supersede proposal and assessment become **stale** (see "Invalidation" in B0.3). New ones must bind the predecessor's new pointer and state. |
+| Predecessor revised or revalidated first | Candidate stays withheld. The pending supersede proposal and assessment become **stale** (see "Stale-proposal semantics" in B0.3). New ones must bind the predecessor's new pointer and state. |
 | Predecessor moved `active → needs_review` by scheduled `review_knowledge` while a candidate is pending | Candidate stays withheld. Any assessment that bound the predecessor's former status is stale; a fresh one must bind its actual current state. Supersession may proceed from `needs_review` only if all operation-specific guards hold and the successor passes the D7 gate. This is an acceptable fail-closed state. |
 | Predecessor retired without supersession | Candidate stays permanently withheld. Retire it separately. It is never mutated automatically. |
 | Successor revised or revalidated first | The pending supersede proposal and assessment are stale (successor binding changed). Re-propose and reassess. |
@@ -304,7 +304,7 @@ A successor in `needs_review` must first be revalidated; the supersede proposal 
 - Content hash: unchanged across revalidation, supersede and retire; changes on content revise (and confidence revise per decision); old-scheme records still verify; old-scheme projection rows ineligible until republished.
 - Snapshot hash: stable across serialization; changes with any semantic field (both pointers, both supersession links); distinct from content hash; UUID/Decimal/timestamp normalization cases; NULL never omitted.
 - Approval fingerprint changes when any bound element changes (assessment payload hash, successor state, policy version, expected status, target content/snapshot hash, evidence-basis hash, Operator identity).
-- Stale (not "invalidated") proposals cannot be accepted; stale proposal cleanup goes through the trusted rejection path.
+- Stale (not "stale") proposals cannot be accepted; stale proposal cleanup goes through the trusted rejection path.
 - Revise on `needs_review` stays `needs_review`; revise clears `last_validated_at`; stale-assessment revalidation fails.
 - Revalidate/supersede/retire cannot alter confidence, content or content version.
 - Candidate creation rejected when: predecessor `needs_review`/NULL or due `review_after`/retired/has successor/has other pending candidate; candidate has NULL or past `review_after`; self-link, cycle, cross-Team.
