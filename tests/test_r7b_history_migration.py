@@ -13,6 +13,7 @@ from _database_config import resolve_test_database_url
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine, create_engine, text
+from sqlalchemy.engine import make_url
 
 
 @dataclass(frozen=True)
@@ -29,10 +30,10 @@ def pre_0015_schema(
 ) -> Iterator[MigrationSandbox]:
     """Upgrade an empty isolated schema to the legacy 0014 database shape.
 
-    The URL is resolved from TEST_DATABASE_URL only. Alembic receives that same
-    disposable database URL, while PGOPTIONS directs every migration
-    connection into a unique schema ahead of public. The schema is dropped
-    after the test; no existing application tables are modified.
+    The URL is resolved from TEST_DATABASE_URL only. Both Alembic and test
+    connections receive an explicit search_path connection option targeting a
+    unique schema ahead of public. The schema is dropped after the test; no
+    existing application tables are modified.
     """
     database_url = resolve_test_database_url(os.environ)
     schema = f"r7b_migration_{uuid4().hex}"
@@ -45,14 +46,20 @@ def pre_0015_schema(
             connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         schema_created = True
 
-        # migrations/env.py reads DATABASE_URL. Point it explicitly at the
-        # fail-closed test URL, never at a developer's application URL.
-        monkeypatch.setenv("DATABASE_URL", database_url)
-        monkeypatch.setenv("PGOPTIONS", f"-c search_path={schema},public")
+        scoped_url = make_url(database_url)
+        query = dict(scoped_url.query)
+        query["options"] = f"-c search_path={schema},public"
+        scoped_url = scoped_url.set(query=query)
 
-        scoped_engine = create_engine(database_url)
-        with scoped_engine.connect():
-            pass
+        # migrations/env.py reads DATABASE_URL. Alembic's ConfigParser treats
+        # percent signs as interpolation markers, so escape URL encoding here.
+        config_database_url = scoped_url.render_as_string(hide_password=False)
+        monkeypatch.setenv("DATABASE_URL", config_database_url.replace("%", "%%"))
+        monkeypatch.delenv("PGOPTIONS", raising=False)
+
+        scoped_engine = create_engine(scoped_url)
+        with scoped_engine.connect() as connection:
+            assert connection.scalar(text("SELECT current_schema()")) == schema
 
         config_path = Path(__file__).resolve().parents[1] / "alembic.ini"
         command.upgrade(Config(str(config_path)), "0014_knowledge_quality")
