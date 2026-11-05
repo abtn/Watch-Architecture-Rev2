@@ -343,7 +343,8 @@ def reconstruct_history(
         states.append(state)
 
     markers = sorted(
-        review_markers, key=lambda marker: _aware_datetime(marker.reviewed_at, "reviewed_at")
+        review_markers,
+        key=lambda marker: _aware_datetime(marker.reviewed_at, "reviewed_at"),
     )
     overlays: dict[uuid.UUID, ReviewMarker] = {}
     node_index = {change.id: index for index, change in enumerate(ordered)}
