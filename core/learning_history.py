@@ -444,8 +444,9 @@ def reconstruct_knowledge_item_history(
             )
         )
     )
+    approval_tasks: dict[uuid.UUID, Task] = {}
     for change in changes:
-        _validate_learning_change_approval(session, change)
+        approval_tasks[change.id] = _validate_learning_change_approval(session, change)
 
     rows = session.execute(
         select(Event, Task)
@@ -469,6 +470,53 @@ def reconstruct_knowledge_item_history(
     )
     if result.state != knowledge_item_state(item):
         raise KnowledgeHistoryError("reconstructed_history_does_not_match_live_item")
+
+    changes_by_id = {change.id: change for change in changes}
+    for change_id, state in zip(result.learning_change_ids, result.states):
+        change = changes_by_id[change_id]
+        if change.operation not in {"create", "revise", "revalidate"}:
+            continue
+        task = approval_tasks[change_id]
+        policy = session.scalar(
+            select(TeamPolicy).where(
+                TeamPolicy.team_id == task.team_id,
+                TeamPolicy.version == task.policy_version,
+            )
+        )
+        if policy is None:
+            raise KnowledgeHistoryError("history_approval_policy_missing")
+        try:
+            interval_days = knowledge_item_review_interval_days(
+                policy.rules, policy.schema_version
+            )
+        except InvalidPolicyError as error:
+            raise KnowledgeHistoryError("history_approval_policy_invalid") from error
+        expected_review_after = (
+            change.committed_at + dt.timedelta(days=interval_days)
+            if interval_days is not None
+            else None
+        )
+        actual_review_after = (
+            _parse_timestamp(state["review_after"], "review_after")
+            if state["review_after"] is not None
+            else None
+        )
+        expected_review_after_utc = (
+            _aware_datetime(expected_review_after, "expected_review_after")
+            if expected_review_after is not None
+            else None
+        )
+        if actual_review_after != expected_review_after_utc:
+            raise KnowledgeHistoryError("history_review_after_policy_mismatch")
+        if change.operation == "revalidate":
+            validated_at = _parse_timestamp(
+                state["last_validated_at"], "last_validated_at"
+            )
+            if validated_at != _aware_datetime(
+                change.committed_at, "learning_change_committed_at"
+            ):
+                raise KnowledgeHistoryError("history_revalidation_timestamp_mismatch")
+
     _validate_live_supersession_links(session, item)
     return result
 
