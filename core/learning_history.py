@@ -740,9 +740,13 @@ def _validate_transition(
         raise KnowledgeHistoryError("transition_identity_or_pointer_invalid")
 
     if operation == "revise":
+        content_changed = any(
+            previous[field] != committed[field] for field in _CONTENT_FIELDS
+        )
         if (
             committed["version"] != previous["version"] + 1
             or committed["status"] != previous["status"]
+            or not content_changed
             or committed["last_validated_at"] is not None
             or committed["supersedes_item_id"] != previous["supersedes_item_id"]
             or committed["superseded_by_id"] != previous["superseded_by_id"]
@@ -760,6 +764,9 @@ def _validate_transition(
             or committed["version"] != previous["version"]
             or not unchanged_content
             or committed["last_validated_at"] is None
+            or _parse_timestamp(
+                committed["last_validated_at"], "last_validated_at"
+            ) != _aware_datetime(committed_at, "learning_change_committed_at")
             or committed["supersedes_item_id"] != previous["supersedes_item_id"]
             or committed["superseded_by_id"] != previous["superseded_by_id"]
         ):
