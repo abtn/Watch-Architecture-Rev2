@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 import hashlib
 import json
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
@@ -18,11 +18,15 @@ from core.knowledge_history import (
     knowledge_item_snapshot_state,
     reconstruct_knowledge_item_history,
 )
-from core.models import Event, KnowledgeItem, LearningChange, Outcome, Task, Team, TeamPolicy
-
-
-def _utc(value: datetime) -> datetime:
-    return value.astimezone(timezone.utc)
+from core.models import (
+    Event,
+    KnowledgeItem,
+    LearningChange,
+    Outcome,
+    Task,
+    Team,
+    TeamPolicy,
+)
 
 
 def _state(
