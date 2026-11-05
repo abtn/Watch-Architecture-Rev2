@@ -760,10 +760,10 @@ def _validated_review_markers(
         if not isinstance(record, dict):
             raise KnowledgeHistoryError("review_event_item_record_invalid")
         keys = set(record)
-        if keys not in {
-            _REVIEW_ITEM_FIELDS,
-            _REVIEW_ITEM_FIELDS | {"current_learning_change_id"},
-        }:
+        if (
+            keys != _REVIEW_ITEM_FIELDS
+            and keys != (_REVIEW_ITEM_FIELDS | {"current_learning_change_id"})
+        ):
             raise KnowledgeHistoryError("review_event_item_record_shape_invalid")
         record_item_id = _canonical_uuid(record.get("knowledge_item_id"))
         if record_item_id in seen_item_ids:
