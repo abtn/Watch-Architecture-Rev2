@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted — 2026-11-04.** The Operator accepted the revised architecture and explicitly authorized R7-A implementation. Acceptance establishes the design direction in this ADR; it authorizes only the bounded R7-A phase described in the R7 entry gate. R7-B and R7-C, lifecycle commits, production providers, and unrelated Task/write-scope changes remain unauthorized. Acceptance does not itself establish implementation correctness or a local verification result.
+**Accepted — 2026-11-04.** The Operator accepted the revised architecture and explicitly authorized R7-A implementation. Acceptance establishes the design direction in this ADR; it authorizes only the bounded R7-A phase described in the R7 entry gate. R7-B implementation and R7-C remain unauthorized, as do lifecycle commits, production providers, and unrelated Task/write-scope changes. Acceptance does not itself establish implementation correctness or a local verification result.
 
 **R7-B B0 design acceptance (2026-11-05):** The Operator explicitly accepted the five R7-B B0 decisions, the D1 typed-assessment extension, and the D5 reciprocal-successor/publication-gate amendment recorded below and in the R7-B implementation plan. This is a separately scoped acceptance of R7-B design; it does not rewrite the original 2026-11-04 R7-A acceptance. It authorizes documentation of the frozen design only—not B1–B6 schema, source, test, migration, Task registration, provider, active write-scope, runtime, or R7-C work. B1 requires separate written Operator implementation authorization after B0 documentation closeout.
 
