@@ -1,10 +1,10 @@
 # R7-B Agent Development Plan: KnowledgeItem Lifecycle (Revision 3 — repository-aligned)
 
 **Audience:** the implementing agent.
-**Sources:** "R7-B decision review" (PR #40), ADR-0032 (accepted 2026-11-04, R7-A only), INV-12/13, ADR-0029 D7, and the reviews of Revisions 1 and 2.
-**Status:** conditional approval, pending B0 freeze. **Implementation is NOT authorized.** B0 is documentation-only. B1 onward start only after the Operator accepts the B0 outputs and gives separate written authorization.
+**Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
+**Status:** **B0 design decisions ACCEPTED by the Operator on 2026-11-05; documentation integration and validation are in progress.** B0 is documentation-only. **B1–B6 implementation is NOT authorized.** Completing or merging B0 does not authorize B1; B1 requires separate written Operator implementation authorization.
 
-**Initial review baseline:** when Revision 3 was supplied, PR #40 was open and unmerged at `a2e713c`, based on the R7-A merge. This integration adds the D5 publication-gate amendment as a proposed, non-effective B0 addendum; the original ADR acceptance remains R7-A-only.
+**Baseline:** PR #40 merged to `main` at `15a3fbaa8ab520ad1f6f4906a27b894356fb21f7`. Revision 3 is the accepted B0 design baseline. The local checkout remains independently subject to the read-only programmer preflight.
 
 > Class, file, function and constraint names come from the review and ADR text. Verify each against the repository before relying on it. If a name or behavior differs, record the discrepancy in the PR and do not guess.
 
@@ -54,65 +54,83 @@ The following discrepancies were checked against the R7-A `main` baseline at `75
 
 **Goal:** settle every open design item so B1+ never reopens settled architecture.
 
-### B0.1 Amend ADR-0032 (Operator acceptance required)
+### B0.1 Accepted R7-B design decisions (Operator acceptance: 2026-11-05)
+
+The Operator accepted all five B0 decisions and the R7-B D1/D5 design extensions. This acceptance freezes design only; it does not authorize B1 or any R7-B implementation.
 
 **D5: reciprocal fields and pending-successor publication gate**
-- Two fields, both required:
-  - Successor: `supersedes_item_id` (identifies the predecessor), set at creation, **immutable**.
-  - Predecessor: `superseded_by_id` (identifies the accepted successor), set only by the supersede commit.
-- A successor with `supersedes_item_id` is `accepted` and `active` but **ineligible for retrieval and Context assembly** until its predecessor is `retired` with `superseded_by_id` pointing back to it.
-- The supersede commit changes only the predecessor. It never writes the successor.
-- Retrieval and Context assembly validate reciprocity against canonical state at read time.
-- Constraints: same Team only; no self-link; no cycles; `superseded_by_id` unique.
 
-**Candidate creation guards** (create-with-`supersedes_item_id`; all must hold at creation, else reject):
-- Predecessor is canonically valid and **D7-eligible**: `status=active`; `review_after` is timezone-aware UTC and later than the creation-time check; its current pointer and content hash validate; same-Team; it has no committed successor and no non-retired pending candidate. A predecessor needing review must be revalidated first.
-- The candidate's own `review_after`, computed from its canonical commit time and pinned TeamPolicy, must be **non-NULL and in the future**. If the policy supplies no review interval, candidate creation is rejected. (Otherwise an active candidate with NULL `review_after` could never pass the gate: scheduled review skips NULL dates and revalidation applies only to `needs_review`.)
-- The relation is part of the proposed-state hash.
+- Successor field: `supersedes_item_id` identifies the predecessor. It is set when the candidate is accepted through create and is immutable.
+- Predecessor field: `superseded_by_id` identifies the accepted successor. It is set only by the predecessor's accepted supersede LearningChange.
+- A candidate with non-NULL `supersedes_item_id` is an accepted KnowledgeItem with status `active`, but is withheld from retrieval and Context assembly until its predecessor is `retired` and `superseded_by_id` points back to it.
+- The supersede LearningChange targets and modifies the predecessor only. It never writes the successor. Retrieval and Context assembly validate both directions against canonical state and D7 eligibility.
+- Enforce same-Team ownership, no self-link, no cycles, at most one non-retired pending candidate per predecessor, and at most one committed successor. A retired candidate retains its immutable historical predecessor link but no longer occupies the pending-candidate slot.
 
-**Abandoned-supersession and edge-case rules** (immutable links, no dead ends; recommended disposition for Operator acceptance):
+**Candidate-creation guards** (create-with-`supersedes_item_id`; every guard is required at creation):
 
-| Situation | Rule |
+- The predecessor is canonically valid and D7-eligible: `status=active`; `review_after` is timezone-aware UTC and later than the creation-time check; its current pointer and content hash validate; it belongs to the same Team; it has no committed successor and no non-retired pending candidate. A predecessor already in `needs_review` must be revalidated before a *new* candidate can be created.
+- The candidate's own `review_after`, computed from its canonical commit time and the approval Task's pinned TeamPolicy, is non-NULL and in the future. If the pinned policy supplies no review interval, candidate creation is rejected. This prevents accepting an active candidate that can never pass the D7 publication gate.
+- The predecessor/candidate relation is included in the LearningChange proposed-state hash. It is not part of the semantic content hash.
+
+**Abandoned-candidate and edge-case rules**
+
+| Situation | Accepted rule |
 |---|---|
-| Candidate abandoned | Retire it through an ordinary `LearningChange` with a retirement assessment. Its immutable `supersedes_item_id` is preserved as history. |
-| A replacement candidate is needed | Allowed only after the previous candidate is retired, and only if the predecessor passes the creation guards above (D7-eligible, no committed successor). |
-| Predecessor revised or revalidated first | Candidate stays withheld. The pending supersede proposal and assessment become **stale** (see "Stale-proposal semantics" in B0.3). New ones must bind the predecessor's new pointer and state. |
-| Predecessor moved `active → needs_review` by scheduled `review_knowledge` while a candidate is pending | Candidate stays withheld. Any assessment that bound the predecessor's former status is stale; a fresh one must bind its actual current state. Supersession may proceed from `needs_review` only if all operation-specific guards hold and the successor passes the D7 gate. This is an acceptable fail-closed state. |
-| Predecessor retired without supersession | Candidate stays permanently withheld. Retire it separately. It is never mutated automatically. |
-| Successor revised or revalidated first | The pending supersede proposal and assessment are stale (successor binding changed). Re-propose and reassess. |
-| Successor retired | Candidate is cancelled and can never become the accepted replacement. |
+| Candidate abandoned | Retire it through an ordinary `LearningChange` with a retire-variant `KnowledgeLifecycleAssessment`. Preserve immutable `supersedes_item_id`. |
+| Replacement candidate required | Permit only after the previous candidate is retired and only if the predecessor again passes every candidate-creation guard. |
+| Predecessor revised or revalidated before supersession | Candidate remains withheld. The supersede proposal and assessment whose bound predecessor state changed are derived-stale and cannot be accepted. Create a new proposal and assessment bound to the new pointer/state. |
+| Predecessor moved `active → needs_review` by scheduled `review_knowledge` while a candidate is pending | Candidate remains withheld. Any proposal/assessment bound to the former status is stale. A fresh supersede proposal and assessment may proceed from the predecessor's actual `needs_review` state only if every supersede-specific guard holds and the successor is accepted, active, canonical, and D7-eligible. This does not revalidate the predecessor. |
+| Predecessor retired without supersession | Candidate remains permanently withheld. Retire it separately through the trusted path; never mutate it automatically. |
+| Successor revised or revalidated before supersession | The old supersede proposal and assessment become stale because the successor binding changed. Re-propose and reassess against the exact new successor state. |
+| Successor retired | The candidate can never become the committed replacement. Preserve its history and retire it separately if not already retired. |
 
-Uniqueness model: historical `supersedes_item_id` references may include retired attempts. Enforce **at most one non-retired pending candidate per predecessor** and **at most one committed successor**. Canonical reciprocity validation ignores retired abandoned candidates.
+**Supersession commit eligibility (D7-aware)**
 
-**Supersession commit eligibility (D7-aware).** At the actual supersede commit, all must hold, else supersession is **blocked** and the predecessor stays unchanged under its own eligibility:
-- Successor is accepted, canonical and same-Team.
-- Successor status is `active`.
-- Successor `review_after` is non-NULL and later than the canonical commit time.
-- Successor's current pointer, content version and content hash still match the proposal and assessment.
+At the actual supersede commit, all of the following must hold or the operation is blocked and the predecessor remains unchanged:
 
-A successor in `needs_review` must first be revalidated; the supersede proposal and assessment are then refreshed.
+- The successor is accepted, canonical, and same-Team.
+- The successor status is `active`.
+- Its `review_after` is non-NULL, timezone-aware UTC, and later than the canonical commit-time check.
+- Its current pointer, content version, content hash, and full-state binding still match the proposal and lifecycle assessment.
+- The predecessor's exact current pointer, version, and actual status match its fresh proposal/assessment. The predecessor may be `active` or `needs_review`; a `needs_review` predecessor is retired by supersession, not revalidated.
 
-**Visibility invariant.** The invariant is that the predecessor and its candidate are **never both exposed**. It is *not* that the predecessor is always eligible until the instant of supersession. If the predecessor becomes due, neither item may be retrievable for a period. That is acceptable.
+A successor in `needs_review`, with NULL/due review date, or with stale binding blocks supersession. Refresh the proposal and assessment after any relevant state change.
 
-**New typed records and vocabulary**
-- Add `KnowledgeRevalidationAssessment` and `KnowledgeLifecycleAssessment` (retire and supersede variants) to D1.
-- Operation vocabulary: `create / revise / revalidate / supersede / retire`, with matching DB constraint changes (B1).
+**Visibility invariant:** predecessor and candidate are never both exposed. The predecessor is exposed only while its own D7 eligibility holds. If it becomes due or enters `needs_review` while a candidate remains pending, neither may be retrievable until the reciprocal supersession gate is satisfied. That temporary absence is acceptable.
 
-### B0.2 Update the R7-B implementation plan
-- Remove from the open-decision list: manifest/projection pins, approval request contract, review dates (settled by ADR-0032, INV-12/13, ADR-0029 D7).
-- Merge "snapshot-chain sufficiency" and "history snapshot shape" into one decision.
-- Record dispositions: snapshot-first (accept, conditional on proof), revalidation assessment (accept), revise-preserves-`needs_review` (accept), lifecycle assessment (accept, revised), publication gate (accept pending amendment), content-hash redefinition (accept pending B0.3).
+**Graph concurrency:** candidate creation, supersede, and retirement of a candidate take a Team-scoped transaction lock before graph inspection or writes. Lock the Team row with `SELECT ... FOR UPDATE` first, then affected KnowledgeItem rows in ascending UUID order. Every graph-changing path uses this lock order; per-item operations also compare-and-set the exact current pointer and version. Retrieval and Context assembly validate reciprocity against one consistent canonical snapshot. Context's final validation must not rely on a previously returned retrieval result alone.
 
+**Typed records and operation vocabulary**
+
+- `KnowledgeRevalidationAssessment` and `KnowledgeLifecycleAssessment` (retire and supersede variants) are immutable, typed assessment records.
+- The designed LearningChange operation vocabulary is `create / revise / revalidate / supersede / retire`.
+- Assessment Tasks record only their own typed assessment and Task-attributed Events. They cannot write KnowledgeItem or LearningChange. The trusted Operator approval Task remains the sole lifecycle commit authority.
+
+### B0.2 Frozen decision register and implementation-plan dispositions
+
+The following decisions are accepted and closed for design. They are not reopened by B1 implementation unless source-level proof reveals a contradiction; any such contradiction stops the affected phase and returns to the Operator.
+
+| Decision | Accepted contract | Consequence |
+|---|---|---|
+| 1. Confidence and content hashing | Include `confidence` in the semantic content hash. A confidence-only revise is content-changing. | Increment content version, change content hash, clear `last_validated_at`, and stale/republish the projection. Revalidation preserves confidence, version, and content hash. |
+| 2. Revalidation evidence freshness | Verified re-examination of existing canonical evidence may qualify only while that evidence remains temporally relevant and source-valid for the claim. | Rebuild and hash-verify the evidence basis at assessment time against current content version/hash. Time-sensitive/current-condition claims, expired/changed sources, or material newer/contradictory evidence require new observations. A timestamp alone is insufficient. |
+| 3. Trusted Operator identity | Retain host-supplied canonical issuer/subject identity in the immutable approval-request fingerprint and decision record. | Expand the fingerprint to the complete expected target, evidence, assessment, policy, and successor binding. Reuse of an idempotency key with a different principal conflicts. |
+| 4. Domain separators | Snapshot: `watch.r7b.knowledge-item-state.v1`; content: `watch.r7b.knowledge-content.v2`. | Freeze exact SHA-256 input framing and preserve legacy verification under the scheme that produced each historical record. |
+| 5. Candidate lifecycle | Accept the B0.1 candidate guards, abandoned-candidate rules, complete edge table, and fresh supersession from a `needs_review` predecessor under its operation-specific guards. | Enforce reciprocal publication gating, immutable candidate history, Team-scoped graph serialization, and the never-both-exposed invariant. |
+
+**Snapshot-first history disposition:** accept conditionally. B1 must prove complete reconstruction from immutable LearningChange snapshots, the validated current pointer, and the explicitly authorized D7 review overlay. B1 tests must prove root/chain continuity, no forks or missing parents, exact final-state match, legacy Event placement, and replay after later commits. If any required case cannot be proven, stop and propose the smallest append-only history record; do not add one unilaterally.
+
+Other previously reviewed dispositions remain frozen: revalidation assessment is a separate immutable type; revise preserves `needs_review`; lifecycle assessment is deterministic and operation-specific; stale is a derived application disposition; Team Experience projection pins and Context manifest v3 are mandatory; and the Team-scoped graph lock is required.
 ### B0.3 Freeze these contracts in writing
 
 1. **Content hash redefinition (blocking fix).**
    - *Problem:* the current `knowledge_item_content_hash` derives from the commit service's item state, which includes `review_after`; the helper strips `status` and `last_validated_at` but not `review_after`. Revalidation changes `review_after`, so today the hash would change although the content did not.
    - *Verified field inventory:* the current `_knowledge_item_state` represents `kind`, `title`, `statement`, `body`, `applicability`, `preconditions`, `assumptions`, `limitations`, `non_applicability`, `failure_modes`, `known_counterexamples`, `missing_information`, `uncertainty`, and `confidence`. It also includes row identity, Team identity, status, version, validation/review dates and origin pointer; these are not all content.
-   - *Rule:* define the new hash over a stable content-state object containing only the semantic fields `kind/title/statement/body/applicability/preconditions/assumptions/limitations/non_applicability/failure_modes/known_counterexamples/missing_information/uncertainty`. Include `confidence` only if the Operator accepts that choice below. Exclude `id`, `team_id`, `status`, `version`, `last_validated_at`, `review_after`, `origin_learning_change_id`, `current_learning_change_id`, `supersedes_item_id` and `superseded_by_id`.
+   - *Accepted rule:* define the new hash over exactly these semantic fields: `kind`, `title`, `statement`, `body`, `applicability`, `preconditions`, `assumptions`, `limitations`, `non_applicability`, `failure_modes`, `known_counterexamples`, `missing_information`, `uncertainty`, and `confidence`. Exclude `id`, `team_id`, `status`, `version`, `last_validated_at`, `review_after`, `origin_learning_change_id`, `current_learning_change_id`, `supersedes_item_id` and `superseded_by_id`.
    - All current KnowledgeItem arrays preserve their stored semantic order. No array is treated as a set or reordered in this version; any future set-like normalization requires a separately specified field and sort key.
    - *Scheme identity:* new LearningChange snapshots, Team Experience projection records and Context manifest v3 carry `content_hash_scheme`. Existing projection rows have no scheme marker and are classified as legacy by the migration; v1/v2 Context manifests imply the legacy scheme. Neither is rewritten. Old hashes are recomputed/verified with the legacy algorithm that produced them; no legacy hash is interpreted as a new-scheme hash.
-   - *Confidence and version:* a revise increments the content version and may change confidence; revalidation preserves both. **Operator decision to flag:** whether confidence is inside the content hash. Recommendation: include it, so a confidence-only revise changes the hash and counts as content-changing (clears `last_validated_at`).
-   - *Scheme versioning:* introduce a `content_hash_scheme` value for new records. The new scheme identifier is the proposed `watch.r7b.knowledge-content.v2` domain separator. Existing projection rows have no marker; migration assigns an explicit legacy marker (`legacy-current-state-v1`) and they remain ineligible until republished. Historical manifest v1/v2 imply that legacy scheme because their immutable payload has no scheme field. Historical LearningChange snapshots are decoded/verified with the original snapshot/hash semantics, never rewritten.
+   - *Confidence and version (accepted):* a revise increments the content version and may change confidence; revalidation preserves both exactly. Confidence participates in the content hash. A confidence-only revise therefore changes the hash, is content-changing, and clears `last_validated_at`.
+   - *Scheme versioning (accepted):* introduce a `content_hash_scheme` value for new records. The new scheme identifier is `watch.r7b.knowledge-content.v2`. Existing projection rows have no marker; migration assigns the explicit legacy marker (`legacy-current-state-v1`) and they remain ineligible until republished. Historical manifest v1/v2 imply that legacy scheme because their immutable payload has no scheme field. Historical LearningChange snapshots are decoded/verified with the original snapshot/hash semantics, never rewritten.
    - *Projection transition:* existing projection rows used the old semantics and must not remain eligible by accident. Define a controlled **stale-and-republish/rebuild** path: rows lacking the new scheme version are ineligible until republished against the current item version, content hash (new scheme) and current pointer.
    - The full-state snapshot hash (item 2) is separate and keeps the mutable lifecycle fields.
 
@@ -120,14 +138,14 @@ A successor in `needs_review` must first be revalidated; the supersede proposal 
    - Versioned canonical state envelope containing *all* semantic fields, including both pointers (`origin_learning_change_id`, `current_learning_change_id`), both supersession links, and `snapshot_version`. Every field is always present; NULL is serialized as JSON `null`, never omitted.
    - Serialization: adopt `core.state_assessment._canonical_json` (verified in the current repository): sorted keys, ASCII escaping, compact separators, and rejection of non-finite numbers. Normalize before serialization: UUIDs as lowercase hyphenated strings; `Decimal` as fixed-point strings without exponents, never JSON floats; timestamps as timezone-aware UTC ISO-8601 strings with `Z` and exactly six fractional digits (naive timestamps rejected). NULL is explicit JSON `null`. All current arrays preserve their stored order; no set-like arrays are defined for this snapshot version.
    - Field normalization is exactly as specified in the preceding serialization bullet. All arrays in the current KnowledgeItem contract preserve stored semantic order; this snapshot version defines no set-like array fields and performs no array sorting.
-   - Hash: SHA-256 over UTF-8 `domain_separator` bytes, one NUL byte (`0x00`), then UTF-8 canonical JSON bytes; exclude the hash field itself. Store as `sha256:<64 lowercase hex characters>`. **Proposed exact literals** (freeze in B0; immutable once frozen): snapshot hash `watch.r7b.knowledge-item-state.v1`; content hash `watch.r7b.knowledge-content.v2`.
+   - Hash (accepted): SHA-256 over UTF-8 `domain_separator` bytes, one NUL byte (`0x00`), then UTF-8 canonical JSON bytes; exclude the hash field itself. Store as `sha256:<64 lowercase hex characters>`. The immutable exact literals are snapshot hash `watch.r7b.knowledge-item-state.v1` and content hash `watch.r7b.knowledge-content.v2`.
 
 3. **Legacy snapshot compatibility (blocking fix).** Historical create snapshots are immutable and lack `snapshot_version`, `current_learning_change_id`, `supersedes_item_id` and `superseded_by_id`.
    - Define a **legacy decoder** (legacy snapshot version) that recognizes the exact existing create snapshot shape. It interprets fields absent from that historical payload as reconstructed values: `current_learning_change_id` = the accepted create `LearningChange` (established by the validated backfill), `supersedes_item_id` = NULL, `superseded_by_id` = NULL. Existing `origin_learning_change_id` remains the recorded origin value. The validator marks each reconstructed value as legacy-derived; it never claims those values were present in the original snapshot.
    - The validator must mark these as **reconstructed legacy values**, distinct from fields actually recorded in newer snapshots. It must never present them as written data.
    - New lifecycle snapshots use the versioned envelope. Old records are validated only via the legacy rule.
 
-4. **Approval-request contract and fingerprint.** Bind: Team, target ID, expected current pointer, expected content version, expected status, operation, proposal hash, proposed-state hash, pinned TeamPolicy version, evidence references **and the LearningChange evidence-basis hash**, assessment payload hashes (not just IDs), the target's expected **content hash and full-state snapshot hash**, and, for supersede, the exact successor state (ID, pointer, version, content hash, status, `review_after`). The trusted Operator identity (host-supplied) is bound to the decision record against this fingerprint. Proposed default: because the principal may not be known when the approval request Event is created, bind it in the decision fingerprint/idempotency key, alongside the immutable request fingerprint. This placement remains an Operator decision to confirm in B0.
+4. **Approval-request contract and fingerprint (accepted).** Bind: Team, target ID, expected current pointer, expected content version, expected status, operation, proposal hash, proposed-state hash, pinned TeamPolicy version, evidence references and the LearningChange evidence-basis hash, assessment payload hashes (not just IDs), the target's expected content hash and full-state snapshot hash, and, for supersede, the exact successor state (ID, pointer, version, content hash, status, and `review_after`). Canonical host-supplied Operator issuer/subject identity is included in the immutable approval-request fingerprint and decision record. The existing in-repository adapter receives the typed principal before creating the request Event; identity binding therefore remains in the request fingerprint as well as the committed decision. Reusing the same host idempotency key with a different principal conflicts. The Operator identity is decision metadata, never KnowledgeItem content identity.
 
 5. **Stale-proposal semantics.** There is no `invalidated` status (`LearningChange` is only `proposed / accepted / rejected`). **Stale** is a derived application disposition, not a mutation:
    - The old proposal and assessment remain immutable.
@@ -140,7 +158,7 @@ A successor in `needs_review` must first be revalidated; the supersede proposal 
 
 7. **Lifecycle assessment recording path.** A narrow deterministic `assess_knowledge_lifecycle` Task, analogous in scope to `assess_knowledge_revalidation`. It records structured Operator rationale, evidence references and deterministic findings. It cannot write `KnowledgeItem` or `LearningChange`. The trusted approval Task remains the sole commit authority. No model scoring.
 
-8. **Revalidation evidence freshness.** A timestamp alone never establishes freshness. *Recommendation:* verified re-examination of existing canonical evidence qualifies if the evidence basis is rebuilt at assessment time, re-verified by hash, and evaluated against the *current* content version and (new-scheme) content hash. Whether new source observations are additionally required is an **Operator decision**. Flag it explicitly.
+8. **Revalidation evidence freshness (accepted).** A timestamp alone never establishes freshness. Verified re-examination of existing canonical evidence may qualify only where the observations remain temporally relevant and source-valid for the claim. Rebuild the evidence basis at assessment time; re-verify canonical references, Team ownership, source snapshot hashes and applicable provenance/quote constraints; then evaluate it against the current content version and new-scheme content hash. Time-sensitive or present-condition claims, expired/changed sources, and material newer or contradictory evidence require new source observations. This decision does not impose a universal new-observation requirement for claims whose existing canonical basis remains adequate.
 
 9. **Review Event shape.** New `knowledge_items_reviewed` Events carry the current `LearningChange` pointer. Legacy placement rules are in B1.
 
@@ -149,9 +167,15 @@ A successor in `needs_review` must first be revalidated; the supersede proposal 
 11. **Legal transition table and test matrix** (see Reference).
 
 ### B0 acceptance
-- ADR-0032 R7-B addendum and updated R7-B plan are integrated into PR #40 (or its successor), with Operator acceptance explicitly recorded; every item flagged "Operator decision" is resolved.
-- Documentation validation passes: changed-file scope is docs-only, phase names and task scopes are consistent, all internal links/anchors resolve, and the authority chain agrees.
-- Written, separate Operator authorization for B1 exists. **No code before this.**
+
+B0 design acceptance was explicitly granted by the Operator on **2026-11-05** for all five decisions, the R7-B D1 assessment extension, and the D5 reciprocal-successor/publication-gate amendment.
+
+B0 closes when:
+- The accepted decisions and D1/D5 design are recorded consistently in ADR-0032, this plan, PLAN.md, the R7 entry gate, Task contracts, the decision index, CHANGE_MAP, CONTEXT, and README.
+- Documentation validation passes: the diff is docs-only; phase names, status statements, task scopes, and authority rules agree; changed-file references and anchors resolve; no proposed design is represented as implemented or active; and the Operator's acceptance is recorded.
+- The documentation-only integration is merged and the B0 closeout is recorded in PLAN.md.
+
+**B0 completion does not authorize B1.** B1 requires separate written Operator implementation authorization after B0 closes. Until then, no source, schema, migration, tests, Task registration, provider, active write scope, or runtime change may begin.
 
 ---
 
