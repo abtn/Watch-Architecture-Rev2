@@ -2,9 +2,9 @@
 
 ## Status and authority
 
-**Authorized implementation phase — 2026-11-04.** ADR-0032 is Accepted. The Operator authorized R7-A only. R7-B lifecycle operations and R7-C retrieval/citation/downstream-use work remain unauthorized.
+**COMPLETE — merged through PR #39 on 2026-11-04.** ADR-0032 is Accepted. R7-A was separately authorized, implemented, verified and merged. R7-B lifecycle operations and R7-C retrieval/citation/downstream-use remain separately gated and unauthorized.
 
-This plan is the frozen R7-A implementation contract; source implementation is in progress under the separate Operator authorization. It does not select a production evaluator provider or authorize live external model calls.
+This document is the frozen R7-A implementation contract and closeout record. It does not select a production evaluator provider or authorize live external model calls.
 
 ## 1. Bounded deliverables
 
@@ -175,3 +175,14 @@ R7-A is complete only when all of the following are demonstrated on the exact im
 - No live provider/model call occurs. PR CI runs against the exact final SHA.
 
 The implementation phase remains R7-A only. R7-B and R7-C require separate authorization.
+
+
+## 8. R7-A closeout evidence — 2026-11-04
+
+PR [#39](https://github.com/abtn/Watch-Architecture-Rev2/pull/39) merged to main at 75122a7b34c15e2445b81a2a719020667b55bf06. Tested PR head 47ffa532dacbc10b146ac7b0768302761a2a0b1b has identical Git tree 378aabcc376df5b0a44d2602e2790bcbb879618f.
+
+- Hosted exact-head CI [41844600681](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41844600681): PASS.
+- Operator-local exact-tree disposable PostgreSQL: one 0014_knowledge_quality head; Ruff passed; Mypy passed (31 files); full suite 631 passed in 79.22s; runner restored DB environment variables and removed container.
+- No production evaluator provider, credentials or live model call was introduced.
+
+**Phase status: COMPLETE.** R7-B and R7-C remain unauthorized.

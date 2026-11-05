@@ -19,7 +19,7 @@ So Watch is not simply a chatbot with memory or a universal expert. It is a reus
 
 A Plan is intended work, not execution truth. Tasks and Events record execution. Derived assessments do not become authority merely because a model produced them.
 
-## Current state (snapshot 2026-11-04)
+## Current state (snapshot 2026-11-05)
 
 [`PLAN.md`](PLAN.md) is the single source of current milestone status; the summary below is a convenience snapshot, not an authority record.
 
@@ -47,8 +47,8 @@ A Plan is intended work, not execution truth. Tasks and Events record execution.
 
 Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for current milestone status.
 
-- **R7-0 — complete; R7-A implementation authorized:** ADR-0032 and the entry gate have been revised against the current models, commit path, canonicality checks, Context manifest, and TaskRuntime. They propose distinct quality/use assessment records, explicit case-lineage semantics, a current LearningChange pointer, retired-plus-successor supersession, confidence preservation on revalidation, application-written citations, the accepted INV-12 amendment, and a non-active Task/write-scope matrix. R7-0 is complete and R7-A alone is authorized; R7-B/C remain unauthorized. See [PLAN.md](PLAN.md) for the authoritative status.
-- **R7 — Knowledge quality evaluation and lifecycle:** preserve the distinction between execution, abstraction quality, and downstream use; assess lineage without treating distinct Task IDs as independence; retain exact current-LearningChange/version history; represent supersession as retired plus successor; and distinguish Context inclusion from application-written citations. ADR-0032 was accepted on 2026-11-04; R7-A is authorized, while R7-B/C remain separately gated. See [ADR-0032](docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md), the [R7 entry gate](docs/development/r7-entry-gate.md), the [R7-A implementation plan](docs/development/r7-a-implementation-plan.md), and the non-active [Task matrix](docs/tasks.md).
+- **R7-0 and R7-A — complete:** ADR-0032 is Accepted for the original R7 architecture and R7-A. R7-A evidence lineage and KnowledgeQualityAssessment are merged and passed exact-head hosted and operator-local disposable-PostgreSQL verification (631 tests). R7-B Revision 3 is integrated as documentation-only B0 preparation in PR #40; B0 decisions remain open, and B1+ implementation and R7-C remain unauthorized. See PLAN.md.
+- **R7 — Knowledge quality evaluation and lifecycle:** R7-A is complete and merged. The [R7-B Revision 3 plan](docs/development/r7-b-implementation-plan.md) sequences B0–B6, including current-pointer/history, stable content hashing, reciprocal successor publication gating, D7 overlays, assessments, trusted commits and Context v3/projection republishing. B0 is not frozen; B1+ implementation and R7-C remain unauthorized.
 - **R8 — Multi-domain pressure test:** exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge stays outside the Kernel.
 - **R9 — Agent-assisted production workflow:** codified task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.
 - **Deferred cross-cutting work:** execution security (per-worker filesystem/network/tool surface and secret isolation) and broader multi-domain experience-library work beyond the initial R6 slice.
@@ -61,8 +61,9 @@ Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for curre
 - [`docs/development/agent-delivery-protocol.md`](docs/development/agent-delivery-protocol.md) — standing delivery authorization, automatic advancement, and merge conditions.
 - [`docs/development/local-embeddings.md`](docs/development/local-embeddings.md) — local LM Studio / BGE-M3 embedding API setup and smoke gate.
 - [`docs/development/r6-entry-gate.md`](docs/development/r6-entry-gate.md) — R6 decisions, implementation boundaries, acceptance gates, and the integrated R6 exit criteria.
-- [`docs/development/r7-entry-gate.md`](docs/development/r7-entry-gate.md) — proposed R7-A/B/C architecture sequence, unresolved decisions, acceptance evidence, and implementation authorization boundary.
-- [`docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md`](docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md) — proposed knowledge-quality evaluation and lifecycle architecture.
+- [`docs/development/r7-entry-gate.md`](docs/development/r7-entry-gate.md) — accepted R7 architecture, R7-A closeout, and separate R7-B/R7-C gates.
+- [`docs/development/r7-b-implementation-plan.md`](docs/development/r7-b-implementation-plan.md) — R7-B lifecycle preparation; not implementation authorization.
+- [`docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md`](docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md) — accepted knowledge-quality and lifecycle architecture.
 - [`docs/development/r6g-integrated-fixture-design.md`](docs/development/r6g-integrated-fixture-design.md) — detailed R6-G three-case fixture, service sequence, transaction/recovery boundaries, and required tests.
 - [`docs/development/r6-f-implementation-plan.md`](docs/development/r6-f-implementation-plan.md) — historical R6-F technical checkpoints, design decisions, and verification gates.
 - [`CHANGE_MAP.md`](CHANGE_MAP.md) — authority map for concepts.
