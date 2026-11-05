@@ -2057,7 +2057,23 @@ def test_operator_adapter_decides_and_finalizes_the_same_task(
         )
         if decision == "accept":
             assert result.knowledge_item_id is not None
-            assert session.get(KnowledgeItem, result.knowledge_item_id) is not None
+            item = session.get(KnowledgeItem, result.knowledge_item_id)
+            assert item is not None
+            assert item.current_learning_change_id == change.id
+            assert item.origin_learning_change_id == change.id
+            assert item.supersedes_item_id is None
+            assert item.superseded_by_id is None
+            assert isinstance(change.committed_state, dict)
+            assert set(change.committed_state) == {
+                "snapshot_version",
+                "state",
+                "snapshot_hash",
+            }
+            assert change.committed_state["snapshot_version"] == 1
+            assert change.committed_state["state"]["id"] == str(item.id)
+            assert change.committed_state["state"]["current_learning_change_id"] == str(
+                change.id
+            )
         else:
             assert result.knowledge_item_id is None
             assert session.scalar(
