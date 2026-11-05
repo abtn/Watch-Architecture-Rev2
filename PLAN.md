@@ -19,7 +19,7 @@ The supplied project ZIP has no Git metadata. Before taking repository action, v
 
 ## Next actionable step
 
-**Next actionable step:** review and resolve R7-B decisions in [docs/development/r7-b-implementation-plan.md](docs/development/r7-b-implementation-plan.md). R7-B implementation requires separate explicit Operator authorization; R7-C remains separately gated.
+**Next actionable step:** complete the R7-B B0 design freeze against [docs/development/r7-b-implementation-plan.md](docs/development/r7-b-implementation-plan.md) Revision 3: resolve its five explicit Operator decisions, accept the proposed ADR-0032 D5 addendum, validate documentation consistency, and record B0 acceptance. B1 remains blocked until separate written Operator implementation authorization. R7-C remains separately gated.
 
 ## Milestone overview
 
@@ -34,7 +34,7 @@ The supplied project ZIP has no Git metadata. Before taking repository action, v
 | R4 | **Complete** (closed 2026-10-20) | StrategyProposal boundary, multi-Vision/Workstream/Action semantics, deterministic validation and reconstruction. |
 | R5 | **Complete — closed 2026-10-24 by explicit operator decision** | Materialize one accepted Strategy as one durable Plan and ordinary Tasks; retain the Task-execution dependency for R6. |
 | R6 | **COMPLETE — G0 through R6-G; formally closed 2026-11-04.** | The integrated three-case source→Evaluation→distillation→Operator→Team Experience path passed the ten-proof technical review and received explicit Operator exit approval. PR #35 merged to `main` at `56745b613b5b77a21a514b4e261d3450f90c0df1`; final PR-head CI passed, and exact implementation-head hosted/local verification is recorded below. D10 remains create-only; R7 implementation remains separately gated. |
-| R7 | **R7-0 complete; R7-A complete and merged; R7-B preparation only; ADR-0032 Accepted.** | R7-A evidence lineage and KnowledgeQualityAssessment are implemented and verified. R7-B lifecycle/current-pointer/history, operation-specific approvals, canonicality consumers, Context v3 and projection publication are under documentation preparation only. R7-C citation, downstream-use and retrieval benchmark remain unauthorized. |
+| R7 | **R7-0 and R7-A complete; R7-B B0 design preparation; B1+ unauthorized; R7-C unauthorized.** | R7-A is merged and verified. R7-B Revision 3 is the working B0 plan; proposed D5 publication-gate amendment and hash/history contracts remain subject to explicit B0 Operator decisions. See this section and the R7-B implementation plan. |
 | R8 | Future | Multi-domain pressure test. |
 | R9 | Future | Codified agent-assisted production workflow. |
 
@@ -337,13 +337,27 @@ PR [#39](https://github.com/abtn/Watch-Architecture-Rev2/pull/39) merged on 2026
 
 **Verification:** hosted exact-head CI [41844600681](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41844600681) passed. Operator-local verification on the same tree passed fresh disposable-PostgreSQL migration to the single 0014_knowledge_quality head, Ruff, Mypy (31 source files), and 631 tests in 79.22s. The committed runner restored both database environment variables and removed its temporary container. Full evidence is in docs/testing.md. No production evaluator provider was selected.
 
-### R7-B — Canonical KnowledgeItem lifecycle — PREPARATION ONLY
+### R7-B — Canonical KnowledgeItem lifecycle — B0 DESIGN PREPARATION
 
-The technical proposal is [r7-b-implementation-plan.md](docs/development/r7-b-implementation-plan.md). It sequences current-pointer/history schema, revise/revalidate/supersede/retire proposals and trusted commits, TaskRuntime guards, canonicality consumer changes, Context manifest v3, and projection publication identity.
+**Status:** Revision 3 is integrated as the working B0 plan in PR #40. B0 is not yet frozen; implementation is **NOT AUTHORIZED**.
 
-Open decisions include snapshot-chain reconstruction sufficiency; typed revalidation assessment/Task; revise semantics for needs_review; evidence/assessment for retire and supersede; and the successor exposure window between separately accepting a successor and superseding its predecessor.
+The authoritative technical sequence is [r7-b-implementation-plan.md](docs/development/r7-b-implementation-plan.md). The proposed ADR-0032 D5 amendment is documented as a B0 proposal, not yet effective accepted architecture. R7-A remains the only completed/authorized implementation slice under the original ADR acceptance.
 
-**Boundary:** documentation preparation only. No R7-B schema, code, tests, migration, Task registration, provider or write scope is authorized. Implementation requires separate explicit Operator authorization.
+**B0 — Design freeze (documentation only):** reconcile the proposed D5 reciprocal successor fields/publication gate; finalize stable content hashing and legacy compatibility; freeze snapshot serialization/legacy decoding, approval fingerprints, assessment Task contracts, D7 review Event placement, Context v3, and graph concurrency. Resolve the five Operator decisions listed in the R7-B plan. No source, tests, migrations, runtime settings or active Task scopes change in B0.
+
+**B1 — Schema and reconstruction proof:** add/backfill the current LearningChange pointer and both supersession links; update both LearningChange operation/target constraints; roll out create pointer writes atomically; add the legacy snapshot decoder and D7-overlay-aware history validator. Stop if reconstruction cannot be proven; propose the smallest append-only history record rather than adding one unilaterally.
+
+**B2 — Hash and canonicality consumers:** introduce the versioned content-hash scheme and controlled stale/republish transition; update canonicality checks, projections and Context manifest v3 while preserving v1/v2 replay; exercise only the create operation.
+
+**B3 — Assessments:** implement immutable KnowledgeRevalidationAssessment and KnowledgeLifecycleAssessment with narrow, non-active-until-authorized assessment Tasks. No production evaluator provider or model scoring for lifecycle assessments.
+
+**B4 — Revise/revalidate:** extend the single LearningChange/trusted Operator/TaskRuntime commit path with exact pointer/version compare-and-set, status-preserving revise, and evidence-bound revalidation.
+
+**B5 — Supersede/retire/candidate creation:** implement create-with-supersedes_item_id, the D7-aware reciprocal publication gate, abandoned-candidate rules and Team-scoped graph lock. The predecessor and candidate must never both be exposed.
+
+**B6 — Legacy compatibility and hardening:** repeated review/revalidation history, legacy Events/snapshots, approval replay after later transitions, unauthorized drift rejection and full regression verification.
+
+**Boundary:** documentation preparation only. No R7-B schema, code, tests, migration, Task registration, provider or write scope is authorized by this plan. B1–B6 require a separate written Operator implementation authorization after B0 acceptance. R7-C remains separately gated.
 
 ### R7-C — Retrieval quality and downstream-use evaluation — NOT AUTHORIZED
 
