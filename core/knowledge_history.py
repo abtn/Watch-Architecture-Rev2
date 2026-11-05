@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
@@ -17,7 +17,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core.models import Event, KnowledgeItem, LearningChange, Outcome, Task
+from core.models import Event, KnowledgeItem, LearningChange, Outcome, Task, TeamPolicy
+from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
 from core.state_assessment import _canonical_json
 
 
@@ -339,6 +340,32 @@ def _validate_learning_change_provenance(
         or (task.status == "running" and task.completed_at is not None)
     ):
         raise KnowledgeHistoryError("knowledge_history_operator_provenance_invalid")
+
+    policy = session.scalar(
+        select(TeamPolicy).where(
+            TeamPolicy.team_id == task.team_id,
+            TeamPolicy.version == task.policy_version,
+        )
+    )
+    if policy is None:
+        raise KnowledgeHistoryError("knowledge_history_policy_pin_missing")
+    try:
+        interval_days = knowledge_item_review_interval_days(
+            policy.rules, policy.schema_version
+        )
+    except InvalidPolicyError as error:
+        raise KnowledgeHistoryError("knowledge_history_policy_pin_invalid") from error
+    expected_review_after = (
+        change.committed_at + timedelta(days=interval_days)
+        if interval_days is not None
+        else None
+    )
+    if state["review_after"] != _timestamp_text(expected_review_after, nullable=True):
+        raise KnowledgeHistoryError("knowledge_history_review_date_mismatch")
+    if change.operation == "revalidate" and (
+        state["last_validated_at"] != _timestamp_text(change.committed_at)
+    ):
+        raise KnowledgeHistoryError("knowledge_history_validation_date_mismatch")
 
     starts = list(
         session.scalars(
