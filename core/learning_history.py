@@ -497,8 +497,11 @@ def reconstruct_knowledge_item_history(
             )
         except InvalidPolicyError as error:
             raise KnowledgeHistoryError("history_approval_policy_invalid") from error
+        committed_at = _aware_datetime(
+            change.committed_at, "learning_change_committed_at"
+        )
         expected_review_after = (
-            change.committed_at + dt.timedelta(days=interval_days)
+            committed_at + dt.timedelta(days=interval_days)
             if interval_days is not None
             else None
         )
@@ -772,6 +775,8 @@ def _validated_review_markers(
         if isinstance(version, bool) or not isinstance(version, int) or version < 1:
             raise KnowledgeHistoryError("review_event_item_version_invalid")
         review_after = record.get("review_after")
+        if not isinstance(review_after, str):
+            raise KnowledgeHistoryError("review_event_item_review_after_invalid")
         _parse_timestamp(review_after, "review_after")
         origin_id = _canonical_uuid(record.get("origin_learning_change_id"))
         pointer = (
