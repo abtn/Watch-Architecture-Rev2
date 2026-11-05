@@ -759,7 +759,7 @@ class KnowledgeItem(Base):
         UniqueConstraint("current_learning_change_id",
             name="uq_knowledge_items_current_learning_change"),
         UniqueConstraint("superseded_by_id", name="uq_knowledge_items_superseded_by"),
-        Index("ix_knowledge_items_pending_candidate", "supersedes_item_id",
+        Index("uq_knowledge_items_pending_candidate", "supersedes_item_id",
             unique=True, postgresql_where=sa.text(
                 "supersedes_item_id IS NOT NULL AND status <> 'retired'"
             )),
