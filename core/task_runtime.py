@@ -11,6 +11,11 @@ from uuid import UUID, uuid4, uuid5
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from core.knowledge_history import (
+    KnowledgeHistoryError,
+    knowledge_item_snapshot_state,
+    reconstruct_knowledge_item_history,
+)
 from core.models import (
     Evaluation,
     Event,
@@ -1127,6 +1132,7 @@ class TaskRuntime:
                     "version": item.version,
                     "review_after": review_after.astimezone(timezone.utc).isoformat(),
                     "origin_learning_change_id": str(item.origin_learning_change_id),
+                    "current_learning_change_id": str(item.current_learning_change_id),
                 }
             )
             item.status = "needs_review"
@@ -1137,7 +1143,7 @@ class TaskRuntime:
             task_id=task.id,
             type="knowledge_items_reviewed",
             payload={
-                "schema_version": 1,
+                "schema_version": 2,
                 "team_id": str(task.team_id),
                 "task_id": str(task.id),
                 "attempt_count": task.attempt_count,
@@ -2928,13 +2934,16 @@ class TaskRuntime:
             item = items[0]
             expected_payload["knowledge_item_id"] = str(item.id)
             expected_payload["knowledge_item_version"] = 1
+            try:
+                history = reconstruct_knowledge_item_history(session, item)
+            except KnowledgeHistoryError as error:
+                raise TaskNotFinalizable(str(error)) from error
             if (
                 learning_change.decision_reason is not None
                 or item.team_id != task.team_id
-                or item.version != 1
-                or item.status != "active"
-                or learning_change.committed_state
-                != TaskRuntime._knowledge_item_state(item)
+                or not history.pointer_order
+                or history.pointer_order[0] != learning_change.id
+                or history.states_by_pointer[learning_change.id]["version"] != 1
             ):
                 raise TaskNotFinalizable("committed_knowledge_item_mismatch")
         else:
@@ -2965,36 +2974,8 @@ class TaskRuntime:
 
     @staticmethod
     def _knowledge_item_state(item: KnowledgeItem) -> dict[str, Any]:
-        """Reconstruct every canonical field captured by LearningCommitService."""
-        return {
-            "id": str(item.id),
-            "team_id": str(item.team_id),
-            "kind": item.kind,
-            "title": item.title,
-            "statement": item.statement,
-            "body": item.body,
-            "applicability": item.applicability,
-            "preconditions": item.preconditions,
-            "assumptions": item.assumptions,
-            "limitations": item.limitations,
-            "non_applicability": item.non_applicability,
-            "failure_modes": item.failure_modes,
-            "known_counterexamples": item.known_counterexamples,
-            "missing_information": item.missing_information,
-            "uncertainty": item.uncertainty,
-            "confidence": str(item.confidence),
-            "status": item.status,
-            "version": item.version,
-            "last_validated_at": (
-                item.last_validated_at.isoformat()
-                if item.last_validated_at is not None
-                else None
-            ),
-            "review_after": (
-                item.review_after.isoformat() if item.review_after is not None else None
-            ),
-            "origin_learning_change_id": str(item.origin_learning_change_id),
-        }
+        """Return the complete current canonical KnowledgeItem state."""
+        return knowledge_item_snapshot_state(item)
 
     @staticmethod
     def _validate_learning_change_result(
