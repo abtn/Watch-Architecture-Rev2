@@ -523,7 +523,7 @@ def reconstruct_knowledge_item_history(
 
 def _validate_learning_change_approval(
     session: Session, change: LearningChange
-) -> None:
+) -> Task:
     if (
         change.status != "accepted"
         or change.committed_by_task_id is None
@@ -539,6 +539,10 @@ def _validate_learning_change_approval(
         or task.task_type != "approve_learning_change"
         or task.status not in {"running", "done"}
         or task.attempt_count < 1
+        or task.allowed_writes != ["LearningChange", "KnowledgeItem"]
+        or task.objective_id is not None
+        or task.plan_id is not None
+        or task.plan_action_id is not None
     ):
         raise KnowledgeHistoryError("accepted_change_approval_task_invalid")
     events = list(
@@ -571,6 +575,66 @@ def _validate_learning_change_approval(
         or attempt > task.attempt_count
     ):
         raise KnowledgeHistoryError("accepted_change_decision_attempt_invalid")
+    start_events = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == "task_started",
+                Event.payload["attempt_count"].as_integer() == attempt,
+            )
+        )
+    )
+    if (
+        len(start_events) != 1
+        or start_events[0].payload
+        != {
+            "from_status": "pending",
+            "to_status": "running",
+            "attempt_count": attempt,
+        }
+        or start_events[0].created_at > change.committed_at
+    ):
+        raise KnowledgeHistoryError("accepted_change_task_start_provenance_invalid")
+
+    if task.status == "done":
+        outcomes = list(
+            session.scalars(
+                select(Outcome).where(
+                    Outcome.recorded_by_task_id == task.id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+        )
+        completed = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == "task_completed",
+                )
+            )
+        )
+        if len(outcomes) != 1 or len(completed) != 1:
+            raise KnowledgeHistoryError("accepted_change_terminal_provenance_missing")
+        outcome = outcomes[0]
+        terminal_payload = completed[0].payload
+        if (
+            outcome.team_id != change.team_id
+            or outcome.subject_kind != "task"
+            or outcome.subject_id != task.id
+            or not isinstance(terminal_payload, dict)
+            or terminal_payload.get("to_status") != "done"
+            or terminal_payload.get("result_category")
+            != "success_learning_change_accepted"
+            or terminal_payload.get("attempt_count") != task.attempt_count
+            or terminal_payload.get("learning_change_id") != str(change.id)
+            or terminal_payload.get("outcome_id") != str(outcome.id)
+            or terminal_payload.get("observation_snapshot_ref")
+            != outcome.observation_snapshot_ref
+            or terminal_payload.get("observation_hash") != outcome.observation_hash
+            or task.completed_at is None
+        ):
+            raise KnowledgeHistoryError("accepted_change_terminal_provenance_invalid")
+    return task
 
 
 def _validated_review_markers(
