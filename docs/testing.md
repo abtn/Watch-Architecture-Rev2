@@ -380,3 +380,12 @@ The committed `scripts/test-disposable-postgres.ps1` ran on the same PR-head tre
 - Script restored both database environment variables and removed its disposable container.
 
 No production evaluator provider was wired or selected; tests used deterministic fakes and no live model calls occurred. R7-A is complete and merged. R7-B is in documentation preparation only and is not authorized; R7-C citations/retrieval/downstream use remain unauthorized.
+
+
+## R7-B B0 — design-freeze and documentation validation record (2026-11-05)
+
+The Operator accepted all five B0 decisions, the R7-B D1 typed-assessment extension, and the D5 reciprocal-successor/publication-gate amendment on 2026-11-05. The accepted contracts are recorded in ADR-0032 and `docs/development/r7-b-implementation-plan.md`; the decision index, PLAN status, R7 entry gate, Task matrix, invariant, CHANGE_MAP, CONTEXT, and README are aligned by the B0 documentation integration.
+
+**Accepted design checks:** confidence is part of semantic content identity; confidence-only revise is content-changing and clears validation; existing canonical evidence may support revalidation only while temporally relevant and source-valid; the trusted host identity remains bound in the approval-request fingerprint and decision record; the exact snapshot/content domain separators are frozen; and the complete D5 candidate, abandonment, edge-case, visibility, and graph-lock contracts are accepted. Snapshot-first history reconstruction remains conditional on B1 proof; any failure requires a separate Operator decision on the smallest append-only history record.
+
+**Scope and verification boundary:** this record concerns documentation and architecture acceptance only. No source files, migrations, tests, Task registrations, provider configuration, active write scopes, or runtime behavior are changed by B0. No code test suite, database migration, or local disposable-PostgreSQL run is claimed by this documentation-only checkpoint. B0 closeout requires the documentation-only PR to pass its checks and merge. B1 remains unauthorized pending separate written Operator implementation authorization.
