@@ -387,7 +387,10 @@ def history_env(
                 team_id=team_id,
                 version=1,
                 schema_version=2,
-                rules={"sources": []},
+                rules={
+                    "sources": [],
+                    "review": {"knowledge_item_interval_days": 2},
+                },
             )
         )
     env: dict[str, object] = {
@@ -602,7 +605,7 @@ def test_reconstructs_review_then_later_revise_and_preserves_pointer_order(histo
         item.status = "needs_review"
 
     revised_at = reviewed_at + timedelta(hours=2)
-    next_review = revised_at + timedelta(days=5)
+    next_review = revised_at + timedelta(days=2)
     child_id = uuid4()
     with session_factory.begin() as session:
         item = session.get(KnowledgeItem, item_id)
@@ -667,6 +670,7 @@ def test_reconstruction_rejects_missing_parent(history_env):
         committed["current_learning_change_id"] = str(child_id)
         committed["version"] = 2
         committed["title"] = "A disconnected revision"
+        committed["review_after"] = committed_at + timedelta(days=2)
         _add_learning_change(
             session,
             team_id=team_id,
@@ -706,16 +710,17 @@ def test_reconstruction_rejects_fork_from_one_predecessor(history_env):
             current_id=root_id,
             review_after=review_after,
         )
-        for change_id, title in (
-            (first_id, "Fork one"),
-            (second_id, "Fork two"),
+        for offset, (change_id, title) in enumerate(
+            ((first_id, "Fork one"), (second_id, "Fork two")), start=1
         ):
+            child_commit_at = committed_at + timedelta(seconds=offset)
             committed = dict(root_state)
             committed.update(
                 {
                     "current_learning_change_id": str(change_id),
                     "version": 2,
                     "title": title,
+                    "review_after": child_commit_at + timedelta(days=2),
                 }
             )
             _add_learning_change(
@@ -728,7 +733,7 @@ def test_reconstruction_rejects_fork_from_one_predecessor(history_env):
                 target_id=item_id,
                 previous_state=root_state,
                 committed_state=committed,
-                committed_at=committed_at + timedelta(seconds=1),
+                committed_at=child_commit_at,
             )
 
     with session_factory() as session:
@@ -766,10 +771,11 @@ def test_legacy_review_event_ambiguity_fails_closed(history_env):
         item.status = "needs_review"
         previous = knowledge_item_snapshot_state(item)
         committed = dict(previous)
+        ambiguous_commit_at = review_after - timedelta(days=2)
         committed.update(
             {
                 "status": "active",
-                "last_validated_at": reviewed_at + timedelta(minutes=1),
+                "last_validated_at": ambiguous_commit_at,
                 "current_learning_change_id": str(child_id),
                 # Deliberately retain the same version/date so the old Event
                 # has two plausible lifecycle positions and must fail closed.
@@ -785,10 +791,10 @@ def test_legacy_review_event_ambiguity_fails_closed(history_env):
             target_id=item_id,
             previous_state=previous,
             committed_state=committed,
-            committed_at=reviewed_at + timedelta(minutes=2),
+            committed_at=ambiguous_commit_at,
         )
         item.status = "active"
-        item.last_validated_at = reviewed_at + timedelta(minutes=1)
+        item.last_validated_at = ambiguous_commit_at
         item.current_learning_change_id = child_id
 
     with session_factory() as session:
