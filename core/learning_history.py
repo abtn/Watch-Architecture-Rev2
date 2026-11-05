@@ -416,10 +416,8 @@ def reconstruct_history(
         state=final_state,
         learning_change_ids=tuple(change.id for change in ordered),
         reconstructed_legacy_fields=frozenset(legacy_fields),
-        applied_review_event_ids=tuple(
-            marker.event_id
-            for marker in markers
-        ),
+        applied_review_event_ids=tuple(marker.event_id for marker in markers),
+        states=tuple(dict(state) for state in states),
     )
 
 
