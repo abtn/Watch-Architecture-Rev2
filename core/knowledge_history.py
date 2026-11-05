@@ -321,16 +321,22 @@ def _validate_learning_change_provenance(
         task is None
         or task.team_id != change.team_id
         or task.task_type != "approve_learning_change"
-        or task.status != "done"
-        or task.completed_at is None
+        or task.status not in {"running", "done"}
         or task.attempt_count < 1
         or task.allowed_writes != ["LearningChange", "KnowledgeItem"]
         or change.operator_id is None
         or not change.operator_id
         or change.decision_reason is not None
         or change.committed_at is None
-        or _parse_time(task.completed_at) != _parse_time(change.committed_at)
         or change.committed_state is None
+        or (
+            task.status == "done"
+            and (
+                task.completed_at is None
+                or _parse_time(task.completed_at) != _parse_time(change.committed_at)
+            )
+        )
+        or (task.status == "running" and task.completed_at is not None)
     ):
         raise KnowledgeHistoryError("knowledge_history_operator_provenance_invalid")
 
@@ -376,9 +382,11 @@ def _validate_learning_change_provenance(
             "attempt_count": task.attempt_count,
         }
         or len(decisions) != 1
-        or len(completions) != 1
-        or len(outcomes) != 1
     ):
+        raise KnowledgeHistoryError("knowledge_history_operator_task_events_invalid")
+    if task.status == "done" and (len(completions) != 1 or len(outcomes) != 1):
+        raise KnowledgeHistoryError("knowledge_history_operator_task_events_invalid")
+    if task.status == "running" and (completions or outcomes):
         raise KnowledgeHistoryError("knowledge_history_operator_task_events_invalid")
 
     payload = decisions[0].payload
@@ -404,22 +412,23 @@ def _validate_learning_change_provenance(
     ):
         raise KnowledgeHistoryError("knowledge_history_operator_decision_event_invalid")
 
-    completion_payload = completions[0].payload
-    outcome = outcomes[0]
-    if (
-        not isinstance(completion_payload, dict)
-        or completion_payload.get("from_status") != "running"
-        or completion_payload.get("to_status") != "done"
-        or completion_payload.get("result_category")
-        != "success_learning_change_accepted"
-        or completion_payload.get("learning_change_id") != str(change.id)
-        or completion_payload.get("outcome_id") != str(outcome.id)
-        or outcome.team_id != task.team_id
-        or outcome.subject_kind != "task"
-        or outcome.subject_id != task.id
-        or _parse_time(outcome.observed_at) != _parse_time(task.completed_at)
-    ):
-        raise KnowledgeHistoryError("knowledge_history_operator_terminal_invalid")
+    if task.status == "done":
+        completion_payload = completions[0].payload
+        outcome = outcomes[0]
+        if (
+            not isinstance(completion_payload, dict)
+            or completion_payload.get("from_status") != "running"
+            or completion_payload.get("to_status") != "done"
+            or completion_payload.get("result_category")
+            != "success_learning_change_accepted"
+            or completion_payload.get("learning_change_id") != str(change.id)
+            or completion_payload.get("outcome_id") != str(outcome.id)
+            or outcome.team_id != task.team_id
+            or outcome.subject_kind != "task"
+            or outcome.subject_id != task.id
+            or _parse_time(outcome.observed_at) != _parse_time(task.completed_at)
+        ):
+            raise KnowledgeHistoryError("knowledge_history_operator_terminal_invalid")
 
 
 def _review_event_task_is_valid(
