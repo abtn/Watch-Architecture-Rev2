@@ -410,6 +410,7 @@ def reconstruct_history(
             expected_previous,
             states[index],
             change_id=change.id,
+            committed_at=change.committed_at,
         )
 
     final_state = dict(states[-1])
@@ -726,6 +727,7 @@ def _validate_transition(
     committed: dict[str, Any],
     *,
     change_id: uuid.UUID,
+    committed_at: dt.datetime,
 ) -> None:
     if (
         previous["id"] != committed["id"]
