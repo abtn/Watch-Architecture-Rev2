@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+import hashlib
+import json
 from uuid import UUID, uuid4
 
 import pytest
@@ -89,13 +91,38 @@ def _add_approval_task_and_events(
 ) -> None:
     proposal_task_id = uuid4()
     approval_task_id = uuid4()
-    outcome_id = uuid4()
-    snapshot_digest = "c" * 64
-    snapshot_ref = f"snap://sha256/{snapshot_digest}"
-    observation_hash = f"sha256:{snapshot_digest}"
+    proposal_outcome_id = uuid4()
+    approval_outcome_id = uuid4()
+    proposal_digest = "d" * 64
+    approval_digest = "c" * 64
+    proposal_snapshot_ref = f"snap://sha256/{proposal_digest}"
+    approval_snapshot_ref = f"snap://sha256/{approval_digest}"
+    proposal_observation_hash = f"sha256:{proposal_digest}"
+    approval_observation_hash = f"sha256:{approval_digest}"
     proposal_hash = "sha256:" + "a" * 64
     evidence_hash = "sha256:" + "b" * 64
+    quality_assessment_id = uuid4()
+    quality_assessment_hash = "sha256:" + "f" * 64
+    idempotency_key_hash = "sha256:" + "9" * 64
     operator_id = "test-host|operator-1"
+    fingerprint_payload = json.dumps(
+        {
+            "operation": "approve_learning_change",
+            "team_id": str(team_id),
+            "learning_change_id": str(learning_change_id),
+            "decision": "accept",
+            "rejection_reason": None,
+            "operator_id": operator_id,
+            "knowledge_quality_assessment_id": str(quality_assessment_id),
+            "knowledge_quality_assessment_hash": quality_assessment_hash,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    request_fingerprint = "sha256:" + hashlib.sha256(
+        fingerprint_payload.encode("utf-8")
+    ).hexdigest()
 
     session.add_all(
         [
@@ -135,6 +162,65 @@ def _add_approval_task_and_events(
         [
             Event(
                 id=uuid4(),
+                task_id=proposal_task_id,
+                type="task_started",
+                payload={
+                    "from_status": "pending",
+                    "to_status": "running",
+                    "attempt_count": 1,
+                },
+                created_at=committed_at - timedelta(seconds=2),
+            ),
+            Outcome(
+                id=proposal_outcome_id,
+                team_id=team_id,
+                subject_kind="task",
+                subject_id=proposal_task_id,
+                outcome_type="task_execution",
+                expected=None,
+                observation_snapshot_ref=proposal_snapshot_ref,
+                observation_hash=proposal_observation_hash,
+                observed_at=committed_at,
+                recorded_by_task_id=proposal_task_id,
+            ),
+            Event(
+                id=uuid4(),
+                task_id=proposal_task_id,
+                type="task_completed",
+                payload={
+                    "from_status": "running",
+                    "to_status": "done",
+                    "attempt_count": 1,
+                    "result_category": "success_learning_change_proposed",
+                    "failure_reason": None,
+                    "outcome_id": str(proposal_outcome_id),
+                    "observation_snapshot_ref": proposal_snapshot_ref,
+                    "observation_hash": proposal_observation_hash,
+                    "learning_change_id": str(learning_change_id),
+                },
+                created_at=committed_at,
+            ),
+            Event(
+                id=uuid4(),
+                task_id=approval_task_id,
+                type="operator_task_requested",
+                payload={
+                    "schema_version": 2,
+                    "operation": "approve_learning_change",
+                    "learning_change_id": str(learning_change_id),
+                    "decision": "accept",
+                    "rejection_reason": None,
+                    "operator_id": operator_id,
+                    "idempotency_key_hash": idempotency_key_hash,
+                    "request_fingerprint": request_fingerprint,
+                    "policy_version": policy_version,
+                    "knowledge_quality_assessment_id": str(quality_assessment_id),
+                    "knowledge_quality_assessment_hash": quality_assessment_hash,
+                },
+                created_at=committed_at - timedelta(seconds=1),
+            ),
+            Event(
+                id=uuid4(),
                 task_id=approval_task_id,
                 type="task_started",
                 payload={
@@ -161,18 +247,20 @@ def _add_approval_task_and_events(
                     "committed_at": committed_at.isoformat(),
                     "knowledge_item_id": str(item_id),
                     "knowledge_item_version": state["version"],
+                    "knowledge_quality_assessment_id": str(quality_assessment_id),
+                    "knowledge_quality_assessment_hash": quality_assessment_hash,
                 },
                 created_at=committed_at,
             ),
             Outcome(
-                id=outcome_id,
+                id=approval_outcome_id,
                 team_id=team_id,
                 subject_kind="task",
                 subject_id=approval_task_id,
                 outcome_type="task_execution",
                 expected=None,
-                observation_snapshot_ref=snapshot_ref,
-                observation_hash=observation_hash,
+                observation_snapshot_ref=approval_snapshot_ref,
+                observation_hash=approval_observation_hash,
                 observed_at=committed_at,
                 recorded_by_task_id=approval_task_id,
             ),
@@ -186,9 +274,9 @@ def _add_approval_task_and_events(
                     "attempt_count": 1,
                     "result_category": "success_learning_change_accepted",
                     "failure_reason": None,
-                    "outcome_id": str(outcome_id),
-                    "observation_snapshot_ref": snapshot_ref,
-                    "observation_hash": observation_hash,
+                    "outcome_id": str(approval_outcome_id),
+                    "observation_snapshot_ref": approval_snapshot_ref,
+                    "observation_hash": approval_observation_hash,
                     "learning_change_id": str(learning_change_id),
                 },
                 created_at=committed_at,
@@ -201,6 +289,8 @@ def _add_approval_task_and_events(
         operator_id,
         proposal_hash,
         evidence_hash,
+        quality_assessment_id,
+        quality_assessment_hash,
     )
 
 
@@ -228,9 +318,15 @@ def _add_learning_change(
         state=committed_state or previous_state or {},
         committed_at=committed_at,
     )
-    proposal_task_id, approval_task_id, operator_id, proposal_hash, evidence_hash = (
-        session.info["history_task_ids"][change_id]
-    )
+    (
+        proposal_task_id,
+        approval_task_id,
+        operator_id,
+        proposal_hash,
+        evidence_hash,
+        quality_assessment_id,
+        quality_assessment_hash,
+    ) = session.info["history_task_ids"][change_id]
     stored_committed = (
         _legacy_state(committed_state)
         if legacy_root and committed_state is not None
