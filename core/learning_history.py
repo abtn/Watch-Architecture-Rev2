@@ -349,7 +349,10 @@ def reconstruct_history(
     overlays: dict[uuid.UUID, ReviewMarker] = {}
     node_index = {change.id: index for index, change in enumerate(ordered)}
     for marker in markers:
-        if marker.item_id != item_id or marker.origin_learning_change_id != origin_learning_change_id:
+        if (
+            marker.item_id != item_id
+            or marker.origin_learning_change_id != origin_learning_change_id
+        ):
             raise KnowledgeHistoryError("review_event_item_identity_mismatch")
         if marker.current_learning_change_id is not None:
             index = node_index.get(marker.current_learning_change_id)
