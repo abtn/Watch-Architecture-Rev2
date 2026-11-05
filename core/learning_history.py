@@ -18,7 +18,8 @@ from typing import Any, Iterable, Mapping
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from core.models import Event, KnowledgeItem, LearningChange, Outcome, Task
+from core.models import Event, KnowledgeItem, LearningChange, Outcome, Task, TeamPolicy
+from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
 
 SNAPSHOT_SCHEMA_VERSION = 1
 
@@ -65,6 +66,7 @@ _CONTENT_FIELDS = (
     "assumptions",
     "limitations",
     "non_applicability",
+    "confidence",
     "failure_modes",
     "known_counterexamples",
     "missing_information",
@@ -120,6 +122,7 @@ class KnowledgeHistoryResult:
     learning_change_ids: tuple[uuid.UUID, ...]
     reconstructed_legacy_fields: frozenset[str]
     applied_review_event_ids: tuple[uuid.UUID, ...]
+    states: tuple[dict[str, Any], ...]
 
 
 def knowledge_item_state(item: KnowledgeItem) -> dict[str, Any]:
