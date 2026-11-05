@@ -200,4 +200,4 @@ No source code, tests, migrations, schema, runtime configuration, provider confi
 
 **R7-A closeout:** PR #39 merged to main at 75122a7b34c15e2445b81a2a719020667b55bf06. Tested head 47ffa532dacbc10b146ac7b0768302761a2a0b1b has identical Git tree. Hosted CI [41844600681](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41844600681) passed; Operator-local disposable-PostgreSQL verification passed 631 tests in 79.22s, fresh single-head 0014_knowledge_quality migration, Ruff, Mypy and cleanup.
 
-**Current gate:** R7-0 and R7-A are complete. R7-B is documentation preparation only; implementation remains unauthorized pending Operator review and separate authorization. R7-C remains unauthorized.
+**Current gate:** R7-0 and R7-A are complete. R7-B B0 design decisions and D1/D5 extensions were accepted on 2026-11-05; documentation integration and validation remain in progress. B1–B6 implementation requires separate written Operator authorization. R7-C remains unauthorized.
