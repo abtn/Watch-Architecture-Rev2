@@ -241,6 +241,9 @@ class TeamExperienceEnv:
                         last_validated_at=None,
                         review_after=review_after,
                         origin_learning_change_id=learning_change_id,
+                        current_learning_change_id=learning_change_id,
+                        supersedes_item_id=None,
+                        superseded_by_id=None,
                     ),
                     Outcome(
                         id=uuid4(),
