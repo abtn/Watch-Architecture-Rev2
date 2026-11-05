@@ -2,10 +2,10 @@
 
 ## Status and authority
 
-**R7-0: COMPLETE — 2026-11-04. R7-A: AUTHORIZED / IMPLEMENTATION IN PROGRESS.**
+**R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 design preparation only.**
 
-- This document records the accepted R7 architecture and phase gates. It authorizes R7-A only; it does not authorize R7-B or R7-C.
-- ADR-0032 is **Accepted — 2026-11-04**. The Operator authorized R7-A only; R7-B and R7-C remain unauthorized.
+- This document records the accepted R7 architecture and separate phase gates. R7-A is complete; R7-B is currently documentation-only B0 preparation; R7-B implementation and R7-C remain unauthorized.
+- ADR-0032 is **Accepted — 2026-11-04 for the original R7 architecture and R7-A scope**. A proposed R7-B D5 addendum is included for B0 review but is not effective until explicit B0 acceptance.
 - PLAN.md remains the sole authority for milestone status and next action.
 - R6 is formally complete through R6-G. R6-G approval and merge do not authorize R7.
 - The completed R7-0 change was documentation-only. R7-A authorization now permits only its bounded evidence-lineage and KnowledgeQualityAssessment implementation scope; it does not authorize R7-B lifecycle commits or R7-C retrieval/use work.
@@ -65,15 +65,25 @@ Exit requirements:
 
 ### R7-B — Canonical KnowledgeItem lifecycle
 
-**Status:** PREPARATION ONLY — implementation is not authorized. Detailed proposal: [r7-b-implementation-plan.md](r7-b-implementation-plan.md).
+**Status:** Revision 3 integrated as the working B0 design plan in [r7-b-implementation-plan.md](r7-b-implementation-plan.md). B0 is not yet frozen. Implementation is **NOT AUTHORIZED**.
 
-The proposed scope extends R7-A into revise, revalidate, supersede and retire through existing LearningChange, trusted Operator and TaskRuntime. Checkpoints: B0 source/contract preflight; B1 schema/current-pointer/history proof; B2 proposals/assessments; B3 trusted commit; B4 canonicality, Context v3 and projection publication; B5 integrated verification.
+R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path to revise, revalidate, supersede and retire KnowledgeItems. It preserves stable item identity, immutable origin provenance, current-pointer history, Team isolation, D7 review rules, and fail-closed retrieval. It adds no runtime, dispatcher, scheduler, public API/auth stack or production evaluator provider.
 
-Preserve ADR-0032: stable item ID, immutable origin pointer, current pointer to latest accepted LC, version increments only on revise, confidence changes only on revise, revalidation needs_review→active with unchanged content/hash/version/confidence, supersession retired plus same-Team successor pointer, retirement without successor, scheduled review active→needs_review only, and fresh projection publication before revalidated knowledge is exposed.
+**Proposed D5 amendment:** the B0 proposal adds immutable successor-side `supersedes_item_id`, predecessor-side `superseded_by_id`, a pending-successor publication gate, D7-aware candidate/supersede eligibility, stale proposal semantics, graph concurrency control, versioned hashes/snapshots, and typed revalidation/lifecycle assessments. The addendum is explicitly proposed in ADR-0032 and is not effective accepted architecture until the Operator records B0 acceptance.
 
-Before implementation resolve snapshot-chain reconstruction, typed revalidation assessment/Task, revise behavior for needs_review, evidence/assessment for retire/supersede, and the exposure window between separately accepting successor and superseding predecessor. Single-target supersession does not atomically commit both items.
+**Phase sequence:**
 
-**Exit gate:** freeze current-pointer/history reconstruction, exact operation preconditions, request/proposal hashes, assessment contracts, concurrency/replay, Context v3 and projection pointer checks. R7-B requires separate explicit implementation authorization. No R7-B code/schema/tests are authorized.
+1. **B0 — Design freeze (documentation only):** resolve all five Operator decisions, accept the D5 addendum, finalize content-hash participation and scheme literals, evidence freshness, Operator identity binding, abandoned-candidate rules, assessment Task contracts, snapshot compatibility, approval fingerprints, and graph lock. Documentation validation and Operator acceptance are required. No code or active Task scopes.
+2. **B1 — Schema and history proof:** current pointer and reciprocal supersession fields, safe backfill, create-pointer rollout, both LearningChange constraints, legacy snapshot decoder, chain reconstruction and D7 overlay validation. Stop and seek a history-table decision if reconstruction cannot be proven.
+3. **B2 — Hash/projection/Context and chain-aware consumers:** stable content-hash scheme, old-scheme verification and stale/republish path, current-pointer projection pins, Context manifest v3, v1/v2 replay, while enabling only create.
+4. **B3 — Assessments:** immutable KnowledgeRevalidationAssessment and KnowledgeLifecycleAssessment through narrow Task paths; no production provider or model scoring for lifecycle assessments.
+5. **B4 — Revise/revalidate:** exact pointer/version compare-and-set, status-preserving revise, evidence-bound revalidation and fresh projection publication.
+6. **B5 — Supersede/retire/candidate creation:** create-with-successor, reciprocal publication gate, D7-aware commit, abandoned-candidate rules and Team-scoped graph lock.
+7. **B6 — Legacy compatibility and hardening:** legacy Events/snapshots, repeated review/revalidation, replay after later transitions, mutation rejection and full regression verification.
+
+**B0 decisions still open:** whether confidence participates in the new content hash and whether confidence-only revise clears validation; whether re-examined existing evidence is sufficient or new observations are required; where Operator identity is bound in the approval fingerprint; final snapshot/content domain-separator literals; acceptance of the candidate-creation and abandonment rules.
+
+**Implementation gate:** after B0 is accepted and all decisions are recorded, B1 onward still require separate written Operator implementation authorization. No R7-B code/schema/tests, migration, Task registration, provider or write scope is authorized now.
 
 ### R7-C — Retrieval quality and downstream-use evaluation
 
