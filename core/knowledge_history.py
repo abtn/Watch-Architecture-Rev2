@@ -333,6 +333,8 @@ def _parse_time(value: object) -> datetime:
         raise KnowledgeHistoryError("knowledge_review_event_timestamp_invalid") from error
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise KnowledgeHistoryError("knowledge_review_event_timestamp_naive")
+    if parsed.utcoffset() != timedelta(0):
+        raise KnowledgeHistoryError("knowledge_review_event_timestamp_not_utc")
     return parsed.astimezone(timezone.utc)
 
 
@@ -514,6 +516,7 @@ def _review_event_task_is_valid(
     if (
         payload.get("task_id") != str(task.id)
         or payload.get("team_id") != str(task.team_id)
+        or isinstance(payload.get("attempt_count"), bool)
         or payload.get("attempt_count") != task.attempt_count
         or _parse_time(event.created_at) != reviewed_at
         or _parse_time(task.completed_at) != reviewed_at
@@ -559,7 +562,9 @@ def _review_event_task_is_valid(
     if (
         len(terminal_events) != 1
         or len(outcomes) != 1
+        or not isinstance(terminal_events[0].payload, dict)
         or terminal_events[0].payload.get("to_status") != "done"
+        or terminal_events[0].payload.get("attempt_count") != task.attempt_count
         or terminal_events[0].payload.get("result_category")
         != "success_knowledge_reviewed"
         or terminal_events[0].payload.get("outcome_id") != str(outcomes[0].id)
@@ -657,8 +662,34 @@ def _load_review_entries(
                 "knowledge_review_event_item_id_invalid",
             )
             referenced_item = session.get(KnowledgeItem, entry_item_id)
-            if referenced_item is None or referenced_item.team_id != team_id:
+            if (
+                referenced_item is None
+                or referenced_item.team_id != team_id
+                or entry.get("origin_learning_change_id")
+                != str(referenced_item.origin_learning_change_id)
+            ):
                 raise KnowledgeHistoryError("knowledge_review_event_cross_team_item")
+            if payload["schema_version"] == 2:
+                pointer_id = _parse_uuid(
+                    entry.get("current_learning_change_id"),
+                    "knowledge_review_event_current_pointer_invalid",
+                )
+                pointer_change = session.get(LearningChange, pointer_id)
+                if (
+                    pointer_change is None
+                    or pointer_change.team_id != team_id
+                    or pointer_change.target_kind != "knowledge_item"
+                    or not (
+                        pointer_change.id == referenced_item.origin_learning_change_id
+                        and pointer_change.operation == "create"
+                        and pointer_change.target_id is None
+                    )
+                    and pointer_change.target_id != entry_item_id
+                    or pointer_change.status != "accepted"
+                ):
+                    raise KnowledgeHistoryError(
+                        "knowledge_review_event_current_pointer_invalid"
+                    )
             if entry_item_id in seen:
                 raise KnowledgeHistoryError("knowledge_review_event_duplicate_item")
             seen.add(entry_item_id)
@@ -956,6 +987,7 @@ def reconstruct_knowledge_item_history(
         if pointer_id in reviews_by_pointer:
             effective["status"] = "needs_review"
         effective_states[pointer_id] = effective
+        _validate_supersession_references(session, item, effective)
 
     # The pointer graph, not timestamps, defines the order. Timestamps below
     # are used only to reject impossible provenance after a node is identified.
