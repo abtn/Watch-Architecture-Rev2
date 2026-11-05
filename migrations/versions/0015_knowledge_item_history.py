@@ -3,7 +3,7 @@
 Revision ID: 0015_knowledge_item_history
 Revises: 0014_knowledge_quality_assessment
 """
-from typing import Sequence
+from typing import Sequence  # noqa: I001
 
 import sqlalchemy as sa
 from alembic import op
@@ -53,12 +53,13 @@ def upgrade() -> None:
                        OR lc.committed_at IS NULL
                        OR lc.committed_state IS NULL
                        OR lc.committed_state->>'id' IS DISTINCT FROM ki.id::text
-                       OR lc.committed_state->>'team_id' IS DISTINCT FROM ki.team_id::text
+                       OR lc.committed_state->>'team_id' IS DISTINCT FROM
+                            ki.team_id::text
                        OR lc.committed_state->>'origin_learning_change_id'
                             IS DISTINCT FROM lc.id::text
                 ) THEN
                     RAISE EXCEPTION
-                        'cannot backfill KnowledgeItem current pointer: invalid accepted create origin';
+                        'invalid accepted KnowledgeItem create origin';
                 END IF;
 
                 IF EXISTS (
@@ -68,7 +69,7 @@ def upgrade() -> None:
                     HAVING count(*) <> 1
                 ) THEN
                     RAISE EXCEPTION
-                        'cannot backfill KnowledgeItem current pointer: duplicate origin';
+                        'duplicate KnowledgeItem create origin';
                 END IF;
             END
             $$;
