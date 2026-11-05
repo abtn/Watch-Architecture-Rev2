@@ -264,7 +264,6 @@ def reconstruct_history(
     _validate_root_state(root, root_state, item_id=item_id, team_id=team_id)
 
     children: dict[uuid.UUID, list[Any]] = defaultdict(list)
-    parent_by_change: dict[uuid.UUID, uuid.UUID] = {}
     decoded_previous: dict[uuid.UUID, dict[str, Any]] = {}
     decoded_committed: dict[uuid.UUID, dict[str, Any]] = {}
 
@@ -296,7 +295,6 @@ def reconstruct_history(
         parent_id = _uuid(previous["current_learning_change_id"])
         if parent_id == change.id:
             raise KnowledgeHistoryError("history_self_parent")
-        parent_by_change[change.id] = parent_id
         decoded_previous[change.id] = previous
         decoded_committed[change.id] = committed
         children[parent_id].append(change)
@@ -323,7 +321,7 @@ def reconstruct_history(
 
     states: list[dict[str, Any]] = [root_state]
     legacy_fields = set(reconstructed)
-    for change in ordered[1:]:
+    for position, change in enumerate(ordered[1:], start=1):
         state = decoded_committed[change.id]
         if (
             state["id"] != str(item_id)
@@ -332,6 +330,14 @@ def reconstruct_history(
             or state["current_learning_change_id"] != str(change.id)
         ):
             raise KnowledgeHistoryError("committed_snapshot_identity_mismatch")
+        parent_time = _aware_datetime(
+            ordered[position - 1].committed_at, "learning_change_committed_at"
+        )
+        child_time = _aware_datetime(
+            change.committed_at, "learning_change_committed_at"
+        )
+        if child_time < parent_time:
+            raise KnowledgeHistoryError("history_commit_timestamp_order_invalid")
         states.append(state)
 
     markers = sorted(
