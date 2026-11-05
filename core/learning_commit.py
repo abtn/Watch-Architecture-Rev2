@@ -727,6 +727,10 @@ class LearningCommitService:
             try:
                 history = reconstruct_knowledge_item_history(session, item)
             except KnowledgeHistoryError as error:
+                if error.reason == "reconstructed_history_does_not_match_live_item":
+                    raise LearningCommitCorrupt(
+                        "committed_knowledge_item_mismatch"
+                    ) from error
                 raise LearningCommitCorrupt(str(error)) from error
             if (
                 item.team_id != learning_change.team_id
