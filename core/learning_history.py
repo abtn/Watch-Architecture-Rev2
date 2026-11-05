@@ -331,7 +331,9 @@ def reconstruct_history(
             raise KnowledgeHistoryError("committed_snapshot_identity_mismatch")
         states.append(state)
 
-    markers = list(review_markers)
+    markers = sorted(
+        review_markers, key=lambda marker: _aware_datetime(marker.reviewed_at, "reviewed_at")
+    )
     overlays: dict[uuid.UUID, ReviewMarker] = {}
     node_index = {change.id: index for index, change in enumerate(ordered)}
     for marker in markers:
@@ -347,6 +349,7 @@ def reconstruct_history(
                 index
                 for index, state in enumerate(states)
                 if state["status"] == "active"
+                and ordered[index].id not in overlays
                 and state["version"] == marker.version
                 and state["review_after"] == marker.review_after
                 and state["origin_learning_change_id"]
@@ -367,7 +370,7 @@ def reconstruct_history(
             != str(marker.origin_learning_change_id)
         ):
             raise KnowledgeHistoryError("review_event_state_binding_mismatch")
-        if marker.event_id in overlays or ordered[index].id in overlays:
+        if ordered[index].id in overlays:
             raise KnowledgeHistoryError("duplicate_review_overlay_for_history_node")
         reviewed_at = _aware_datetime(marker.reviewed_at, "reviewed_at")
         review_after = _aware_datetime(marker.review_after, "review_after")
