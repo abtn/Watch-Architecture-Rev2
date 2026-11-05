@@ -119,7 +119,7 @@ A successor in `needs_review` must first be revalidated; the supersede proposal 
 2. **Snapshot format, serialization and hash.**
    - Versioned canonical state envelope containing *all* semantic fields, including both pointers (`origin_learning_change_id`, `current_learning_change_id`), both supersession links, and `snapshot_version`. Every field is always present; NULL is serialized as JSON `null`, never omitted.
    - Serialization: adopt `core.state_assessment._canonical_json` (verified in the current repository): sorted keys, ASCII escaping, compact separators, and rejection of non-finite numbers. Normalize before serialization: UUIDs as lowercase hyphenated strings; `Decimal` as fixed-point strings without exponents, never JSON floats; timestamps as timezone-aware UTC ISO-8601 strings with `Z` and exactly six fractional digits (naive timestamps rejected). NULL is explicit JSON `null`. All current arrays preserve their stored order; no set-like arrays are defined for this snapshot version.
-   - Normalization: UUIDs as lowercase hyphenated strings; `Decimal` as strings in fixed-point form without exponent, never JSON floats; timestamps must be timezone-aware, converted to UTC, ISO-8601 with `Z` and fixed 6-digit microseconds, naive timestamps rejected; arrays keep their semantic order, except set-like fields which are sorted by a defined key (list each in the B0 text).
+   - Field normalization is exactly as specified in the preceding serialization bullet. All arrays in the current KnowledgeItem contract preserve stored semantic order; this snapshot version defines no set-like array fields and performs no array sorting.
    - Hash: SHA-256 over UTF-8 `domain_separator` bytes, one NUL byte (`0x00`), then UTF-8 canonical JSON bytes; exclude the hash field itself. Store as `sha256:<64 lowercase hex characters>`. **Proposed exact literals** (freeze in B0; immutable once frozen): snapshot hash `watch.r7b.knowledge-item-state.v1`; content hash `watch.r7b.knowledge-content.v2`.
 
 3. **Legacy snapshot compatibility (blocking fix).** Historical create snapshots are immutable and lack `snapshot_version`, `current_learning_change_id`, `supersedes_item_id` and `superseded_by_id`.
@@ -129,12 +129,12 @@ A successor in `needs_review` must first be revalidated; the supersede proposal 
 
 4. **Approval-request contract and fingerprint.** Bind: Team, target ID, expected current pointer, expected content version, expected status, operation, proposal hash, proposed-state hash, pinned TeamPolicy version, evidence references **and the LearningChange evidence-basis hash**, assessment payload hashes (not just IDs), the target's expected **content hash and full-state snapshot hash**, and, for supersede, the exact successor state (ID, pointer, version, content hash, status, `review_after`). The trusted Operator identity (host-supplied) is bound to the decision record against this fingerprint. Proposed default: because the principal may not be known when the approval request Event is created, bind it in the decision fingerprint/idempotency key, alongside the immutable request fingerprint. This placement remains an Operator decision to confirm in B0.
 
-5. **Invalidation semantics.** There is no `invalidated` status (`LearningChange` is only `proposed / accepted / rejected`). "Invalidated" is a **derived application disposition**, not a mutation:
+5. **Stale-proposal semantics.** There is no `invalidated` status (`LearningChange` is only `proposed / accepted / rejected`). **Stale** is a derived application disposition, not a mutation:
    - The old proposal and assessment remain immutable.
    - Their expected pointer/state no longer matches canonical state, so they cannot be accepted.
    - A new proposal and assessment must be created.
    - Cleanup of a stale proposal uses the existing trusted decision path (rejection), never an autonomous assessment Task.
-   Replace "invalidate" with "stale" wording where it appears elsewhere.
+   Use "stale" consistently in plan prose; do not describe a stale proposal or assessment as having a new persisted status.
 
 6. **Graph concurrency rule.** Cycle and uniqueness checks are insufficient under concurrent transactions. Freeze a **Team-scoped lifecycle lock** taken before checking and committing any supersession-graph change: candidate creation, supersede, and retirement of a candidate. Proposed concrete implementation: lock the Team row with `SELECT ... FOR UPDATE` first, then lock affected KnowledgeItem rows in ascending UUID order. Per-item operations retain atomic compare-and-set on exact current pointer + content version. The same lock order must be used by every graph-changing code path.
 
