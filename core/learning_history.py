@@ -696,7 +696,6 @@ def _validate_root_state(
         or state["version"] != 1
         or state["status"] != "active"
         or state["last_validated_at"] is not None
-        or state["supersedes_item_id"] is not None
         or state["superseded_by_id"] is not None
     ):
         raise KnowledgeHistoryError("create_root_state_invalid")
