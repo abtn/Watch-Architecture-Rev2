@@ -553,4 +553,3 @@ def test_supersession_graph_rejects_two_item_and_longer_cycles(cycle_size: int):
             _MemoryItemSession(items),
             items[item_ids[0]],
         )
-
