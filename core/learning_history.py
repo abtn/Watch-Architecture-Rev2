@@ -261,7 +261,7 @@ def knowledge_item_content_hash(item: KnowledgeItem) -> str:
 
     framed = (
         KNOWLEDGE_CONTENT_HASH_SCHEME.encode("utf-8")
-        + b"\\x00"
+        + b"\x00"
         + canonical
     )
     return "sha256:" + hashlib.sha256(framed).hexdigest()
