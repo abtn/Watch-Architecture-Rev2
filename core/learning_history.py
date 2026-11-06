@@ -441,7 +441,6 @@ def reconstruct_knowledge_item_history(
     changes = list(
         session.scalars(
             select(LearningChange).where(
-                LearningChange.team_id == item.team_id,
                 (
                     (LearningChange.id == item.origin_learning_change_id)
                     | (LearningChange.target_id == item.id)
@@ -450,6 +449,9 @@ def reconstruct_knowledge_item_history(
             )
         )
     )
+    if any(change.team_id != item.team_id for change in changes):
+        raise KnowledgeHistoryError("accepted_change_cross_team")
+
     approval_tasks: dict[uuid.UUID, Task] = {}
     for change in changes:
         approval_tasks[change.id] = _validate_learning_change_approval(session, change)
