@@ -16,7 +16,7 @@ from core.learning_history import (
     encode_state_snapshot,
     reconstruct_history,
 )
-from core.state_assessment import _canonical_json
+from core.state_assessment import _canonical_json, _timestamp
 
 
 def _state(item_id, team_id, root_id, *, pointer=None, status="active", version=1):
@@ -41,7 +41,7 @@ def _state(item_id, team_id, root_id, *, pointer=None, status="active", version=
         "status": status,
         "version": version,
         "last_validated_at": None,
-        "review_after": (now + timedelta(days=1)).isoformat(),
+        "review_after": _timestamp(now + timedelta(days=1)),
         "origin_learning_change_id": str(root_id),
         "current_learning_change_id": str(pointer or root_id),
         "supersedes_item_id": None,
@@ -143,7 +143,7 @@ def test_revise_chain_uses_pointer_links_and_matches_leaf_state():
             "version": 2,
             "last_validated_at": None,
             "current_learning_change_id": str(revise_id),
-            "review_after": datetime(2026, 11, 2, tzinfo=timezone.utc).isoformat(),
+            "review_after": _timestamp(datetime(2026, 11, 2, tzinfo=timezone.utc)),
         }
     )
     revise = _change(
@@ -296,7 +296,7 @@ def test_revalidation_cannot_change_confidence():
     active.update(
         {
             "status": "active",
-            "last_validated_at": datetime(2026, 11, 3, tzinfo=timezone.utc).isoformat(),
+            "last_validated_at": _timestamp(datetime(2026, 11, 3, tzinfo=timezone.utc)),
             "confidence": "0.900",
             "current_learning_change_id": str(revalidate_id),
         }

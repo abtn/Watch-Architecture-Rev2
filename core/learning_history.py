@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import decimal
+import hashlib
 import re
 import uuid
 from collections import defaultdict
@@ -20,8 +21,10 @@ from sqlalchemy.orm import Session
 
 from core.models import Event, KnowledgeItem, LearningChange, Outcome, Task, TeamPolicy
 from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
+from core.state_assessment import _canonical_json, _timestamp
 
-SNAPSHOT_SCHEMA_VERSION = 1
+SNAPSHOT_VERSION = 1
+SNAPSHOT_HASH_DOMAIN_SEPARATOR = "watch.r7b.knowledge-item-state.v1"
 
 STATE_FIELDS = frozenset(
     {
@@ -126,52 +129,133 @@ class KnowledgeHistoryResult:
 
 
 def knowledge_item_state(item: KnowledgeItem) -> dict[str, Any]:
-    """Return the complete, JSON-safe canonical state represented by the row."""
-    return {
-        "id": str(item.id),
-        "team_id": str(item.team_id),
-        "kind": item.kind,
-        "title": item.title,
-        "statement": item.statement,
-        "body": item.body,
-        "applicability": item.applicability,
-        "preconditions": item.preconditions,
-        "assumptions": item.assumptions,
-        "limitations": item.limitations,
-        "non_applicability": item.non_applicability,
-        "failure_modes": item.failure_modes,
-        "known_counterexamples": item.known_counterexamples,
-        "missing_information": item.missing_information,
-        "uncertainty": item.uncertainty,
-        "confidence": str(item.confidence),
-        "status": item.status,
-        "version": item.version,
-        "last_validated_at": (
-            item.last_validated_at.isoformat()
-            if item.last_validated_at is not None
-            else None
-        ),
-        "review_after": (
-            item.review_after.isoformat() if item.review_after is not None else None
-        ),
-        "origin_learning_change_id": str(item.origin_learning_change_id),
-        "current_learning_change_id": str(item.current_learning_change_id),
-        "supersedes_item_id": (
-            str(item.supersedes_item_id)
-            if item.supersedes_item_id is not None
-            else None
-        ),
-        "superseded_by_id": (
-            str(item.superseded_by_id) if item.superseded_by_id is not None else None
-        ),
-    }
+    """Return the full KnowledgeItem state in B0.3 canonical value form."""
+    return _normalize_snapshot_state(
+        {
+            "id": str(item.id),
+            "team_id": str(item.team_id),
+            "kind": item.kind,
+            "title": item.title,
+            "statement": item.statement,
+            "body": item.body,
+            "applicability": item.applicability,
+            "preconditions": item.preconditions,
+            "assumptions": item.assumptions,
+            "limitations": item.limitations,
+            "non_applicability": item.non_applicability,
+            "failure_modes": item.failure_modes,
+            "known_counterexamples": item.known_counterexamples,
+            "missing_information": item.missing_information,
+            "uncertainty": item.uncertainty,
+            "confidence": item.confidence,
+            "status": item.status,
+            "version": item.version,
+            "last_validated_at": item.last_validated_at,
+            "review_after": item.review_after,
+            "origin_learning_change_id": str(item.origin_learning_change_id),
+            "current_learning_change_id": str(item.current_learning_change_id),
+            "supersedes_item_id": (
+                str(item.supersedes_item_id)
+                if item.supersedes_item_id is not None
+                else None
+            ),
+            "superseded_by_id": (
+                str(item.superseded_by_id)
+                if item.superseded_by_id is not None
+                else None
+            ),
+        }
+    )
+
+
+def _normalize_snapshot_uuid(value: object, field: str) -> str:
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if not isinstance(value, str):
+        raise KnowledgeHistoryError(f"{field}_uuid_invalid")
+    try:
+        return str(uuid.UUID(value))
+    except (ValueError, TypeError, AttributeError) as error:
+        raise KnowledgeHistoryError(f"{field}_uuid_invalid") from error
+
+
+def _normalize_snapshot_state(state: dict[str, Any]) -> dict[str, Any]:
+    """Normalize every B0.3 field before canonical JSON serialization."""
+    _validate_state_shape(state, exact=True)
+    normalized = dict(state)
+
+    for field in _UUID_FIELDS:
+        normalized[field] = _normalize_snapshot_uuid(normalized.get(field), field)
+    for field in _OPTIONAL_UUID_FIELDS:
+        value = normalized.get(field)
+        normalized[field] = (
+            None if value is None else _normalize_snapshot_uuid(value, field)
+        )
+
+    confidence = normalized.get("confidence")
+    if isinstance(confidence, bool) or not isinstance(
+        confidence, (str, decimal.Decimal)
+    ):
+        raise KnowledgeHistoryError("snapshot_confidence_invalid")
+    try:
+        confidence_value = decimal.Decimal(confidence)
+    except decimal.InvalidOperation as error:
+        raise KnowledgeHistoryError("snapshot_confidence_invalid") from error
+    if not confidence_value.is_finite():
+        raise KnowledgeHistoryError("snapshot_confidence_invalid")
+    normalized["confidence"] = format(confidence_value, "f")
+
+    for field in _DATETIME_FIELDS:
+        value = normalized.get(field)
+        if value is None:
+            continue
+        if isinstance(value, dt.datetime):
+            parsed = value
+        elif isinstance(value, str):
+            try:
+                parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError as error:
+                raise KnowledgeHistoryError(
+                    f"{field}_timestamp_invalid"
+                ) from error
+        else:
+            raise KnowledgeHistoryError(f"{field}_timestamp_invalid")
+        try:
+            normalized[field] = _timestamp(parsed)
+        except ValueError as error:
+            raise KnowledgeHistoryError(
+                f"{field}_timestamp_not_aware"
+            ) from error
+
+    _validate_state_values(normalized)
+    try:
+        _canonical_json(normalized)
+    except (TypeError, ValueError) as error:
+        raise KnowledgeHistoryError("snapshot_state_not_json_serializable") from error
+    return normalized
+
+
+def _snapshot_hash(payload_without_hash: Mapping[str, Any]) -> str:
+    try:
+        canonical = _canonical_json(dict(payload_without_hash)).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise KnowledgeHistoryError("snapshot_state_not_json_serializable") from error
+    framed = (
+        SNAPSHOT_HASH_DOMAIN_SEPARATOR.encode("utf-8")
+        + b"\x00"
+        + canonical
+    )
+    return "sha256:" + hashlib.sha256(framed).hexdigest()
 
 
 def encode_state_snapshot(state: Mapping[str, Any]) -> dict[str, Any]:
-    """Wrap a complete new state snapshot in the immutable versioned envelope."""
-    normalized = dict(state)
-    _validate_state_shape(normalized, exact=True)
-    return {"schema_version": SNAPSHOT_SCHEMA_VERSION, "state": normalized}
+    """Encode a complete B0.3 full-state envelope with a deterministic hash."""
+    normalized = _normalize_snapshot_state(dict(state))
+    payload: dict[str, Any] = {
+        "snapshot_version": SNAPSHOT_VERSION,
+        "state": normalized,
+    }
+    return {**payload, "snapshot_hash": _snapshot_hash(payload)}
 
 
 def decode_state_snapshot(
@@ -181,25 +265,37 @@ def decode_state_snapshot(
     operation: str,
     allow_legacy_root: bool = False,
 ) -> tuple[dict[str, Any], frozenset[str]]:
-    """Decode a v1 envelope, or the historical unwrapped create-root shape.
+    """Decode B0.3 envelopes or the exact immutable legacy create-root shape.
 
-    Legacy values are synthesized only for the root create node. The returned
-    field set makes that synthesis visible to callers and tests; it is never
-    represented as though those fields were present in the original record.
+    Legacy values are synthesized only in memory for the root create node. The
+    original stored JSON is never rewritten or represented as a new envelope.
     """
     if not isinstance(payload, dict):
         raise KnowledgeHistoryError("snapshot_not_object")
 
     reconstructed: frozenset[str] = frozenset()
-    if set(payload) == {"schema_version", "state"}:
+    envelope_fields = {"snapshot_version", "state", "snapshot_hash"}
+    if set(payload) == envelope_fields:
+        version = payload["snapshot_version"]
         if (
-            isinstance(payload["schema_version"], bool)
-            or payload["schema_version"] != SNAPSHOT_SCHEMA_VERSION
+            isinstance(version, bool)
+            or not isinstance(version, int)
+            or version != SNAPSHOT_VERSION
             or not isinstance(payload["state"], dict)
         ):
             raise KnowledgeHistoryError("snapshot_envelope_invalid")
-        state = dict(payload["state"])
-        _validate_state_shape(state, exact=True)
+        raw_state = dict(payload["state"])
+        state = _normalize_snapshot_state(raw_state)
+        if state != raw_state:
+            raise KnowledgeHistoryError("snapshot_state_not_canonical")
+        expected_hash = _snapshot_hash(
+            {
+                "snapshot_version": SNAPSHOT_VERSION,
+                "state": state,
+            }
+        )
+        if payload["snapshot_hash"] != expected_hash:
+            raise KnowledgeHistoryError("snapshot_hash_mismatch")
     else:
         if not allow_legacy_root or operation != "create":
             raise KnowledgeHistoryError("legacy_snapshot_not_allowed")
@@ -215,9 +311,10 @@ def decode_state_snapshot(
         state["supersedes_item_id"] = None
         state["superseded_by_id"] = None
         reconstructed = frozenset(missing)
-        _validate_state_shape(state, exact=True)
+        # Normalize only the decoded in-memory view. The immutable historical
+        # committed_state JSON remains byte-for-byte unchanged in the database.
+        state = _normalize_snapshot_state(state)
 
-    _validate_state_values(state)
     if state["current_learning_change_id"] != str(learning_change_id):
         raise KnowledgeHistoryError("snapshot_pointer_does_not_match_change")
     return state, reconstructed
@@ -1001,7 +1098,7 @@ def _validate_state_values(state: dict[str, Any]) -> None:
 def _previous_pointer(payload: object) -> uuid.UUID:
     if (
         isinstance(payload, dict)
-        and set(payload) == {"schema_version", "state"}
+        and set(payload) == {"snapshot_version", "state", "snapshot_hash"}
         and isinstance(payload.get("state"), dict)
     ):
         value = payload["state"].get("current_learning_change_id")
