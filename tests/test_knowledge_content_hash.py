@@ -27,7 +27,10 @@ def _item(**overrides: object) -> SimpleNamespace:
         "applicability": {"domain": "science"},
         "preconditions": ["Source is accessible.", "Primary source is retained."],
         "assumptions": ["The source is authentic.", "The observation is independent."],
-        "limitations": ["This does not establish causation.", "The sample may be incomplete."],
+        "limitations": [
+            "This does not establish causation.",
+            "The sample may be incomplete.",
+        ],
         "non_applicability": ["Unrelated domains.", "Unsupported decision contexts."],
         "failure_modes": ["A source may be incomplete.", "A comparison may be biased."],
         "known_counterexamples": ["Conflicting replication.", "A failed replication."],
