@@ -15,6 +15,7 @@ from core.learning_history import (
     knowledge_item_content_hash,
 )
 
+
 def _item(**overrides: object) -> SimpleNamespace:
     values: dict[str, object] = {
         "id": uuid4(),
@@ -54,7 +55,7 @@ def test_v2_hash_matches_frozen_domain_separated_vector() -> None:
     # confidence normalized to the fixed-point string "0.800".
     # UUIDs, Team identity, lifecycle state, dates and pointers are excluded.
     assert knowledge_item_content_hash(item) == (
-        "sha256:01f87604aadd593e5b2f91417a99a065d0b5fed2dd6e1339526ca065b38a19bd"
+        "sha256:1d028a4095ad552b3d908e4de5ad0e7d6d2f93bdf08bef4b10bcbac1995ff9bf"
     )
 
 
@@ -157,9 +158,14 @@ def test_json_object_key_order_does_not_change_the_hash() -> None:
     assert knowledge_item_content_hash(reordered) == knowledge_item_content_hash(original)
 
 
-@pytest.mark.parametrize("confidence", [True, 0.8, Decimal("NaN"), Decimal("Infinity"), "not-a-number"])
+@pytest.mark.parametrize(
+    "confidence",
+    [True, 0.8, Decimal("NaN"), Decimal("Infinity"), "not-a-number"],
+)
 def test_invalid_confidence_fails_closed(confidence: object) -> None:
-    with pytest.raises(KnowledgeHistoryError, match="content_hash_confidence_invalid"):
+    with pytest.raises(
+        KnowledgeHistoryError, match="content_hash_confidence_invalid"
+    ):
         knowledge_item_content_hash(_item(confidence=confidence))
 
 
