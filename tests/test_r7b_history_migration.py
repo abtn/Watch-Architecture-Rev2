@@ -509,6 +509,11 @@ def _drop_legacy_origin_team_constraint(engine: Engine) -> None:
         "cross_team_origin",
         "snapshot_item_mismatch",
         "snapshot_team_mismatch",
+        "snapshot_missing_item_id",
+        "snapshot_missing_team_id",
+        "snapshot_missing_origin_id",
+        "snapshot_origin_mismatch",
+        "snapshot_non_object",
     ],
 )
 def test_0015_refuses_invalid_legacy_origins_without_partial_migration(
@@ -593,15 +598,22 @@ def test_0015_refuses_invalid_legacy_origins_without_partial_migration(
                     "item_id": item_id,
                 },
             )
-        elif invalid_case in {
-            "snapshot_item_mismatch",
-            "snapshot_team_mismatch",
-        }:
-            invalid_snapshot = dict(snapshot)
+        elif invalid_case.startswith("snapshot_"):
+            invalid_snapshot: object = dict(snapshot)
             if invalid_case == "snapshot_item_mismatch":
                 invalid_snapshot["id"] = str(uuid4())
-            else:
+            elif invalid_case == "snapshot_team_mismatch":
                 invalid_snapshot["team_id"] = str(uuid4())
+            elif invalid_case == "snapshot_missing_item_id":
+                invalid_snapshot.pop("id")
+            elif invalid_case == "snapshot_missing_team_id":
+                invalid_snapshot.pop("team_id")
+            elif invalid_case == "snapshot_missing_origin_id":
+                invalid_snapshot.pop("origin_learning_change_id")
+            elif invalid_case == "snapshot_origin_mismatch":
+                invalid_snapshot["origin_learning_change_id"] = str(uuid4())
+            elif invalid_case == "snapshot_non_object":
+                invalid_snapshot = []
             connection.execute(
                 text(
                     """
