@@ -378,13 +378,10 @@ def knowledge_item_committed_state_matches(
 
 
 def knowledge_item_content_hash(item: KnowledgeItem) -> str:
-    """Hash the complete canonical item identity/content, not mutable review status."""
-    from core.state_assessment import _canonical_json
+    """Return the B2 v2 semantic hash; lifecycle and identity fields are excluded."""
+    from core.learning_history import knowledge_item_content_hash as content_hash_v2
 
-    state = _knowledge_item_state(item)
-    state.pop("status", None)
-    state.pop("last_validated_at", None)
-    return content_hash(_canonical_json(state).encode("utf-8"))
+    return content_hash_v2(item)
 
 
 def knowledge_item_text(item: KnowledgeItem) -> str:
