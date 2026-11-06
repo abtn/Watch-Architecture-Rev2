@@ -48,7 +48,14 @@ def upgrade() -> None:
                -- A pre-B1 create root has exactly these 21 immutable fields.
                -- Requiring both the exact key count and every expected key
                -- rejects missing fields and unexpected extension keys.
-               OR jsonb_object_length(lc.committed_state) <> 21
+               OR CASE
+                    WHEN jsonb_typeof(lc.committed_state) = 'object'
+                    THEN (
+                        SELECT count(*)
+                        FROM jsonb_object_keys(lc.committed_state)
+                    ) <> 21
+                    ELSE TRUE
+                  END
                OR NOT (
                     lc.committed_state ?& ARRAY[
                         'id',
