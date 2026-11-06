@@ -487,3 +487,166 @@ def test_0015_backfills_populated_legacy_items_without_rewriting_snapshots(
             after_items[item_id]["current_learning_change_id"]
             == learning_change_id
         )
+
+
+def _drop_legacy_origin_team_constraint(engine: Engine) -> None:
+    """Allow a test-only orphan or cross-Team origin in the isolated schema."""
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "ALTER TABLE knowledge_items "
+                "DROP CONSTRAINT fk_knowledge_items_origin_learning_change_team"
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_case",
+    [
+        "missing_origin",
+        "rejected_origin",
+        "non_create_origin",
+        "cross_team_origin",
+        "snapshot_item_mismatch",
+        "snapshot_team_mismatch",
+    ],
+)
+def test_0015_refuses_invalid_legacy_origins_without_partial_migration(
+    pre_0015_schema: MigrationSandbox,
+    invalid_case: str,
+) -> None:
+    """Step 3: fail closed for missing, unaccepted, wrong-Team, or mismatched roots."""
+    created_at = datetime(2026, 10, 20, tzinfo=timezone.utc)
+    team_id = uuid4()
+    item_id = uuid4()
+    learning_change_id = uuid4()
+    snapshot = _insert_legacy_knowledge_item(
+        pre_0015_schema.engine,
+        team_id=team_id,
+        item_id=item_id,
+        learning_change_id=learning_change_id,
+        title=f"Invalid legacy origin: {invalid_case}",
+        created_at=created_at,
+    )
+
+    if invalid_case in {"missing_origin", "cross_team_origin"}:
+        # The normal composite FK correctly prevents these states. Remove it
+        # only in this disposable schema to represent pre-existing corruption.
+        _drop_legacy_origin_team_constraint(pre_0015_schema.engine)
+
+    with pre_0015_schema.engine.begin() as connection:
+        if invalid_case == "missing_origin":
+            connection.execute(
+                text(
+                    "UPDATE knowledge_items "
+                    "SET origin_learning_change_id = :missing_id "
+                    "WHERE id = :item_id"
+                ),
+                {"missing_id": uuid4(), "item_id": item_id},
+            )
+        elif invalid_case == "rejected_origin":
+            connection.execute(
+                text(
+                    """
+                    UPDATE learning_changes
+                    SET status = 'rejected',
+                        committed_state = NULL,
+                        decision_reason = 'Rejected legacy origin fixture'
+                    WHERE id = :learning_change_id
+                    """
+                ),
+                {"learning_change_id": learning_change_id},
+            )
+        elif invalid_case == "non_create_origin":
+            connection.execute(
+                text(
+                    """
+                    UPDATE learning_changes
+                    SET operation = 'revise', target_id = :target_id
+                    WHERE id = :learning_change_id
+                    """
+                ),
+                {
+                    "target_id": uuid4(),
+                    "learning_change_id": learning_change_id,
+                },
+            )
+        elif invalid_case == "cross_team_origin":
+            other_team_id = uuid4()
+            other_learning_change_id = uuid4()
+            _insert_legacy_knowledge_item(
+                pre_0015_schema.engine,
+                team_id=other_team_id,
+                item_id=uuid4(),
+                learning_change_id=other_learning_change_id,
+                title="Valid create in another Team",
+                created_at=created_at + timedelta(days=1),
+            )
+            connection.execute(
+                text(
+                    "UPDATE knowledge_items "
+                    "SET origin_learning_change_id = :other_origin_id "
+                    "WHERE id = :item_id"
+                ),
+                {
+                    "other_origin_id": other_learning_change_id,
+                    "item_id": item_id,
+                },
+            )
+        elif invalid_case in {
+            "snapshot_item_mismatch",
+            "snapshot_team_mismatch",
+        }:
+            invalid_snapshot = dict(snapshot)
+            if invalid_case == "snapshot_item_mismatch":
+                invalid_snapshot["id"] = str(uuid4())
+            else:
+                invalid_snapshot["team_id"] = str(uuid4())
+            connection.execute(
+                text(
+                    """
+                    UPDATE learning_changes
+                    SET committed_state = CAST(:snapshot AS jsonb)
+                    WHERE id = :learning_change_id
+                    """
+                ),
+                {
+                    "snapshot": json.dumps(invalid_snapshot),
+                    "learning_change_id": learning_change_id,
+                },
+            )
+
+    with pytest.raises(
+        RuntimeError,
+        match=f"invalid KnowledgeItem origin for item {item_id}",
+    ):
+        _upgrade_to_revision(
+            pre_0015_schema.engine,
+            pre_0015_schema.schema,
+            "0015_r7b_history",
+        )
+
+    with pre_0015_schema.engine.connect() as connection:
+        revision = connection.scalar(
+            text(
+                f'SELECT version_num FROM "{pre_0015_schema.schema}".alembic_version'
+            )
+        )
+        pointer_column_exists = connection.scalar(
+            text(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = :schema
+                      AND table_name = 'knowledge_items'
+                      AND column_name = 'current_learning_change_id'
+                )
+                """
+            ),
+            {"schema": pre_0015_schema.schema},
+        )
+
+    assert revision == "0014_knowledge_quality"
+    assert not pointer_column_exists
+
