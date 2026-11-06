@@ -39,12 +39,15 @@ def upgrade() -> None:
               ON lc.id = ki.origin_learning_change_id
              AND lc.team_id = ki.team_id
             WHERE lc.id IS NULL
-               OR lc.status <> 'accepted'
-               OR lc.operation <> 'create'
+               OR lc.status IS DISTINCT FROM 'accepted'
+               OR lc.operation IS DISTINCT FROM 'create'
                OR lc.target_id IS NOT NULL
                OR lc.committed_state IS NULL
-               OR lc.committed_state->>'id' <> ki.id::text
-               OR lc.committed_state->>'team_id' <> ki.team_id::text
+               OR jsonb_typeof(lc.committed_state) IS DISTINCT FROM 'object'
+               OR lc.committed_state->>'id' IS DISTINCT FROM ki.id::text
+               OR lc.committed_state->>'team_id' IS DISTINCT FROM ki.team_id::text
+               OR lc.committed_state->>'origin_learning_change_id'
+                    IS DISTINCT FROM lc.id::text
             LIMIT 1
             """
         )
