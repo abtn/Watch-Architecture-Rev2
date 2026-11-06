@@ -44,12 +44,12 @@ from core.knowledge_quality import (
     build_case_lineage_report,
 )
 from core.knowledge_quality_tasks import KnowledgeQualityAssessmentTaskRunner
-from core.learning_history import encode_state_snapshot, knowledge_item_state
 from core.learning_commit import (
     LearningCommitCorrupt,
     LearningCommitError,
     LearningCommitService,
 )
+from core.learning_history import encode_state_snapshot, knowledge_item_state
 from core.models import (
     Evaluation,
     Event,
