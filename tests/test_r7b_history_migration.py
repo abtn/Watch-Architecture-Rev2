@@ -490,6 +490,17 @@ def test_0015_backfills_populated_legacy_items_without_rewriting_snapshots(
         )
 
 
+def _drop_legacy_target_kind_constraint(engine: Engine) -> None:
+    """Allow a test-only malformed target kind in the isolated legacy schema."""
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "ALTER TABLE learning_changes "
+                "DROP CONSTRAINT ck_learning_changes_target_kind"
+            )
+        )
+
+
 def _drop_legacy_origin_team_constraint(engine: Engine) -> None:
     """Allow a test-only orphan or cross-Team origin in the isolated schema."""
     with engine.begin() as connection:
@@ -508,9 +519,16 @@ def _drop_legacy_origin_team_constraint(engine: Engine) -> None:
         "rejected_origin",
         "non_create_origin",
         "cross_team_origin",
+        "wrong_target_kind",
         "snapshot_item_mismatch",
         "snapshot_team_mismatch",
         "snapshot_missing_item_id",
+        "snapshot_missing_title",
+        "snapshot_extra_field",
+        "snapshot_invalid_version_type",
+        "snapshot_invalid_confidence_type",
+        "snapshot_invalid_status",
+        "snapshot_invalid_datetime_type",
         "snapshot_missing_team_id",
         "snapshot_missing_origin_id",
         "snapshot_origin_mismatch",
@@ -539,9 +557,22 @@ def test_0015_refuses_invalid_legacy_origins_without_partial_migration(
         # The normal composite FK correctly prevents these states. Remove it
         # only in this disposable schema to represent pre-existing corruption.
         _drop_legacy_origin_team_constraint(pre_0015_schema.engine)
+    if invalid_case == "wrong_target_kind":
+        # Model constraints prevent this state; remove the check only in this
+        # disposable schema to represent malformed historical provenance.
+        _drop_legacy_target_kind_constraint(pre_0015_schema.engine)
 
     with pre_0015_schema.engine.begin() as connection:
-        if invalid_case == "missing_origin":
+        if invalid_case == "wrong_target_kind":
+            connection.execute(
+                text(
+                    "UPDATE learning_changes "
+                    "SET target_kind = 'team_policy' "
+                    "WHERE id = :learning_change_id"
+                ),
+                {"learning_change_id": learning_change_id},
+            )
+        elif invalid_case == "missing_origin":
             connection.execute(
                 text(
                     "UPDATE knowledge_items "
@@ -613,6 +644,18 @@ def test_0015_refuses_invalid_legacy_origins_without_partial_migration(
                 invalid_snapshot.pop("origin_learning_change_id")
             elif invalid_case == "snapshot_origin_mismatch":
                 invalid_snapshot["origin_learning_change_id"] = str(uuid4())
+            elif invalid_case == "snapshot_missing_title":
+                invalid_snapshot.pop("title")
+            elif invalid_case == "snapshot_extra_field":
+                invalid_snapshot["unexpected_legacy_field"] = "not part of B1 roots"
+            elif invalid_case == "snapshot_invalid_version_type":
+                invalid_snapshot["version"] = 1.0
+            elif invalid_case == "snapshot_invalid_confidence_type":
+                invalid_snapshot["confidence"] = 0.875
+            elif invalid_case == "snapshot_invalid_status":
+                invalid_snapshot["status"] = "unknown"
+            elif invalid_case == "snapshot_invalid_datetime_type":
+                invalid_snapshot["review_after"] = 123
             elif invalid_case == "snapshot_non_object":
                 invalid_snapshot = []
             connection.execute(
