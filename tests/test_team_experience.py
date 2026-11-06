@@ -992,4 +992,3 @@ def test_history_rejects_unauthorized_live_status_or_date_mutation(
             match="reconstructed_history_does_not_match_live_item",
         ):
             reconstruct_knowledge_item_history(session, item)
-
