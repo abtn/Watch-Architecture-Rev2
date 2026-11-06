@@ -151,11 +151,22 @@ def test_confidence_only_change_changes_the_hash() -> None:
     assert knowledge_item_content_hash(changed) != knowledge_item_content_hash(original)
 
 
+def test_confidence_string_and_decimal_share_fixed_point_normalization() -> None:
+    decimal_value = _item(confidence=Decimal("0.800"))
+    string_value = _item(confidence="0.800")
+
+    assert knowledge_item_content_hash(string_value) == knowledge_item_content_hash(
+        decimal_value
+    )
+
+
 def test_json_object_key_order_does_not_change_the_hash() -> None:
     original = _item(applicability={"domain": "science", "region": "global"})
     reordered = _item(applicability={"region": "global", "domain": "science"})
 
-    assert knowledge_item_content_hash(reordered) == knowledge_item_content_hash(original)
+    assert knowledge_item_content_hash(reordered) == knowledge_item_content_hash(
+        original
+    )
 
 
 @pytest.mark.parametrize(
