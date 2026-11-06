@@ -2685,6 +2685,7 @@ def test_original_create_approval_replays_after_later_history_transition(
                     committed_at=later_committed_at,
                 )
             )
+            session.flush()
             item.body = committed["body"]
             item.version = 2
             item.current_learning_change_id = later_change_id
