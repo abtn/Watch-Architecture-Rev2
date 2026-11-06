@@ -27,7 +27,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** work is focused on checking the quality of saved lessons and deciding how they should change over time. B1 was accepted by the Operator on 2026-11-06, and its final checks have passed locally and in hosted CI. [PR #43](https://github.com/abtn/Watch-Architecture-Rev2/pull/43) remains open pending a separate merge decision.
+- **R7:** work is focused on checking the quality of saved lessons and deciding how they should change over time. B1 was accepted and merged on 2026-11-06. The B2 step-by-step implementation plan is prepared; B2 implementation awaits separate written Operator authorization.
 
 Later R7 phases have not yet been authorized.
 

@@ -65,7 +65,7 @@ Exit requirements:
 
 ### R7-B — Canonical KnowledgeItem lifecycle
 
-**Status:** B0 design decisions and D1/D5 extensions accepted by the Operator on 2026-11-05; documentation integration/validation is in progress. B0 is documentation-only. B1–B6 implementation is **NOT AUTHORIZED**.
+**Status (2026-11-06):** B0 is complete. B1 was separately authorized, accepted, verified, and merged by PR #43 at `d1a8b88fd930207142304fc9b0b7274de5de4992`. B2 preplanning is complete and recorded in the [R7-B implementation plan](r7-b-implementation-plan.md). B2 implementation is **NOT AUTHORIZED** pending separate explicit written Operator authorization. B3–B6 and R7-C remain unauthorized.
 
 R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path to revise, revalidate, supersede and retire KnowledgeItems. It preserves stable item identity, immutable origin provenance, current-pointer history, Team isolation, D7 review rules, and fail-closed retrieval. It adds no runtime, dispatcher, scheduler, public API/auth stack or production evaluator provider.
 
@@ -81,7 +81,7 @@ R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path 
 6. **B5 — Supersede/retire/candidate creation:** create-with-successor, reciprocal publication gate, D7-aware commit, abandoned-candidate rules, consistent-snapshot Context validation, and Team-scoped graph lock.
 7. **B6 — Legacy compatibility and hardening:** legacy Events/snapshots, repeated review/revalidation, replay after later transitions, mutation rejection and full regression verification.
 
-**Implementation gate:** B0 design acceptance and its documentation merge do not authorize B1. B1–B6 each remain blocked until separate written Operator implementation authorization. No R7-B source/schema/tests, migration, Task registration, provider, active write scope, or runtime change is authorized.
+**Implementation gate:** B1's separate authorization was recorded, B1 was accepted, and PR #43 is merged. B2's design/preplanning is complete, but this does not authorize implementation. B2 remains blocked until a separate explicit written Operator authorization is recorded. B3–B6 require their own later phase authorizations. No implementation scope beyond B1 is active: do not add source/schema/tests, migrations, Task registrations, providers, active write scopes, or runtime changes for B2–B6 without the relevant authorization.
 
 ### R7-C — Retrieval quality and downstream-use evaluation
 

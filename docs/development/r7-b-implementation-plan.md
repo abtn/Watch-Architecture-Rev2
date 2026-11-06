@@ -2,7 +2,7 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status:** **B0 complete; B1 accepted by the Operator on 2026-11-06; final technical review and hosted CI passed.** PR #43 (`r7b-b1-snapshot-history-proof`) contains the B1 implementation and both final-review corrections. The migration requires create-root `version = 1`, `status = active`, and JSON `last_validated_at = null` before backfill. The live supersession validator requires a reciprocal predecessor to be retired, while preserving pending candidates whose predecessor has no reciprocal pointer. Operator-local exact-code-head verification passed at `ca498ecd43207e72082332c803a74eb30173d41c`: fresh disposable PostgreSQL migration to the single `0015_r7b_history` head, 33 focused migration tests, Ruff, Mypy (32 source files), and 690 full-suite tests. Hosted CI [run 42244001665](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42244001665) also passed on final PR head `9576b2adb87da9ade5891665dc343db9bdef9e91`, including fresh migrations, Ruff, Mypy, and 690 tests. The commits between those heads changed documentation only. Full evidence is in `docs/testing.md`. PR #43 remains open and draft pending a separate explicit Operator merge decision. **B2–B6 and R7-C remain unauthorized.**
+**Status (2026-11-06):** **B0 complete; B1 accepted and merged; B2 preplanning finalized; B2 implementation not authorized.** PR [#43](https://github.com/abtn/Watch-Architecture-Rev2/pull/43) merged to `main` at `d1a8b88fd930207142304fc9b0b7274de5de4992`. Exact PR head `a7c6d4a7de5529ea9fb4faff5c9ab17bbbc51fd8` passed hosted CI [run 42246346103](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42246346103): fresh PostgreSQL migration/single-head checks, Ruff, Mypy (32 source files), 690 tests, and cleanup. Operator-local verification of the B1 code head is recorded in `docs/testing.md`. This revision finalizes the B2 implementation plan only; it does not authorize source, schema, migration, test, Task-registration, active write-scope, runtime, or provider changes. **B3–B6 and R7-C remain unauthorized.**
 
 
 
@@ -221,21 +221,117 @@ B0 closes when:
 
 ## Phase B2: Content-hash scheme, projection transition and chain-aware consumers
 
-**Goal:** land the hash redefinition and make every consumer chain-aware while only create is exercised. This phase **must complete before B4** (revalidation depends on a stable content hash).
+**Goal:** define and implement the stable semantic content-hash contract, invalidate and safely republish old Team Experience projections, and make indexing, retrieval, and Context assembly validate the B1 current-learning-change chain. B2 must complete before B4 because revalidation depends on a hash that does not change when review metadata changes.
 
-**Compatibility requirement (semantic):** existing create semantics, authorization, idempotency and canonical outcomes remain unchanged. New projection records include the current pointer and the content-hash scheme version, and newly assembled Context uses manifest v3. Historical manifest v1/v2 replay remains unchanged.
+**Status:** preplanning finalized 2026-11-06. The implementation steps below are an approved-design work plan, not implementation authorization. B2 requires a separate explicit written Operator authorization before any code, schema, migration, tests, Task scopes, or runtime behavior are changed.
 
-**Tasks**
-1. Implement the new content hash (B0.3 item 1) with a scheme version. Keep old-scheme verification for historical records, manifests and projections.
-2. Implement the controlled **stale-and-republish** path: old-scheme projection rows are ineligible until republished. Test that none remains eligible by accident.
-3. Update the canonicality helper used by Team Experience indexing/retrieval and Context assembly to validate: current pointer resolves to an accepted same-Team `LearningChange`; exact target; committed state matches the current canonical row (B1 overlay-aware rules); policy pin; same-Team ownership.
-4. Update `OperatorApplicationAdapter`, `LearningCommitService` and TaskRuntime approval-Task request/finalization so they no longer hard-code `operation=create`. Make validation operation-specific, but enable only create.
-5. Implement publication-gate reciprocity checks (including D7 eligibility) in retrieval and Context assembly, tested with fixtures. The real create-with-`supersedes_item_id` path comes in B5.
-6. Projection publication records current `LearningChange` identity. Ship manifest v3.
+### Frozen compatibility contract
 
-**Acceptance:** create semantics unchanged per the requirement above; revalidation fixture shows the content hash unchanged when only `review_after`/`last_validated_at`/status change; stale projection rows ineligible immediately after a simulated canonical transition; old-scheme rows ineligible until republished; v1/v2 replay passes; v3 generated for new Context.
+- **New hash scheme:** `watch.r7b.knowledge-content.v2`, using the exact semantic fields frozen in ADR-0032 §B0.3: `kind`, `title`, `statement`, `body`, `applicability`, `preconditions`, `assumptions`, `limitations`, `non_applicability`, `failure_modes`, `known_counterexamples`, `missing_information`, `uncertainty`, and `confidence`.
+- Exclude KnowledgeItem/Team identity, status, content version, `last_validated_at`, `review_after`, origin/current LearningChange pointers, and both supersession links. Preserve the stored order of every array; do not normalize arrays as sets. Confidence is semantic: changing only confidence changes the hash.
+- Normalize values according to the accepted ADR contract and serialize with `core.state_assessment._canonical_json`. Compute SHA-256 over UTF-8 domain-separator bytes, one NUL byte, and canonical JSON bytes. Persist `sha256:<64 lowercase hex>`. The scheme identifier and its domain separator are the exact accepted literal above.
+- **Legacy scheme:** `legacy-current-state-v1` denotes the existing `knowledge_item_content_hash` algorithm. Preserve that algorithm for verifying already-published projection rows and historical Context manifest v1/v2 data. Never relabel an old digest as v2 or recompute historical records in place.
+- A hash value without its scheme is ambiguous and cannot be treated as current. Scheme identity travels with every new Team Experience projection and every Team Experience entry in a new Context manifest.
+- Existing create behavior remains the only enabled lifecycle commit. B2 prepares consumers to use the current pointer; it does not enable revise, revalidate, supersede, or retire.
 
----
+### Implementation sequence (execute only after separate B2 authorization)
+
+**Step 0 — Exact-head preflight and consumer inventory**
+
+1. Start from the then-current `main`, verify the B1 merge is an ancestor, and confirm a clean worktree. At this planning baseline, B1 is merge commit `d1a8b88fd930207142304fc9b0b7274de5de4992`.
+2. Confirm Alembic has one head at `0015_r7b_history`; use only a fresh disposable PostgreSQL database for migration and database-backed tests. Never point either test URL at the persistent `watch` database.
+3. Recheck the current implementation rather than relying on line numbers: `knowledge_item_content_hash`, `_accepted_learning_change_is_canonical`, `TeamExperienceIndexer`, `HybridKnowledgeRetriever`, `RetrievedPassage`, Context manifest replay/build/validation, `OperatorApplicationAdapter`, `LearningCommitService`, and TaskRuntime approval admission/finalization.
+4. Record the current legacy hash calculation, projection row shape in fixtures, current Context v1/v2 replay behavior, and every hard-coded create-only guard. Do not modify code during this inventory.
+
+**Step 1 — Implement and prove the versioned semantic content hash**
+
+1. Introduce one explicit v2 hash implementation and one explicit legacy-v1 verification path. Use a scheme argument or separate named helpers; do not infer the scheme from the digest or current KnowledgeItem values.
+2. Make the v2 projection contain exactly the frozen semantic fields. Keep the full-state snapshot hash and content hash separate: the former still binds lifecycle identity/state; the latter represents semantic content only.
+3. Keep `legacy-current-state-v1` byte-for-byte compatible with the current pre-B2 algorithm, including the fields it historically included. It is a read/verification compatibility path, not the hash algorithm for new publications.
+4. Add table-driven tests proving determinism; every semantic field affects the hash; confidence-only changes the hash; array order matters; and changes only to status, validation/review dates, version, identity, Team, pointers, or supersession links do not change v2. Include known legacy vectors so the old path cannot drift.
+
+**Step 2 — Add projection provenance fields with a fail-closed migration**
+
+1. Add `current_learning_change_id` and `content_hash_scheme` to both `TeamExperienceChunk` and `TeamExperienceIndexState`. New publications must populate both fields.
+2. Use one additive Alembic revision after `0015_r7b_history` (working name: `0016_team_experience_history_pins`; confirm the actual next revision name at implementation time). Preserve one Alembic head.
+3. For existing projection rows, set `content_hash_scheme = 'legacy-current-state-v1'`, leave `current_learning_change_id` NULL, and mark existing index-state records `stale`. Do not copy the KnowledgeItem's current pointer into old rows: that would falsely claim the pointer was captured when the old projection was published.
+4. Keep existing `item_content_hash`, chunk text, chunk hashes, embeddings, and embedding metadata unchanged during migration. Do not mass-re-embed inside Alembic. Add same-Team referential integrity for non-NULL current pointers and a constraint for the supported scheme identifiers.
+5. Migration tests must prove old rows remain present but are not publishable/retrievable, legacy hashes are unchanged, failed migration rolls back cleanly, and a fresh database reaches exactly one head.
+
+**Step 3 — Make canonicality follow the B1 current pointer**
+
+1. Replace the origin-create-only assumption in `_accepted_learning_change_is_canonical`. Load the current change through `KnowledgeItem.current_learning_change_id`, not through `origin_learning_change_id`.
+2. Validate that the pointer resolves to an accepted same-Team `LearningChange`; validate operation-specific target semantics (create has NULL target and creates this item; a later transition targets this exact item); validate the approval Task, pinned TeamPolicy, trusted decision Event, and committed timestamp.
+3. Use B1's `reconstruct_knowledge_item_history` as the history authority. Do not introduce a second, weaker chain reconstruction implementation. The final reconstructed state must match the live canonical KnowledgeItem, including the D7 review overlay and current pointer.
+4. During B2, real accepted lifecycle commits remain create-only. Add synthetic history fixtures where useful to prove a non-origin current pointer is understood by readers, without adding a live revise/revalidate approval path. Malformed, missing, cross-Team, unaccepted, wrong-target, wrong-pointer, or inconsistent snapshots fail closed.
+
+**Step 4 — Publish current-pointer and hash-scheme pins**
+
+1. Extend the indexer, `_upsert_index_state`, `_projection_matches`, and final publication transaction to bind the exact current LearningChange ID and v2 content-hash scheme in both index state and each chunk.
+2. Recheck the item ID/Team, current pointer, content version/hash, scheme, status, D7 eligibility, canonical history, and embedding-space identity immediately before publication. The state row and chunk rows must describe the same canonical version.
+3. Keep the existing stale-before-embedding behavior: once a refresh is required, old rows must become undiscoverable before a provider call can fail. Publish replacement chunks and the matching index-state record atomically after all final checks.
+4. Make `rebuild_all` discover legacy-scheme/stale rows so they can be republished through the normal indexer. Rebuild is an ordinary projection operation, not a canonical KnowledgeItem write.
+
+**Step 5 — Enforce chain and publication gates in retrieval**
+
+1. Extend candidate SQL and result validation to require matching Team, item version, semantic content hash, origin ID, current LearningChange ID, hash scheme, embedding space, and a `published` index-state record.
+2. Resolve and validate the current LearningChange and full B1 chain in application code; SQL joins and similarity scores are candidate selection only, never canonical authority.
+3. Apply D7 eligibility at read time: item must be active, have a timezone-aware UTC `review_after`, and be strictly before its review deadline. Missing, due, or malformed review dates fail closed.
+4. Apply the accepted D5 reciprocal-successor visibility gate against a consistent canonical snapshot: a candidate with `supersedes_item_id` stays hidden until its predecessor is retired and `superseded_by_id` points back to it; a predecessor with a committed successor is hidden. The predecessor and candidate are never both exposed. If a pending candidate exists while the predecessor becomes due or `needs_review`, neither is exposed until the reciprocal gate is satisfied.
+5. B2 implements only the read/publication guard. Candidate creation and the actual supersede commit remain B5 work.
+
+**Step 6 — Introduce Context manifest v3 without changing historical replay**
+
+1. New Context assembly emits `r6e-context-manifest-v3`. Add each included Team Experience passage's `current_learning_change_id` and `content_hash_scheme` alongside its existing item ID, version, content hash, and origin ID in both the selected manifest entry and the immutable Context document.
+2. Carry these fields from projection rows through `RetrievedPassage` and final Context validation. The final Context validation independently reloads and verifies canonical history and reciprocal visibility; it must not trust an earlier retrieval result alone.
+3. Keep Context manifest v1/v2 replay version-aware and byte-exact under the legacy hash scheme. Do not rewrite historical snapshots or Events, reinterpret old manifests as v3, or require old passages to contain fields they never recorded.
+4. Do not bump the outer Task Context document schema unless implementation demonstrates a separately necessary change; B2's accepted requirement is manifest v3.
+
+**Step 7 — Refactor approval validation without enabling new operations**
+
+1. Separate common approval-request integrity checks from the operation-specific eligibility/commit checks in `OperatorApplicationAdapter`, `LearningCommitService`, and TaskRuntime approval admission/finalization.
+2. Keep the active approval allowlist exactly `create`. Revise, revalidate, supersede, and retire must remain rejected with stable, tested reasons until their later authorized phases.
+3. Do not add Task types, Task registrations, worker capabilities, new write scopes, autonomous approval, or a second commit path. Preserve trusted host Operator identity, idempotency, request fingerprints, retry/recovery, and atomic decision/Event behavior.
+
+**Step 8 — Add integrated regression fixtures**
+
+Cover the whole read path, not only helpers:
+
+- New create → accepted LearningChange → current pointer → v2 hash → projection publication → retrieval → Context v3.
+- Existing legacy projection → stale/legacy marker → no retrieval → explicit successful republish → v2 projection and retrieval.
+- Republish failure after stale marking → old chunks remain undiscoverable; retry/rebuild succeeds idempotently.
+- Current-pointer mismatch, wrong Team, wrong target, wrong status, invalid snapshot, broken chain, wrong scheme, or tampered chunk/state → no passage and no Context inclusion.
+- D7 due/NULL/non-UTC/needs_review cases and the full D5 pending/reciprocal successor visibility matrix.
+- Context v1/v2 replay remains exact; new Context v3 records origin/current IDs and hash scheme.
+- Operator approval, TaskRuntime admission/finalization, idempotency and recovery continue to accept create only and reject every not-yet-authorized lifecycle operation.
+
+**Step 9 — Exact-head verification and B2 exit gate**
+
+1. Run focused hash, migration, Team Experience, retrieval, Context, Operator adapter, LearningCommit, and TaskRuntime tests.
+2. Against disposable PostgreSQL, upgrade from the merged `0015_r7b_history` head to the single new head; verify old rows, stale gating, republish, and rollback behavior.
+3. Run Ruff, Mypy, the full test suite, `git diff --check`, and hosted CI on the exact final PR head. Record local operator evidence separately from hosted CI.
+4. Review the changed-file list and PR diff: only the B2 hash/projection/consumer/Context/approval-guard scope is allowed. Confirm no B3 assessment models/Tasks, B4 revise/revalidate writes, B5 create-with-successor/supersede/retire writes, or R7-C work slipped in.
+
+### B2 acceptance criteria
+
+- V2 hash follows the exact ADR field list, separator, normalization, and serialization; legacy v1 verification remains exact.
+- Revalidation-only lifecycle metadata changes do not affect v2 content hash; confidence changes do.
+- Existing projection rows are explicitly legacy and stale, are never treated as v2, and cannot be retrieved before republishing.
+- New chunks and index-state records pin the exact current LearningChange ID and hash scheme; publication is atomic and rechecks canonical state.
+- Indexing, retrieval, and Context assembly validate the B1 current-pointer chain, policy/Team provenance, D7 eligibility, and D5 reciprocal visibility.
+- New Context uses manifest v3; historical v1/v2 replay is immutable and unchanged.
+- The approval path remains create-only; all later lifecycle operations remain rejected.
+- Fresh migration, focused regressions, Ruff, Mypy, full suite, diff check, and exact-head hosted CI pass.
+
+### B2 stop conditions and explicit non-goals
+
+Stop and report a design discrepancy before implementing a workaround if: the legacy hash cannot be reproduced exactly; a legacy projection might remain retrievable after migration; current-pointer history cannot be proven; D5 reciprocity cannot be checked against a consistent snapshot; v1/v2 replay changes; or the create-only approval boundary cannot be preserved.
+
+B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleAssessment (B3); revise/revalidate writes (B4); candidate creation, supersede, or retire writes (B5); repeated legacy lifecycle hardening assigned to B6; TaskKnowledgeReference/KnowledgeUseAssessment or retrieval benchmarking (R7-C); a new runtime, dispatcher, scheduler, public API/auth stack, production evaluator/provider, or second commit path.
+
+**B2 exit:** the full B2 acceptance matrix is green on the exact PR head, no stop condition is open, the implementation and verification record is synchronized, and the Operator explicitly accepts the B2 exit. B3 remains separately gated.
+
+
 
 ## Phase B3: Assessments
 
