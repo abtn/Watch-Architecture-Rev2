@@ -16,7 +16,12 @@ from core.knowledge_index import (
     HybridKnowledgeRetriever,
     TeamExperienceIndexer,
 )
-from core.learning_history import reconstruct_knowledge_item_history
+from core.learning_history import (
+    KnowledgeHistoryError,
+    encode_state_snapshot,
+    knowledge_item_state,
+    reconstruct_knowledge_item_history,
+)
 from core.models import (
     Event,
     KnowledgeItem,
@@ -790,6 +795,7 @@ def test_review_knowledge_task_atomically_marks_due_items_and_replays_once(
         history = reconstruct_knowledge_item_history(session, due)
         assert history.state["status"] == "needs_review"
         assert history.learning_change_ids == (due.origin_learning_change_id,)
+        legacy_event_id = events[0].id
         outcome_count = session.scalar(
             select(Outcome.id).where(
                 Outcome.recorded_by_task_id == task_id,
@@ -797,6 +803,23 @@ def test_review_knowledge_task_atomically_marks_due_items_and_replays_once(
             )
         )
         assert outcome_count is not None
+
+    # Simulate a pre-B1 review Event without current_learning_change_id.
+    with experience_env.session_factory.begin() as session:
+        event = session.get(Event, legacy_event_id)
+        assert event is not None
+        payload = dict(event.payload)
+        item_records = [dict(record) for record in payload["items"]]
+        item_records[0].pop("current_learning_change_id")
+        payload["items"] = item_records
+        event.payload = payload
+
+    with experience_env.session_factory() as session:
+        due = session.get(KnowledgeItem, due_item)
+        assert due is not None
+        legacy_history = reconstruct_knowledge_item_history(session, due)
+        assert legacy_history.state["status"] == "needs_review"
+        assert legacy_history.applied_review_event_ids == (legacy_event_id,)
 
 
 def test_review_knowledge_task_rejects_a_different_success_result(
@@ -825,3 +848,148 @@ def test_review_knowledge_task_rejects_a_different_success_result(
                 Event.type == "knowledge_items_reviewed",
             )
         ) is None
+
+
+def test_history_loader_rejects_cross_team_change_targeting_item(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    item_id = experience_env.add_accepted_item()
+    with experience_env.session_factory() as session:
+        item = session.get(KnowledgeItem, item_id)
+        assert item is not None
+        previous = knowledge_item_state(item)
+
+    foreign_team_id, approval_task_id, change_id = (uuid4() for _ in range(3))
+    committed_at = datetime.now(timezone.utc)
+    started_at = committed_at - timedelta(seconds=30)
+    committed = dict(previous)
+    committed.update(
+        {
+            "body": "A foreign-Team change targeting another Team's item.",
+            "version": 2,
+            "current_learning_change_id": str(change_id),
+        }
+    )
+    operator_id = "test-host|foreign-team-operator"
+
+    with experience_env.session_factory.begin() as session:
+        session.add(
+            Team(id=foreign_team_id, domain="foreign", status="active")
+        )
+        session.flush()
+        session.add(
+            TeamPolicy(
+                id=uuid4(),
+                team_id=foreign_team_id,
+                version=1,
+                schema_version=2,
+                rules={"sources": []},
+            )
+        )
+        session.flush()
+        session.add(
+            Task(
+                id=approval_task_id,
+                team_id=foreign_team_id,
+                task_type="approve_learning_change",
+                status="running",
+                attempt_count=1,
+                policy_version=1,
+                allowed_writes=["LearningChange", "KnowledgeItem"],
+                budget={
+                    "max_tool_calls": 0,
+                    "max_cost_usd": 0.0,
+                    "deadline_seconds": 30,
+                },
+                created_at=started_at,
+            )
+        )
+        session.flush()
+        session.add(
+            LearningChange(
+                id=change_id,
+                team_id=foreign_team_id,
+                target_kind="knowledge_item",
+                target_id=item_id,
+                operation="revise",
+                proposed_state={"proposal_hash": "sha256:" + ("c" * 64)},
+                previous_state=encode_state_snapshot(previous),
+                committed_state=encode_state_snapshot(committed),
+                evidence_basis=[],
+                evidence_basis_hash="sha256:" + ("d" * 64),
+                status="accepted",
+                idempotency_key="foreign-target-" + str(change_id),
+                proposed_by_task_id=approval_task_id,
+                committed_by_task_id=approval_task_id,
+                operator_id=operator_id,
+                created_at=started_at,
+                committed_at=committed_at,
+            )
+        )
+        session.flush()
+        session.add_all(
+            [
+                Event(
+                    id=uuid4(),
+                    task_id=approval_task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 1,
+                    },
+                    created_at=started_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=approval_task_id,
+                    type="learning_change_accepted",
+                    payload={
+                        "learning_change_id": str(change_id),
+                        "operation": "revise",
+                        "decision": "accept",
+                        "operator_id": operator_id,
+                        "approval_task_id": str(approval_task_id),
+                        "attempt_count": 1,
+                        "committed_at": committed_at.isoformat(),
+                    },
+                    created_at=committed_at,
+                ),
+            ]
+        )
+
+    with experience_env.session_factory() as session:
+        item = session.get(KnowledgeItem, item_id)
+        assert item is not None
+        with pytest.raises(
+            KnowledgeHistoryError, match="accepted_change_cross_team"
+        ):
+            reconstruct_knowledge_item_history(session, item)
+
+
+@pytest.mark.parametrize("mutation", ["status", "review_after", "last_validated_at"])
+def test_history_rejects_unauthorized_live_status_or_date_mutation(
+    experience_env: TeamExperienceEnv,
+    mutation: str,
+) -> None:
+    item_id = experience_env.add_accepted_item()
+    with experience_env.session_factory.begin() as session:
+        item = session.get(KnowledgeItem, item_id)
+        assert item is not None
+        if mutation == "status":
+            item.status = "needs_review"
+        elif mutation == "review_after":
+            assert item.review_after is not None
+            item.review_after += timedelta(days=1)
+        else:
+            item.last_validated_at = datetime.now(timezone.utc)
+
+    with experience_env.session_factory() as session:
+        item = session.get(KnowledgeItem, item_id)
+        assert item is not None
+        with pytest.raises(
+            KnowledgeHistoryError,
+            match="reconstructed_history_does_not_match_live_item",
+        ):
+            reconstruct_knowledge_item_history(session, item)
+

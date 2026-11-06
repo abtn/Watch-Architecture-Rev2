@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import uuid4
@@ -10,9 +11,12 @@ from core.learning_history import (
     LEGACY_STATE_FIELDS,
     KnowledgeHistoryError,
     ReviewMarker,
+    _validate_live_supersession_links,
+    decode_state_snapshot,
     encode_state_snapshot,
     reconstruct_history,
 )
+from core.state_assessment import _canonical_json
 
 
 def _state(item_id, team_id, root_id, *, pointer=None, status="active", version=1):
@@ -395,3 +399,158 @@ def test_legacy_review_event_with_ambiguous_state_match_fails_closed():
             current_learning_change_id=revalidate_id,
             review_markers=[marker],
         )
+
+def test_retired_knowledge_item_cannot_be_revised():
+    item_id, team_id, root_id, retire_id, revise_id = (
+        uuid4() for _ in range(5)
+    )
+    root, root_state = _legacy_root(item_id, team_id, root_id)
+    retired_state = dict(root_state)
+    retired_state.update(
+        {
+            "status": "retired",
+            "current_learning_change_id": str(retire_id),
+        }
+    )
+    retired = _change(
+        retire_id,
+        team_id,
+        "retire",
+        item_id,
+        datetime(2026, 10, 2, tzinfo=timezone.utc),
+        previous_state=encode_state_snapshot(root_state),
+        committed_state=encode_state_snapshot(retired_state),
+    )
+    revised_state = dict(retired_state)
+    revised_state.update(
+        {
+            "title": "Illegally revised retired item",
+            "version": 2,
+            "current_learning_change_id": str(revise_id),
+        }
+    )
+    revise = _change(
+        revise_id,
+        team_id,
+        "revise",
+        item_id,
+        datetime(2026, 10, 3, tzinfo=timezone.utc),
+        previous_state=encode_state_snapshot(retired_state),
+        committed_state=encode_state_snapshot(revised_state),
+    )
+
+    with pytest.raises(KnowledgeHistoryError, match="revise_transition_invalid"):
+        reconstruct_history(
+            [root, retired, revise],
+            item_id=item_id,
+            team_id=team_id,
+            origin_learning_change_id=root_id,
+            current_learning_change_id=revise_id,
+        )
+
+
+def test_history_rejects_commit_timestamp_reversal():
+    item_id, team_id, root_id, revise_id = uuid4(), uuid4(), uuid4(), uuid4()
+    root, root_state = _legacy_root(
+        item_id,
+        team_id,
+        root_id,
+        committed_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+    )
+    revised_state = dict(root_state)
+    revised_state.update(
+        {
+            "title": "Timestamp-reversed revision",
+            "version": 2,
+            "current_learning_change_id": str(revise_id),
+        }
+    )
+    revise = _change(
+        revise_id,
+        team_id,
+        "revise",
+        item_id,
+        datetime(2026, 9, 30, tzinfo=timezone.utc),
+        previous_state=encode_state_snapshot(root_state),
+        committed_state=encode_state_snapshot(revised_state),
+    )
+
+    with pytest.raises(
+        KnowledgeHistoryError, match="history_commit_timestamp_order_invalid"
+    ):
+        reconstruct_history(
+            [root, revise],
+            item_id=item_id,
+            team_id=team_id,
+            origin_learning_change_id=root_id,
+            current_learning_change_id=revise_id,
+        )
+
+
+def test_versioned_snapshot_uses_b0_3_canonical_envelope_and_hash():
+    item_id, team_id, root_id = uuid4(), uuid4(), uuid4()
+    _, state = _legacy_root(item_id, team_id, root_id)
+    state["confidence"] = "8E-1"
+    state["review_after"] = "2026-10-02T00:00:00+00:00"
+    state["last_validated_at"] = "2026-10-03T01:02:03+02:00"
+
+    snapshot = encode_state_snapshot(state)
+
+    assert set(snapshot) == {"snapshot_version", "state", "snapshot_hash"}
+    assert snapshot["snapshot_version"] == 1
+    assert snapshot["state"]["confidence"] == "0.8"
+    assert snapshot["state"]["review_after"] == "2026-10-02T00:00:00.000000Z"
+    assert snapshot["state"]["last_validated_at"] == "2026-10-02T23:02:03.000000Z"
+    hash_payload = {
+        "snapshot_version": 1,
+        "state": snapshot["state"],
+    }
+    expected_hash = "sha256:" + hashlib.sha256(
+        b"watch.r7b.knowledge-item-state.v1\\x00"
+        + _canonical_json(hash_payload).encode("utf-8")
+    ).hexdigest()
+    assert snapshot["snapshot_hash"] == expected_hash
+
+
+def test_versioned_snapshot_decoder_rejects_hash_tampering():
+    item_id, team_id, root_id = uuid4(), uuid4(), uuid4()
+    _, state = _legacy_root(item_id, team_id, root_id)
+    snapshot = encode_state_snapshot(state)
+    snapshot["snapshot_hash"] = "sha256:" + ("0" * 64)
+
+    with pytest.raises(KnowledgeHistoryError, match="snapshot_hash_mismatch"):
+        decode_state_snapshot(
+            snapshot,
+            learning_change_id=root_id,
+            operation="create",
+        )
+
+
+class _MemoryItemSession:
+    def __init__(self, items):
+        self.items = items
+
+    def get(self, model, item_id):
+        return self.items.get(item_id)
+
+
+@pytest.mark.parametrize("cycle_size", [2, 4])
+def test_supersession_graph_rejects_two_item_and_longer_cycles(cycle_size: int):
+    team_id = uuid4()
+    item_ids = [uuid4() for _ in range(cycle_size)]
+    items = {}
+    for index, item_id in enumerate(item_ids):
+        items[item_id] = SimpleNamespace(
+            id=item_id,
+            team_id=team_id,
+            status="retired",
+            supersedes_item_id=item_ids[(index + 1) % cycle_size],
+            superseded_by_id=item_ids[(index - 1) % cycle_size],
+        )
+
+    with pytest.raises(KnowledgeHistoryError, match="supersession_cycle"):
+        _validate_live_supersession_links(
+            _MemoryItemSession(items),
+            items[item_ids[0]],
+        )
+

@@ -14,7 +14,7 @@ import pytest
 from _database_config import resolve_test_database_url
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Engine, IntegrityError, create_engine, text
 
 
 @dataclass(frozen=True)
@@ -661,3 +661,94 @@ def test_0015_refuses_invalid_legacy_origins_without_partial_migration(
 
     assert revision == "0014_knowledge_quality"
     assert not pointer_column_exists
+
+
+@pytest.mark.parametrize(
+    ("operation", "has_target", "valid"),
+    [
+        ("create", False, True),
+        ("revise", True, True),
+        ("revalidate", True, True),
+        ("supersede", True, True),
+        ("retire", True, True),
+        ("create", True, False),
+        ("revise", False, False),
+        ("revalidate", False, False),
+        ("supersede", False, False),
+        ("retire", False, False),
+    ],
+)
+def test_0015_learning_change_operation_target_constraints(
+    pre_0015_schema: MigrationSandbox,
+    operation: str,
+    has_target: bool,
+    valid: bool,
+) -> None:
+    team_id, item_id, change_id = (uuid4() for _ in range(3))
+    _insert_legacy_knowledge_item(
+        pre_0015_schema.engine,
+        team_id=team_id,
+        item_id=item_id,
+        learning_change_id=change_id,
+        title=f"Constraint combination: {operation}/{has_target}",
+        created_at=datetime(2026, 10, 20, tzinfo=timezone.utc),
+    )
+    _upgrade_to_revision(
+        pre_0015_schema.engine,
+        pre_0015_schema.schema,
+        "0015_r7b_history",
+    )
+    target_id = item_id if has_target else None
+
+    if valid:
+        with pre_0015_schema.engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE learning_changes
+                    SET operation = :operation, target_id = :target_id
+                    WHERE id = :change_id
+                    """
+                ),
+                {
+                    "operation": operation,
+                    "target_id": target_id,
+                    "change_id": change_id,
+                },
+            )
+        with pre_0015_schema.engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    "SELECT operation, target_id FROM learning_changes WHERE id = :id"
+                ),
+                {"id": change_id},
+            ).one()
+        assert row.operation == operation
+        assert row.target_id == target_id
+    else:
+        with pytest.raises(IntegrityError):
+            with pre_0015_schema.engine.begin() as connection:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE learning_changes
+                        SET operation = :operation, target_id = :target_id
+                        WHERE id = :change_id
+                        """
+                    ),
+                    {
+                        "operation": operation,
+                        "target_id": target_id,
+                        "change_id": change_id,
+                    },
+                )
+        with pre_0015_schema.engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    "SELECT operation, target_id FROM learning_changes WHERE id = :id"
+                ),
+                {"id": change_id},
+            ).one()
+        assert row.operation == "create"
+        assert row.target_id is None
+
