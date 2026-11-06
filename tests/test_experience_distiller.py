@@ -2733,6 +2733,13 @@ def test_original_create_approval_replays_after_later_history_transition(
     finally:
         if later_task_id is not None and later_change_id is not None:
             with session_factory.begin() as session:
+                # The KnowledgeItem's current pointer references this change.
+                # Remove the fixture item before deleting its referenced change.
+                session.execute(
+                    delete(KnowledgeItem).where(
+                        KnowledgeItem.id == original.knowledge_item_id
+                    )
+                )
                 session.execute(
                     delete(LearningChange).where(LearningChange.id == later_change_id)
                 )
