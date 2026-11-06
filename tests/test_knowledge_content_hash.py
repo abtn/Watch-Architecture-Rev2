@@ -26,9 +26,9 @@ def _item(**overrides: object) -> SimpleNamespace:
         "body": "Compare the primary source with independent evidence.",
         "applicability": {"domain": "science"},
         "preconditions": ["Source is accessible.", "Primary source is retained."],
-        "assumptions": ["The source is authentic."],
-        "limitations": ["This does not establish causation."],
-        "non_applicability": ["Unrelated domains."],
+        "assumptions": ["The source is authentic.", "The observation is independent."],
+        "limitations": ["This does not establish causation.", "The sample may be incomplete."],
+        "non_applicability": ["Unrelated domains.", "Unsupported decision contexts."],
         "failure_modes": ["A source may be incomplete.", "A comparison may be biased."],
         "known_counterexamples": ["Conflicting replication.", "A failed replication."],
         "missing_information": ["Independent replication.", "Longitudinal evidence."],
@@ -55,7 +55,7 @@ def test_v2_hash_matches_frozen_domain_separated_vector() -> None:
     # confidence normalized to the fixed-point string "0.800".
     # UUIDs, Team identity, lifecycle state, dates and pointers are excluded.
     assert knowledge_item_content_hash(item) == (
-        "sha256:1d028a4095ad552b3d908e4de5ad0e7d6d2f93bdf08bef4b10bcbac1995ff9bf"
+        "sha256:2e9c15d1e9c4d90961bbca396046a73f8f44379a8778dcb6d5978abb37b22a18"
     )
 
 
