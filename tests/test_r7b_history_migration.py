@@ -649,4 +649,3 @@ def test_0015_refuses_invalid_legacy_origins_without_partial_migration(
 
     assert revision == "0014_knowledge_quality"
     assert not pointer_column_exists
-
