@@ -526,8 +526,11 @@ def _drop_legacy_origin_team_constraint(engine: Engine) -> None:
         "snapshot_missing_title",
         "snapshot_extra_field",
         "snapshot_invalid_version_type",
+        "snapshot_non_initial_version",
         "snapshot_invalid_confidence_type",
         "snapshot_invalid_status",
+        "snapshot_non_active_status",
+        "snapshot_non_null_last_validated_at",
         "snapshot_invalid_datetime_type",
         "snapshot_missing_team_id",
         "snapshot_missing_origin_id",
@@ -551,6 +554,21 @@ def test_0015_refuses_invalid_legacy_origins_without_partial_migration(
         learning_change_id=learning_change_id,
         title=f"Invalid legacy origin: {invalid_case}",
         created_at=created_at,
+    )
+
+    # Keep a separate valid legacy root in the same migration transaction.
+    # A malformed root must stop the entire backfill, not partially migrate
+    # the valid KnowledgeItem that happens to be visited first.
+    companion_team_id = uuid4()
+    companion_item_id = uuid4()
+    companion_learning_change_id = uuid4()
+    _insert_legacy_knowledge_item(
+        pre_0015_schema.engine,
+        team_id=companion_team_id,
+        item_id=companion_item_id,
+        learning_change_id=companion_learning_change_id,
+        title="Valid companion root for migration rollback proof",
+        created_at=created_at + timedelta(days=2),
     )
 
     if invalid_case in {"missing_origin", "cross_team_origin"}:
@@ -650,10 +668,18 @@ def test_0015_refuses_invalid_legacy_origins_without_partial_migration(
                 invalid_snapshot["unexpected_legacy_field"] = "not part of B1 roots"
             elif invalid_case == "snapshot_invalid_version_type":
                 invalid_snapshot["version"] = 1.0
+            elif invalid_case == "snapshot_non_initial_version":
+                invalid_snapshot["version"] = 2
             elif invalid_case == "snapshot_invalid_confidence_type":
                 invalid_snapshot["confidence"] = 0.875
             elif invalid_case == "snapshot_invalid_status":
                 invalid_snapshot["status"] = "unknown"
+            elif invalid_case == "snapshot_non_active_status":
+                invalid_snapshot["status"] = "needs_review"
+            elif invalid_case == "snapshot_non_null_last_validated_at":
+                invalid_snapshot["last_validated_at"] = (
+                    "2026-10-19T12:00:00+00:00"
+                )
             elif invalid_case == "snapshot_invalid_datetime_type":
                 invalid_snapshot["review_after"] = 123
             elif invalid_case == "snapshot_non_object":
@@ -671,6 +697,21 @@ def test_0015_refuses_invalid_legacy_origins_without_partial_migration(
                     "learning_change_id": learning_change_id,
                 },
             )
+
+    with pre_0015_schema.engine.connect() as connection:
+        before_items = {
+            row["id"]: dict(row)
+            for row in connection.execute(
+                text("SELECT * FROM knowledge_items ORDER BY id")
+            ).mappings()
+        }
+        before_committed_states = dict(
+            connection.execute(
+                text("SELECT id, committed_state FROM learning_changes ORDER BY id")
+            ).all()
+        )
+
+    assert companion_item_id in before_items
 
     with pytest.raises(
         RuntimeError,
@@ -702,9 +743,22 @@ def test_0015_refuses_invalid_legacy_origins_without_partial_migration(
             ),
             {"schema": pre_0015_schema.schema},
         )
+        after_items = {
+            row["id"]: dict(row)
+            for row in connection.execute(
+                text("SELECT * FROM knowledge_items ORDER BY id")
+            ).mappings()
+        }
+        after_committed_states = dict(
+            connection.execute(
+                text("SELECT id, committed_state FROM learning_changes ORDER BY id")
+            ).all()
+        )
 
     assert revision == "0014_knowledge_quality"
     assert not pointer_column_exists
+    assert after_items == before_items
+    assert after_committed_states == before_committed_states
 
 
 @pytest.mark.parametrize(
