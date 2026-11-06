@@ -871,7 +871,8 @@ def _validate_transition(
             previous[field] != committed[field] for field in _CONTENT_FIELDS
         )
         if (
-            committed["version"] != previous["version"] + 1
+            previous["status"] not in {"active", "needs_review"}
+            or committed["version"] != previous["version"] + 1
             or committed["status"] != previous["status"]
             or not content_changed
             or committed["last_validated_at"] is not None
