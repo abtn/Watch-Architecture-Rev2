@@ -389,3 +389,27 @@ The Operator accepted all five B0 decisions, the R7-B D1 typed-assessment extens
 **Accepted design checks:** confidence is part of semantic content identity; confidence-only revise is content-changing and clears validation; existing canonical evidence may support revalidation only while temporally relevant and source-valid; the trusted host identity remains bound in the approval-request fingerprint and decision record; the exact snapshot/content domain separators are frozen; and the complete D5 candidate, abandonment, edge-case, visibility, and graph-lock contracts are accepted. Snapshot-first history reconstruction remains conditional on B1 proof; any failure requires a separate Operator decision on the smallest append-only history record.
 
 **Scope and verification boundary:** this record concerns documentation and architecture acceptance only. No source files, migrations, tests, Task registrations, provider configuration, active write scopes, or runtime behavior are changed by B0. No code test suite, database migration, or local disposable-PostgreSQL run is claimed by this documentation-only checkpoint. B0 closeout requires the documentation-only PR to pass its checks and merge. B1 remains unauthorized pending separate written Operator implementation authorization.
+
+
+## R7-B B1 — final integrity corrections and exact-head verification (2026-11-06)
+
+The Operator separately authorized B1 on 2026-11-05 and accepted the B1 phase on 2026-11-06. During final review, two integrity findings were corrected without expanding B1 scope.
+
+**Final review corrections**
+
+- The `0015_r7b_history` migration now requires every legacy create root to have exactly `version = 1`, `status = active`, and JSON `last_validated_at = null`. Regression tests use well-typed but semantically invalid values and prove rejection occurs before backfill. A valid companion KnowledgeItem is present in each malformed fixture; failed migration leaves the Alembic revision, pointer column state, all KnowledgeItem rows, and all stored LearningChange snapshots unchanged.
+- Live supersession validation now requires a predecessor with a reciprocal `superseded_by_id` link to be `retired`. Tests reject reciprocal links from `active` and `needs_review` predecessors, accept a `retired` predecessor, and preserve pending-candidate behavior when the predecessor has no reciprocal link.
+
+**Operator-local exact-head verification (reported 2026-11-06).** The committed code tree was tested on branch `r7b-b1-snapshot-history-proof` at `ca498ecd43207e72082332c803a74eb30173d41c`:
+
+- A disposable `pgvector/pgvector:pg16` container was started as `watch-r7b-b1-local-0efc20cd9f`, with database `watch_r7b_b1_disposable` on temporary host port `26114`. Both `DATABASE_URL` and `TEST_DATABASE_URL` targeted this disposable database.
+- `uv run alembic upgrade head` passed. `alembic heads` and `alembic current` both reported the single `0015_r7b_history (head)` revision.
+- `uv run pytest tests/test_r7b_history_migration.py -q`: **33 passed in 17.36s**.
+- `uv run ruff check core tests migrations` passed.
+- `uv run mypy core` passed with no issues in 32 source files.
+- `uv run pytest -q` (full suite): **690 passed in 105.00s**.
+- `git diff --check 64d5fb19be541d80b3cb8941ce3359d4b69565c1...HEAD` passed. The final branch/worktree check was clean; the runner noted only the intentionally excluded local `sync-and-test-r7b-b1.ps1` script. It removed its disposable container. The persistent `watch` database was not targeted.
+
+**Hosted-CI verification of the reviewed implementation tree:** PR head `08abdf17c65864fba832678230d1eddfa884ea04` passed hosted CI [run 42244835481](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42244835481) on 2026-11-06 (run 449). The workflow checked out that exact commit, applied migrations to a fresh PostgreSQL database and verified the single Alembic head; Ruff passed; Mypy found no issues in 32 source files; the full suite passed with **690 tests, 65 warnings in 46.89s**; and disposable PostgreSQL container cleanup passed. The warnings are Alembic's existing `path_separator` configuration deprecations. Git compare confirms that the nine commits between locally verified code head `ca498ecd43207e72082332c803a74eb30173d41c` and tested head `08abdf17c65864fba832678230d1eddfa884ea04` changed documentation only; no application code, migration, or test code changed after local verification. The later B1 status-closeout commits change documentation only; the latest PR-head workflow result is available from [PR #43](https://github.com/abtn/Watch-Architecture-Rev2/pull/43).
+
+**Disposition:** both final-review findings are corrected. The corrected code tree passed operator-local exact-code-head verification, and the reviewed implementation tree passed hosted CI run [42244835481](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42244835481). Subsequent closeout commits change documentation only; the current PR-head workflow is the authority for verification of the latest documentation head. Final technical review is complete: no blocking B1 finding remains and there are zero unresolved inline review threads. The recorded GitHub review is COMMENTED, not APPROVE. PR #43 remains open and draft pending the separate explicit Operator decision to mark it ready or merge it; this documentation update does not make that phase-boundary decision. B2–B6 and R7-C remain unauthorized.

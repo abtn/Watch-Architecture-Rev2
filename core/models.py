@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+import sqlalchemy as sa
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
@@ -648,10 +649,12 @@ class LearningChange(Base):
             name="uq_learning_changes_task_idempotency"),
         CheckConstraint("target_kind = 'knowledge_item'",
             name="ck_learning_changes_target_kind"),
-        CheckConstraint("operation IN ('create', 'revise', 'retire')",
-            name="ck_learning_changes_operation"),
+        CheckConstraint(
+            "operation IN ('create', 'revise', 'revalidate', 'supersede', 'retire')",
+            name="ck_learning_changes_operation",
+        ),
         CheckConstraint("(operation = 'create' AND target_id IS NULL) "
-            "OR (operation IN ('revise', 'retire') AND "
+            "OR (operation IN ('revise', 'revalidate', 'supersede', 'retire') AND "
             "target_id IS NOT NULL)", name="ck_learning_changes_target_state"),
         CheckConstraint("status IN ('proposed', 'accepted', 'rejected')",
             name="ck_learning_changes_status"),
@@ -719,12 +722,24 @@ class KnowledgeItem(Base):
         ForeignKeyConstraint(["origin_learning_change_id", "team_id"],
             ["learning_changes.id", "learning_changes.team_id"],
             name="fk_knowledge_items_origin_learning_change_team"),
+        ForeignKeyConstraint(["current_learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_knowledge_items_current_learning_change_team"),
+        ForeignKeyConstraint(["supersedes_item_id", "team_id"],
+            ["knowledge_items.id", "knowledge_items.team_id"],
+            name="fk_knowledge_items_supersedes_team"),
+        ForeignKeyConstraint(["superseded_by_id", "team_id"],
+            ["knowledge_items.id", "knowledge_items.team_id"],
+            name="fk_knowledge_items_superseded_by_team"),
         CheckConstraint("kind IN ('practice', 'pattern', 'method', 'playbook')",
             name="ck_knowledge_items_kind"),
         CheckConstraint("status IN ('active', 'needs_review', 'retired')",
             name="ck_knowledge_items_status"),
         CheckConstraint("version >= 1 AND confidence >= 0 AND confidence <= 1",
             name="ck_knowledge_items_version_confidence"),
+        CheckConstraint("(supersedes_item_id IS NULL OR supersedes_item_id <> id) "
+            "AND (superseded_by_id IS NULL OR superseded_by_id <> id)",
+            name="ck_knowledge_items_no_self_supersession"),
         CheckConstraint("length(title) > 0 AND length(statement) > 0 "
             "AND length(body) > 0", name="ck_knowledge_items_content"),
         CheckConstraint(
@@ -743,6 +758,13 @@ class KnowledgeItem(Base):
             name="ck_knowledge_items_payload_shape",
         ),
         UniqueConstraint("id", "team_id", name="uq_knowledge_items_id_team"),
+        UniqueConstraint("current_learning_change_id",
+            name="uq_knowledge_items_current_learning_change"),
+        UniqueConstraint("superseded_by_id", name="uq_knowledge_items_superseded_by"),
+        Index("uq_knowledge_items_pending_candidate", "supersedes_item_id",
+            unique=True, postgresql_where=sa.text(
+                "supersedes_item_id IS NOT NULL AND status <> 'retired'"
+            )),
         Index("ix_knowledge_items_team_status", "team_id", "status"),
     )
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -770,6 +792,15 @@ class KnowledgeItem(Base):
         nullable=True)
     origin_learning_change_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True),
         nullable=False)
+    current_learning_change_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
+    supersedes_item_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    superseded_by_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
         nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),

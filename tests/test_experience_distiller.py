@@ -49,6 +49,7 @@ from core.learning_commit import (
     LearningCommitError,
     LearningCommitService,
 )
+from core.learning_history import encode_state_snapshot, knowledge_item_state
 from core.models import (
     Evaluation,
     Event,
@@ -2588,3 +2589,160 @@ def test_learning_commit_replay_rejects_tampered_canonical_records(
                 )
             session.execute(delete(Event).where(Event.task_id == task_id))
             session.execute(delete(Task).where(Task.id == task_id))
+
+
+def test_original_create_approval_replays_after_later_history_transition(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(1, False)
+    proposal = _distiller(session_factory, snapshot_store, _provider()).propose(
+        fixture.distillation_task_id, [fixture.cases[0].evaluation_id]
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    task_id, attempt, principal = _create_admitted_approval_task(
+        session_factory, snapshot_store, fixture.team_id, proposal.learning_change_id
+    )
+    service = LearningCommitService(session_factory, snapshot_store)
+    later_task_id: UUID | None = None
+    later_change_id: UUID | None = None
+    try:
+        original = service.decide(task_id, attempt, principal)
+        assert original.knowledge_item_id is not None
+        TaskRuntime(session_factory, snapshot_store).finalize(
+            TerminalObservation(
+                task_id=task_id,
+                attempt=attempt,
+                result_category="success_learning_change_accepted",
+                observed_at=original.committed_at,
+                learning_change_id=original.learning_change_id,
+            )
+        )
+
+        later_task_id, later_change_id = uuid4(), uuid4()
+        later_committed_at = original.committed_at + timedelta(minutes=1)
+        later_started_at = later_committed_at - timedelta(seconds=30)
+        operator_id = "test-host|later-revision-operator"
+        with session_factory.begin() as session:
+            item = session.get(KnowledgeItem, original.knowledge_item_id)
+            assert item is not None
+            previous = knowledge_item_state(item)
+            committed = dict(previous)
+            committed.update(
+                {
+                    "body": "A later accepted revision, after the original create.",
+                    "version": 2,
+                    "current_learning_change_id": str(later_change_id),
+                }
+            )
+            session.add(
+                Task(
+                    id=later_task_id,
+                    team_id=fixture.team_id,
+                    task_type="approve_learning_change",
+                    status="running",
+                    attempt_count=1,
+                    policy_version=1,
+                    allowed_writes=["LearningChange", "KnowledgeItem"],
+                    budget={
+                        "max_tool_calls": 0,
+                        "max_cost_usd": 0.0,
+                        "deadline_seconds": 30,
+                    },
+                    created_at=later_started_at,
+                )
+            )
+            session.flush()
+            session.add(
+                LearningChange(
+                    id=later_change_id,
+                    team_id=fixture.team_id,
+                    target_kind="knowledge_item",
+                    target_id=item.id,
+                    operation="revise",
+                    proposed_state={
+                        "proposal_hash": "sha256:" + ("e" * 64),
+                    },
+                    previous_state=encode_state_snapshot(previous),
+                    committed_state=encode_state_snapshot(committed),
+                    evidence_basis=[],
+                    evidence_basis_hash="sha256:" + ("f" * 64),
+                    status="accepted",
+                    idempotency_key="later-revision-" + str(later_change_id),
+                    proposed_by_task_id=later_task_id,
+                    committed_by_task_id=later_task_id,
+                    operator_id=operator_id,
+                    created_at=later_started_at,
+                    committed_at=later_committed_at,
+                )
+            )
+            session.flush()
+            item.body = committed["body"]
+            item.version = 2
+            item.current_learning_change_id = later_change_id
+            session.add_all(
+                [
+                    Event(
+                        id=uuid4(),
+                        task_id=later_task_id,
+                        type="task_started",
+                        payload={
+                            "from_status": "pending",
+                            "to_status": "running",
+                            "attempt_count": 1,
+                        },
+                        created_at=later_started_at,
+                    ),
+                    Event(
+                        id=uuid4(),
+                        task_id=later_task_id,
+                        type="learning_change_accepted",
+                        payload={
+                            "learning_change_id": str(later_change_id),
+                            "operation": "revise",
+                            "decision": "accept",
+                            "operator_id": operator_id,
+                            "approval_task_id": str(later_task_id),
+                            "attempt_count": 1,
+                            "committed_at": later_committed_at.isoformat(),
+                        },
+                        created_at=later_committed_at,
+                    ),
+                ]
+            )
+
+        replay = service.decide(task_id, attempt, principal)
+        assert replay.replayed is True
+        assert replay.learning_change_id == original.learning_change_id
+        assert replay.knowledge_item_id == original.knowledge_item_id
+        with session_factory() as session:
+            item = session.get(KnowledgeItem, original.knowledge_item_id)
+            assert item is not None
+            assert item.version == 2
+            assert item.current_learning_change_id == later_change_id
+            assert item.body == "A later accepted revision, after the original create."
+    finally:
+        if later_task_id is not None and later_change_id is not None:
+            with session_factory.begin() as session:
+                # The KnowledgeItem's current pointer references this change.
+                # Remove the fixture item before deleting its referenced change.
+                session.execute(
+                    delete(KnowledgeItem).where(
+                        KnowledgeItem.id == original.knowledge_item_id
+                    )
+                )
+                session.execute(
+                    delete(LearningChange).where(LearningChange.id == later_change_id)
+                )
+                session.execute(delete(Event).where(Event.task_id == later_task_id))
+                session.execute(delete(Task).where(Task.id == later_task_id))
+        _cleanup_operator_decision_task(session_factory, task_id)

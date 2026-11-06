@@ -1,80 +1,44 @@
-# Watch — Persistent, Evidence-Oriented Team System
+# Watch — Persistent Team Experience
 
-Watch is designed to turn temporary model workers into durable, auditable team experience. Model workers propose; application code validates and commits; durable records preserve what the system learned and did.
+Watch is a framework for building teams of AI-assisted workers that can carry out useful work and retain lessons from experience.
+
+AI workers can suggest what to do, but they do not make decisions on their own. The system checks proposals against its rules, and trusted people remain responsible for important decisions. Work, results, and accepted lessons are recorded so future tasks can build on what came before.
 
 > **Model intelligence is temporary. Team experience is persistent.**
 
-## Architecture in one line
+## Completed foundations
 
-**Reactive or deliberative entry → ordinary Task → Worker proposal → application validation → Kernel/application commit → durable records and Events.**
+- **K0:** established the project's development tools and database foundation.
+- **K1:** created the first safe path for recording completed work.
+- **R0:** defined the main ideas and boundaries of the system.
+- **R1:** checked that the design fits the existing system.
+- **R2:** introduced goals and how they are managed.
+- **R3:** added a consistent way to assess the system's state.
+- **R4 (closed 2026-10-20):** established how the system turns goals into structured strategies.
+- **R5 (closed 2026-10-24):** added durable plans and their lifecycle.
+- **R6-G0:** agreed how Watch should learn from evidence and retain useful team knowledge.
+- **R6-A:** added reliable task outcomes, retries, and recovery.
+- **R6-B:** added the first end-to-end path for carrying out configured source work.
+- **R6-C:** added a way to review how work was carried out without changing its records.
+- **R6-D:** added the ability to index and search approved source material.
+- **R6-E:** gave tasks useful background information and allowed AI to suggest next steps within set limits.
+- **R6-F:** enabled reviewed experience to become reusable team knowledge.
+- **R6-G (closed 2026-11-04):** completed the process for reviewing past work and reusing lessons in future tasks.
 
-## What Watch is
+## Work in progress
 
-**Watch is an attempt to build a persistent, evidence-oriented organization around temporary AI reasoning.** It turns information and goals into bounded Tasks, gives each worker relevant and authorized context, treats model output as proposals, validates those proposals in application code, and records decisions, execution, and Outcomes as durable, attributable history. Assessment and retrieval use that history to inform later work; the longer-term design is to distil carefully reviewed, evidence-linked lessons into reusable team knowledge.
+- **R7:** work is focused on checking the quality of saved lessons and deciding how they should change over time. B1 was accepted by the Operator on 2026-11-06, and its final checks have passed locally and in hosted CI. [PR #43](https://github.com/abtn/Watch-Architecture-Rev2/pull/43) remains open pending a separate merge decision.
 
-This is our current working abstraction, shaped by the initial design and by what implementation has taught us. It is a way to explain the whole system, not a complete specification or a claim that every capability is already implemented. Persistence alone does not create expertise: an Outcome does not prove what caused it, evaluation methods can themselves be biased, and stored mistakes can become institutional memory. Watch's central challenge is to make adaptation more reliable by examining evidence, uncertainty, limitations, counterexamples, and the conditions under which a lesson should—or should not—transfer between domains.
-
-So Watch is not simply a chatbot with memory or a universal expert. It is a reusable framework for building domain-specific expertise workflows. Its intelligence is distributed across models, persistent state, retrieval, execution, assessment, policies, and human review; no single component is sufficient on its own.
-
-
-A Plan is intended work, not execution truth. Tasks and Events record execution. Derived assessments do not become authority merely because a model produced them.
-
-## Current state (snapshot 2026-11-05)
-
-[`PLAN.md`](PLAN.md) is the single source of current milestone status; the summary below is a convenience snapshot, not an authority record.
-
-**Completed foundations and R6 slices**
-
-- **K0, K1:** tooling baseline (Python 3.12+/uv, PostgreSQL + pgvector, Alembic, pytest, Ruff, mypy) and the smallest proposal → validation → atomic Kernel commit → Event path (`ingest_source`).
-- **R0–R3:** Revision 2 semantics and boundaries, Kernel/Task compatibility, durable Objective model and lifecycle, and the deterministic read-only `StateAssessment` with provenance.
-- **R4 (closed 2026-10-20):** StrategyProposal boundary — multi-Vision/Workstream/Action Strategy semantics with deterministic validation and reconstruction.
-- **R5 (closed 2026-10-24):** Plan materialization and lifecycle — one accepted Strategy materialized as one durable Plan with ordinary Tasks and enforced lifecycle constraints.
-- **R6-G0 (complete, 2026-10-25):** design decisions recorded in ADR-0025/0026/0028/0029/0030 and the R6 entry gate. ADR-0027 remains Proposed.
-- **R6-A (complete, PR #12):** Task lifecycle — outcome schema and migration, atomic terminal `task_execution` Outcome finalization, retry scheduling and attempt exhaustion, and bounded interrupted-task recovery (`TaskRuntime.recover_interrupted()`).
-- **R6-B (complete, PR #14):** the first working execution path — `TaskDispatcher` and `RestrictedFetcher` run one configured-source `ingest_source` Task end to end through the Kernel with startup recovery and policy-authorized source identity.
-- **R6-C (complete, PR #16):** deterministic, read-only `ExecutionAssessmentBuilder` that rebuilds Plan intent and Task attempt history from durable records, validates Outcome/Snapshot/Event/Signal consistency, and hashes the canonical result. It adds no migration and no write path.
-- **R6-D (complete; PRs #22 and #24):** provider-neutral embeddings, the `knowledge_chunks` projection, idempotent Signal indexing, snapshot/hash verification, model-readiness polling, and current-policy-scoped PostgreSQL hybrid retrieval. The operator verified local LM Studio BGE-M3 integration against a disposable PostgreSQL database using model ID `text-embedding-bge-m3`, 1,024-dimensional vectors, and the explicit `WATCH_EMBEDDING_REVISION=metadata-sha256:e8ffcf172118d67251eccbf45916e407b7e0537deef08f70bbd62e86518e9c69` pin.
-- **R6-E (complete; PR #28 merged 2026-11-01):** all three checkpoints are integrated — bounded Task Context assembly with immutable Snapshot/manifest, a Context-bound model-backed `StrategyProposer`, and Task-attributed generation cost reservation/reconciliation. Operator verification passed all three checkpoints; Step 3 passed 43 focused tests, Ruff, mypy, the full suite, and `git diff --check` on disposable PostgreSQL at `0011_task_generation_cost`. Hosted CI passed fresh migrations, Ruff, mypy, and 515 tests in [run 41279796198](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41279796198). The provider remains outside automatic Task dispatch and is not authorized for R6-F distillation.
-
-**R6 continuation**
-
-- **R6-F — Checkpoints 1–4 complete and merged:** PR #31 merged C3 create-only approval/canonical commit; PR #32 merged C4 Team Experience projection/retrieval. The combined C3+C4 operator-local verification passed on PR #33 head `7bd7c5df`; merge commit `de1af38` has the identical tree SHA. It passed migration/head validation at `0013_team_experience_projection`, 118 focused tests, Ruff, Mypy (27 files), 594 full-suite tests, and diff check. The run preceded merge; local `main` was subsequently synced cleanly. See `docs/testing.md` for exact evidence and qualification. D10 remains create-only; no production R6-F distillation provider is approved.
-- **R6-G — COMPLETE; PR #35 merged 2026-11-04:** D9 is implemented as `watch.r6g.ingest-source-rules` revision `1` for configured-source `ingest_source` terminal Outcomes. The merged implementation includes atomic evaluator Task enqueue, deterministic Evaluation Tasks, recorded-Evaluation recovery, terminal-failure-aware v2 ExperienceDistiller packs with per-case version markers and legacy-v1 reconstruction, typed Strategy/Plan TaskRuntime results, and the integrated three-case path through Operator decision, Team Experience indexing and later-Task retrieval.
-- **R6-G verification and formal closeout:** implementation-head CI run [41782439302](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41782439302) passed fresh migrations/single-head validation, Ruff, Mypy and 614 tests; final PR-head CI run [41788001379](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41788001379) passed after documentation-only updates. Programmer-local disposable-PostgreSQL verification on implementation head `2a55acfeadaf37e23b9f2cffd8819b7b460ba6b3` passed 134 focused and 614 full-suite tests, Ruff, Mypy (29 files), migration/head checks and `git diff --check`. The ten-proof review passed and the Operator approved the exit gate. PR #35 merged to `main` at `56745b613b5b77a21a514b4e261d3450f90c0df1`. No production evaluator/provider, second runtime, general dispatcher, or D10 revise/retire path is introduced.
-- **R6-G exit boundary:** the bounded implementation and formal R6-G exit gate are approved and merged. R6 is complete through R6-G; this approval does not authorize R7 or expand the create-only D10 boundary.
+Later R7 phases have not yet been authorized.
 
 ## Future plan
 
-Roadmap per [`PLAN.md`](PLAN.md); `PLAN.md` remains the only authority for current milestone status.
+- **R8:** test the same approach across different kinds of teams and work.
+- **R9:** make the development and review process more repeatable and reliable.
 
-- **R7-0 and R7-A — complete:** ADR-0032's original acceptance covers the R7 architecture and R7-A. R7-A evidence lineage and KnowledgeQualityAssessment are merged and passed exact-head hosted and operator-local disposable-PostgreSQL verification (631 tests). The Operator accepted the five R7-B B0 decisions and D1/D5 design extensions on 2026-11-05; documentation integration is in progress and remains docs-only. B1–B6 implementation and R7-C remain unauthorized. See PLAN.md.
-- **R7 — Knowledge quality evaluation and lifecycle:** R7-A is complete and merged. The [R7-B implementation plan](docs/development/r7-b-implementation-plan.md) records the accepted B0 design: stable content hashing with confidence, versioned snapshots, evidence freshness, trusted approval fingerprints, reciprocal successor publication gating, D7 overlays, typed assessments and Context v3/projection republishing. B0 documentation integration is in progress; B1–B6 implementation and R7-C remain separately gated.
-- **R8 — Multi-domain pressure test:** exercise the same Control layer across newsroom, development-team, and generalist settings while domain-specific knowledge stays outside the Kernel.
-- **R9 — Agent-assisted production workflow:** codified task packets, test-first changes, architecture reviews, verification evidence, and human approval boundaries.
-- **Deferred cross-cutting work:** execution security (per-worker filesystem/network/tool surface and secret isolation) and broader multi-domain experience-library work beyond the initial R6 slice.
+## Project documentation
 
-## Repository guide
-
-- [`CONTEXT.md`](CONTEXT.md) — concise session orientation.
-- [`PLAN.md`](PLAN.md) — current milestone status, gates, and next action.
-- [`AGENTS.md`](AGENTS.md) — instructions for coding agents.
-- [`docs/development/agent-delivery-protocol.md`](docs/development/agent-delivery-protocol.md) — standing delivery authorization, automatic advancement, and merge conditions.
-- [`docs/development/local-embeddings.md`](docs/development/local-embeddings.md) — local LM Studio / BGE-M3 embedding API setup and smoke gate.
-- [`docs/development/r6-entry-gate.md`](docs/development/r6-entry-gate.md) — R6 decisions, implementation boundaries, acceptance gates, and the integrated R6 exit criteria.
-- [`docs/development/r7-entry-gate.md`](docs/development/r7-entry-gate.md) — accepted R7 architecture, R7-A closeout, and separate R7-B/R7-C gates.
-- [`docs/development/r7-b-implementation-plan.md`](docs/development/r7-b-implementation-plan.md) — R7-B lifecycle preparation; not implementation authorization.
-- [`docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md`](docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md) — accepted knowledge-quality and lifecycle architecture.
-- [`docs/development/r6g-integrated-fixture-design.md`](docs/development/r6g-integrated-fixture-design.md) — detailed R6-G three-case fixture, service sequence, transaction/recovery boundaries, and required tests.
-- [`docs/development/r6-f-implementation-plan.md`](docs/development/r6-f-implementation-plan.md) — historical R6-F technical checkpoints, design decisions, and verification gates.
-- [`CHANGE_MAP.md`](CHANGE_MAP.md) — authority map for concepts.
-- [`docs/control-model.md`](docs/control-model.md) — Objective, StateAssessment, Strategy, Plan, and the dual-entry model.
-- [`docs/architecture.md`](docs/architecture.md) — general/original architecture for concepts not replaced by Revision 2.
-- [`docs/invariants.md`](docs/invariants.md) — architectural invariants.
-- [`docs/tasks.md`](docs/tasks.md) — Task specifications, write scopes, and budgets.
-- [`docs/decisions.md`](docs/decisions.md) — concise decision index; full ADRs are under `docs/decisions/`.
-- [`docs/testing.md`](docs/testing.md) — test and verification strategy.
-
-## Technical baseline
-
-Python 3.12+, SQLAlchemy 2, PostgreSQL with pgvector, Alembic, `uv`, pytest, Ruff, and mypy. See `pyproject.toml`, `uv.lock`, and `compose.yaml` for the executable configuration. `.github/workflows/ci.yml` runs the same checks against a disposable PostgreSQL service container.
-
+- [PLAN.md](PLAN.md) — current project status and next steps.
+- [Architecture overview](docs/architecture.md) — how the system is structured.
+- [Architecture decisions](docs/decisions.md) — the decisions that guide the project.
+- [Contributor instructions](AGENTS.md) — how to work safely in this repository.

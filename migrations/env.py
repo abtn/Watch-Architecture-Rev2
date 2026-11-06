@@ -26,7 +26,28 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _run_migrations(connection, version_table_schema: str | None = None) -> None:
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        version_table_schema=version_table_schema,
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
 def run_migrations_online() -> None:
+    # Programmatic callers can supply a connection and version-table schema
+    # when they need precise transaction or schema isolation.
+    supplied_connection = config.attributes.get("connection")
+    if supplied_connection is not None:
+        _run_migrations(
+            supplied_connection,
+            version_table_schema=config.attributes.get("version_table_schema"),
+        )
+        return
+
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
@@ -34,10 +55,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
-
-        with context.begin_transaction():
-            context.run_migrations()
+        _run_migrations(connection)
 
 
 if context.is_offline_mode():

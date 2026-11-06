@@ -351,14 +351,28 @@ def _knowledge_item_state(item: KnowledgeItem) -> dict[str, Any]:
 def knowledge_item_committed_state_matches(
     item: KnowledgeItem, learning_change: LearningChange
 ) -> bool:
-    """Compare immutable content/provenance while allowing lifecycle status changes."""
-    committed = learning_change.committed_state
-    if not isinstance(committed, dict):
+    """Compare the create-root snapshot using its recorded snapshot scheme."""
+    from core.learning_history import KnowledgeHistoryError, decode_state_snapshot
+
+    try:
+        committed, _ = decode_state_snapshot(
+            learning_change.committed_state,
+            learning_change_id=learning_change.id,
+            operation=learning_change.operation,
+            allow_legacy_root=True,
+        )
+    except KnowledgeHistoryError:
         return False
     current = _knowledge_item_state(item)
-    for field in ("status", "last_validated_at"):
+    # D7 review is a separate Event overlay. B1's full validator proves pointer
+    # continuity and the final live-state match.
+    for field in (
+        "status",
+        "last_validated_at",
+        "current_learning_change_id",
+        "superseded_by_id",
+    ):
         current.pop(field, None)
-        committed = dict(committed)
         committed.pop(field, None)
     return current == committed
 

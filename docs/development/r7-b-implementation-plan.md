@@ -2,9 +2,11 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status:** **B0 design decisions ACCEPTED by the Operator on 2026-11-05; documentation integration and validation are in progress.** B0 is documentation-only. **B1–B6 implementation is NOT authorized.** Completing or merging B0 does not authorize B1; B1 requires separate written Operator implementation authorization.
+**Status:** **B0 complete; B1 accepted by the Operator on 2026-11-06; final technical review and hosted CI passed.** PR #43 (`r7b-b1-snapshot-history-proof`) contains the B1 implementation and both final-review corrections. The migration requires create-root `version = 1`, `status = active`, and JSON `last_validated_at = null` before backfill. The live supersession validator requires a reciprocal predecessor to be retired, while preserving pending candidates whose predecessor has no reciprocal pointer. Operator-local exact-code-head verification passed at `ca498ecd43207e72082332c803a74eb30173d41c`: fresh disposable PostgreSQL migration to the single `0015_r7b_history` head, 33 focused migration tests, Ruff, Mypy (32 source files), and 690 full-suite tests. Hosted CI [run 42244001665](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42244001665) also passed on final PR head `9576b2adb87da9ade5891665dc343db9bdef9e91`, including fresh migrations, Ruff, Mypy, and 690 tests. The commits between those heads changed documentation only. Full evidence is in `docs/testing.md`. PR #43 remains open and draft pending a separate explicit Operator merge decision. **B2–B6 and R7-C remain unauthorized.**
 
-**Baseline:** PR #40 merged to `main` at `15a3fbaa8ab520ad1f6f4906a27b894356fb21f7`. Revision 3 is the accepted B0 design baseline. The local checkout remains independently subject to the read-only programmer preflight.
+
+
+**Baseline:** B0 PR #41 merged to `main` at `64d5fb19be541d80b3cb8941ce3359d4b69565c1`. Revision 3 is the accepted B0 design baseline. The local checkout remains independently subject to the read-only programmer preflight.
 
 > Class, file, function and constraint names come from the review and ADR text. Verify each against the repository before relying on it. If a name or behavior differs, record the discrepancy in the PR and do not guess.
 
@@ -175,11 +177,15 @@ B0 closes when:
 - Documentation validation passes: the diff is docs-only; phase names, status statements, task scopes, and authority rules agree; changed-file references and anchors resolve; no proposed design is represented as implemented or active; and the Operator's acceptance is recorded.
 - The documentation-only integration is merged and the B0 closeout is recorded in PLAN.md.
 
-**B0 completion does not authorize B1.** B1 requires separate written Operator implementation authorization after B0 closes. Until then, no source, schema, migration, tests, Task registration, provider, active write scope, or runtime change may begin.
+**B0 completion did not itself authorize B1. The Operator separately authorized B1 on 2026-11-05 after B0 closeout.** That authorization is limited to the B1 scope below. B2–B6 remain unauthorized; no later-phase Task registration, provider, active write scope or runtime change is authorized.
 
 ---
 
 ## Phase B1: Schema, create-pointer rollout, legacy decoder, chain reconstruction and D7 overlay
+
+**Implementation and acceptance status (2026-11-06):** The Operator separately authorized B1 on 2026-11-05 and accepted the B1 phase on 2026-11-06. Implementation is in draft PR [#43](https://github.com/abtn/Watch-Architecture-Rev2/pull/43). The final-review corrections are complete: migration backfill rejects any create root whose version is not 1, status is not active, or `last_validated_at` is not JSON null; live supersession reconstruction rejects reciprocal links from non-retired predecessors. Regression coverage proves the valid unlinked pending-candidate case remains accepted. Operator-local verification passed at exact code head `ca498ecd43207e72082332c803a74eb30173d41c`: disposable PostgreSQL migration to the single `0015_r7b_history` head, 33 focused migration tests, Ruff, Mypy (32 source files), and 690 full-suite tests. Hosted CI [run 42244835481](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42244835481) passed on PR head `08abdf17c65864fba832678230d1eddfa884ea04`: fresh PostgreSQL migration and single-head checks, Ruff, Mypy (32 source files), and 690 tests in 46.89s; cleanup passed. Git compare confirms the nine commits between the local code head and tested PR head changed documentation only. The B1 status-closeout commits are documentation-only; the current PR-head workflow status is available directly from [PR #43](https://github.com/abtn/Watch-Architecture-Rev2/pull/43). Historical create snapshots and review Events remain unchanged in storage. Final technical review is complete with no blocking B1 finding and zero unresolved inline review threads; the recorded review is COMMENTED, not APPROVE. PR #43 remains open and draft pending a separate explicit Operator decision to mark it ready or merge. **B2–B6 and R7-C remain unauthorized.**
+
+
 
 **Goal:** prove lifecycle history is reconstructable from existing snapshots plus the current pointer, with the authorized D7 overlay, before committing to any history table.
 
