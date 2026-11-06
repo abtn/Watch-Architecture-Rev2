@@ -104,11 +104,12 @@ def upgrade() -> None:
                   END
                OR jsonb_typeof(lc.committed_state->'status')
                     IS DISTINCT FROM 'string'
-               OR lc.committed_state->>'status'
-                    NOT IN ('active', 'needs_review', 'retired')
+               OR lc.committed_state->>'status' IS DISTINCT FROM 'active'
                OR jsonb_typeof(lc.committed_state->'version')
                     IS DISTINCT FROM 'number'
-               OR lc.committed_state->>'version' !~ '^[1-9][0-9]*$'
+               OR lc.committed_state->>'version' IS DISTINCT FROM '1'
+               OR lc.committed_state->'last_validated_at'
+                    IS DISTINCT FROM 'null'::jsonb
                OR EXISTS (
                     SELECT 1
                     FROM (VALUES
