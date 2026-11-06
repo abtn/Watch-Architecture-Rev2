@@ -752,4 +752,3 @@ def test_0015_learning_change_operation_target_constraints(
             ).one()
         assert row.operation == "create"
         assert row.target_id is None
-
