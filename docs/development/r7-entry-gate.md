@@ -65,7 +65,7 @@ Exit requirements:
 
 ### R7-B — Canonical KnowledgeItem lifecycle
 
-**Status (2026-11-06):** B0 is complete. B1 was separately authorized, accepted, verified, and merged by PR #43 at `d1a8b88fd930207142304fc9b0b7274de5de4992`. B2 Step 0 is complete. The Operator accepted the `legacy-opaque` projection compatibility amendment, recorded in ADR-0032 and the [R7-B implementation plan](r7-b-implementation-plan.md). B2 implementation is **NOT AUTHORIZED** pending separate explicit written Operator authorization. B3–B6 and R7-C remain unauthorized.
+**Status (2026-11-06):** B0 is complete. B1 was separately authorized, accepted, verified, and merged by PR #43 at `d1a8b88fd930207142304fc9b0b7274de5de4992`. B2 Step 0 is complete; the Operator accepted the `legacy-opaque` projection compatibility amendment and separately authorized B2 implementation on 2026-11-06. Step 1 is underway in draft PR [#45](https://github.com/abtn/Watch-Architecture-Rev2/pull/45), with hosted CI pending. B3–B6 and R7-C remain unauthorized.
 
 R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path to revise, revalidate, supersede and retire KnowledgeItems. It preserves stable item identity, immutable origin provenance, current-pointer history, Team isolation, D7 review rules, and fail-closed retrieval. It adds no runtime, dispatcher, scheduler, public API/auth stack or production evaluator provider.
 
@@ -75,7 +75,7 @@ R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path 
 
 1. **B0 — Design freeze (documentation only):** five Operator decisions and D1/D5 design extensions accepted 2026-11-05. Complete cross-document integration and documentation validation; no code or active Task scopes.
 2. **B1 — Schema and history proof:** current pointer and reciprocal supersession fields, safe backfill, create-pointer rollout, both LearningChange constraints, legacy snapshot decoder, chain reconstruction and D7 overlay validation. Stop and seek a history-table decision if reconstruction cannot be proven.
-3. **B2 — Hash/projection/Context and chain-aware consumers:** stable content-hash scheme, `legacy-opaque` stale/republish transition for pre-existing projections, current-pointer projection pins, Context manifest v3, immutable v1/v2 replay, while enabling only create.
+3. **B2 — Hash/projection/Context and chain-aware consumers:** stable content-hash v2; `legacy-opaque` stale/republish transition for pre-existing projections; current-pointer projection pins; Context manifest v3; immutable v1/v2 replay, while enabling only create.
 4. **B3 — Assessments:** immutable KnowledgeRevalidationAssessment and KnowledgeLifecycleAssessment through narrow Task paths; no production provider or model scoring for lifecycle assessments.
 5. **B4 — Revise/revalidate:** exact pointer/version compare-and-set, status-preserving revise, evidence-bound revalidation and fresh projection publication.
 6. **B5 — Supersede/retire/candidate creation:** create-with-successor, reciprocal publication gate, D7-aware commit, abandoned-candidate rules, consistent-snapshot Context validation, and Team-scoped graph lock.
