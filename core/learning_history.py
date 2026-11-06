@@ -905,10 +905,11 @@ def _validate_live_supersession_links(session: Session, item: KnowledgeItem) -> 
     """Validate both directions of the same-Team supersession chain.
 
     A candidate may point at its predecessor before supersession is committed,
-    so a predecessor's reciprocal successor link may be NULL. Once a committed
-    successor link exists, it must point back to the traversed candidate. Walk
-    the full ancestor and successor chains so cycles longer than one edge cannot
-    evade the local foreign-key and uniqueness constraints.
+    so a predecessor's reciprocal successor link may be NULL. Once a reciprocal
+    successor link exists, it must point back to the candidate and the
+    predecessor must already be retired. Walk the full ancestor and successor
+    chains so cycles longer than one edge cannot evade the local foreign-key
+    and uniqueness constraints.
     """
     team_id = item.team_id
 
@@ -925,7 +926,10 @@ def _validate_live_supersession_links(session: Session, item: KnowledgeItem) -> 
             or predecessor.id == current.id
             or (
                 predecessor.superseded_by_id is not None
-                and predecessor.superseded_by_id != current.id
+                and (
+                    predecessor.superseded_by_id != current.id
+                    or predecessor.status != "retired"
+                )
             )
         ):
             raise KnowledgeHistoryError("supersession_predecessor_link_invalid")
