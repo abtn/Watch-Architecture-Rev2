@@ -371,6 +371,11 @@ def test_0015_backfills_populated_legacy_items_without_rewriting_snapshots(
             created_at=item_created_at,
         )
 
+    expected_snapshots = {
+        learning_change_id: snapshots[item_id]
+        for _, item_id, learning_change_id, _, _ in records
+    }
+
     with pre_0015_schema.engine.connect() as connection:
         before_snapshots = dict(
             connection.execute(
@@ -403,15 +408,7 @@ def test_0015_backfills_populated_legacy_items_without_rewriting_snapshots(
         }
 
     assert len(before_items) == 2
-    assert len(before_snapshots) == 2
-    for item_id, snapshot in snapshots.items():
-        assert before_snapshots[
-            next(
-                change_id
-                for change_id, stored in before_snapshots.items()
-                if stored == snapshot
-            )
-        ] == snapshot
+    assert before_snapshots == expected_snapshots
 
     _upgrade_to_revision(
         pre_0015_schema.engine,
@@ -476,12 +473,17 @@ def test_0015_backfills_populated_legacy_items_without_rewriting_snapshots(
 
     for item_id, before in before_items.items():
         after = after_items[item_id]
-        assert after["current_learning_change_id"] == before["origin_learning_change_id"]
+        assert (
+            after["current_learning_change_id"]
+            == before["origin_learning_change_id"]
+        )
         assert after["supersedes_item_id"] is None
         assert after["superseded_by_id"] is None
         for field, value in before.items():
             assert after[field] == value, f"migration changed {field} for {item_id}"
 
-    for item_id, snapshot in snapshots.items():
-        origin_id = UUID(str(snapshot["origin_learning_change_id"]))
-        assert after_items[item_id]["current_learning_change_id"] == origin_id
+    for _, item_id, learning_change_id, _, _ in records:
+        assert (
+            after_items[item_id]["current_learning_change_id"]
+            == learning_change_id
+        )
