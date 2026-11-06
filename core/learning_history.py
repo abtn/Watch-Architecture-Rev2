@@ -876,7 +876,9 @@ def _validated_review_markers(
         review_after = record.get("review_after")
         if not isinstance(review_after, str):
             raise KnowledgeHistoryError("review_event_item_review_after_invalid")
-        _parse_timestamp(review_after, "review_after")
+        review_after = _timestamp(
+            _parse_timestamp(review_after, "review_after")
+        )
         origin_id = _canonical_uuid(record.get("origin_learning_change_id"))
         pointer = (
             _canonical_uuid(record.get("current_learning_change_id"))

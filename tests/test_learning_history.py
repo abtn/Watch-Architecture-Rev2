@@ -506,7 +506,7 @@ def test_versioned_snapshot_uses_b0_3_canonical_envelope_and_hash():
         "state": snapshot["state"],
     }
     expected_hash = "sha256:" + hashlib.sha256(
-        b"watch.r7b.knowledge-item-state.v1\\x00"
+        b"watch.r7b.knowledge-item-state.v1\x00"
         + _canonical_json(hash_payload).encode("utf-8")
     ).hexdigest()
     assert snapshot["snapshot_hash"] == expected_hash
