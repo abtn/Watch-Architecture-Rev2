@@ -554,6 +554,7 @@ def test_supersession_graph_rejects_two_item_and_longer_cycles(cycle_size: int):
             items[item_ids[0]],
         )
 
+
 def _supersession_candidate_pair(predecessor_status: str, *, reciprocal: bool):
     team_id = uuid4()
     predecessor_id, candidate_id = uuid4(), uuid4()
