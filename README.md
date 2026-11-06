@@ -8,8 +8,12 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Completed foundations
 
-- **K0–K1:** established the project foundations and the first safe path for recording completed work.
-- **R0–R3:** defined the core model for goals, tasks, execution, and assessment.
+- **K0:** established the project's development tools and database foundation.
+- **K1:** created the first safe path for recording completed work.
+- **R0:** defined the main ideas and boundaries of the system.
+- **R1:** checked that the design fits the existing system.
+- **R2:** introduced goals and how they are managed.
+- **R3:** added a consistent way to assess the system's state.
 - **R4 (closed 2026-10-20):** established how the system turns goals into structured strategies.
 - **R5 (closed 2026-10-24):** added durable plans and their lifecycle.
 - **R6-G0:** agreed the direction for evidence-based learning and team knowledge.
