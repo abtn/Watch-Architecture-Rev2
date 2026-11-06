@@ -610,4 +610,3 @@ def test_pending_supersession_candidate_allows_predecessor_without_reciprocal_li
     )
 
     _validate_live_supersession_links(session, candidate)
-
