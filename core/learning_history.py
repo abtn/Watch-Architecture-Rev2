@@ -803,28 +803,53 @@ def _validated_review_markers(
 
 
 def _validate_live_supersession_links(session: Session, item: KnowledgeItem) -> None:
-    if item.supersedes_item_id is not None:
-        predecessor = session.get(KnowledgeItem, item.supersedes_item_id)
+    """Validate both directions of the same-Team supersession chain.
+
+    A candidate may point at its predecessor before supersession is committed,
+    so a predecessor's reciprocal successor link may be NULL. Once a committed
+    successor link exists, it must point back to the traversed candidate. Walk
+    the full ancestor and successor chains so cycles longer than one edge cannot
+    evade the local foreign-key and uniqueness constraints.
+    """
+    team_id = item.team_id
+
+    ancestors = {item.id}
+    current = item
+    while current.supersedes_item_id is not None:
+        predecessor_id = current.supersedes_item_id
+        if predecessor_id in ancestors:
+            raise KnowledgeHistoryError("supersession_cycle")
+        predecessor = session.get(KnowledgeItem, predecessor_id)
         if (
             predecessor is None
-            or predecessor.team_id != item.team_id
-            or predecessor.id == item.id
+            or predecessor.team_id != team_id
+            or predecessor.id == current.id
             or (
                 predecessor.superseded_by_id is not None
-                and predecessor.superseded_by_id != item.id
+                and predecessor.superseded_by_id != current.id
             )
         ):
             raise KnowledgeHistoryError("supersession_predecessor_link_invalid")
-    if item.superseded_by_id is not None:
-        successor = session.get(KnowledgeItem, item.superseded_by_id)
+        ancestors.add(predecessor.id)
+        current = predecessor
+
+    successors = {item.id}
+    current = item
+    while current.superseded_by_id is not None:
+        successor_id = current.superseded_by_id
+        if successor_id in successors:
+            raise KnowledgeHistoryError("supersession_cycle")
+        successor = session.get(KnowledgeItem, successor_id)
         if (
             successor is None
-            or successor.team_id != item.team_id
-            or successor.id == item.id
-            or successor.supersedes_item_id != item.id
-            or item.status != "retired"
+            or successor.team_id != team_id
+            or successor.id == current.id
+            or successor.supersedes_item_id != current.id
+            or current.status != "retired"
         ):
             raise KnowledgeHistoryError("supersession_successor_link_invalid")
+        successors.add(successor.id)
+        current = successor
 
 
 def _validate_root_state(
