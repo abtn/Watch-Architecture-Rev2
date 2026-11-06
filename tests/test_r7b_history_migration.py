@@ -14,7 +14,8 @@ import pytest
 from _database_config import resolve_test_database_url
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Engine, IntegrityError, create_engine, text
+from sqlalchemy import Engine, create_engine, text
+from sqlalchemy.exc import IntegrityError
 
 
 @dataclass(frozen=True)
