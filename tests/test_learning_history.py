@@ -553,3 +553,60 @@ def test_supersession_graph_rejects_two_item_and_longer_cycles(cycle_size: int):
             _MemoryItemSession(items),
             items[item_ids[0]],
         )
+
+def _supersession_candidate_pair(predecessor_status: str, *, reciprocal: bool):
+    team_id = uuid4()
+    predecessor_id, candidate_id = uuid4(), uuid4()
+    predecessor = SimpleNamespace(
+        id=predecessor_id,
+        team_id=team_id,
+        status=predecessor_status,
+        supersedes_item_id=None,
+        superseded_by_id=candidate_id if reciprocal else None,
+    )
+    candidate = SimpleNamespace(
+        id=candidate_id,
+        team_id=team_id,
+        status="active",
+        supersedes_item_id=predecessor_id,
+        superseded_by_id=None,
+    )
+    return _MemoryItemSession({predecessor_id: predecessor}), candidate
+
+
+@pytest.mark.parametrize("predecessor_status", ["active", "needs_review"])
+def test_supersession_candidate_rejects_reciprocal_non_retired_predecessor(
+    predecessor_status: str,
+):
+    session, candidate = _supersession_candidate_pair(
+        predecessor_status,
+        reciprocal=True,
+    )
+
+    with pytest.raises(
+        KnowledgeHistoryError,
+        match="supersession_predecessor_link_invalid",
+    ):
+        _validate_live_supersession_links(session, candidate)
+
+
+def test_supersession_candidate_accepts_reciprocal_retired_predecessor():
+    session, candidate = _supersession_candidate_pair(
+        "retired",
+        reciprocal=True,
+    )
+
+    _validate_live_supersession_links(session, candidate)
+
+
+@pytest.mark.parametrize("predecessor_status", ["active", "needs_review"])
+def test_pending_supersession_candidate_allows_predecessor_without_reciprocal_link(
+    predecessor_status: str,
+):
+    session, candidate = _supersession_candidate_pair(
+        predecessor_status,
+        reciprocal=False,
+    )
+
+    _validate_live_supersession_links(session, candidate)
+
