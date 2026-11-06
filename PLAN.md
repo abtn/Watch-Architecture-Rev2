@@ -330,7 +330,7 @@ PR [#39](https://github.com/abtn/Watch-Architecture-Rev2/pull/39) merged on 2026
 
 **Verification:** hosted exact-head CI [41844600681](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41844600681) passed. Operator-local verification on the same tree passed fresh disposable-PostgreSQL migration to the single 0014_knowledge_quality head, Ruff, Mypy (31 source files), and 631 tests in 79.22s. The committed runner restored both database environment variables and removed its temporary container. Full evidence is in docs/testing.md. No production evaluator provider was selected.
 
-### R7-B — Canonical KnowledgeItem lifecycle — B0 COMPLETE; B1 IMPLEMENTATION IN PROGRESS
+### R7-B — Canonical KnowledgeItem lifecycle — B0 COMPLETE; B1 ACCEPTED; FINAL PR REVIEW IN PROGRESS
 
 **Status:** B0 was merged by PR #41 on 2026-11-05 at `64d5fb19be541d80b3cb8941ce3359d4b69565c1`. B1 was separately authorized and accepted by the Operator on 2026-11-06. PR #43 is still open and draft while its final review is completed. Exact-head hosted CI and operator-local verification passed at `454b1aa090679ab8ae8a1c91a215cf46f866aaab`: fresh disposable-PostgreSQL migration to the single `0015_r7b_history` head, Ruff, Mypy, 30 focused migration tests locally, and 682 full-suite tests. Hosted CI run [42236390563](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42236390563) passed all 682 tests. The final review has two narrow integrity points to close: migration validation must enforce the complete create-root state, and reciprocal supersession links must not point back from a predecessor that is still active or awaiting review. These are B1 closeout checks, not authorization for later phases. **B2–B6 and R7-C remain unauthorized.**
 
