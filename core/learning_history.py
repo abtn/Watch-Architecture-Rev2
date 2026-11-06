@@ -257,7 +257,9 @@ def knowledge_item_content_hash(item: KnowledgeItem) -> str:
     try:
         canonical = _canonical_json(content_state).encode("utf-8")
     except (TypeError, ValueError) as error:
-        raise KnowledgeHistoryError("content_hash_state_not_json_serializable") from error
+        raise KnowledgeHistoryError(
+            "content_hash_state_not_json_serializable"
+        ) from error
 
     framed = (
         KNOWLEDGE_CONTENT_HASH_SCHEME.encode("utf-8")
