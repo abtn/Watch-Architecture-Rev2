@@ -7,12 +7,12 @@ This file is the **single source of current milestone status**. Other documents 
 - **Completed foundations:** K0–K1 and R0–R5 are complete.
 - **R6: COMPLETE** through R6-G; formally closed on 2026-11-04.
 - **R7-0 and R7-A: COMPLETE; R7-B B0: COMPLETE.**
-- **R7-B B1: ACCEPTED by the Operator (2026-11-06).** PR #43 contains the implementation. At exact head `454b1aa090679ab8ae8a1c91a215cf46f866aaab`, hosted CI and operator-local verification passed the disposable-PostgreSQL migration, Ruff, Mypy, 30 focused migration tests locally, and 682 full-suite tests. Hosted run [42236390563](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42236390563) also passed all 682 tests.
-- **Current boundary:** final PR #43 review is still in progress. B2–B6 and R7-C remain unauthorized.
+- **R7-B B1: ACCEPTED by the Operator (2026-11-06).** The two final-review integrity corrections are implemented: migration backfill requires the exact create-root state, and reciprocal supersession requires a retired predecessor. Operator-local exact-code-head verification passed at `ca498ecd43207e72082332c803a74eb30173d41c`: disposable PostgreSQL migration to the single `0015_r7b_history` head, 33 focused migration tests, Ruff, Mypy (32 source files), and 690 full-suite tests. Detailed evidence and the hosted-CI qualification are in `docs/testing.md`.
+- **Current boundary:** PR #43 remains open and draft for final PR review. The earlier hosted CI result at `454b1aa` predates the two final-review corrections; no hosted-CI result is claimed for the locally verified code head. B2–B6 and R7-C remain unauthorized.
 
 ## Next actionable step
 
-Complete the final review of PR #43, resolve the remaining review findings, and repeat exact-head verification if code changes. Keep the PR open and draft until the review is complete and the Operator separately authorizes the merge. Do not begin B2–B6 or R7-C.
+Complete the final PR #43 review against the corrected code and synchronized documentation; confirm that the current PR head has the required hosted checks before any merge decision. Keep the PR open and draft until the Operator separately authorizes the merge. Do not begin B2–B6 or R7-C.
 
 ## Milestone overview
 
@@ -27,7 +27,7 @@ Complete the final review of PR #43, resolve the remaining review findings, and 
 | R4 | **Complete** (closed 2026-10-20) | StrategyProposal boundary, multi-Vision/Workstream/Action semantics, deterministic validation and reconstruction. |
 | R5 | **Complete — closed 2026-10-24 by explicit operator decision** | Materialize one accepted Strategy as one durable Plan and ordinary Tasks; retain the Task-execution dependency for R6. |
 | R6 | **COMPLETE — G0 through R6-G; formally closed 2026-11-04.** | The integrated three-case source→Evaluation→distillation→Operator→Team Experience path passed the ten-proof technical review and received explicit Operator exit approval. PR #35 merged to `main` at `56745b613b5b77a21a514b4e261d3450f90c0df1`; final PR-head CI passed, and exact implementation-head hosted/local verification is recorded below. D10 remains create-only; R7 implementation remains separately gated. |
-| R7 | **R7-0/R7-A/B0 complete; B1 accepted 2026-11-06; PR #43 final review in progress.** | At `454b1aa`, hosted and operator-local verification passed, including 682 tests. Final PR review remains open; B2–B6 and R7-C are not authorized. |
+| R7 | **R7-0/R7-A/B0 complete; B1 accepted 2026-11-06; PR #43 final review in progress.** | The final migration-root and reciprocal-supersession corrections passed operator-local verification at `ca498ec`, including 690 tests. PR #43 remains open/draft; B2–B6 and R7-C are not authorized. |
 | R8 | Future | Multi-domain pressure test. |
 | R9 | Future | Codified agent-assisted production workflow. |
 
@@ -332,7 +332,7 @@ PR [#39](https://github.com/abtn/Watch-Architecture-Rev2/pull/39) merged on 2026
 
 ### R7-B — Canonical KnowledgeItem lifecycle — B0 COMPLETE; B1 ACCEPTED; FINAL PR REVIEW IN PROGRESS
 
-**Status:** B0 was merged by PR #41 on 2026-11-05 at `64d5fb19be541d80b3cb8941ce3359d4b69565c1`. B1 was separately authorized and accepted by the Operator on 2026-11-06. PR #43 is still open and draft while its final review is completed. Exact-head hosted CI and operator-local verification passed at `454b1aa090679ab8ae8a1c91a215cf46f866aaab`: fresh disposable-PostgreSQL migration to the single `0015_r7b_history` head, Ruff, Mypy, 30 focused migration tests locally, and 682 full-suite tests. Hosted CI run [42236390563](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42236390563) passed all 682 tests. The final review has two narrow integrity points to close: migration validation must enforce the complete create-root state, and reciprocal supersession links must not point back from a predecessor that is still active or awaiting review. These are B1 closeout checks, not authorization for later phases. **B2–B6 and R7-C remain unauthorized.**
+**Status:** B0 was merged by PR #41 on 2026-11-05 at `64d5fb19be541d80b3cb8941ce3359d4b69565c1`. B1 was separately authorized on 2026-11-05 and accepted by the Operator on 2026-11-06. The two final-review integrity findings are corrected: migration backfill now requires create-root `version = 1`, `status = active`, and JSON `last_validated_at = null`; live history validation rejects a reciprocal predecessor link unless that predecessor is `retired`. Tests also preserve the valid pending-candidate case with no reciprocal pointer. Operator-local exact-code-head verification passed at `ca498ecd43207e72082332c803a74eb30173d41c`: disposable PostgreSQL migration to the single `0015_r7b_history` head, 33 focused migration tests, Ruff, Mypy (32 source files), and 690 full-suite tests. Full evidence is in `docs/testing.md`. Hosted CI run [42236390563](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42236390563) passed 682 tests at the earlier code head `454b1aa`, before these two corrections; no hosted-CI result is claimed for the corrected code head. PR #43 remains open and draft for final review; B1 acceptance is not merge authorization. **B2–B6 and R7-C remain unauthorized.**
 
 
 
