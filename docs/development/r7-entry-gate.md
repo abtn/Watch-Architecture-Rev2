@@ -65,7 +65,7 @@ Exit requirements:
 
 ### R7-B — Canonical KnowledgeItem lifecycle
 
-**Status (2026-11-06):** B0 is complete. B1 was separately authorized, accepted, verified, and merged by PR #43 at `d1a8b88fd930207142304fc9b0b7274de5de4992`. B2 Step 0 is complete; the Operator accepted the `legacy-opaque` projection compatibility amendment and separately authorized B2 implementation on 2026-11-06. Step 1 is underway in draft PR [#45](https://github.com/abtn/Watch-Architecture-Rev2/pull/45), with hosted CI pending. B3–B6 and R7-C remain unauthorized.
+**Status (2026-11-06):** B0 is complete. B1 was separately authorized, accepted, verified, and merged by PR #43 at `d1a8b88fd930207142304fc9b0b7274de5de4992`. B2 Step 0 is complete; the Operator accepted the `legacy-opaque` projection compatibility amendment and separately authorized B2 implementation on 2026-11-06. Step 1 is submitted in draft PR [#45](https://github.com/abtn/Watch-Architecture-Rev2/pull/45); exact-head hosted CI [run 42286427354](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42286427354) passed 732 tests plus fresh migration/single-head, Ruff, Mypy and cleanup checks. Operator-local exact-head verification and Step 1 acceptance remain pending. B3–B6 and R7-C remain unauthorized.
 
 R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path to revise, revalidate, supersede and retire KnowledgeItems. It preserves stable item identity, immutable origin provenance, current-pointer history, Team isolation, D7 review rules, and fail-closed retrieval. It adds no runtime, dispatcher, scheduler, public API/auth stack or production evaluator provider.
 
