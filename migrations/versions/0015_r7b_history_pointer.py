@@ -119,7 +119,7 @@ def upgrade() -> None:
                         WHEN value = 'null'::jsonb THEN FALSE
                         WHEN jsonb_typeof(value) = 'string'
                          AND value #>> '{}' ~
-                            '^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt ][0-9]{2}:[0-9]{2}(:[0-9]{2}([.][0-9]+)?)?([+-][0-9]{2}:[0-9]{2}|Z)$'
+                            '[Tt ].*(Z|[+-][0-9:]{5})$'
                         THEN (value #>> '{}')::timestamptz IS NULL
                         ELSE TRUE
                     END
