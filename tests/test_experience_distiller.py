@@ -2746,4 +2746,3 @@ def test_original_create_approval_replays_after_later_history_transition(
                 session.execute(delete(Event).where(Event.task_id == later_task_id))
                 session.execute(delete(Task).where(Task.id == later_task_id))
         _cleanup_operator_decision_task(session_factory, task_id)
-
