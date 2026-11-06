@@ -1,12 +1,14 @@
-"""Build an isolated pre-0015 database for R7-B migration tests."""
+"""Build isolated pre-0015 databases for R7-B migration tests."""
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from _database_config import resolve_test_database_url
@@ -21,6 +23,20 @@ class MigrationSandbox:
 
     engine: Engine
     schema: str
+
+
+def _upgrade_to_revision(
+    engine: Engine,
+    schema: str,
+    revision: str,
+) -> None:
+    """Run Alembic against the explicitly scoped test connection."""
+    config_path = Path(__file__).resolve().parents[1] / "alembic.ini"
+    with engine.begin() as connection:
+        config = Config(str(config_path))
+        config.attributes["connection"] = connection
+        config.attributes["version_table_schema"] = schema
+        command.upgrade(config, revision)
 
 
 @pytest.fixture
@@ -54,12 +70,7 @@ def pre_0015_schema(
         with scoped_engine.connect() as connection:
             assert connection.scalar(text("SELECT current_schema()")) == schema
 
-        config_path = Path(__file__).resolve().parents[1] / "alembic.ini"
-        with scoped_engine.begin() as connection:
-            config = Config(str(config_path))
-            config.attributes["connection"] = connection
-            config.attributes["version_table_schema"] = schema
-            command.upgrade(config, "0014_knowledge_quality")
+        _upgrade_to_revision(scoped_engine, schema, "0014_knowledge_quality")
 
         with scoped_engine.connect() as connection:
             revision = connection.scalar(
@@ -79,6 +90,207 @@ def pre_0015_schema(
                 )
 
         admin_engine.dispose()
+
+
+def _legacy_snapshot(
+    item_id: UUID,
+    team_id: UUID,
+    learning_change_id: UUID,
+    title: str,
+) -> dict[str, object]:
+    """Return the exact unwrapped create-snapshot shape written before B1."""
+    review_after = datetime(2026, 12, 1, tzinfo=timezone.utc)
+    return {
+        "id": str(item_id),
+        "team_id": str(team_id),
+        "kind": "practice",
+        "title": title,
+        "statement": f"Preserve contrary evidence for {title}.",
+        "body": f"Compare the primary source with independent evidence for {title}.",
+        "applicability": {"domain": "science"},
+        "preconditions": ["The source is accessible."],
+        "assumptions": ["The source is authentic."],
+        "limitations": ["This does not establish causation."],
+        "non_applicability": ["Unrelated domains."],
+        "failure_modes": ["A source may be incomplete."],
+        "known_counterexamples": ["A conflicting independent replication."],
+        "missing_information": ["Further independent replication."],
+        "uncertainty": ["The evidence may remain incomplete."],
+        "confidence": "0.875",
+        "status": "active",
+        "version": 1,
+        "last_validated_at": None,
+        "review_after": review_after.isoformat(),
+        "origin_learning_change_id": str(learning_change_id),
+    }
+
+
+def _insert_legacy_knowledge_item(
+    engine: Engine,
+    *,
+    team_id: UUID,
+    item_id: UUID,
+    learning_change_id: UUID,
+    title: str,
+    created_at: datetime,
+) -> dict[str, object]:
+    """Insert a realistic accepted create and its pre-B1 KnowledgeItem row."""
+    proposer_task_id = uuid4()
+    approval_task_id = uuid4()
+    snapshot = _legacy_snapshot(item_id, team_id, learning_change_id, title)
+    committed_at = created_at + timedelta(minutes=5)
+    task_budget = json.dumps(
+        {"max_tool_calls": 0, "max_cost_usd": 0.0, "deadline_seconds": 60}
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO teams (id, domain, status)
+                VALUES (:id, 'migration_test', 'active')
+                """
+            ),
+            {"id": team_id},
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO team_policies (id, team_id, version, rules)
+                VALUES (:id, :team_id, 1, CAST(:rules AS jsonb))
+                """
+            ),
+            {
+                "id": uuid4(),
+                "team_id": team_id,
+                "rules": json.dumps({"sources": []}),
+            },
+        )
+
+        for task_id, task_type in (
+            (proposer_task_id, "distill_experience"),
+            (approval_task_id, "operator_decision"),
+        ):
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO tasks (
+                        id, team_id, task_type, status, attempt_count,
+                        policy_version, allowed_writes, budget, created_at,
+                        max_attempts
+                    )
+                    VALUES (
+                        :id, :team_id, :task_type, 'done', 1,
+                        1, CAST(:allowed_writes AS jsonb),
+                        CAST(:budget AS jsonb), :created_at, 3
+                    )
+                    """
+                ),
+                {
+                    "id": task_id,
+                    "team_id": team_id,
+                    "task_type": task_type,
+                    "allowed_writes": json.dumps(["LearningChange"]),
+                    "budget": task_budget,
+                    "created_at": created_at,
+                },
+            )
+
+        connection.execute(
+            text(
+                """
+                INSERT INTO learning_changes (
+                    id, team_id, target_kind, target_id, operation,
+                    proposed_state, previous_state, committed_state,
+                    evidence_basis, evidence_basis_hash, status,
+                    idempotency_key, proposed_by_task_id,
+                    committed_by_task_id, operator_id, decision_reason,
+                    created_at, committed_at
+                )
+                VALUES (
+                    :id, :team_id, 'knowledge_item', NULL, 'create',
+                    CAST(:proposed_state AS jsonb), NULL,
+                    CAST(:committed_state AS jsonb),
+                    '[]'::jsonb, :evidence_basis_hash, 'accepted',
+                    :idempotency_key, :proposed_by_task_id,
+                    :committed_by_task_id, 'operator:migration-test', NULL,
+                    :created_at, :committed_at
+                )
+                """
+            ),
+            {
+                "id": learning_change_id,
+                "team_id": team_id,
+                "proposed_state": json.dumps(snapshot),
+                "committed_state": json.dumps(snapshot),
+                "evidence_basis_hash": "sha256:" + ("a" * 64),
+                "idempotency_key": f"legacy-create-{item_id}",
+                "proposed_by_task_id": proposer_task_id,
+                "committed_by_task_id": approval_task_id,
+                "created_at": created_at,
+                "committed_at": committed_at,
+            },
+        )
+
+        connection.execute(
+            text(
+                """
+                INSERT INTO knowledge_items (
+                    id, team_id, kind, title, statement, body,
+                    applicability, preconditions, assumptions, limitations,
+                    non_applicability, failure_modes, known_counterexamples,
+                    missing_information, uncertainty, confidence, status,
+                    version, last_validated_at, review_after,
+                    origin_learning_change_id, created_at, updated_at
+                )
+                VALUES (
+                    :id, :team_id, :kind, :title, :statement, :body,
+                    CAST(:applicability AS jsonb),
+                    CAST(:preconditions AS jsonb),
+                    CAST(:assumptions AS jsonb),
+                    CAST(:limitations AS jsonb),
+                    CAST(:non_applicability AS jsonb),
+                    CAST(:failure_modes AS jsonb),
+                    CAST(:known_counterexamples AS jsonb),
+                    CAST(:missing_information AS jsonb),
+                    CAST(:uncertainty AS jsonb),
+                    :confidence, :status, :version, :last_validated_at,
+                    :review_after, :origin_learning_change_id,
+                    :created_at, :updated_at
+                )
+                """
+            ),
+            {
+                "id": item_id,
+                "team_id": team_id,
+                "kind": snapshot["kind"],
+                "title": snapshot["title"],
+                "statement": snapshot["statement"],
+                "body": snapshot["body"],
+                "applicability": json.dumps(snapshot["applicability"]),
+                "preconditions": json.dumps(snapshot["preconditions"]),
+                "assumptions": json.dumps(snapshot["assumptions"]),
+                "limitations": json.dumps(snapshot["limitations"]),
+                "non_applicability": json.dumps(snapshot["non_applicability"]),
+                "failure_modes": json.dumps(snapshot["failure_modes"]),
+                "known_counterexamples": json.dumps(
+                    snapshot["known_counterexamples"]
+                ),
+                "missing_information": json.dumps(snapshot["missing_information"]),
+                "uncertainty": json.dumps(snapshot["uncertainty"]),
+                "confidence": snapshot["confidence"],
+                "status": snapshot["status"],
+                "version": snapshot["version"],
+                "last_validated_at": None,
+                "review_after": datetime.fromisoformat(
+                    str(snapshot["review_after"])
+                ),
+                "origin_learning_change_id": learning_change_id,
+                "created_at": created_at,
+                "updated_at": created_at,
+            },
+        )
+
+    return snapshot
 
 
 def test_pre_0015_schema_is_isolated_and_has_legacy_knowledge_shape(
@@ -124,3 +336,152 @@ def test_pre_0015_schema_is_isolated_and_has_legacy_knowledge_shape(
         "supersedes_item_id",
         "superseded_by_id",
     }.isdisjoint(columns)
+
+
+def test_0015_backfills_populated_legacy_items_without_rewriting_snapshots(
+    pre_0015_schema: MigrationSandbox,
+) -> None:
+    """Step 2: migrate actual 0014 rows and prove lossless pointer backfill."""
+    created_at = datetime(2026, 10, 20, tzinfo=timezone.utc)
+    records = [
+        (
+            uuid4(),
+            uuid4(),
+            uuid4(),
+            "Legacy source-review practice A",
+            created_at,
+        ),
+        (
+            uuid4(),
+            uuid4(),
+            uuid4(),
+            "Legacy source-review practice B",
+            created_at + timedelta(days=1),
+        ),
+    ]
+
+    snapshots: dict[UUID, dict[str, object]] = {}
+    for team_id, item_id, learning_change_id, title, item_created_at in records:
+        snapshots[item_id] = _insert_legacy_knowledge_item(
+            pre_0015_schema.engine,
+            team_id=team_id,
+            item_id=item_id,
+            learning_change_id=learning_change_id,
+            title=title,
+            created_at=item_created_at,
+        )
+
+    with pre_0015_schema.engine.connect() as connection:
+        before_snapshots = dict(
+            connection.execute(
+                text(
+                    """
+                    SELECT id, committed_state
+                    FROM learning_changes
+                    ORDER BY id
+                    """
+                )
+            ).all()
+        )
+        before_items = {
+            row["id"]: dict(row)
+            for row in connection.execute(
+                text(
+                    """
+                    SELECT id, team_id, kind, title, statement, body,
+                           applicability, preconditions, assumptions,
+                           limitations, non_applicability, failure_modes,
+                           known_counterexamples, missing_information,
+                           uncertainty, confidence, status, version,
+                           last_validated_at, review_after,
+                           origin_learning_change_id, created_at, updated_at
+                    FROM knowledge_items
+                    ORDER BY id
+                    """
+                )
+            ).mappings()
+        }
+
+    assert len(before_items) == 2
+    assert len(before_snapshots) == 2
+    for item_id, snapshot in snapshots.items():
+        assert before_snapshots[
+            next(
+                change_id
+                for change_id, stored in before_snapshots.items()
+                if stored == snapshot
+            )
+        ] == snapshot
+
+    _upgrade_to_revision(
+        pre_0015_schema.engine,
+        pre_0015_schema.schema,
+        "0015_r7b_history",
+    )
+
+    with pre_0015_schema.engine.connect() as connection:
+        revision = connection.scalar(
+            text(
+                f'SELECT version_num FROM "{pre_0015_schema.schema}".alembic_version'
+            )
+        )
+        after_items = {
+            row["id"]: dict(row)
+            for row in connection.execute(
+                text(
+                    """
+                    SELECT id, team_id, kind, title, statement, body,
+                           applicability, preconditions, assumptions,
+                           limitations, non_applicability, failure_modes,
+                           known_counterexamples, missing_information,
+                           uncertainty, confidence, status, version,
+                           last_validated_at, review_after,
+                           origin_learning_change_id, current_learning_change_id,
+                           supersedes_item_id, superseded_by_id,
+                           created_at, updated_at
+                    FROM knowledge_items
+                    ORDER BY id
+                    """
+                )
+            ).mappings()
+        }
+        after_snapshots = dict(
+            connection.execute(
+                text(
+                    """
+                    SELECT id, committed_state
+                    FROM learning_changes
+                    ORDER BY id
+                    """
+                )
+            ).all()
+        )
+        pointer_nullable = connection.scalar(
+            text(
+                """
+                SELECT is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = :schema
+                  AND table_name = 'knowledge_items'
+                  AND column_name = 'current_learning_change_id'
+                """
+            ),
+            {"schema": pre_0015_schema.schema},
+        )
+
+    assert revision == "0015_r7b_history"
+    assert pointer_nullable == "NO"
+    assert set(after_items) == set(before_items)
+    assert after_snapshots == before_snapshots
+
+    for item_id, before in before_items.items():
+        after = after_items[item_id]
+        assert after["current_learning_change_id"] == before["origin_learning_change_id"]
+        assert after["supersedes_item_id"] is None
+        assert after["superseded_by_id"] is None
+        for field, value in before.items():
+            assert after[field] == value, f"migration changed {field} for {item_id}"
+
+    for item_id, snapshot in snapshots.items():
+        origin_id = UUID(str(snapshot["origin_learning_change_id"]))
+        assert after_items[item_id]["current_learning_change_id"] == origin_id
