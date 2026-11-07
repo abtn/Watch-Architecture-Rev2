@@ -1107,8 +1107,9 @@ def test_revalidation_pointer_only_transition_invalidates_old_projection(
     assert review_result.status == "done"
 
     old_pointer = experience_env.learning_change_ids[0]
+    revalidation_time = datetime.now(timezone.utc)
     new_pointer = experience_env.add_accepted_revalidation(
-        item_id, committed_at=now
+        item_id, committed_at=revalidation_time
     )
 
     with experience_env.session_factory() as session:
@@ -1127,7 +1128,7 @@ def test_revalidation_pointer_only_transition_invalidates_old_projection(
         assert item.version == 1
         assert item.current_learning_change_id == new_pointer
         assert item.status == "active"
-        assert item.last_validated_at == now
+        assert item.last_validated_at == revalidation_time
         assert state.current_learning_change_id == old_pointer
         assert chunk.current_learning_change_id == old_pointer
         with pytest.raises(
@@ -1137,7 +1138,7 @@ def test_revalidation_pointer_only_transition_invalidates_old_projection(
                 session,
                 SimpleNamespace(team_id=experience_env.team_id),
                 old_passage,
-                now,
+                revalidation_time,
             )
 
     # Retrieval must reject the old projection despite unchanged content and version.
