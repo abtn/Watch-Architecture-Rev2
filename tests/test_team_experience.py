@@ -1085,9 +1085,11 @@ def test_revalidation_pointer_only_transition_invalidates_old_projection(
     )
     provider = FakeEmbeddingProvider()
     indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
-    indexed = indexer.index_knowledge_item(
-        item_id, now=now - timedelta(days=20)
-    )
+    with patch("core.knowledge_index.datetime") as mocked_datetime:
+        mocked_datetime.now.return_value = now - timedelta(days=20)
+        indexed = indexer.index_knowledge_item(
+            item_id, now=now - timedelta(days=20)
+        )
     assert indexed.outcome == "indexed"
 
     retriever = HybridKnowledgeRetriever(
