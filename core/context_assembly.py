@@ -648,7 +648,7 @@ class TaskContextAssembler:
         ):
             raise TaskContextError("team_experience_item_not_current_or_eligible")
         learning_change = session.get(
-            LearningChange, item.origin_learning_change_id
+            LearningChange, item.current_learning_change_id
         )
         if (
             learning_change is None
