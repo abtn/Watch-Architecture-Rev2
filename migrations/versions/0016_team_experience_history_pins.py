@@ -18,7 +18,7 @@ CONTENT_HASH_SCHEMES = (
 )
 
 
-def _history_pin_check(table: str) -> str:
+def _history_pin_check() -> str:
     return (
         "content_hash_scheme IN ("
         + CONTENT_HASH_SCHEMES
@@ -66,7 +66,7 @@ def upgrade() -> None:
         op.create_check_constraint(
             f"ck_{table}_history_pins",
             table,
-            _history_pin_check(table),
+            _history_pin_check(),
         )
 
 

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import Engine, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from test_r7b_history_migration import (
     MigrationSandbox,
@@ -18,10 +19,20 @@ from test_r7b_history_migration import (
 )
 
 
+@dataclass(frozen=True)
+class ProjectionMigrationSandbox:
+    engine: Engine
+    schema: str
+    item_id: object
+    team_id: object
+    learning_change_id: object
+    other_learning_change_id: object
+
+
 @pytest.fixture
 def pre_0016_schema(
     pre_0015_schema: MigrationSandbox,
-) -> Iterator[MigrationSandbox]:
+) -> Iterator[ProjectionMigrationSandbox]:
     """Create real 0015 canonical rows and pre-migration Team Experience data."""
     created_at = datetime(2026, 10, 20, tzinfo=timezone.utc)
     team_id, item_id, learning_change_id = uuid4(), uuid4(), uuid4()
@@ -105,14 +116,19 @@ def pre_0016_schema(
             },
         )
 
-    pre_0015_schema.item_id = item_id
-    pre_0015_schema.team_id = team_id
-    pre_0015_schema.learning_change_id = learning_change_id
-    pre_0015_schema.other_learning_change_id = other_change_id
-    yield pre_0015_schema
+    yield ProjectionMigrationSandbox(
+        engine=pre_0015_schema.engine,
+        schema=pre_0015_schema.schema,
+        item_id=item_id,
+        team_id=team_id,
+        learning_change_id=learning_change_id,
+        other_learning_change_id=other_change_id,
+    )
 
 
-def _existing_projection_values(engine: Engine) -> tuple[dict[str, object], dict[str, object]]:
+def _existing_projection_values(
+    engine: Engine,
+) -> tuple[dict[str, object], dict[str, object]]:
     with engine.connect() as connection:
         chunk = dict(
             connection.execute(
@@ -144,7 +160,7 @@ def _existing_projection_values(engine: Engine) -> tuple[dict[str, object], dict
 
 
 def test_0016_preserves_legacy_projection_bytes_and_marks_them_opaque_and_stale(
-    pre_0016_schema: MigrationSandbox,
+    pre_0016_schema: ProjectionMigrationSandbox,
 ) -> None:
     before_chunk, before_state = _existing_projection_values(pre_0016_schema.engine)
     assert before_state["status"] == "published"
@@ -191,7 +207,7 @@ def test_0016_preserves_legacy_projection_bytes_and_marks_them_opaque_and_stale(
 
 
 def test_0016_accepts_v2_pins_and_rejects_invalid_scheme_and_cross_team_pointer(
-    pre_0016_schema: MigrationSandbox,
+    pre_0016_schema: ProjectionMigrationSandbox,
 ) -> None:
     _upgrade_to_revision(
         pre_0016_schema.engine,
@@ -233,6 +249,15 @@ def test_0016_accepts_v2_pins_and_rejects_invalid_scheme_and_cross_team_pointer(
         with pre_0016_schema.engine.begin() as connection:
             connection.execute(
                 text(
+                    "UPDATE team_experience_index_state "
+                    "SET content_hash_scheme = 'unsupported-scheme'"
+                )
+            )
+
+    with pytest.raises(IntegrityError):
+        with pre_0016_schema.engine.begin() as connection:
+            connection.execute(
+                text(
                     "UPDATE team_experience_chunks "
                     "SET current_learning_change_id = :other_change_id"
                 ),
@@ -251,7 +276,7 @@ def test_0016_accepts_v2_pins_and_rejects_invalid_scheme_and_cross_team_pointer(
 
 
 def test_0016_failed_migration_rolls_back_schema_and_existing_rows(
-    pre_0016_schema: MigrationSandbox,
+    pre_0016_schema: ProjectionMigrationSandbox,
 ) -> None:
     before_chunk, before_state = _existing_projection_values(pre_0016_schema.engine)
     with pre_0016_schema.engine.begin() as connection:
@@ -278,7 +303,7 @@ def test_0016_failed_migration_rolls_back_schema_and_existing_rows(
             )
         )
 
-    with pytest.raises(Exception, match="migration_test_abort"):
+    with pytest.raises(DBAPIError, match="migration_test_abort"):
         _upgrade_to_revision(
             pre_0016_schema.engine,
             pre_0016_schema.schema,
