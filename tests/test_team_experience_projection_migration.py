@@ -14,6 +14,8 @@ from test_r7b_history_migration import (
     MigrationSandbox,
     _insert_legacy_knowledge_item,
     _upgrade_to_revision,
+)
+from test_r7b_history_migration import (
     pre_0015_schema as _pre_0015_schema_fixture,
 )
 
