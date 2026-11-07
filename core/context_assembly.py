@@ -13,7 +13,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.embeddings import EmbeddingSpace
-from core.learning_history import KNOWLEDGE_CONTENT_HASH_SCHEME
 from core.knowledge_index import (
     CHUNK_MAX_CHARACTERS,
     CHUNKING_VERSION,
@@ -33,6 +32,7 @@ from core.knowledge_index import (
     knowledge_item_text,
     text_hash,
 )
+from core.learning_history import KNOWLEDGE_CONTENT_HASH_SCHEME
 from core.models import (
     Event,
     KnowledgeChunk,
