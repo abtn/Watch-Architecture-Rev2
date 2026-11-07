@@ -1569,6 +1569,7 @@ def test_provider_space_change_at_publication_boundary_keeps_projection_stale(
     assert state is not None
     assert state.status == "stale"
     assert state.last_error_kind == "KnowledgeIndexError"
+    assert state.attempt_count == 1
     assert chunks == []
 
 
