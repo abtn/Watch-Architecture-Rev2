@@ -513,3 +513,23 @@ The corrected code/test head `673de5f74e734e3a9fa6059b3f4333e93a055a99` passed h
 4. Keep lifecycle commits create-only. Steps 5–7, B3–B6, and R7-C are outside this work.
 
 **Sequence 3 disposition:** requirement-by-requirement gap analysis is complete. **Sequence 4 has not started**; this record authorizes no source edit by itself. Sequence 1 documentation closeout is being synchronized with this finding. No Step 4 tests were run during this read-only analysis.
+
+## R7-B B2 Step 4 — implementation and hosted verification (PR #50; 2026-11-07)
+
+**Implementation head:** PR #50 head `6b15a55478c2ec6b0e933201aa5f250adb38b449`; merged to `main` at `96447318484d539ffa240745b9adc95b8b510871`.
+
+**Hosted verification:**
+- Exact PR-head CI [42389377578](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42389377578): passed. The job completed fresh PostgreSQL migration and single-head checks, Ruff, Mypy, full test suite, and container cleanup.
+- Merge-commit CI [42389752995](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42389752995): passed the same workflow on the exact merge commit.
+
+**Operator-local verification (distinct from hosted evidence):**
+- The full local suite passed **740 tests** on the preceding Step 4 implementation head `f35a86f9568fac21616e02e10cd414477d996ca1`, with Ruff, Mypy (32 source files), fresh disposable PostgreSQL, environment restoration, and container cleanup.
+- The final diagnostics/assertion amendment (PR head `6b15a554...`) was not rerun locally before merge. An exact merged-head local preflight and verification remain pending; the earlier 740-test result must not be attributed to the final merge commit.
+
+**Changes and regression evidence:**
+- The indexer rechecks the embedding provider's current space after replacement rows are constructed and immediately before publication. A mismatch/error records `status="stale"` and `last_error_kind`, re-raises, leaves replacement chunks unpublished, and does not increment `attempt_count` a second time.
+- `test_provider_space_change_at_publication_boundary_keeps_projection_stale` verifies the final-boundary mismatch, `last_error_kind == "KnowledgeIndexError"`, unchanged attempt count, and no published chunks.
+- `test_rebuild_all_republishes_legacy_opaque_projection_and_restores_retrieval` sets up the exact post-`0016` `legacy-opaque`/stale projection state, verifies retrieval exclusion, runs `rebuild_all()`, and verifies current-pointer/v2 republishing and retrieval recovery.
+- **Coverage qualification:** the rebuild test simulates the post-migration state; it does not execute Alembic migration and `rebuild_all()` in one integrated fixture. Migration preservation and opaque/stale marking are covered separately by `0016` migration tests. Do not describe this as an end-to-end migration-to-rebuild integration test.
+
+**Scope:** only `core/knowledge_index.py` and `tests/test_team_experience.py` changed in PR #50. No migration, provider abstraction, lifecycle write path, Task registration, or B3–B6/R7-C work was added. Actual lifecycle commits remain create-only.
