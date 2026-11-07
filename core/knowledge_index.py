@@ -1374,7 +1374,8 @@ class HybridKnowledgeRetriever:
                 != item.origin_learning_change_id
                 or row["current_learning_change_id"] != item.current_learning_change_id
                 or row["content_hash_scheme"] != KNOWLEDGE_CONTENT_HASH_SCHEME
-                or index_state.current_learning_change_id != item.current_learning_change_id
+                or index_state.current_learning_change_id
+                != item.current_learning_change_id
                 or index_state.content_hash_scheme != KNOWLEDGE_CONTENT_HASH_SCHEME
                 or index_state.embedding_space_key != query_space.key
                 or index_state.chunk_count <= row["chunk_index"]
