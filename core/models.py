@@ -517,7 +517,8 @@ class TeamExperienceChunk(Base):
             name="ck_team_experience_chunks_item_chunk",
         ),
         CheckConstraint(
-            "content_hash_scheme IN ('legacy-opaque', 'watch.r7b.knowledge-content.v2') "
+            "content_hash_scheme IN ('legacy-opaque', "
+            "'watch.r7b.knowledge-content.v2') "
             "AND ((content_hash_scheme = 'legacy-opaque' "
             "AND current_learning_change_id IS NULL) OR "
             "(content_hash_scheme = 'watch.r7b.knowledge-content.v2' "
@@ -610,7 +611,8 @@ class TeamExperienceIndexState(Base):
             name="ck_team_experience_index_state_status",
         ),
         CheckConstraint(
-            "content_hash_scheme IN ('legacy-opaque', 'watch.r7b.knowledge-content.v2') "
+            "content_hash_scheme IN ('legacy-opaque', "
+            "'watch.r7b.knowledge-content.v2') "
             "AND ((content_hash_scheme = 'legacy-opaque' "
             "AND current_learning_change_id IS NULL) OR "
             "(content_hash_scheme = 'watch.r7b.knowledge-content.v2' "

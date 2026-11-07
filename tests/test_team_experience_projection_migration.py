@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+pytest_plugins = ("test_r7b_history_migration",)
+
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -15,7 +17,6 @@ from test_r7b_history_migration import (
     MigrationSandbox,
     _insert_legacy_knowledge_item,
     _upgrade_to_revision,
-    pre_0015_schema,
 )
 
 
