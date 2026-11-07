@@ -33,7 +33,7 @@ The baseline commit does not prove the Operator's local branch, HEAD, worktree o
 
 ## 3. Scope and authorized delivery sequence
 
-R7-0 documentation is complete and merged. ADR-0032's original architecture acceptance is scoped to R7-A; its R7-B design extension was separately accepted on 2026-11-05. R7-A is complete and merged through PR #39. R7-B B0 design is accepted and its documentation integration is in progress; B1–B6 implementation is not authorized. R7-C remains proposed and unauthorized.
+R7-0 documentation is complete and merged. ADR-0032's original architecture acceptance is scoped to R7-A; its R7-B design extension was separately accepted on 2026-11-05. R7-A is complete and merged through PR #39. R7-B B0 is complete and B1 is accepted and merged. B2 implementation was separately authorized on 2026-11-06; Step 1 is merged and verified; Step 2 is in progress in PR #46. B3–B6 and R7-C remain unauthorized.
 
 ### R7-A — Evidence relationships and knowledge-quality assessment
 

@@ -12,7 +12,7 @@ This file is the **single source of current milestone status**. Other documents 
 
 ## Next actionable step
 
-B1 is merged. B2 implementation is authorized. Step 1 is merged and both hosted and Operator-local exact-head verification passed. Step 2 is in draft PR #46; its first hosted run exposed an Alembic revision identifier longer than the 32-character `alembic_version.version_num` column. The revision was shortened to `0016_team_exp_history_pins`, and the updated hosted run is in progress. Do not begin Step 3 until Step 2 is reviewed and accepted. B3–B6 and R7-C remain unauthorized.
+B1 is merged. B2 implementation is authorized. Step 1 is merged and both hosted and Operator-local exact-head verification passed. Step 2 is in draft PR #46. The first hosted run exposed an overlength Alembic revision identifier; after shortening it, the next run passed initial migration but found Ruff line-length/import-order issues. Those lint findings have been corrected, and the latest hosted run is in progress. Do not begin Step 3 until Step 2 is reviewed and accepted. B3–B6 and R7-C remain unauthorized.
 
 ## Milestone overview
 

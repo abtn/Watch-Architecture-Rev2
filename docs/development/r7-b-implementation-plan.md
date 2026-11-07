@@ -254,7 +254,7 @@ B0 closes when:
 - The current Context v1/v2 replay path verifies immutable Context snapshot bytes/hash and associated Event/task metadata; it does not recalculate KnowledgeItem content hashes. Therefore preserving v1/v2 replay does not require a legacy KnowledgeItem content-hash verifier. Any embedded old passage hash remains part of the immutable historical payload.
 - This was a design conflict with the B0.3 compatibility assumption that all existing projections could be assigned `legacy-current-state-v1` and that Context v1/v2 implied the same scheme; the Operator resolved it by accepting the opaque projection disposition and retaining the existing v1/v2 replay behavior.
 - **Operator decision:** the Operator explicitly accepted this disposition on 2026-11-06. Under the accepted B2 migration rule, all pre-existing Team Experience projection rows must be classified as `legacy-opaque` (a non-retrievable storage disposition, not a claim about the digest algorithm), their current-pointer pin must remain NULL, and their index state must be marked stale. Existing hash strings, chunks, embeddings, and metadata must be preserved byte-for-byte. A normal successful republish writes the v2 hash and current pointer. Context v1/v2 replay remains exactly as implemented, without content-hash recalculation.
-- This is an accepted amendment to the original B0.3 compatibility wording, recorded in ADR-0032. The Operator separately authorized B2 implementation on 2026-11-06; Step 1 is underway in draft PR [#45](https://github.com/abtn/Watch-Architecture-Rev2/pull/45), with hosted CI pending. Step 2 follows after Step 1 review and verification.
+- This is an accepted amendment to the original B0.3 compatibility wording, recorded in ADR-0032. The Operator separately authorized B2 implementation on 2026-11-06. Step 1 is merged and verified; Step 2 is in progress in PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46). The sequence remains binding; Step 3 must not begin until Step 2 is accepted.
 
 **Step 1 — Implement and prove the versioned semantic content hash**
 
@@ -267,7 +267,7 @@ B0 closes when:
 
 **Step 2 — Add projection provenance fields with a fail-closed migration**
 
-**Status (2026-11-07):** implementation is in draft PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46), branch `r7b-b2-step2-projection-provenance`. The first hosted run exposed an overlength Alembic revision identifier; it has been shortened to `0016_team_exp_history_pins`, and the updated hosted run is pending. No Step 2 acceptance is claimed.
+**Status (2026-11-07):** implementation is in draft PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46), branch `r7b-b2-step2-projection-provenance`. The first hosted run exposed an overlength Alembic revision identifier; after shortening it, the next run passed initial migration but found Ruff E501/import-order issues. Those lint findings are corrected; the latest hosted run is in progress. No Step 2 acceptance is claimed.
 
 1. Add `current_learning_change_id` and `content_hash_scheme` to both `TeamExperienceChunk` and `TeamExperienceIndexState`. New publications must populate both fields.
 2. Use one additive Alembic revision after `0015_r7b_history` (`0016_team_exp_history_pins`; the identifier is deliberately under Alembic's 32-character version-column limit). Preserve one Alembic head.

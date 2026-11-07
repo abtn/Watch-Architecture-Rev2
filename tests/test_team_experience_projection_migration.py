@@ -182,6 +182,21 @@ def test_0016_preserves_legacy_projection_bytes_and_marks_them_opaque_and_stale(
     assert after_state["status"] == "stale"
 
     with pre_0016_schema.engine.connect() as connection:
+        discoverable_rows = connection.scalar(
+            text(
+                """
+                SELECT count(*)
+                FROM team_experience_chunks AS chunk
+                JOIN team_experience_index_state AS state
+                  ON state.knowledge_item_id = chunk.knowledge_item_id
+                 AND state.team_id = chunk.team_id
+                WHERE state.status = 'published'
+                """
+            )
+        )
+    assert discoverable_rows == 0
+
+    with pre_0016_schema.engine.connect() as connection:
         chunk_pins = connection.execute(
             text(
                 "SELECT current_learning_change_id, content_hash_scheme "

@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted — 2026-11-04.** The Operator accepted the revised architecture and explicitly authorized R7-A implementation. Acceptance establishes the design direction in this ADR; it authorizes only the bounded R7-A phase described in the R7 entry gate. R7-B implementation and R7-C remain unauthorized, as do lifecycle commits, production providers, and unrelated Task/write-scope changes. Acceptance does not itself establish implementation correctness or a local verification result.
+**Accepted — 2026-11-04.** The Operator accepted the revised architecture and explicitly authorized R7-A implementation. Acceptance establishes the design direction in this ADR; it authorizes only the bounded R7-A phase described in the R7 entry gate. R7-B B0 design was separately accepted on 2026-11-05; B1 and B2 implementation later received separate written Operator authorization. B1 is merged; B2 Step 1 is complete and Step 2 is in progress. B3–B6 and R7-C remain unauthorized, as do unrelated Task/write-scope/runtime changes. Acceptance does not itself establish implementation correctness or a local verification result.
 
 **R7-B B0 design acceptance (2026-11-05):** The Operator explicitly accepted the five R7-B B0 decisions, the D1 typed-assessment extension, and the D5 reciprocal-successor/publication-gate amendment recorded below and in the R7-B implementation plan. This is a separately scoped acceptance of R7-B design; it does not rewrite the original 2026-11-04 R7-A acceptance. It authorizes documentation of the frozen design only—not B1–B6 schema, source, test, migration, Task registration, provider, active write-scope, runtime, or R7-C work. B1 requires separate written Operator implementation authorization after B0 documentation closeout.
 
@@ -239,5 +239,5 @@ Rejected alternatives:
 - Use retrieval similarity or a single quality score as truth/commit authority: rejected because ranking and heuristic scores are derived signals.
 - Add a broad knowledge graph, generic scheduler, or new runtime to make R7 convenient: rejected as disproportionate and outside the established architecture.
 
-**Implementation boundary:** the original ADR-0032 architecture was accepted on 2026-11-04 for R7-A. The R7-B D1/D5 design extensions and B0.3 integrity contracts were separately accepted for design on 2026-11-05. R7-A is complete and merged. R7-B B0 documentation integration/validation is in progress; B1–B6 implementation remains unauthorized until separate written Operator implementation authorization. R7-C remains separately gated and unauthorized. Design acceptance/authorization does not replace implementation verification.
+**Implementation boundary:** the original ADR-0032 architecture was accepted on 2026-11-04 for R7-A. The R7-B D1/D5 design extensions and B0.3 integrity contracts were separately accepted for design on 2026-11-05. R7-A and B1 are complete and merged. B2 implementation was separately authorized on 2026-11-06; Step 1 is complete and Step 2 is in progress in PR #46. B3–B6 require separate later authorization. R7-C remains separately gated and unauthorized.
 
