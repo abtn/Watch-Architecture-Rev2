@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7-0 and R7-A are complete. R7-B B0 is complete; B1 and B2 Steps 1–3 are accepted and merged. Step 3 merged through PR #48 at `1ba9f38ec2fa0b7c4a748181bce4096d8f65b356`; corrected-head hosted and Operator-local verification passed 738 tests. B2 Step 4 read-only preflight is complete and documentation reconciliation is underway; no Step 4 source changes have begun. B3–B6 and R7-C remain separately gated. PLAN.md is the sole current status authority.
+R6 is complete through R6-G. R7-0 and R7-A are complete. R7-B B0 is complete; B1 and B2 Steps 1–3 are accepted and merged. Step 3 merged through PR #48 at `1ba9f38ec2fa0b7c4a748181bce4096d8f65b356`; corrected-head hosted and Operator-local verification passed 738 tests. Sequences 2–3 completed the Step 4 requirement gap analysis: requirements 1 and 3 are satisfied; requirement 2 needs final provider-space revalidation; requirement 4 needs a direct migrated-legacy-row rebuild regression. Sequence 1 documentation closeout is underway; Step 4 source changes have not begun. B3–B6 and R7-C remain separately gated. PLAN.md is the sole current status authority.
 
 ## Open the smallest relevant set of documents
 
