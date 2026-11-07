@@ -177,7 +177,7 @@ B0 closes when:
 - Documentation validation passes: the diff is docs-only; phase names, status statements, task scopes, and authority rules agree; changed-file references and anchors resolve; no proposed design is represented as implemented or active; and the Operator's acceptance is recorded.
 - The documentation-only integration is merged and the B0 closeout is recorded in PLAN.md.
 
-**B0 completion did not itself authorize B1. The Operator separately authorized B1 on 2026-11-05; B1 is accepted and merged. B2 was separately authorized on 2026-11-06. Step 1 and Step 2 are accepted and merged; B2 Step 3 is in progress within the accepted B2 sequence.** B3–B6 remain unauthorized; no later-phase Task registration, provider, active write scope or runtime change is authorized.
+**B0 completion did not itself authorize B1. The Operator separately authorized B1 on 2026-11-05; B1 is accepted and merged. B2 was separately authorized on 2026-11-06. Steps 1–3 are accepted and merged; Step 4 requirement gap analysis is complete, with only final provider-space revalidation and direct migrated-legacy-row rebuild regression coverage remaining. Sequence 1 documentation closeout is in progress; Sequence 4 has not begun.** B3–B6 remain unauthorized; no later-phase Task registration, provider, active write scope or runtime change is authorized.
 
 ---
 
