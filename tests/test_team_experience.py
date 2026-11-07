@@ -433,6 +433,7 @@ class TeamExperienceEnv:
                     committed_at=committed_at,
                 )
             )
+            session.flush()
             item.body = body
             item.version += 1
             item.current_learning_change_id = change_id
