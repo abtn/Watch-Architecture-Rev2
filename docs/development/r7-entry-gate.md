@@ -65,7 +65,7 @@ Exit requirements:
 
 ### R7-B — Canonical KnowledgeItem lifecycle
 
-**Status (2026-11-07):** B0 is complete. B1 was separately authorized, accepted, verified, and merged by PR #43 at `d1a8b88fd930207e72082332c803a74eb30173d41c`. B2 Step 0 is complete; the Operator accepted the `legacy-opaque` compatibility amendment and separately authorized B2 implementation on 2026-11-06. Step 1 merged through PR #45 at `18595356a3da93b47a8701c7e94fe7dbde098d55`; hosted and Operator-local exact-head verification passed. Step 2 is in draft PR #46; hosted verification is pending. B3–B6 and R7-C remain unauthorized.
+**Status (2026-11-07):** B0 is complete. B1 was separately authorized, accepted, verified, and merged by PR #43 at `d1a8b88fd930207142304fc9b0b7274de5de4992`. B2 Step 0 is complete; the Operator accepted the `legacy-opaque` compatibility amendment and separately authorized B2 implementation on 2026-11-06. Step 1 merged through PR #45 at `18595356a3da93b47a8701c7e94fe7dbde098d55`; hosted and Operator-local exact-head verification passed. Step 2 is in draft PR #46; hosted verification is pending. B3–B6 and R7-C remain unauthorized.
 
 R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path to revise, revalidate, supersede and retire KnowledgeItems. It preserves stable item identity, immutable origin provenance, current-pointer history, Team isolation, D7 review rules, and fail-closed retrieval. It adds no runtime, dispatcher, scheduler, public API/auth stack or production evaluator provider.
 
