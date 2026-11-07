@@ -14,7 +14,7 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.embeddings import EmbeddingBatch, EmbeddingProvider, EmbeddingSpace
-from core.learning_history import CONTENT_HASH_SCHEME
+from core.learning_history import KNOWLEDGE_CONTENT_HASH_SCHEME
 from core.models import (
     Event,
     KnowledgeChunk,
@@ -585,7 +585,7 @@ class TeamExperienceIndexer:
                 item_content_hash=item_hash,
                 origin_learning_change_id=item.origin_learning_change_id,
                 current_learning_change_id=item.current_learning_change_id,
-                content_hash_scheme=CONTENT_HASH_SCHEME,
+                content_hash_scheme=KNOWLEDGE_CONTENT_HASH_SCHEME,
                 status=status,
                 embedding_space_key=embedding_space_key,
                 chunk_count=0,
@@ -599,7 +599,7 @@ class TeamExperienceIndexer:
         state.item_content_hash = item_hash
         state.origin_learning_change_id = item.origin_learning_change_id
         state.current_learning_change_id = item.current_learning_change_id
-        state.content_hash_scheme = CONTENT_HASH_SCHEME
+        state.content_hash_scheme = KNOWLEDGE_CONTENT_HASH_SCHEME
         state.status = status
         state.embedding_space_key = embedding_space_key
         if chunk_count is not None:
@@ -736,7 +736,7 @@ class TeamExperienceIndexer:
                 item_content_hash=item_hash,
                 origin_learning_change_id=item.origin_learning_change_id,
                 current_learning_change_id=item.current_learning_change_id,
-                content_hash_scheme=CONTENT_HASH_SCHEME,
+                content_hash_scheme=KNOWLEDGE_CONTENT_HASH_SCHEME,
                 chunk_index=index,
                 chunk_text=chunk,
                 chunk_hash=text_hash(chunk),
@@ -883,7 +883,7 @@ class TeamExperienceIndexer:
                 or state.item_content_hash != item_hash
                 or state.origin_learning_change_id != item.origin_learning_change_id
                 or state.current_learning_change_id != item.current_learning_change_id
-                or state.content_hash_scheme != CONTENT_HASH_SCHEME
+                or state.content_hash_scheme != KNOWLEDGE_CONTENT_HASH_SCHEME
                 or state.embedding_space_key != space.key
                 or state.chunk_count != len(chunks)
             ):
@@ -920,7 +920,7 @@ class TeamExperienceIndexer:
                 or row["item_content_hash"] != item_hash
                 or row["origin_learning_change_id"] != item.origin_learning_change_id
                 or row["current_learning_change_id"] != item.current_learning_change_id
-                or row["content_hash_scheme"] != CONTENT_HASH_SCHEME
+                or row["content_hash_scheme"] != KNOWLEDGE_CONTENT_HASH_SCHEME
                 or row["chunking_version"] != CHUNKING_VERSION
                 or row["embedding_provider"] != space.provider
                 or row["embedding_model"] != space.model
