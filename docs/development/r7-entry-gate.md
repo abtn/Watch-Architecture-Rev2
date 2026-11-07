@@ -2,9 +2,9 @@
 
 ## Status and authority
 
-**R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 complete; B1 merged; B2 implementation authorized; Step 1 complete; Step 2 implementation and verification complete; explicit acceptance pending. B3–B6 and R7-C remain unauthorized.
+**R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 complete; B1 merged; B2 Step 1 and Step 2 accepted and merged; B2 Step 3 correction implemented and corrected-head hosted CI passed; corrected-head local re-verification and explicit Operator acceptance pending; final technical review found no further blocker. B3–B6 and R7-C remain unauthorized.
 
-- This document records the accepted R7 architecture and separate phase gates. R7-A is complete. R7-B B0 is complete; B1 was accepted and merged through PR #43; B2 implementation was separately authorized on 2026-11-06. Step 1 merged through PR #45 and passed hosted plus Operator-local verification. Step 2 PR #46 passed hosted and Operator-local exact-head verification, including 735 full-suite tests on a fresh disposable database. Explicit Step 2 acceptance remains pending. B3–B6 and R7-C remain unauthorized.
+- This document records the accepted R7 architecture and separate phase gates. R7-A is complete. R7-B B0 is complete; B1 was accepted and merged through PR #43; B2 implementation was separately authorized on 2026-11-06. Step 1 merged through PR #45 and passed hosted plus Operator-local verification. Step 2 was accepted on 2026-11-07 and merged through PR #46 at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`; hosted CI on its final documentation head also passed. B2 Step 3 correction is implemented and corrected-head hosted CI passed on PR #48; Operator-local re-verification of the correction and explicit acceptance remain pending; final technical review found no further blocker. B3–B6 and R7-C remain unauthorized.
 - ADR-0032 remains **Accepted — 2026-11-04 for the original R7 architecture and R7-A scope**. Its R7-B D1/D5 design extension and B0.3 integrity contracts are separately accepted for design on 2026-11-05; this does not authorize implementation.
 - PLAN.md remains the sole authority for milestone status and next action.
 - R6 is formally complete through R6-G. R6-G approval and merge do not authorize R7.
@@ -33,7 +33,7 @@ The baseline commit does not prove the Operator's local branch, HEAD, worktree o
 
 ## 3. Scope and authorized delivery sequence
 
-R7-0 documentation is complete and merged. ADR-0032's original architecture acceptance is scoped to R7-A; its R7-B design extension was separately accepted on 2026-11-05. R7-A is complete and merged through PR #39. R7-B B0 is complete and B1 is accepted and merged. B2 implementation was separately authorized on 2026-11-06; Step 1 is merged and verified; Step 2 implementation and verification are complete in PR #46, pending explicit acceptance. B3–B6 and R7-C remain unauthorized.
+R7-0 documentation is complete and merged. ADR-0032's original architecture acceptance is scoped to R7-A; its R7-B design extension was separately accepted on 2026-11-05. R7-A is complete and merged through PR #39. R7-B B0 is complete and B1 is accepted and merged. B2 implementation was separately authorized on 2026-11-06; Step 1 and Step 2 are accepted and merged. Step 3 correction is implemented and corrected-head hosted CI passed on PR #48; local re-verification and explicit acceptance remain pending; final technical review found no further blocker. B3–B6 and R7-C remain unauthorized.
 
 ### R7-A — Evidence relationships and knowledge-quality assessment
 
@@ -65,7 +65,7 @@ Exit requirements:
 
 ### R7-B — Canonical KnowledgeItem lifecycle
 
-**Status (2026-11-07):** B0 is complete. B1 was separately authorized, accepted, verified, and merged by PR #43 at `d1a8b88fd930207142304fc9b0b7274de5de4992`. B2 Step 0 is complete; the Operator accepted the `legacy-opaque` compatibility amendment and separately authorized B2 implementation on 2026-11-06. Step 1 merged through PR #45 at `18595356a3da93b47a8701c7e94fe7dbde098d55`; hosted and Operator-local exact-head verification passed. Step 2 PR #46 head `906ec3cf31510375343c2cc8e3cd03ef9fa74af5` passed hosted CI run `42347539252` and Operator-local verification, including a fresh disposable-PostgreSQL full suite (**735 passed, 0 failed**). Step 2 implementation and verification are complete; explicit acceptance remains pending. B3–B6 and R7-C remain unauthorized.
+**Status (2026-11-07):** B0 is complete. B1 was separately authorized, accepted, verified, and merged by PR #43 at `d1a8b88fd930207142304fc9b0b7274de5de4992`. B2 Step 0 is complete; the Operator accepted the `legacy-opaque` compatibility amendment and separately authorized B2 implementation on 2026-11-06. Step 1 merged through PR #45 at `18595356a3da93b47a8701c7e94fe7dbde098d55`. Step 2 was accepted on 2026-11-07 and merged through PR #46 at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`; hosted implementation and final documentation-head CI passed, and Operator-local verification is recorded in `docs/testing.md`. Step 3 correction is implemented and corrected-head hosted CI passed; corrected-head local re-verification and explicit acceptance remain pending; final technical review found no further blocker. B3–B6 and R7-C remain unauthorized.
 
 R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path to revise, revalidate, supersede and retire KnowledgeItems. It preserves stable item identity, immutable origin provenance, current-pointer history, Team isolation, D7 review rules, and fail-closed retrieval. It adds no runtime, dispatcher, scheduler, public API/auth stack or production evaluator provider.
 
@@ -81,7 +81,7 @@ R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path 
 6. **B5 — Supersede/retire/candidate creation:** create-with-successor, reciprocal publication gate, D7-aware commit, abandoned-candidate rules, consistent-snapshot Context validation, and Team-scoped graph lock.
 7. **B6 — Legacy compatibility and hardening:** legacy Events/snapshots, repeated review/revalidation, replay after later transitions, mutation rejection and full regression verification.
 
-**Implementation gate:** B1's separate authorization was recorded, B1 was accepted and merged, and B2's separate implementation authorization was recorded on 2026-11-06. Step 1 is complete. Step 2 implementation and hosted plus Operator-local exact-head verification are complete in PR #46; explicit Step 2 acceptance remains required before Step 3. B3–B6 require their own later phase authorizations. No R7-C work is authorized.
+**Implementation gate:** B1's separate authorization was recorded, B1 was accepted and merged, and B2's separate implementation authorization was recorded on 2026-11-06. Step 1 and Step 2 are accepted and merged. B2 Step 3 correction is implemented and corrected-head hosted CI passed within the accepted sequence; local re-verification and explicit acceptance remain pending; final technical review found no further blocker. B3–B6 require their own later phase authorizations. No R7-C work is authorized.
 
 ### R7-C — Retrieval quality and downstream-use evaluation
 
@@ -200,4 +200,4 @@ No source code, tests, migrations, schema, runtime configuration, provider confi
 
 **R7-A closeout:** PR #39 merged to main at 75122a7b34c15e2445b81a2a719020667b55bf06. Tested head 47ffa532dacbc10b146ac7b0768302761a2a0b1b has identical Git tree. Hosted CI [41844600681](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41844600681) passed; Operator-local disposable-PostgreSQL verification passed 631 tests in 79.22s, fresh single-head 0014_knowledge_quality migration, Ruff, Mypy and cleanup.
 
-**Current gate:** R7-0, R7-A, R7-B B0 and B1 are complete. B2 is authorized; Step 1 is complete; Step 2 implementation and hosted plus Operator-local verification are complete. Explicit Step 2 acceptance remains pending. B3–B6 and R7-C remain unauthorized.
+**Current gate:** R7-0, R7-A, R7-B B0 and B1 are complete. B2 is authorized; Step 1 and Step 2 are accepted and merged; Step 3 correction is implemented and corrected-head hosted CI passed; corrected-head local re-verification and explicit Operator acceptance pending; final technical review found no further blocker. B3–B6 and R7-C remain unauthorized.

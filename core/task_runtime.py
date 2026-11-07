@@ -1111,19 +1111,19 @@ class TaskRuntime:
 
         reviewed: list[dict[str, Any]] = []
         for item in due_items:
-            learning_change = session.get(
-                LearningChange, item.origin_learning_change_id
-            )
-            if learning_change is None or not _accepted_learning_change_is_canonical(
-                session, item, learning_change
-            ):
-                raise TaskNotFinalizable("knowledge_review_canonical_state_invalid")
             try:
                 reconstruct_knowledge_item_history(session, item)
             except KnowledgeHistoryError as error:
                 raise TaskNotFinalizable(
                     f"knowledge_review_history_invalid:{error.reason}"
                 ) from error
+            learning_change = session.get(
+                LearningChange, item.current_learning_change_id
+            )
+            if learning_change is None or not _accepted_learning_change_is_canonical(
+                session, item, learning_change
+            ):
+                raise TaskNotFinalizable("knowledge_review_canonical_state_invalid")
             review_after = item.review_after
             if (
                 review_after is None

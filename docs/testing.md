@@ -437,9 +437,9 @@ The warnings are the existing Alembic `path_separator` configuration deprecation
 
 
 
-## R7-B B2 Step 2 — projection provenance pins (VERIFIED — PR #46; acceptance pending)
+## R7-B B2 Step 2 — projection provenance pins (ACCEPTED AND MERGED — PR #46)
 
-The Operator authorized B2 implementation on 2026-11-06. Step 1 was merged through PR #45 at `18595356a3da93b47a8701c7e94fe7dbde098d55` after hosted and Operator-local exact-head verification. Step 2 implementation is in PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46), branch `r7b-b2-step2-projection-provenance`, with verified head `906ec3cf31510375343c2cc8e3cd03ef9fa74af5`.
+The Operator authorized B2 implementation on 2026-11-06. Step 1 was merged through PR #45 at `18595356a3da93b47a8701c7e94fe7dbde098d55` after hosted and Operator-local exact-head verification. Step 2 implementation was in PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46), branch `r7b-b2-step2-projection-provenance`, verified implementation head `906ec3cf31510375343c2cc8e3cd03ef9fa74af5`; the PR's documentation closeout head was `fbe52fd971641121a20b64995f5b4f19cc6e3f54`.
 
 The Step 2 change adds current-pointer and content-hash-scheme pins to Team Experience chunks and index-state rows; classifies historical projections as `legacy-opaque` with NULL current pointers; marks existing index-state rows stale; preserves existing projection hashes and embedding data; and adds same-Team foreign keys and scheme/pointer constraints. New indexer publications write the v2 scheme and current pointer.
 
@@ -451,4 +451,32 @@ The first hosted run failed before application tests because revision ID `0016_t
 
 **Earlier local discrepancy:** A previous local full-suite attempt reported 725 passed and 10 failed. The ten failures did not reproduce in the separate fresh-database full-suite-only run above. Their cause was not established; no source changes were made in response. The successful clean run is the evidence used for this verification record.
 
-**Gate:** Step 2 implementation and verification are complete. Explicit Operator acceptance remains pending; Step 3 must not start until that acceptance is recorded. B3–B6 and R7-C remain unauthorized.
+**Acceptance and merge:** The Operator explicitly accepted Step 2 on 2026-11-07. PR #46 merged to `main` at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Hosted CI on the final documentation closeout head passed [run 42350516648](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42350516648). Step 2 is accepted and closed. B2 Step 3 may proceed; B3–B6 and R7-C remain unauthorized.
+
+## R7-B B2 Step 3 — current-pointer canonicality (CORRECTION APPLIED; CORRECTED-HEAD HOSTED CI PASSED; local re-verification and acceptance pending)
+
+Step 2 was accepted and merged through PR #46 at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Step 3 implementation is in draft PR [#48](https://github.com/abtn/Watch-Architecture-Rev2/pull/48), branch `r7b-b2-step3-history-aware-canonicality`.
+
+The canonicality reader now resolves `KnowledgeItem.current_learning_change_id`, validates create-root versus later-transition target semantics, and delegates full accepted-chain, snapshot, approval-task, pinned-policy, decision-event, committed-timestamp, and D7 overlay verification to B1's `reconstruct_knowledge_item_history`. Indexer, retriever, Context validation, and due-review readers load the current LearningChange pointer. Actual lifecycle commits remain create-only; no migration or schema change is introduced.
+
+Synthetic accepted-revision tests cover:
+- The current pointer resolving to a non-origin `revise` transition while the origin create is rejected as the current change.
+- Indexing and retrieval of a valid reconstructed non-origin current change.
+- Context assembly using a revised item while preserving the origin pointer in the existing manifest format.
+- Due-review processing and D7 reconstruction when the current pointer is a non-origin transition.
+
+**Hosted exact-head verification:** PR head `67cac9d7a4ec6b395fcc3a1d8465d8c400abde8a` passed [CI run 42351625886](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42351625886): fresh PostgreSQL migration and single-head checks, Ruff, Mypy (32 source files), **737 tests passed** (74 warnings), and disposable-container cleanup. An earlier CI attempt exposed a synthetic-fixture flush-order error; the fixture now persists the LearningChange before moving the KnowledgeItem pointer, and the final expanded run passed.
+
+**Prior Operator-local exact-head verification (2026-11-07; before the final-review correction):** the Operator verified the then-current PR implementation head `326be859d36d82c042fe5b183e16a9168f7b3e4b`. Branch/HEAD/clean-worktree preflight passed; `uv sync --locked`, Ruff (`uv run ruff check core tests migrations`), and Mypy (`uv run mypy core`, 32 source files) passed. On a fresh disposable PostgreSQL container, Alembic upgraded to `0016_team_exp_history_pins`, exactly one migration head was present and the database revision matched it. Focused `tests/test_team_experience.py`: **17 passed** in 3.56s. The separate fresh-database full suite: **737 passed, 0 failed** in 114.89s. Both disposable containers were removed and the original process `DATABASE_URL` / `TEST_DATABASE_URL` values were restored. The 74 warnings are the existing Alembic `path_separator` deprecation warnings; they did not fail the run. No persistent `watch` database was targeted. This local verification predates the final-review correction below; it does not establish local verification of the corrected PR head.
+
+**Final-review correction and corrected-head hosted verification (2026-11-07):** final review found that retrieval and Context validation did not enforce Step 2's current-pointer and content-hash-scheme pins consistently. The correction now:
+- Requires the current LearningChange pointer on the KnowledgeItem, TeamExperienceChunk, and TeamExperienceIndexState to agree in the retrieval candidate SQL and verifier.
+- Requires the chunk and index-state content-hash schemes to agree and equal `KNOWLEDGE_CONTENT_HASH_SCHEME`.
+- Independently checks both pins in Context passage validation.
+- Adds a synthetic accepted-revalidation regression: a due-review event is followed by accepted `revalidate`, with unchanged semantic content and item version but a new current pointer. Retrieval and Context reject the old publication; a rebuilt publication becomes retrievable.
+
+The corrected code/test head `673de5f74e734e3a9fa6059b3f4333e93a055a99` passed hosted CI [run 42382712672](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42382712672): fresh PostgreSQL migration and single-head checks, Ruff, Mypy (32 source files), **738 tests passed** (74 warnings), and disposable-container cleanup. This is hosted evidence for the corrected head; Operator-local exact-head re-verification remains pending.
+
+**Verification disposition:** corrected-head hosted CI passed. The earlier Operator-local verification applies only to head `326be859d36d82c042fe5b183e16a9168f7b3e4b`; corrected-head Operator-local re-verification and explicit Operator acceptance remain pending. Final technical review of the corrected code/test head found no further blocker. PR #48 remains draft and unmerged. The documentation closeout head must pass hosted CI before final acceptance.
+
+**Boundaries:** no live revise/revalidate/supersede/retire commit path; no B2 Step 4 publication refactor, Step 5 retrieval rollout, Step 6 Context manifest v3, Step 7 approval refactor, B3–B6, or R7-C.

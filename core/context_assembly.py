@@ -32,6 +32,7 @@ from core.knowledge_index import (
     knowledge_item_text,
     text_hash,
 )
+from core.learning_history import KNOWLEDGE_CONTENT_HASH_SCHEME
 from core.models import (
     Event,
     KnowledgeChunk,
@@ -648,7 +649,7 @@ class TaskContextAssembler:
         ):
             raise TaskContextError("team_experience_item_not_current_or_eligible")
         learning_change = session.get(
-            LearningChange, item.origin_learning_change_id
+            LearningChange, item.current_learning_change_id
         )
         if (
             learning_change is None
@@ -675,6 +676,8 @@ class TaskContextAssembler:
             or index_state.item_content_hash != current_hash
             or index_state.origin_learning_change_id
             != item.origin_learning_change_id
+            or index_state.current_learning_change_id != item.current_learning_change_id
+            or index_state.content_hash_scheme != KNOWLEDGE_CONTENT_HASH_SCHEME
             or index_state.embedding_space_key != passage.embedding_space_key
             or index_state.chunk_count <= passage.chunk_index
         ):
@@ -707,6 +710,8 @@ class TaskContextAssembler:
             or chunk.item_version != item.version
             or chunk.item_content_hash != current_hash
             or chunk.origin_learning_change_id != item.origin_learning_change_id
+            or chunk.current_learning_change_id != item.current_learning_change_id
+            or chunk.content_hash_scheme != KNOWLEDGE_CONTENT_HASH_SCHEME
             or chunk.chunk_index != passage.chunk_index
             or chunk.chunk_text != expected_text
             or chunk.chunk_hash != passage.chunk_hash
