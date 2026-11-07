@@ -452,3 +452,21 @@ The first hosted run failed before application tests because revision ID `0016_t
 **Earlier local discrepancy:** A previous local full-suite attempt reported 725 passed and 10 failed. The ten failures did not reproduce in the separate fresh-database full-suite-only run above. Their cause was not established; no source changes were made in response. The successful clean run is the evidence used for this verification record.
 
 **Acceptance and merge:** The Operator explicitly accepted Step 2 on 2026-11-07. PR #46 merged to `main` at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Hosted CI on the final documentation closeout head passed [run 42350516648](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42350516648). Step 2 is accepted and closed. B2 Step 3 may proceed; B3–B6 and R7-C remain unauthorized.
+
+## R7-B B2 Step 3 — current-pointer canonicality (HOSTED CI PASSED; Operator-local pending)
+
+Step 2 was accepted and merged through PR #46 at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Step 3 implementation is in draft PR [#48](https://github.com/abtn/Watch-Architecture-Rev2/pull/48), branch `r7b-b2-step3-history-aware-canonicality`.
+
+The canonicality reader now resolves `KnowledgeItem.current_learning_change_id`, validates create-root versus later-transition target semantics, and delegates full accepted-chain, snapshot, approval-task, pinned-policy, decision-event, committed-timestamp, and D7 overlay verification to B1's `reconstruct_knowledge_item_history`. Indexer, retriever, Context validation, and due-review readers load the current LearningChange pointer. Actual lifecycle commits remain create-only; no migration or schema change is introduced.
+
+Synthetic accepted-revision tests cover:
+- The current pointer resolving to a non-origin `revise` transition while the origin create is rejected as the current change.
+- Indexing and retrieval of a valid reconstructed non-origin current change.
+- Context assembly using a revised item while preserving the origin pointer in the existing manifest format.
+- Due-review processing and D7 reconstruction when the current pointer is a non-origin transition.
+
+**Hosted exact-head verification:** PR head `67cac9d7a4ec6b395fcc3a1d8465d8c400abde8a` passed [CI run 42351625886](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42351625886): fresh PostgreSQL migration and single-head checks, Ruff, Mypy (32 source files), **737 tests passed** (74 warnings), and disposable-container cleanup. An earlier CI attempt exposed a synthetic-fixture flush-order error; the fixture now persists the LearningChange before moving the KnowledgeItem pointer, and the final expanded run passed.
+
+**Operator-local verification:** pending. The PR remains draft until exact-head local verification and review are complete.
+
+**Boundaries:** no live revise/revalidate/supersede/retire commit path; no B2 Step 4 publication refactor, Step 5 retrieval rollout, Step 6 Context manifest v3, Step 7 approval refactor, B3–B6, or R7-C.
