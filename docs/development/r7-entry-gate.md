@@ -2,9 +2,9 @@
 
 ## Status and authority
 
-**R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 complete; B1 merged; B2 implementation authorized; Step 1 complete; Step 2 in progress. B3–B6 and R7-C remain unauthorized.
+**R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 complete; B1 merged; B2 implementation authorized; Step 1 complete; Step 2 hosted CI passed, Operator-local verification pending. B3–B6 and R7-C remain unauthorized.
 
-- This document records the accepted R7 architecture and separate phase gates. R7-A is complete. R7-B B0 is complete; B1 was accepted and merged through PR #43; B2 implementation was separately authorized on 2026-11-06. Step 1 merged through PR #45 and passed hosted plus Operator-local verification. Step 2 is in progress in PR #46. B3–B6 and R7-C remain unauthorized.
+- This document records the accepted R7 architecture and separate phase gates. R7-A is complete. R7-B B0 is complete; B1 was accepted and merged through PR #43; B2 implementation was separately authorized on 2026-11-06. Step 1 merged through PR #45 and passed hosted plus Operator-local verification. Step 2 PR #46 exact-head hosted CI passed 735 tests and all static/migration checks. Await Operator-local verification and acceptance. B3–B6 and R7-C remain unauthorized.
 - ADR-0032 remains **Accepted — 2026-11-04 for the original R7 architecture and R7-A scope**. Its R7-B D1/D5 design extension and B0.3 integrity contracts are separately accepted for design on 2026-11-05; this does not authorize implementation.
 - PLAN.md remains the sole authority for milestone status and next action.
 - R6 is formally complete through R6-G. R6-G approval and merge do not authorize R7.
@@ -65,7 +65,7 @@ Exit requirements:
 
 ### R7-B — Canonical KnowledgeItem lifecycle
 
-**Status (2026-11-07):** B0 is complete. B1 was separately authorized, accepted, verified, and merged by PR #43 at `d1a8b88fd930207142304fc9b0b7274de5de4992`. B2 Step 0 is complete; the Operator accepted the `legacy-opaque` compatibility amendment and separately authorized B2 implementation on 2026-11-06. Step 1 merged through PR #45 at `18595356a3da93b47a8701c7e94fe7dbde098d55`; hosted and Operator-local exact-head verification passed. Step 2 is in draft PR #46; hosted verification is pending. B3–B6 and R7-C remain unauthorized.
+**Status (2026-11-07):** B0 is complete. B1 was separately authorized, accepted, verified, and merged by PR #43 at `d1a8b88fd930207142304fc9b0b7274de5de4992`. B2 Step 0 is complete; the Operator accepted the `legacy-opaque` compatibility amendment and separately authorized B2 implementation on 2026-11-06. Step 1 merged through PR #45 at `18595356a3da93b47a8701c7e94fe7dbde098d55`; hosted and Operator-local exact-head verification passed. Step 2 PR #46 exact head `27890a5a2e4dc418683b62ecd0899b9dec5f73e7` passed hosted CI run `42347317440` (735 tests, Ruff, Mypy, fresh migration/single-head checks, cleanup). Operator-local verification and Step 2 acceptance remain pending. B3–B6 and R7-C remain unauthorized.
 
 R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path to revise, revalidate, supersede and retire KnowledgeItems. It preserves stable item identity, immutable origin provenance, current-pointer history, Team isolation, D7 review rules, and fail-closed retrieval. It adds no runtime, dispatcher, scheduler, public API/auth stack or production evaluator provider.
 
@@ -81,7 +81,7 @@ R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path 
 6. **B5 — Supersede/retire/candidate creation:** create-with-successor, reciprocal publication gate, D7-aware commit, abandoned-candidate rules, consistent-snapshot Context validation, and Team-scoped graph lock.
 7. **B6 — Legacy compatibility and hardening:** legacy Events/snapshots, repeated review/revalidation, replay after later transitions, mutation rejection and full regression verification.
 
-**Implementation gate:** B1's separate authorization was recorded, B1 was accepted and merged, and B2's separate implementation authorization was recorded on 2026-11-06. Step 1 is complete; Step 2 is the only active implementation slice and is tracked by PR #46. Do not begin Step 3 until Step 2 is accepted. B3–B6 require their own later phase authorizations. No R7-C work is authorized.
+**Implementation gate:** B1's separate authorization was recorded, B1 was accepted and merged, and B2's separate implementation authorization was recorded on 2026-11-06. Step 1 is complete; Step 2 hosted CI passed in PR #46. Operator-local exact-head verification and acceptance remain required before Step 3. B3–B6 require their own later phase authorizations. No R7-C work is authorized.
 
 ### R7-C — Retrieval quality and downstream-use evaluation
 
@@ -200,4 +200,4 @@ No source code, tests, migrations, schema, runtime configuration, provider confi
 
 **R7-A closeout:** PR #39 merged to main at 75122a7b34c15e2445b81a2a719020667b55bf06. Tested head 47ffa532dacbc10b146ac7b0768302761a2a0b1b has identical Git tree. Hosted CI [41844600681](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41844600681) passed; Operator-local disposable-PostgreSQL verification passed 631 tests in 79.22s, fresh single-head 0014_knowledge_quality migration, Ruff, Mypy and cleanup.
 
-**Current gate:** R7-0, R7-A, R7-B B0 and B1 are complete. B2 is authorized; Step 1 is complete; Step 2 is in progress. B3–B6 and R7-C remain unauthorized.
+**Current gate:** R7-0, R7-A, R7-B B0 and B1 are complete. B2 is authorized; Step 1 is complete; Step 2 hosted CI passed and awaits Operator-local verification/acceptance. B3–B6 and R7-C remain unauthorized.
