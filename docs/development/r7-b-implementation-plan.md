@@ -2,7 +2,7 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (2026-11-07):** **B0 complete; B1 accepted and merged; B2 Step 0 complete; `legacy-opaque` amendment accepted; B2 implementation authorized; Step 1 merged and verified; Step 2 hosted CI passed, Operator-local verification pending.** PR #43 merged at `d1a8b88fd930207142304fc9b0b7274de5de4992`; PR #45 merged at `18595356a3da93b47a8701c7e94fe7dbde098d55`. Step 2 exact head `27890a5a2e4dc418683b62ecd0899b9dec5f73e7` passed hosted CI run `42347317440`: fresh migration/single-head checks, Ruff, Mypy (32 source files), 735 tests (74 warnings), and cleanup. Await Operator-local exact-head verification and Step 2 acceptance. B3–B6 and R7-C remain unauthorized.
+**Status (2026-11-07):** **B0 complete; B1 accepted and merged; B2 Step 0 complete; `legacy-opaque` amendment accepted; B2 implementation authorized; Step 1 merged and verified; Step 2 implementation and verification complete; explicit acceptance pending.** PR #43 merged at `d1a8b88fd930207142304fc9b0b7274de5de4992`; PR #45 merged at `18595356a3da93b47a8701c7e94fe7dbde098d55`. Step 2 PR #46 head `906ec3cf31510375343c2cc8e3cd03ef9fa74af5` passed hosted CI run `42347539252` and Operator-local exact-head verification, including a fresh disposable-PostgreSQL full suite (**735 passed, 0 failed**). See `docs/testing.md` for full evidence. Do not begin Step 3 before explicit Step 2 acceptance. B3–B6 and R7-C remain unauthorized.
 
 
 
@@ -177,7 +177,7 @@ B0 closes when:
 - Documentation validation passes: the diff is docs-only; phase names, status statements, task scopes, and authority rules agree; changed-file references and anchors resolve; no proposed design is represented as implemented or active; and the Operator's acceptance is recorded.
 - The documentation-only integration is merged and the B0 closeout is recorded in PLAN.md.
 
-**B0 completion did not itself authorize B1. The Operator separately authorized B1 on 2026-11-05; B1 is accepted and merged. B2 was separately authorized on 2026-11-06. Step 1 is merged and verified; Step 2 is in progress in PR #46.** B3–B6 remain unauthorized; no later-phase Task registration, provider, active write scope or runtime change is authorized.
+**B0 completion did not itself authorize B1. The Operator separately authorized B1 on 2026-11-05; B1 is accepted and merged. B2 was separately authorized on 2026-11-06. Step 1 is merged and verified; Step 2 implementation and verification are complete in PR #46, pending explicit acceptance.** B3–B6 remain unauthorized; no later-phase Task registration, provider, active write scope or runtime change is authorized.
 
 ---
 
@@ -223,7 +223,7 @@ B0 closes when:
 
 **Goal:** define and implement the stable semantic content-hash contract, invalidate and safely republish old Team Experience projections, and make indexing, retrieval, and Context assembly validate the B1 current-learning-change chain. B2 must complete before B4 because revalidation depends on a hash that does not change when review metadata changes.
 
-**Status:** B2 preplanning was finalized 2026-11-06 and the Operator separately authorized implementation on that date. Step 1 is complete and merged; Step 2 is in progress in PR #46. The sequence below remains binding; do not start Step 3 before Step 2 is accepted.
+**Status:** B2 preplanning was finalized 2026-11-06 and the Operator separately authorized implementation on that date. Step 1 is complete and merged; Step 2 implementation and verification are complete in PR #46, pending explicit acceptance. The sequence below remains binding; do not start Step 3 before Step 2 is accepted.
 
 ### Frozen compatibility contract
 
@@ -254,7 +254,7 @@ B0 closes when:
 - The current Context v1/v2 replay path verifies immutable Context snapshot bytes/hash and associated Event/task metadata; it does not recalculate KnowledgeItem content hashes. Therefore preserving v1/v2 replay does not require a legacy KnowledgeItem content-hash verifier. Any embedded old passage hash remains part of the immutable historical payload.
 - This was a design conflict with the B0.3 compatibility assumption that all existing projections could be assigned `legacy-current-state-v1` and that Context v1/v2 implied the same scheme; the Operator resolved it by accepting the opaque projection disposition and retaining the existing v1/v2 replay behavior.
 - **Operator decision:** the Operator explicitly accepted this disposition on 2026-11-06. Under the accepted B2 migration rule, all pre-existing Team Experience projection rows must be classified as `legacy-opaque` (a non-retrievable storage disposition, not a claim about the digest algorithm), their current-pointer pin must remain NULL, and their index state must be marked stale. Existing hash strings, chunks, embeddings, and metadata must be preserved byte-for-byte. A normal successful republish writes the v2 hash and current pointer. Context v1/v2 replay remains exactly as implemented, without content-hash recalculation.
-- This is an accepted amendment to the original B0.3 compatibility wording, recorded in ADR-0032. The Operator separately authorized B2 implementation on 2026-11-06. Step 1 is merged and verified; Step 2 hosted CI passed on exact head `27890a5a2e4dc418683b62ecd0899b9dec5f73e7`. Await Operator-local verification and acceptance before starting Step 3.
+- This is an accepted amendment to the original B0.3 compatibility wording, recorded in ADR-0032. The Operator separately authorized B2 implementation on 2026-11-06. Step 1 is merged and verified; Step 2 hosted and Operator-local verification passed on exact implementation head `906ec3cf31510375343c2cc8e3cd03ef9fa74af5`. Explicit Step 2 acceptance remains required before starting Step 3.
 
 **Step 1 — Implement and prove the versioned semantic content hash**
 
@@ -267,7 +267,7 @@ B0 closes when:
 
 **Step 2 — Add projection provenance fields with a fail-closed migration**
 
-**Status (2026-11-07):** implementation is in draft PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46), branch `r7b-b2-step2-projection-provenance`. Exact head `27890a5a2e4dc418683b62ecd0899b9dec5f73e7` passed hosted CI run [42347317440](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42347317440): fresh PostgreSQL migration/single-head checks, Ruff, Mypy (32 source files), 735 tests (74 warnings), and cleanup. Operator-local exact-head verification and Step 2 acceptance remain pending.
+**Status (2026-11-07):** implementation is in PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46), branch `r7b-b2-step2-projection-provenance`, verified implementation head `906ec3cf31510375343c2cc8e3cd03ef9fa74af5`. Hosted CI run [42347539252](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42347539252) passed fresh PostgreSQL migration/single-head checks, Ruff, Mypy (32 source files), 735 tests (74 warnings), and cleanup. Operator-local exact-head verification also passed: focused tests, Ruff, Mypy, and a separate fresh-disposable-PostgreSQL full-suite-only run (**735 passed, 0 failed**). Step 2 implementation and verification are complete; explicit acceptance remains pending.
 
 1. Add `current_learning_change_id` and `content_hash_scheme` to both `TeamExperienceChunk` and `TeamExperienceIndexState`. New publications must populate both fields.
 2. Use one additive Alembic revision after `0015_r7b_history` (`0016_team_exp_history_pins`; the identifier is deliberately under Alembic's 32-character version-column limit). Preserve one Alembic head.

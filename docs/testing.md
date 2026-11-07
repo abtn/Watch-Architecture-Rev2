@@ -437,10 +437,18 @@ The warnings are the existing Alembic `path_separator` configuration deprecation
 
 
 
-## R7-B B2 Step 2 — projection provenance pins (IN PROGRESS — PR #46)
+## R7-B B2 Step 2 — projection provenance pins (VERIFIED — PR #46; acceptance pending)
 
-The Operator authorized B2 implementation on 2026-11-06. Step 1 was merged through PR #45 at `18595356a3da93b47a8701c7e94fe7dbde098d55` after hosted and Operator-local exact-head verification. Step 2 is being implemented in draft PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46), branch `r7b-b2-step2-projection-provenance`.
+The Operator authorized B2 implementation on 2026-11-06. Step 1 was merged through PR #45 at `18595356a3da93b47a8701c7e94fe7dbde098d55` after hosted and Operator-local exact-head verification. Step 2 implementation is in PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46), branch `r7b-b2-step2-projection-provenance`, with verified head `906ec3cf31510375343c2cc8e3cd03ef9fa74af5`.
 
 The Step 2 change adds current-pointer and content-hash-scheme pins to Team Experience chunks and index-state rows; classifies historical projections as `legacy-opaque` with NULL current pointers; marks existing index-state rows stale; preserves existing projection hashes and embedding data; and adds same-Team foreign keys and scheme/pointer constraints. New indexer publications write the v2 scheme and current pointer.
 
-The first hosted run failed before application tests because revision ID `0016_team_experience_history_pins` exceeded Alembic's 32-character `alembic_version.version_num` column. The identifier was shortened to `0016_team_exp_history_pins`. A subsequent run passed migration but found Ruff import/line-length issues; after those were corrected, the exact final head `27890a5a2e4dc418683b62ecd0899b9dec5f73e7` passed hosted CI [run 42347317440](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42347317440): fresh PostgreSQL migration and single-head checks, Ruff, Mypy across 32 source files, 735 tests (74 warnings), and disposable-container cleanup. Operator-local exact-head verification and Step 2 acceptance remain pending.
+The first hosted run failed before application tests because revision ID `0016_team_experience_history_pins` exceeded Alembic's 32-character `alembic_version.version_num` column. The identifier was shortened to `0016_team_exp_history_pins`. A subsequent run passed migration but found Ruff import/line-length issues; those were corrected before the verified implementation head.
+
+**Hosted verification:** `906ec3cf31510375343c2cc8e3cd03ef9fa74af5` passed [CI run 42347539252](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42347539252): fresh PostgreSQL migration and single-head checks, Ruff, Mypy across 32 source files, 735 tests (74 warnings), and disposable-container cleanup.
+
+**Operator-local verification:** Operator-local exact-head verification passed on `906ec3cf31510375343c2cc8e3cd03ef9fa74af5`: focused tests 18 passed, Ruff passed, and Mypy passed across 32 source files. A separate fresh disposable PostgreSQL run applied migrations to exactly one head (`0016_team_exp_history_pins`) and ran the full suite alone: **735 passed, 0 failed** in 89.17s (74 existing Alembic `path_separator` deprecation warnings). The container used a dynamically assigned localhost port and was removed by the script. A prior local full-suite attempt had 10 failures; none reproduced in the clean full-suite-only run. The cause of that earlier discrepancy was not established, and no source changes were made in response.
+
+**Earlier local discrepancy:** A previous local full-suite attempt reported 725 passed and 10 failed. The ten failures did not reproduce in the separate fresh-database full-suite-only run above. Their cause was not established; no source changes were made in response. The successful clean run is the evidence used for this verification record.
+
+**Gate:** Step 2 implementation and verification are complete. Explicit Operator acceptance remains pending; Step 3 must not start until that acceptance is recorded. B3–B6 and R7-C remain unauthorized.

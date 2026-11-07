@@ -27,7 +27,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** work is focused on checking the quality of saved lessons and deciding how they should change over time. B1 was accepted and merged on 2026-11-06. B2 implementation was separately authorized on 2026-11-06; Step 1 is merged and passed hosted and Operator-local verification. Step 2 is in draft PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46); its exact-head hosted CI passed 735 tests plus static and migration checks. Operator-local verification and Step 2 acceptance remain pending. B3–B6 and R7-C remain separately gated.
+- **R7:** work is focused on checking the quality of saved lessons and deciding how they should change over time. B1 was accepted and merged on 2026-11-06. B2 implementation was separately authorized on 2026-11-06; Step 1 is merged and passed hosted and Operator-local verification. Step 2 implementation and verification are complete in PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46), including hosted CI and Operator-local fresh-database verification (735 tests passed). Explicit Step 2 acceptance remains pending; Step 3 must not begin before acceptance. B3–B6 and R7-C remain separately gated.
 
 Later R7 phases have not yet been authorized.
 
