@@ -17,6 +17,7 @@ from core.knowledge_index import (
     TeamExperienceIndexer,
 )
 from core.learning_history import (
+    CONTENT_HASH_SCHEME,
     KnowledgeHistoryError,
     encode_state_snapshot,
     knowledge_item_state,
@@ -481,6 +482,11 @@ def test_separate_team_experience_projection_is_idempotent_and_retrievable(
         )
     assert rows
     assert all(row.team_id == experience_env.team_id for row in rows)
+    assert all(
+        row.current_learning_change_id == experience_env.learning_change_ids[0]
+        for row in rows
+    )
+    assert all(row.content_hash_scheme == CONTENT_HASH_SCHEME for row in rows)
     with experience_env.session_factory() as session:
         state = session.scalar(
             select(TeamExperienceIndexState).where(
@@ -490,6 +496,8 @@ def test_separate_team_experience_projection_is_idempotent_and_retrievable(
         assert state is not None
         assert state.status == "published"
         assert state.item_version == 1
+        assert state.current_learning_change_id == experience_env.learning_change_ids[0]
+        assert state.content_hash_scheme == CONTENT_HASH_SCHEME
         assert state.chunk_count == len(rows)
         assert state.attempt_count == 1
 

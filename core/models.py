@@ -500,6 +500,11 @@ class TeamExperienceChunk(Base):
             ["learning_changes.id", "learning_changes.team_id"],
             name="fk_team_experience_chunks_learning_change_team",
         ),
+        ForeignKeyConstraint(
+            ["current_learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_team_experience_chunks_current_learning_change_team",
+        ),
         UniqueConstraint(
             "knowledge_item_id",
             "item_version",
@@ -510,6 +515,14 @@ class TeamExperienceChunk(Base):
         CheckConstraint(
             "item_version > 0 AND chunk_index >= 0",
             name="ck_team_experience_chunks_item_chunk",
+        ),
+        CheckConstraint(
+            "content_hash_scheme IN ('legacy-opaque', 'watch.r7b.knowledge-content.v2') "
+            "AND ((content_hash_scheme = 'legacy-opaque' "
+            "AND current_learning_change_id IS NULL) OR "
+            "(content_hash_scheme = 'watch.r7b.knowledge-content.v2' "
+            "AND current_learning_change_id IS NOT NULL))",
+            name="ck_team_experience_chunks_history_pins",
         ),
         CheckConstraint(
             "item_content_hash ~ '^sha256:[0-9a-f]{64}$' AND "
@@ -546,6 +559,10 @@ class TeamExperienceChunk(Base):
     origin_learning_change_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), nullable=False
     )
+    current_learning_change_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    content_hash_scheme: Mapped[str] = mapped_column(String(64), nullable=False)
     chunk_index: Mapped[int] = mapped_column(nullable=False)
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
     chunk_hash: Mapped[str] = mapped_column(String, nullable=False)
@@ -578,6 +595,11 @@ class TeamExperienceIndexState(Base):
             ["learning_changes.id", "learning_changes.team_id"],
             name="fk_team_experience_index_state_learning_change_team",
         ),
+        ForeignKeyConstraint(
+            ["current_learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_team_experience_index_state_current_learning_change_team",
+        ),
         UniqueConstraint(
             "knowledge_item_id",
             "team_id",
@@ -586,6 +608,14 @@ class TeamExperienceIndexState(Base):
         CheckConstraint(
             "status IN ('stale', 'published', 'ineligible')",
             name="ck_team_experience_index_state_status",
+        ),
+        CheckConstraint(
+            "content_hash_scheme IN ('legacy-opaque', 'watch.r7b.knowledge-content.v2') "
+            "AND ((content_hash_scheme = 'legacy-opaque' "
+            "AND current_learning_change_id IS NULL) OR "
+            "(content_hash_scheme = 'watch.r7b.knowledge-content.v2' "
+            "AND current_learning_change_id IS NOT NULL))",
+            name="ck_team_experience_index_state_history_pins",
         ),
         CheckConstraint(
             "item_version > 0 AND attempt_count >= 0 AND chunk_count >= 0",
@@ -616,6 +646,10 @@ class TeamExperienceIndexState(Base):
     origin_learning_change_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), nullable=False
     )
+    current_learning_change_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    content_hash_scheme: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
     embedding_space_key: Mapped[str | None] = mapped_column(String, nullable=True)
     chunk_count: Mapped[int] = mapped_column(
