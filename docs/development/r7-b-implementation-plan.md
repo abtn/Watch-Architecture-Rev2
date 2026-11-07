@@ -2,7 +2,7 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (2026-11-07):** **B0 complete; B1 accepted and merged; B2 Step 0 complete; `legacy-opaque` amendment accepted; B2 implementation authorized; Step 1 merged and verified; Step 2 implementation and verification complete; explicit acceptance pending.** PR #43 merged at `d1a8b88fd930207142304fc9b0b7274de5de4992`; PR #45 merged at `18595356a3da93b47a8701c7e94fe7dbde098d55`. Step 2 PR #46 head `906ec3cf31510375343c2cc8e3cd03ef9fa74af5` passed hosted CI run `42347539252` and Operator-local exact-head verification, including a fresh disposable-PostgreSQL full suite (**735 passed, 0 failed**). See `docs/testing.md` for full evidence. Do not begin Step 3 before explicit Step 2 acceptance. B3–B6 and R7-C remain unauthorized.
+**Status (2026-11-07):** **B0 complete; B1 accepted and merged; B2 Step 0 complete; `legacy-opaque` amendment accepted; B2 implementation authorized; Step 1 and Step 2 accepted and merged; Step 3 in progress.** PR #43 merged at `d1a8b88fd930207142304fc9b0b7274de5de4992`; PR #45 merged at `18595356a3da93b47a8701c7e94fe7dbde098d55`; PR #46 merged at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Step 2 exact implementation-head hosted and Operator-local verification, and final documentation-head CI run `42350516648`, are recorded in `docs/testing.md`. Step 3 is in progress on `r7b-b2-step3-history-aware-canonicality`. B3–B6 and R7-C remain unauthorized.
 
 
 
@@ -177,7 +177,7 @@ B0 closes when:
 - Documentation validation passes: the diff is docs-only; phase names, status statements, task scopes, and authority rules agree; changed-file references and anchors resolve; no proposed design is represented as implemented or active; and the Operator's acceptance is recorded.
 - The documentation-only integration is merged and the B0 closeout is recorded in PLAN.md.
 
-**B0 completion did not itself authorize B1. The Operator separately authorized B1 on 2026-11-05; B1 is accepted and merged. B2 was separately authorized on 2026-11-06. Step 1 is merged and verified; Step 2 implementation and verification are complete in PR #46, pending explicit acceptance.** B3–B6 remain unauthorized; no later-phase Task registration, provider, active write scope or runtime change is authorized.
+**B0 completion did not itself authorize B1. The Operator separately authorized B1 on 2026-11-05; B1 is accepted and merged. B2 was separately authorized on 2026-11-06. Step 1 and Step 2 are accepted and merged; B2 Step 3 is in progress within the accepted B2 sequence.** B3–B6 remain unauthorized; no later-phase Task registration, provider, active write scope or runtime change is authorized.
 
 ---
 
