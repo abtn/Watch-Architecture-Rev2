@@ -1080,6 +1080,7 @@ class HybridKnowledgeRetriever:
                     "AND i.review_after > :now_utc "
                     "AND i.version = c.item_version "
                     "AND i.origin_learning_change_id = c.origin_learning_change_id "
+                    "AND i.current_learning_change_id = c.current_learning_change_id "
                     "AND lc.id = i.origin_learning_change_id "
                     "AND lc.team_id = i.team_id "
                     "AND lc.status = 'accepted' "
@@ -1090,6 +1091,9 @@ class HybridKnowledgeRetriever:
                     "AND st.item_version = c.item_version "
                     "AND st.item_content_hash = c.item_content_hash "
                     "AND st.origin_learning_change_id = c.origin_learning_change_id "
+                    "AND st.current_learning_change_id = c.current_learning_change_id "
+                    "AND st.content_hash_scheme = c.content_hash_scheme "
+                    "AND c.content_hash_scheme = :content_hash_scheme "
                     "AND st.embedding_space_key = c.embedding_space_key "
                     "AND st.chunk_count > c.chunk_index "
                     "AND c.embedding_space_key = :embedding_space_key "
@@ -1104,6 +1108,7 @@ class HybridKnowledgeRetriever:
                     "SELECT c.id AS chunk_id, "
                     "c.knowledge_item_id, c.team_id, c.item_version, "
                     "c.item_content_hash, c.origin_learning_change_id, "
+                    "c.current_learning_change_id, c.content_hash_scheme, "
                     "c.chunk_index, c.chunk_text, c.chunk_hash, c.chunking_version, "
                     "c.embedding_provider, c.embedding_model, c.embedding_revision, "
                     "c.embedding_configuration, c.embedding_dimensions, "
@@ -1119,6 +1124,7 @@ class HybridKnowledgeRetriever:
                 )
                 experience_parameters = {
                     **embedding_parameters,
+                    "content_hash_scheme": KNOWLEDGE_CONTENT_HASH_SCHEME,
                     "team_id": team_id,
                     "now_utc": now_utc,
                     "candidate_limit": LEXICAL_CANDIDATE_LIMIT,
@@ -1366,6 +1372,10 @@ class HybridKnowledgeRetriever:
                 or index_state.item_content_hash != row["item_content_hash"]
                 or index_state.origin_learning_change_id
                 != item.origin_learning_change_id
+                or row["current_learning_change_id"] != item.current_learning_change_id
+                or row["content_hash_scheme"] != KNOWLEDGE_CONTENT_HASH_SCHEME
+                or index_state.current_learning_change_id != item.current_learning_change_id
+                or index_state.content_hash_scheme != KNOWLEDGE_CONTENT_HASH_SCHEME
                 or index_state.embedding_space_key != query_space.key
                 or index_state.chunk_count <= row["chunk_index"]
                 or learning_change is None
