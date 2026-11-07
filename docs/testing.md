@@ -412,4 +412,35 @@ The Operator separately authorized B1 on 2026-11-05 and accepted the B1 phase on
 
 **Hosted-CI verification of the reviewed implementation tree:** PR head `08abdf17c65864fba832678230d1eddfa884ea04` passed hosted CI [run 42244835481](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42244835481) on 2026-11-06 (run 449). The workflow checked out that exact commit, applied migrations to a fresh PostgreSQL database and verified the single Alembic head; Ruff passed; Mypy found no issues in 32 source files; the full suite passed with **690 tests, 65 warnings in 46.89s**; and disposable PostgreSQL container cleanup passed. The warnings are Alembic's existing `path_separator` configuration deprecations. Git compare confirms that the nine commits between locally verified code head `ca498ecd43207e72082332c803a74eb30173d41c` and tested head `08abdf17c65864fba832678230d1eddfa884ea04` changed documentation only; no application code, migration, or test code changed after local verification. The later B1 status-closeout commits change documentation only; the latest PR-head workflow result is available from [PR #43](https://github.com/abtn/Watch-Architecture-Rev2/pull/43).
 
-**Disposition:** both final-review findings are corrected. The corrected code tree passed operator-local exact-code-head verification, and the reviewed implementation tree passed hosted CI run [42244835481](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42244835481). Subsequent closeout commits change documentation only; the current PR-head workflow is the authority for verification of the latest documentation head. Final technical review is complete: no blocking B1 finding remains and there are zero unresolved inline review threads. The recorded GitHub review is COMMENTED, not APPROVE. PR #43 remains open and draft pending the separate explicit Operator decision to mark it ready or merge it; this documentation update does not make that phase-boundary decision. B2–B6 and R7-C remain unauthorized.
+**Disposition:** both final-review findings are corrected. The corrected code tree passed operator-local exact-code-head verification, and the final B1 PR head passed hosted CI run [42246346103](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42246346103): 690 tests, fresh PostgreSQL migration/single-head checks, Ruff, Mypy, and cleanup all passed. Final technical review found no blocking B1 issue and zero unresolved inline review threads; the recorded technical review was COMMENTED, not an approval. PR #43 was subsequently merged and closed on 2026-11-06 at merge commit `d1a8b88fd930207142304fc9b0b7274de5de4992`. B1 is complete. B2 implementation was separately authorized by the Operator on 2026-11-06; Step 1 hosted verification is recorded below. B3–B6 and R7-C remain unauthorized.
+
+## R7-B B2 Step 1 — v2 semantic content hash (2026-11-06; merged 2026-11-07)
+
+The Operator separately authorized B2 implementation on 2026-11-06. Step 0 preflight/inventory and the accepted `legacy-opaque` compatibility amendment are recorded in ADR-0032 and the R7-B implementation plan. Step 1 implementation is submitted in draft PR [#45](https://github.com/abtn/Watch-Architecture-Rev2/pull/45), based on B1 merge commit `d1a8b88fd930207142304fc9b0b7274de5de4992`.
+
+**Implemented scope (exact PR head `cd2426e64d86f32916be28f639ada19574f8607e`):**
+- Adds the explicit `watch.r7b.knowledge-content.v2` content-hash scheme in `core/learning_history.py`.
+- Hashes exactly the 14 accepted semantic fields using canonical JSON, fixed-point confidence normalization, UTF-8 domain-separator framing, one NUL byte, and SHA-256.
+- Leaves identity, Team, lifecycle state, versions, review dates, pointers, and supersession links outside the semantic content hash.
+- Routes the existing Team Experience hash helper through the v2 implementation.
+- Adds focused regression tests for the fixed digest vector, all semantic fields, excluded identity/lifecycle fields, array ordering, confidence-only changes and normalization, canonical object-key ordering, invalid confidence, and the Team Experience entry point.
+- The PR changes only `core/learning_history.py`, `core/knowledge_index.py`, and `tests/test_knowledge_content_hash.py`. It does not include the legacy projection migration, model changes, projection pins, retrieval changes, Context v3, or approval-path changes.
+
+**Hosted exact-head verification:** CI [run 42286427354](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42286427354) checked out the exact PR head above and passed:
+- Fresh PostgreSQL migration and verification of the single Alembic head.
+- Ruff.
+- Mypy: no issues in 32 source files.
+- Full suite: **732 passed, 65 warnings in 48.36s**.
+- Disposable PostgreSQL container cleanup.
+
+The warnings are the existing Alembic `path_separator` configuration deprecations. CI did not target the persistent `watch` database. Operator-local exact-head verification was subsequently reported on 2026-11-07 for commit `cd2426e64d86f32916be28f639ada19574f8607e`: 42 focused tests passed; Ruff passed; Mypy passed across 32 source files. PR #45 was merged to `main` at `18595356a3da93b47a8701c7e94fe7dbde098d55`. Step 1 is complete; Step 2 may proceed.
+
+
+
+## R7-B B2 Step 2 — projection provenance pins (IN PROGRESS — PR #46)
+
+The Operator authorized B2 implementation on 2026-11-06. Step 1 was merged through PR #45 at `18595356a3da93b47a8701c7e94fe7dbde098d55` after hosted and Operator-local exact-head verification. Step 2 is being implemented in draft PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46), branch `r7b-b2-step2-projection-provenance`.
+
+The Step 2 change adds current-pointer and content-hash-scheme pins to Team Experience chunks and index-state rows; classifies historical projections as `legacy-opaque` with NULL current pointers; marks existing index-state rows stale; preserves existing projection hashes and embedding data; and adds same-Team foreign keys and scheme/pointer constraints. New indexer publications write the v2 scheme and current pointer.
+
+The first hosted run failed before application tests because revision ID `0016_team_experience_history_pins` exceeded Alembic's 32-character `alembic_version.version_num` column. The identifier was shortened to `0016_team_exp_history_pins`. Updated hosted verification is pending. No Step 2 test, migration, Ruff, Mypy, or full-suite pass is claimed yet.
