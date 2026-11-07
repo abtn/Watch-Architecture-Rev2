@@ -782,6 +782,23 @@ class TeamExperienceIndexer:
             for index, (chunk, vector) in enumerate(zip(chunks, batch.vectors))
         ]
 
+        # The provider is external to the database transaction. Recheck its identity
+        # at the publication boundary so a configuration change during row building
+        # cannot publish vectors under a space that is no longer current.
+        try:
+            if self._embedding_provider.current_space().key != batch.space.key:
+                raise KnowledgeIndexError("embedding_space_changed_during_indexing")
+        except Exception as error:
+            self._record_index_state(
+                item,
+                item_hash,
+                status="stale",
+                embedding_space_key=space.key,
+                error_kind=type(error).__name__,
+                now=datetime.now(timezone.utc),
+            )
+            raise
+
         with self._session_factory.begin() as session:
             current_item = session.scalar(
                 select(KnowledgeItem)
