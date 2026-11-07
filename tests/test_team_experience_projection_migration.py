@@ -14,9 +14,10 @@ from test_r7b_history_migration import (
     MigrationSandbox,
     _insert_legacy_knowledge_item,
     _upgrade_to_revision,
+    pre_0015_schema as _pre_0015_schema_fixture,
 )
 
-pytest_plugins = ("test_r7b_history_migration",)
+pre_0015_schema = _pre_0015_schema_fixture
 
 
 @dataclass(frozen=True)
