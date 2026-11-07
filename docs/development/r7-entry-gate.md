@@ -2,9 +2,9 @@
 
 ## Status and authority
 
-**R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 complete; B1 merged; B2 implementation authorized; Step 1 complete; Step 2 implementation and verification complete; explicit acceptance pending. B3–B6 and R7-C remain unauthorized.
+**R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 complete; B1 merged; B2 Step 1 and Step 2 accepted and merged; B2 Step 3 in progress. B3–B6 and R7-C remain unauthorized.
 
-- This document records the accepted R7 architecture and separate phase gates. R7-A is complete. R7-B B0 is complete; B1 was accepted and merged through PR #43; B2 implementation was separately authorized on 2026-11-06. Step 1 merged through PR #45 and passed hosted plus Operator-local verification. Step 2 PR #46 passed hosted and Operator-local exact-head verification, including 735 full-suite tests on a fresh disposable database. Explicit Step 2 acceptance remains pending. B3–B6 and R7-C remain unauthorized.
+- This document records the accepted R7 architecture and separate phase gates. R7-A is complete. R7-B B0 is complete; B1 was accepted and merged through PR #43; B2 implementation was separately authorized on 2026-11-06. Step 1 merged through PR #45 and passed hosted plus Operator-local verification. Step 2 was accepted on 2026-11-07 and merged through PR #46 at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`; hosted CI on its final documentation head also passed. B2 Step 3 is in progress on `r7b-b2-step3-history-aware-canonicality`. B3–B6 and R7-C remain unauthorized.
 - ADR-0032 remains **Accepted — 2026-11-04 for the original R7 architecture and R7-A scope**. Its R7-B D1/D5 design extension and B0.3 integrity contracts are separately accepted for design on 2026-11-05; this does not authorize implementation.
 - PLAN.md remains the sole authority for milestone status and next action.
 - R6 is formally complete through R6-G. R6-G approval and merge do not authorize R7.
