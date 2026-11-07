@@ -14,7 +14,11 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.embeddings import EmbeddingBatch, EmbeddingProvider, EmbeddingSpace
-from core.learning_history import KNOWLEDGE_CONTENT_HASH_SCHEME
+from core.learning_history import (
+    KNOWLEDGE_CONTENT_HASH_SCHEME,
+    KnowledgeHistoryError,
+    reconstruct_knowledge_item_history,
+)
 from core.models import (
     Event,
     KnowledgeChunk,
@@ -421,15 +425,37 @@ def _review_date_is_eligible(item: KnowledgeItem, now: datetime) -> bool:
 def _accepted_learning_change_is_canonical(
     session: Session, item: KnowledgeItem, learning_change: LearningChange
 ) -> bool:
+    """Validate the current accepted transition and reconstruct its full history."""
     if (
-        learning_change.id != item.origin_learning_change_id
+        item.current_learning_change_id is None
+        or learning_change.id != item.current_learning_change_id
         or learning_change.team_id != item.team_id
         or learning_change.target_kind != "knowledge_item"
-        or learning_change.target_id is not None
-        or learning_change.operation != "create"
         or learning_change.status != "accepted"
         or learning_change.committed_by_task_id is None
         or learning_change.committed_at is None
+    ):
+        return False
+
+    if learning_change.operation == "create":
+        if (
+            learning_change.id != item.origin_learning_change_id
+            or learning_change.target_id is not None
+        ):
+            return False
+    elif learning_change.operation in {"revise", "revalidate", "supersede", "retire"}:
+        if learning_change.target_id != item.id:
+            return False
+    else:
+        return False
+
+    try:
+        history = reconstruct_knowledge_item_history(session, item)
+    except KnowledgeHistoryError:
+        return False
+    if (
+        not history.learning_change_ids
+        or history.learning_change_ids[-1] != item.current_learning_change_id
         or not knowledge_item_committed_state_matches(item, learning_change)
     ):
         return False
@@ -453,19 +479,20 @@ def _accepted_learning_change_is_canonical(
     )
     if policy is None:
         return False
-    try:
-        interval_days = knowledge_item_review_interval_days(
-            policy.rules, policy.schema_version
+    if learning_change.operation in {"create", "revise", "revalidate"}:
+        try:
+            interval_days = knowledge_item_review_interval_days(
+                policy.rules, policy.schema_version
+            )
+        except InvalidPolicyError:
+            return False
+        expected_review_after = (
+            learning_change.committed_at + timedelta(days=interval_days)
+            if interval_days is not None
+            else None
         )
-    except InvalidPolicyError:
-        return False
-    expected_review_after = (
-        learning_change.committed_at + timedelta(days=interval_days)
-        if interval_days is not None
-        else None
-    )
-    if item.review_after != expected_review_after:
-        return False
+        if item.review_after != expected_review_after:
+            return False
 
     decision_events = list(
         session.scalars(
@@ -481,12 +508,14 @@ def _accepted_learning_change_is_canonical(
     if (
         not isinstance(decision, dict)
         or decision.get("learning_change_id") != str(learning_change.id)
+        or decision.get("operation") != learning_change.operation
         or decision.get("decision") != "accept"
         or decision.get("approval_task_id") != str(approval_task.id)
         or decision.get("operator_id") != learning_change.operator_id
         or decision.get("knowledge_item_id") != str(item.id)
         or decision.get("knowledge_item_version") != item.version
         or decision.get("committed_at") != learning_change.committed_at.isoformat()
+        or decision_events[0].created_at != learning_change.committed_at
     ):
         return False
 
@@ -506,20 +535,21 @@ def _accepted_learning_change_is_canonical(
             )
         )
     )
+    if len(outcomes) != 1 or len(completed_events) != 1:
+        return False
+    outcome = outcomes[0]
+    completed_payload = completed_events[0].payload
     return (
-        len(outcomes) == 1
-        and outcomes[0].team_id == item.team_id
-        and outcomes[0].subject_kind == "task"
-        and outcomes[0].subject_id == approval_task.id
-        and len(completed_events) == 1
-        and completed_events[0].payload.get("to_status") == "done"
-        and completed_events[0].payload.get("result_category")
+        outcome.team_id == item.team_id
+        and outcome.subject_kind == "task"
+        and outcome.subject_id == approval_task.id
+        and isinstance(completed_payload, dict)
+        and completed_payload.get("to_status") == "done"
+        and completed_payload.get("result_category")
         == "success_learning_change_accepted"
-        and completed_events[0].payload.get("learning_change_id")
-        == str(learning_change.id)
-        and completed_events[0].payload.get("outcome_id") == str(outcomes[0].id)
+        and completed_payload.get("learning_change_id") == str(learning_change.id)
+        and completed_payload.get("outcome_id") == str(outcome.id)
     )
-
 
 class TeamExperienceIndexer:
     """Build a separate rebuildable projection from accepted canonical Team
@@ -761,7 +791,7 @@ class TeamExperienceIndexer:
             if current_item is None:
                 raise KnowledgeIndexError("knowledge_item_disappeared_during_indexing")
             current_change = session.get(
-                LearningChange, current_item.origin_learning_change_id
+                LearningChange, current_item.current_learning_change_id
             )
             if current_change is None or not _accepted_learning_change_is_canonical(
                 session, current_item, current_change
@@ -856,10 +886,10 @@ class TeamExperienceIndexer:
             if item is None:
                 return None
             learning_change = session.get(
-                LearningChange, item.origin_learning_change_id
+                LearningChange, item.current_learning_change_id
             )
             if learning_change is None:
-                raise KnowledgeIndexError("knowledge_item_origin_missing")
+                raise KnowledgeIndexError("knowledge_item_current_change_missing")
             return item, learning_change
 
     def _projection_matches(
@@ -1321,7 +1351,7 @@ class HybridKnowledgeRetriever:
             ):
                 continue
             learning_change = session.get(
-                LearningChange, item.origin_learning_change_id
+                LearningChange, item.current_learning_change_id
             )
             index_state = session.scalar(
                 select(TeamExperienceIndexState).where(
