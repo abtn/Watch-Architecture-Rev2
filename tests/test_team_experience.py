@@ -429,6 +429,7 @@ class TeamExperienceEnv:
                     committed_by_task_id=approval_task_id,
                     operator_id=operator_id,
                     decision_reason=None,
+                    created_at=started_at,
                     committed_at=committed_at,
                 )
             )
