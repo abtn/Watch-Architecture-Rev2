@@ -437,9 +437,9 @@ The warnings are the existing Alembic `path_separator` configuration deprecation
 
 
 
-## R7-B B2 Step 2 — projection provenance pins (VERIFIED — PR #46; acceptance pending)
+## R7-B B2 Step 2 — projection provenance pins (ACCEPTED AND MERGED — PR #46)
 
-The Operator authorized B2 implementation on 2026-11-06. Step 1 was merged through PR #45 at `18595356a3da93b47a8701c7e94fe7dbde098d55` after hosted and Operator-local exact-head verification. Step 2 implementation is in PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46), branch `r7b-b2-step2-projection-provenance`, with verified head `906ec3cf31510375343c2cc8e3cd03ef9fa74af5`.
+The Operator authorized B2 implementation on 2026-11-06. Step 1 was merged through PR #45 at `18595356a3da93b47a8701c7e94fe7dbde098d55` after hosted and Operator-local exact-head verification. Step 2 implementation was in PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46), branch `r7b-b2-step2-projection-provenance`, verified implementation head `906ec3cf31510375343c2cc8e3cd03ef9fa74af5`; the PR's documentation closeout head was `fbe52fd971641121a20b64995f5b4f19cc6e3f54`.
 
 The Step 2 change adds current-pointer and content-hash-scheme pins to Team Experience chunks and index-state rows; classifies historical projections as `legacy-opaque` with NULL current pointers; marks existing index-state rows stale; preserves existing projection hashes and embedding data; and adds same-Team foreign keys and scheme/pointer constraints. New indexer publications write the v2 scheme and current pointer.
 
@@ -451,4 +451,4 @@ The first hosted run failed before application tests because revision ID `0016_t
 
 **Earlier local discrepancy:** A previous local full-suite attempt reported 725 passed and 10 failed. The ten failures did not reproduce in the separate fresh-database full-suite-only run above. Their cause was not established; no source changes were made in response. The successful clean run is the evidence used for this verification record.
 
-**Gate:** Step 2 implementation and verification are complete. Explicit Operator acceptance remains pending; Step 3 must not start until that acceptance is recorded. B3–B6 and R7-C remain unauthorized.
+**Acceptance and merge:** The Operator explicitly accepted Step 2 on 2026-11-07. PR #46 merged to `main` at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Hosted CI on the final documentation closeout head passed [run 42350516648](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42350516648). Step 2 is accepted and closed. B2 Step 3 may proceed; B3–B6 and R7-C remain unauthorized.
