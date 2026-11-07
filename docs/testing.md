@@ -453,9 +453,9 @@ The first hosted run failed before application tests because revision ID `0016_t
 
 **Acceptance and merge:** The Operator explicitly accepted Step 2 on 2026-11-07. PR #46 merged to `main` at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Hosted CI on the final documentation closeout head passed [run 42350516648](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42350516648). Step 2 is accepted and closed. B2 Step 3 may proceed; B3–B6 and R7-C remain unauthorized.
 
-## R7-B B2 Step 3 — current-pointer canonicality (CORRECTION APPLIED; CORRECTED-HEAD HOSTED CI PASSED; local re-verification and acceptance pending)
+## R7-B B2 Step 3 — current-pointer canonicality (ACCEPTED AND MERGED — PR #48; 738 TESTS PASSED LOCALLY AND HOSTED)
 
-Step 2 was accepted and merged through PR #46 at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Step 3 implementation is in draft PR [#48](https://github.com/abtn/Watch-Architecture-Rev2/pull/48), branch `r7b-b2-step3-history-aware-canonicality`.
+Step 2 was accepted and merged through PR #46 at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Step 3 was explicitly accepted and merged through PR [#48](https://github.com/abtn/Watch-Architecture-Rev2/pull/48) at merge commit `1ba9f38ec2fa0b7c4a748181bce4096d8f65b356` (PR head `fcb9f4bd9b56b2353299828a7db39619a4650604`).
 
 The canonicality reader now resolves `KnowledgeItem.current_learning_change_id`, validates create-root versus later-transition target semantics, and delegates full accepted-chain, snapshot, approval-task, pinned-policy, decision-event, committed-timestamp, and D7 overlay verification to B1's `reconstruct_knowledge_item_history`. Indexer, retriever, Context validation, and due-review readers load the current LearningChange pointer. Actual lifecycle commits remain create-only; no migration or schema change is introduced.
 
@@ -477,6 +477,23 @@ Synthetic accepted-revision tests cover:
 
 The corrected code/test head `673de5f74e734e3a9fa6059b3f4333e93a055a99` passed hosted CI [run 42382712672](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42382712672): fresh PostgreSQL migration and single-head checks, Ruff, Mypy (32 source files), **738 tests passed** (74 warnings), and disposable-container cleanup. This is hosted evidence for the corrected head; Operator-local exact-head re-verification remains pending.
 
-**Verification disposition:** corrected-head hosted CI passed. The earlier Operator-local verification applies only to head `326be859d36d82c042fe5b183e16a9168f7b3e4b`; corrected-head Operator-local re-verification and explicit Operator acceptance remain pending. Final technical review of the corrected code/test head found no further blocker. PR #48 remains draft and unmerged. The documentation closeout head must pass hosted CI before final acceptance.
+**Acceptance and verification disposition (2026-11-07):** the Operator accepted Step 3 and authorized merge. PR #48 merged to `main` at `1ba9f38ec2fa0b7c4a748181bce4096d8f65b356`. Corrected-head hosted CI run [42383223932](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42383223932) passed. Operator-local exact-head verification on `fcb9f4bd9b56b2353299828a7db39619a4650604` passed Ruff, Mypy (32 source files), migration/single-head checks at `0016_team_exp_history_pins`, and the full suite (**738 passed, 74 Alembic deprecation warnings**). The environment was restored and the disposable PostgreSQL container was removed. No persistent `watch` database was targeted. Step 3 is accepted and closed; actual lifecycle commits remain create-only.
 
-**Boundaries:** no live revise/revalidate/supersede/retire commit path; no B2 Step 4 publication refactor, Step 5 retrieval rollout, Step 6 Context manifest v3, Step 7 approval refactor, B3–B6, or R7-C.
+**Boundaries:** no live revise/revalidate/supersede/retire commit path; Step 4 publication changes, Step 5 retrieval rollout, Step 6 Context manifest v3, and Step 7 approval refactor remain unimplemented. B3–B6 and R7-C remain unauthorized.
+
+
+## R7-B B2 Step 4 — read-only preflight and Sequence 1 documentation reconciliation (2026-11-07)
+
+Step 3 was accepted and merged through PR #48 at `1ba9f38ec2fa0b7c4a748181bce4096d8f65b356`. Corrected-head hosted CI and Operator-local verification passed; the local full suite reported **738 passed**. Exact evidence is recorded in the Step 3 section above.
+
+The Step 4 preflight inspected the merged implementation and current tests without changing source or test files. The merged indexer already:
+- writes `current_learning_change_id` and `content_hash_scheme` into each Team Experience chunk and index-state record;
+- compares those pins in `_projection_matches`;
+- marks a required refresh stale before calling the embedding provider;
+- validates the current item, current LearningChange canonicality, content version/hash and pointer again under the final publication transaction;
+- deletes old chunks, inserts replacement chunks, and upserts the matching index-state record in one transaction; and
+- discovers item IDs from both existing chunks and index-state rows in `rebuild_all`, covering rows marked `legacy-opaque` or stale.
+
+**Open investigation, not yet a confirmed defect:** the provider's current embedding-space key is checked after embedding, before the final publication transaction. The preflight has not yet established whether a provider-space change can occur between that check and commit, nor whether the existing final checks sufficiently fence it. Sequence 1 must record a focused code-path/race analysis and decide whether a regression test or implementation change is required. Do not describe this as a confirmed bug until that analysis is complete.
+
+**Boundary:** no Step 4 source/test changes, migration, provider call, database operation, or persistent-state access occurred during this read-only preflight. Sequence 1 is documentation reconciliation only; subsequent Step 4 implementation remains within the accepted B2 sequence and must preserve the create-only lifecycle authority. B3–B6 and R7-C remain unauthorized.
