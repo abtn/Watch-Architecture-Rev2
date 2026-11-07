@@ -223,7 +223,7 @@ B0 closes when:
 
 **Goal:** define and implement the stable semantic content-hash contract, invalidate and safely republish old Team Experience projections, and make indexing, retrieval, and Context assembly validate the B1 current-learning-change chain. B2 must complete before B4 because revalidation depends on a hash that does not change when review metadata changes.
 
-**Status:** B2 preplanning was finalized 2026-11-06 and the Operator separately authorized implementation on that date. Step 1 is complete and merged; Step 2 implementation and verification are complete in PR #46, pending explicit acceptance. The sequence below remains binding; do not start Step 3 before Step 2 is accepted.
+**Status:** B2 preplanning was finalized 2026-11-06 and the Operator separately authorized implementation on that date. Step 1 and Step 2 are accepted and merged; Step 2 merged through PR #46 on 2026-11-07 at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Step 3 is in progress on `r7b-b2-step3-history-aware-canonicality`. The sequence below remains binding.
 
 ### Frozen compatibility contract
 
@@ -254,7 +254,7 @@ B0 closes when:
 - The current Context v1/v2 replay path verifies immutable Context snapshot bytes/hash and associated Event/task metadata; it does not recalculate KnowledgeItem content hashes. Therefore preserving v1/v2 replay does not require a legacy KnowledgeItem content-hash verifier. Any embedded old passage hash remains part of the immutable historical payload.
 - This was a design conflict with the B0.3 compatibility assumption that all existing projections could be assigned `legacy-current-state-v1` and that Context v1/v2 implied the same scheme; the Operator resolved it by accepting the opaque projection disposition and retaining the existing v1/v2 replay behavior.
 - **Operator decision:** the Operator explicitly accepted this disposition on 2026-11-06. Under the accepted B2 migration rule, all pre-existing Team Experience projection rows must be classified as `legacy-opaque` (a non-retrievable storage disposition, not a claim about the digest algorithm), their current-pointer pin must remain NULL, and their index state must be marked stale. Existing hash strings, chunks, embeddings, and metadata must be preserved byte-for-byte. A normal successful republish writes the v2 hash and current pointer. Context v1/v2 replay remains exactly as implemented, without content-hash recalculation.
-- This is an accepted amendment to the original B0.3 compatibility wording, recorded in ADR-0032. The Operator separately authorized B2 implementation on 2026-11-06. Step 1 is merged and verified; Step 2 hosted and Operator-local verification passed on exact implementation head `906ec3cf31510375343c2cc8e3cd03ef9fa74af5`. Explicit Step 2 acceptance remains required before starting Step 3.
+- This is an accepted amendment to the original B0.3 compatibility wording, recorded in ADR-0032. The Operator separately authorized B2 implementation on 2026-11-06. Step 1 and Step 2 are accepted and merged. Step 2's final documentation-head CI passed run `42350516648`; exact implementation-head hosted and Operator-local verification is recorded in `docs/testing.md`.
 
 **Step 1 — Implement and prove the versioned semantic content hash**
 
@@ -267,7 +267,7 @@ B0 closes when:
 
 **Step 2 — Add projection provenance fields with a fail-closed migration**
 
-**Status (2026-11-07):** implementation is in PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46), branch `r7b-b2-step2-projection-provenance`, verified implementation head `906ec3cf31510375343c2cc8e3cd03ef9fa74af5`. Hosted CI run [42347539252](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42347539252) passed fresh PostgreSQL migration/single-head checks, Ruff, Mypy (32 source files), 735 tests (74 warnings), and cleanup. Operator-local exact-head verification also passed: focused tests, Ruff, Mypy, and a separate fresh-disposable-PostgreSQL full-suite-only run (**735 passed, 0 failed**). Step 2 implementation and verification are complete; explicit acceptance remains pending.
+**Status (2026-11-07):** accepted and merged through PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46) at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Hosted implementation CI run [42347539252](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42347539252) and final documentation-head CI run [42350516648](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42350516648) passed. Operator-local exact implementation-head verification passed, including a fresh-disposable-PostgreSQL full suite (**735 passed, 0 failed**). Full evidence is in `docs/testing.md`.
 
 1. Add `current_learning_change_id` and `content_hash_scheme` to both `TeamExperienceChunk` and `TeamExperienceIndexState`. New publications must populate both fields.
 2. Use one additive Alembic revision after `0015_r7b_history` (`0016_team_exp_history_pins`; the identifier is deliberately under Alembic's 32-character version-column limit). Preserve one Alembic head.
@@ -276,6 +276,8 @@ B0 closes when:
 5. Migration tests must prove old rows remain present but are not publishable/retrievable under `legacy-opaque`, all historical hash strings and embedding data are unchanged, failed migration rolls back cleanly, and a fresh database reaches exactly one head.
 
 **Step 3 — Make canonicality follow the B1 current pointer**
+
+**Status (2026-11-07):** implementation in progress on `r7b-b2-step3-history-aware-canonicality`, based on the accepted Step 2 merge commit `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. The canonicality helper now resolves the current pointer and delegates complete chain/D7 verification to `reconstruct_knowledge_item_history`; indexer, retriever, Context validation, and due-review consumers are being aligned to that pointer. Actual lifecycle commits remain create-only. Verification is pending.
 
 1. Replace the origin-create-only assumption in `_accepted_learning_change_is_canonical`. Load the current change through `KnowledgeItem.current_learning_change_id`, not through `origin_learning_change_id`.
 2. Validate that the pointer resolves to an accepted same-Team `LearningChange`; validate operation-specific target semantics (create has NULL target and creates this item; a later transition targets this exact item); validate the approval Task, pinned TeamPolicy, trusted decision Event, and committed timestamp.
