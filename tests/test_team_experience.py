@@ -15,6 +15,7 @@ from core.embeddings import EmbeddingBatch, EmbeddingSpace
 from core.knowledge_index import (
     HybridKnowledgeRetriever,
     TeamExperienceIndexer,
+    _accepted_learning_change_is_canonical,
 )
 from core.learning_history import (
     KNOWLEDGE_CONTENT_HASH_SCHEME,
@@ -330,6 +331,184 @@ class TeamExperienceEnv:
         self.item_ids.append(item_id)
         return item_id
 
+    def add_accepted_revision(self, item_id: UUID, *, body: str) -> UUID:
+        """Create a synthetic, fully-attributed accepted revision for reader tests."""
+        change_id, proposer_task_id, approval_task_id = (uuid4() for _ in range(3))
+        committed_at = datetime.now(timezone.utc)
+        started_at = committed_at - timedelta(seconds=1)
+        operator_id = "test-host|operator-reviser"
+        proposal_hash = "sha256:" + "e" * 64
+        evidence_basis_hash = "sha256:" + "f" * 64
+        snapshot_ref, snapshot_hash = self.snapshot_store.put(
+            b'{"result_category":"success_learning_change_accepted"}'
+        )
+
+        with self.session_factory.begin() as session:
+            item = session.get(KnowledgeItem, item_id)
+            assert item is not None
+            previous_state = knowledge_item_state(item)
+            policy = session.scalar(
+                select(TeamPolicy).where(
+                    TeamPolicy.team_id == self.team_id,
+                    TeamPolicy.version == self.policy_version,
+                )
+            )
+            assert policy is not None
+            interval_days = knowledge_item_review_interval_days(
+                policy.rules, policy.schema_version
+            )
+            review_after = (
+                committed_at + timedelta(days=interval_days)
+                if interval_days is not None
+                else None
+            )
+            committed_state = dict(previous_state)
+            committed_state.update(
+                {
+                    "body": body,
+                    "version": item.version + 1,
+                    "current_learning_change_id": str(change_id),
+                    "review_after": review_after.isoformat() if review_after else None,
+                }
+            )
+            session.add_all(
+                [
+                    Task(
+                        id=proposer_task_id,
+                        team_id=self.team_id,
+                        task_type="propose_learning_change",
+                        status="done",
+                        attempt_count=1,
+                        policy_version=self.policy_version,
+                        allowed_writes=["LearningChange"],
+                        budget={
+                            "max_tool_calls": 0,
+                            "max_cost_usd": 0.0,
+                            "deadline_seconds": 60,
+                        },
+                        created_at=started_at,
+                        completed_at=committed_at,
+                    ),
+                    Task(
+                        id=approval_task_id,
+                        team_id=self.team_id,
+                        task_type="approve_learning_change",
+                        status="done",
+                        attempt_count=1,
+                        policy_version=self.policy_version,
+                        allowed_writes=["LearningChange", "KnowledgeItem"],
+                        budget={
+                            "max_tool_calls": 0,
+                            "max_cost_usd": 0.0,
+                            "deadline_seconds": 30,
+                        },
+                        created_at=started_at,
+                        completed_at=committed_at,
+                    ),
+                ]
+            )
+            session.flush()
+            session.add(
+                LearningChange(
+                    id=change_id,
+                    team_id=self.team_id,
+                    target_kind="knowledge_item",
+                    target_id=item.id,
+                    operation="revise",
+                    proposed_state={
+                        "proposal_hash": proposal_hash,
+                        "evidence_basis_hash": evidence_basis_hash,
+                    },
+                    previous_state=encode_state_snapshot(previous_state),
+                    committed_state=encode_state_snapshot(committed_state),
+                    evidence_basis=[],
+                    evidence_basis_hash=evidence_basis_hash,
+                    status="accepted",
+                    idempotency_key=f"synthetic-revise-{change_id}",
+                    proposed_by_task_id=proposer_task_id,
+                    committed_by_task_id=approval_task_id,
+                    operator_id=operator_id,
+                    decision_reason=None,
+                    committed_at=committed_at,
+                )
+            )
+            item.body = body
+            item.version += 1
+            item.current_learning_change_id = change_id
+            item.review_after = review_after
+            item.updated_at = committed_at
+            session.flush()
+            outcome = Outcome(
+                id=uuid4(),
+                team_id=self.team_id,
+                subject_kind="task",
+                subject_id=approval_task_id,
+                outcome_type="task_execution",
+                expected=None,
+                observation_snapshot_ref=snapshot_ref,
+                observation_hash=snapshot_hash,
+                observed_at=committed_at,
+                recorded_by_task_id=approval_task_id,
+            )
+            session.add(outcome)
+            session.flush()
+            session.add_all(
+                [
+                    Event(
+                        id=uuid4(),
+                        task_id=approval_task_id,
+                        type="task_started",
+                        payload={
+                            "from_status": "pending",
+                            "to_status": "running",
+                            "attempt_count": 1,
+                        },
+                        created_at=started_at,
+                    ),
+                    Event(
+                        id=uuid4(),
+                        task_id=approval_task_id,
+                        type="learning_change_accepted",
+                        payload={
+                            "schema_version": 1,
+                            "learning_change_id": str(change_id),
+                            "operation": "revise",
+                            "decision": "accept",
+                            "operator_id": operator_id,
+                            "approval_task_id": str(approval_task_id),
+                            "attempt_count": 1,
+                            "evidence_basis_hash": evidence_basis_hash,
+                            "proposal_hash": proposal_hash,
+                            "committed_at": committed_at.isoformat(),
+                            "knowledge_item_id": str(item.id),
+                            "knowledge_item_version": item.version,
+                        },
+                        created_at=committed_at,
+                    ),
+                    Event(
+                        id=uuid4(),
+                        task_id=approval_task_id,
+                        type="task_completed",
+                        payload={
+                            "from_status": "running",
+                            "to_status": "done",
+                            "attempt_count": 1,
+                            "result_category": "success_learning_change_accepted",
+                            "failure_reason": None,
+                            "outcome_id": str(outcome.id),
+                            "observation_snapshot_ref": snapshot_ref,
+                            "observation_hash": snapshot_hash,
+                            "learning_change_id": str(change_id),
+                        },
+                        created_at=committed_at,
+                    ),
+                ]
+            )
+
+        self.task_ids.extend([proposer_task_id, approval_task_id])
+        self.learning_change_ids.append(change_id)
+        return change_id
+
     def add_strategy_task(self, statement: str = "Apply the alpha practice.") -> UUID:
         objective_id, task_id = uuid4(), uuid4()
         with self.session_factory.begin() as session:
@@ -452,6 +631,57 @@ def test_review_interval_is_strictly_versioned_and_has_no_default() -> None:
         InvalidPolicyError, match="unsupported_team_policy_schema_version"
     ):
         knowledge_item_review_interval_days({}, 3)
+
+
+
+def test_canonicality_follows_current_learning_change_and_reconstructs_history(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    item_id = experience_env.add_accepted_item()
+    origin_change_id = experience_env.learning_change_ids[0]
+    current_change_id = experience_env.add_accepted_revision(
+        item_id,
+        body="A revised alpha checklist preserves contrary evidence.",
+    )
+
+    with experience_env.session_factory() as session:
+        item = session.get(KnowledgeItem, item_id)
+        origin = session.get(LearningChange, origin_change_id)
+        current = session.get(LearningChange, current_change_id)
+        assert item is not None and origin is not None and current is not None
+        assert item.current_learning_change_id == current_change_id
+        assert current.target_id == item_id
+        assert current.operation == "revise"
+        assert _accepted_learning_change_is_canonical(session, item, current)
+        assert not _accepted_learning_change_is_canonical(session, item, origin)
+        history = reconstruct_knowledge_item_history(session, item)
+        assert history.learning_change_ids == (origin_change_id, current_change_id)
+
+
+def test_indexer_and_retriever_accept_a_reconstructed_non_origin_current_change(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    item_id = experience_env.add_accepted_item()
+    current_change_id = experience_env.add_accepted_revision(
+        item_id,
+        body="The revised alpha checklist preserves contrary evidence.",
+    )
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+
+    indexed = indexer.index_knowledge_item(item_id)
+    assert indexed.outcome == "indexed"
+
+    retriever = HybridKnowledgeRetriever(
+        experience_env.session_factory, experience_env.snapshot_store, provider
+    )
+    passages = retriever.retrieve(experience_env.team_id, "alpha checklist")
+    assert passages
+    assert all(p.knowledge_item_id == item_id for p in passages)
+    with experience_env.session_factory() as session:
+        item = session.get(KnowledgeItem, item_id)
+        assert item is not None
+        assert item.current_learning_change_id == current_change_id
 
 
 def test_separate_team_experience_projection_is_idempotent_and_retrievable(
