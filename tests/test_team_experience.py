@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
-from decimal import Decimal
 from typing import Any, Sequence
 from uuid import UUID, uuid4
 
@@ -1150,7 +1150,7 @@ def test_revalidation_pointer_only_transition_invalidates_old_projection(
     assert passages
     assert all(p.knowledge_item_id == item_id for p in passages)
 
- 
+
 def test_needs_review_item_is_not_retrievable_even_if_projection_remains(
     experience_env: TeamExperienceEnv,
 ) -> None:
