@@ -12,6 +12,7 @@ At task start, read `PLAN.md`, `CHANGE_MAP.md`, this file, and only the relevant
 - **Which document governs a concept:** `CHANGE_MAP.md`.
 - **Repository behavior and safe workflow:** this file.
 - **Standing delivery authorization and merge conditions:** [`docs/development/agent-delivery-protocol.md`](docs/development/agent-delivery-protocol.md). It supplements this file; it does not override the authority chain or the stop conditions below.
+- **Paste-safe Windows terminal scripts:** [`docs/development/powershell-paste-safe-script-guide.md`](docs/development/powershell-paste-safe-script-guide.md). Follow it whenever an Operator is expected to paste PowerShell into a terminal; it defines code-block, delimiter, quoting, line-break, here-string, parser-validation, and safety requirements.
 - **General/original architecture:** `docs/architecture.md` for concepts not replaced by Revision 2.
 - **Revision 2 Control contract:** `docs/control-model.md` and linked ADRs.
 - **Hard constraints:** `docs/invariants.md`.
