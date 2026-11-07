@@ -356,7 +356,7 @@ def _knowledge_item_state(item: KnowledgeItem) -> dict[str, Any]:
 def knowledge_item_committed_state_matches(
     item: KnowledgeItem, learning_change: LearningChange
 ) -> bool:
-    """Compare the create-root snapshot using its recorded snapshot scheme."""
+    """Compare a LearningChange committed snapshot using its recorded scheme."""
     from core.learning_history import KnowledgeHistoryError, decode_state_snapshot
 
     try:
