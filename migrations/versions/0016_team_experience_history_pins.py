@@ -1,6 +1,6 @@
 """Pin Team Experience projections to the current LearningChange and hash scheme.
 
-Revision ID: 0016_team_experience_history_pins
+Revision ID: 0016_team_exp_history_pins
 Revises: 0015_r7b_history
 """
 from typing import Sequence
@@ -8,7 +8,7 @@ from typing import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0016_team_experience_history_pins"
+revision: str = "0016_team_exp_history_pins"
 down_revision: str | None = "0015_r7b_history"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

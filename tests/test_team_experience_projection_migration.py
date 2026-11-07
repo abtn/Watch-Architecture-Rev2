@@ -168,7 +168,7 @@ def test_0016_preserves_legacy_projection_bytes_and_marks_them_opaque_and_stale(
     _upgrade_to_revision(
         pre_0016_schema.engine,
         pre_0016_schema.schema,
-        "0016_team_experience_history_pins",
+        "0016_team_exp_history_pins",
     )
 
     after_chunk, after_state = _existing_projection_values(pre_0016_schema.engine)
@@ -203,7 +203,7 @@ def test_0016_preserves_legacy_projection_bytes_and_marks_them_opaque_and_stale(
     assert chunk_pins["content_hash_scheme"] == "legacy-opaque"
     assert state_pins["current_learning_change_id"] is None
     assert state_pins["content_hash_scheme"] == "legacy-opaque"
-    assert revision == "0016_team_experience_history_pins"
+    assert revision == "0016_team_exp_history_pins"
 
 
 def test_0016_accepts_v2_pins_and_rejects_invalid_scheme_and_cross_team_pointer(
@@ -212,7 +212,7 @@ def test_0016_accepts_v2_pins_and_rejects_invalid_scheme_and_cross_team_pointer(
     _upgrade_to_revision(
         pre_0016_schema.engine,
         pre_0016_schema.schema,
-        "0016_team_experience_history_pins",
+        "0016_team_exp_history_pins",
     )
     with pre_0016_schema.engine.begin() as connection:
         connection.execute(
@@ -307,7 +307,7 @@ def test_0016_failed_migration_rolls_back_schema_and_existing_rows(
         _upgrade_to_revision(
             pre_0016_schema.engine,
             pre_0016_schema.schema,
-            "0016_team_experience_history_pins",
+            "0016_team_exp_history_pins",
         )
 
     after_chunk, after_state = _existing_projection_values(pre_0016_schema.engine)
