@@ -27,7 +27,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** work is focused on checking the quality of saved lessons and deciding how they should change over time. B1 and B2 Steps 1–3 are accepted and merged. Step 3 merged through PR [#48](https://github.com/abtn/Watch-Architecture-Rev2/pull/48) at `1ba9f38ec2fa0b7c4a748181bce4096d8f65b356`; corrected-head hosted and Operator-local verification passed 738 tests. Step 4 requirement gap analysis is complete: pointer/hash-scheme pins and stale/atomic publication are already implemented; the remaining bounded delta is final provider-space revalidation and a direct migrated-legacy-row rebuild regression. Documentation closeout is underway; no Step 4 source changes have begun. B3–B6 and R7-C remain separately gated.
+- **R7:** work is focused on checking the quality of saved lessons and deciding how they should change over time. B1 is merged; B2 Steps 0–4 are implemented and merged. Step 4 merged through PR [#50](https://github.com/abtn/Watch-Architecture-Rev2/pull/50) at `96447318484d539ffa240745b9adc95b8b510871`; exact PR-head hosted CI and merge-commit CI passed. Operator-local full-suite verification passed 740 tests on the preceding Step 4 head; exact merged-head local verification remains pending. B2 Step 5 is next after fresh local preflight; Steps 5–9 and formal B2 exit remain open. B3–B6 and R7-C remain separately gated.
 
 Later R7 phases have not yet been authorized.
 
