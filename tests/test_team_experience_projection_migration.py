@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import Engine, text
@@ -23,10 +23,10 @@ from test_r7b_history_migration import (
 class ProjectionMigrationSandbox:
     engine: Engine
     schema: str
-    item_id: object
-    team_id: object
-    learning_change_id: object
-    other_learning_change_id: object
+    item_id: UUID
+    team_id: UUID
+    learning_change_id: UUID
+    other_learning_change_id: UUID
 
 
 @pytest.fixture
