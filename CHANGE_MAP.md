@@ -35,6 +35,7 @@ This file identifies the active source for each concern. It is an index, not a s
 | Testing | [`docs/testing.md`](docs/testing.md), `pyproject.toml`, test fixtures | Verify only the stated command/environment and report skipped checks. |
 | Reasons behind decisions | [`docs/decisions.md`](docs/decisions.md), full ADRs in `docs/decisions/` | A `Proposed` ADR is not an accepted decision. |
 | Workflow-validation evidence | `docs/development/workflow-validation.md` | Append-only history, read only when validating the development process or when a task requires its evidence. |
+| Paste-safe PowerShell terminal scripts | [PowerShell script guide](docs/development/powershell-paste-safe-script-guide.md), `AGENTS.md` | Required formatting and safety convention for scripts intended for direct Operator paste: complete code blocks, delimiter balance, quoting, here-strings, line breaks, parser validation, and bounded side effects. |
 
 ## R6 knowledge direction (accepted principles; implementation gated)
 
