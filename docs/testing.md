@@ -453,7 +453,7 @@ The first hosted run failed before application tests because revision ID `0016_t
 
 **Acceptance and merge:** The Operator explicitly accepted Step 2 on 2026-11-07. PR #46 merged to `main` at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Hosted CI on the final documentation closeout head passed [run 42350516648](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42350516648). Step 2 is accepted and closed. B2 Step 3 may proceed; B3–B6 and R7-C remain unauthorized.
 
-## R7-B B2 Step 3 — current-pointer canonicality (HOSTED CI PASSED; Operator-local pending)
+## R7-B B2 Step 3 — current-pointer canonicality (HOSTED CI AND OPERATOR-LOCAL VERIFICATION PASSED; final review pending)
 
 Step 2 was accepted and merged through PR #46 at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Step 3 implementation is in draft PR [#48](https://github.com/abtn/Watch-Architecture-Rev2/pull/48), branch `r7b-b2-step3-history-aware-canonicality`.
 
@@ -467,6 +467,8 @@ Synthetic accepted-revision tests cover:
 
 **Hosted exact-head verification:** PR head `67cac9d7a4ec6b395fcc3a1d8465d8c400abde8a` passed [CI run 42351625886](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42351625886): fresh PostgreSQL migration and single-head checks, Ruff, Mypy (32 source files), **737 tests passed** (74 warnings), and disposable-container cleanup. An earlier CI attempt exposed a synthetic-fixture flush-order error; the fixture now persists the LearningChange before moving the KnowledgeItem pointer, and the final expanded run passed.
 
-**Operator-local verification:** pending. The PR remains draft until exact-head local verification and review are complete.
+**Operator-local exact-head verification (2026-11-07):** the Operator verified the exact PR implementation head `326be859d36d82c042fe5b183e16a9168f7b3e4b`. Branch/HEAD/clean-worktree preflight passed; `uv sync --locked`, Ruff (`uv run ruff check core tests migrations`), and Mypy (`uv run mypy core`, 32 source files) passed. On a fresh disposable PostgreSQL container, Alembic upgraded to `0016_team_exp_history_pins`, exactly one migration head was present and the database revision matched it. Focused `tests/test_team_experience.py`: **17 passed** in 3.56s. The separate fresh-database full suite: **737 passed, 0 failed** in 114.89s. Both disposable containers were removed and the original process `DATABASE_URL` / `TEST_DATABASE_URL` values were restored. The 74 warnings are the existing Alembic `path_separator` deprecation warnings; they did not fail the run. No persistent `watch` database was targeted.
+
+**Verification disposition:** hosted CI and exact-head Operator-local verification are complete. Final technical review and explicit Operator acceptance remain pending; the PR remains draft and unmerged. The documentation closeout commit must pass hosted CI before final acceptance.
 
 **Boundaries:** no live revise/revalidate/supersede/retire commit path; no B2 Step 4 publication refactor, Step 5 retrieval rollout, Step 6 Context manifest v3, Step 7 approval refactor, B3–B6, or R7-C.
