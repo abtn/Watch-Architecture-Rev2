@@ -331,11 +331,17 @@ class TeamExperienceEnv:
         self.item_ids.append(item_id)
         return item_id
 
-    def add_accepted_revision(self, item_id: UUID, *, body: str) -> UUID:
+    def add_accepted_revision(
+        self,
+        item_id: UUID,
+        *,
+        body: str,
+        committed_at: datetime | None = None,
+    ) -> UUID:
         """Create a synthetic, fully-attributed accepted revision for reader tests."""
         change_id, proposer_task_id, approval_task_id = (uuid4() for _ in range(3))
-        committed_at = datetime.now(timezone.utc)
-        started_at = committed_at - timedelta(seconds=1)
+        commit_time = committed_at or datetime.now(timezone.utc)
+        started_at = commit_time - timedelta(seconds=1)
         operator_id = "test-host|operator-reviser"
         proposal_hash = "sha256:" + "e" * 64
         evidence_basis_hash = "sha256:" + "f" * 64
@@ -358,7 +364,7 @@ class TeamExperienceEnv:
                 policy.rules, policy.schema_version
             )
             review_after = (
-                committed_at + timedelta(days=interval_days)
+                commit_time + timedelta(days=interval_days)
                 if interval_days is not None
                 else None
             )
@@ -387,7 +393,7 @@ class TeamExperienceEnv:
                             "deadline_seconds": 60,
                         },
                         created_at=started_at,
-                        completed_at=committed_at,
+                        completed_at=commit_time,
                     ),
                     Task(
                         id=approval_task_id,
@@ -403,7 +409,7 @@ class TeamExperienceEnv:
                             "deadline_seconds": 30,
                         },
                         created_at=started_at,
-                        completed_at=committed_at,
+                        completed_at=commit_time,
                     ),
                 ]
             )
@@ -430,7 +436,7 @@ class TeamExperienceEnv:
                     operator_id=operator_id,
                     decision_reason=None,
                     created_at=started_at,
-                    committed_at=committed_at,
+                    committed_at=commit_time,
                 )
             )
             session.flush()
@@ -438,7 +444,7 @@ class TeamExperienceEnv:
             item.version += 1
             item.current_learning_change_id = change_id
             item.review_after = review_after
-            item.updated_at = committed_at
+            item.updated_at = commit_time
             session.flush()
             outcome = Outcome(
                 id=uuid4(),
@@ -449,7 +455,7 @@ class TeamExperienceEnv:
                 expected=None,
                 observation_snapshot_ref=snapshot_ref,
                 observation_hash=snapshot_hash,
-                observed_at=committed_at,
+                observed_at=commit_time,
                 recorded_by_task_id=approval_task_id,
             )
             session.add(outcome)
@@ -481,11 +487,11 @@ class TeamExperienceEnv:
                             "attempt_count": 1,
                             "evidence_basis_hash": evidence_basis_hash,
                             "proposal_hash": proposal_hash,
-                            "committed_at": committed_at.isoformat(),
+                            "committed_at": commit_time.isoformat(),
                             "knowledge_item_id": str(item.id),
                             "knowledge_item_version": item.version,
                         },
-                        created_at=committed_at,
+                        created_at=commit_time,
                     ),
                     Event(
                         id=uuid4(),
@@ -502,7 +508,7 @@ class TeamExperienceEnv:
                             "observation_hash": snapshot_hash,
                             "learning_change_id": str(change_id),
                         },
-                        created_at=committed_at,
+                        created_at=commit_time,
                     ),
                 ]
             )
@@ -947,6 +953,10 @@ def test_later_task_receives_team_experience_in_immutable_context(
     experience_env: TeamExperienceEnv,
 ) -> None:
     item_id = experience_env.add_accepted_item()
+    experience_env.add_accepted_revision(
+        item_id,
+        body="The revised alpha practice preserves contrary evidence.",
+    )
     provider = FakeEmbeddingProvider()
     indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
     indexer.index_knowledge_item(item_id)
@@ -967,7 +977,7 @@ def test_later_task_receives_team_experience_in_immutable_context(
     assert knowledge["domain_knowledge"] == []
     assert knowledge["team_experience"]
     assert knowledge["team_experience"][0]["knowledge_item_id"] == str(item_id)
-    assert knowledge["team_experience"][0]["knowledge_item_version"] == 1
+    assert knowledge["team_experience"][0]["knowledge_item_version"] == 2
     selected = assembled.manifest["selected"]
     assert selected
     assert selected[0]["logical_core"] == "team_experience"
@@ -996,6 +1006,11 @@ def test_review_knowledge_task_atomically_marks_due_items_and_replays_once(
         title="Due alpha practice",
         committed_at=now - timedelta(days=40),
         review_interval_days=30,
+    )
+    current_change_id = experience_env.add_accepted_revision(
+        due_item,
+        body="A revised due alpha practice preserves contrary evidence.",
+        committed_at=now - timedelta(days=35),
     )
     future_item = experience_env.add_accepted_item(
         title="Future beta practice",
@@ -1030,11 +1045,14 @@ def test_review_knowledge_task_atomically_marks_due_items_and_replays_once(
         ]
         assert (
             events[0].payload["items"][0]["current_learning_change_id"]
-            == str(due.origin_learning_change_id)
+            == str(current_change_id)
         )
         history = reconstruct_knowledge_item_history(session, due)
         assert history.state["status"] == "needs_review"
-        assert history.learning_change_ids == (due.origin_learning_change_id,)
+        assert history.learning_change_ids == (
+            due.origin_learning_change_id,
+            current_change_id,
+        )
         legacy_event_id = events[0].id
         outcome_count = session.scalar(
             select(Outcome.id).where(
