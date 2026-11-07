@@ -16,6 +16,7 @@ from core.context_assembly import TaskContextAssembler, TaskContextError
 from core.embeddings import EmbeddingBatch, EmbeddingSpace
 from core.knowledge_index import (
     HybridKnowledgeRetriever,
+    KnowledgeIndexError,
     TeamExperienceIndexer,
     _accepted_learning_change_is_canonical,
 )
@@ -1516,3 +1517,126 @@ def test_history_rejects_unauthorized_live_status_or_date_mutation(
             match="reconstructed_history_does_not_match_live_item",
         ):
             reconstruct_knowledge_item_history(session, item)
+
+
+
+def test_provider_space_change_at_publication_boundary_keeps_projection_stale(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    item_id = experience_env.add_accepted_item()
+
+    class ChangesSpaceAtPublication(FakeEmbeddingProvider):
+        def __init__(self) -> None:
+            super().__init__()
+            self.space_reads = 0
+
+        def current_space(self) -> EmbeddingSpace:
+            self.space_reads += 1
+            revision = (
+                "changed-at-publication"
+                if self.space_reads >= 4
+                else "test-revision"
+            )
+            return EmbeddingSpace(
+                provider="checkpoint4-test",
+                model="deterministic-four-dimensional",
+                revision=revision,
+                dimensions=4,
+                configuration="checkpoint4-test-v1",
+            )
+
+    provider = ChangesSpaceAtPublication()
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+
+    with pytest.raises(
+        KnowledgeIndexError, match="embedding_space_changed_during_indexing"
+    ):
+        indexer.index_knowledge_item(item_id)
+
+    with experience_env.session_factory() as session:
+        state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == item_id
+            )
+        )
+        chunks = list(
+            session.scalars(
+                select(TeamExperienceChunk).where(
+                    TeamExperienceChunk.knowledge_item_id == item_id
+                )
+            )
+        )
+    assert state is not None
+    assert state.status == "stale"
+    assert chunks == []
+
+
+def test_rebuild_all_republishes_legacy_opaque_projection_and_restores_retrieval(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    item_id = experience_env.add_accepted_item()
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+    first = indexer.index_knowledge_item(item_id)
+    assert first.outcome == "indexed"
+
+    # This is the exact post-0016 compatibility state: the historical vector
+    # bytes remain present, but their pointer/hash provenance is opaque and stale.
+    with experience_env.session_factory.begin() as session:
+        chunks = list(
+            session.scalars(
+                select(TeamExperienceChunk).where(
+                    TeamExperienceChunk.knowledge_item_id == item_id
+                )
+            )
+        )
+        state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == item_id
+            )
+        )
+        assert chunks and state is not None
+        for chunk in chunks:
+            chunk.current_learning_change_id = None
+            chunk.content_hash_scheme = "legacy-opaque"
+        state.current_learning_change_id = None
+        state.content_hash_scheme = "legacy-opaque"
+        state.status = "stale"
+
+    retriever = HybridKnowledgeRetriever(
+        experience_env.session_factory, experience_env.snapshot_store, provider
+    )
+    assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
+
+    rebuilt = indexer.rebuild_all(now=datetime.now(timezone.utc))
+    result = next(entry for entry in rebuilt if entry.knowledge_item_id == item_id)
+    assert result.outcome == "indexed"
+
+    with experience_env.session_factory() as session:
+        state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == item_id
+            )
+        )
+        chunks = list(
+            session.scalars(
+                select(TeamExperienceChunk).where(
+                    TeamExperienceChunk.knowledge_item_id == item_id
+                )
+            )
+        )
+        item = session.get(KnowledgeItem, item_id)
+    assert state is not None and item is not None
+    assert state.status == "published"
+    assert state.current_learning_change_id == item.current_learning_change_id
+    assert state.content_hash_scheme == KNOWLEDGE_CONTENT_HASH_SCHEME
+    assert chunks
+    assert all(
+        chunk.current_learning_change_id == item.current_learning_change_id
+        and chunk.content_hash_scheme == KNOWLEDGE_CONTENT_HASH_SCHEME
+        for chunk in chunks
+    )
+
+    passages = retriever.retrieve(experience_env.team_id, "alpha practice")
+    assert passages
+    assert all(passage.knowledge_item_id == item_id for passage in passages)
