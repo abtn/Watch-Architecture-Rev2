@@ -26,6 +26,8 @@ from core.state_assessment import _canonical_json, _timestamp
 SNAPSHOT_VERSION = 1
 SNAPSHOT_HASH_DOMAIN_SEPARATOR = "watch.r7b.knowledge-item-state.v1"
 
+KNOWLEDGE_CONTENT_HASH_SCHEME = "watch.r7b.knowledge-content.v2"
+
 STATE_FIELDS = frozenset(
     {
         "id",
@@ -69,11 +71,11 @@ _CONTENT_FIELDS = (
     "assumptions",
     "limitations",
     "non_applicability",
-    "confidence",
     "failure_modes",
     "known_counterexamples",
     "missing_information",
     "uncertainty",
+    "confidence",
 )
 _UUID_FIELDS = (
     "id",
@@ -233,6 +235,38 @@ def _normalize_snapshot_state(state: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError) as error:
         raise KnowledgeHistoryError("snapshot_state_not_json_serializable") from error
     return normalized
+
+
+def knowledge_item_content_hash(item: KnowledgeItem) -> str:
+    """Hash only the B2 semantic KnowledgeItem fields using the v2 scheme."""
+    content_state = {field: getattr(item, field) for field in _CONTENT_FIELDS}
+
+    confidence = content_state["confidence"]
+    if isinstance(confidence, bool) or not isinstance(
+        confidence, (str, decimal.Decimal)
+    ):
+        raise KnowledgeHistoryError("content_hash_confidence_invalid")
+    try:
+        confidence_value = decimal.Decimal(confidence)
+    except decimal.InvalidOperation as error:
+        raise KnowledgeHistoryError("content_hash_confidence_invalid") from error
+    if not confidence_value.is_finite():
+        raise KnowledgeHistoryError("content_hash_confidence_invalid")
+    content_state["confidence"] = format(confidence_value, "f")
+
+    try:
+        canonical = _canonical_json(content_state).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise KnowledgeHistoryError(
+            "content_hash_state_not_json_serializable"
+        ) from error
+
+    framed = (
+        KNOWLEDGE_CONTENT_HASH_SCHEME.encode("utf-8")
+        + b"\x00"
+        + canonical
+    )
+    return "sha256:" + hashlib.sha256(framed).hexdigest()
 
 
 def _snapshot_hash(payload_without_hash: Mapping[str, Any]) -> str:
