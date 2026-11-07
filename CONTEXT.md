@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7-0 and R7-A are complete; R7-A merged by PR #39 at 75122a7b34c15e2445b81a2a719020667b55bf06 and passed exact-tree hosted/operator-local verification (631 tests, fresh 0014_knowledge_quality head, Ruff and Mypy). The original ADR-0032 acceptance remains scoped to R7-A. The Operator accepted all five R7-B B0 decisions and D1/D5 design extensions on 2026-11-05; documentation integration is in progress and remains docs-only. B1–B6 implementation and R7-C remain unauthorized. PLAN.md is the sole current status authority.
+R6 is complete through R6-G. R7-0 and R7-A are complete. R7-B B0 is complete; B1 and B2 Steps 1–3 are accepted and merged. Step 3 merged through PR #48 at `1ba9f38ec2fa0b7c4a748181bce4096d8f65b356`; corrected-head hosted and Operator-local verification passed 738 tests. Sequences 2–3 completed the Step 4 requirement gap analysis: requirements 1 and 3 are satisfied; requirement 2 needs final provider-space revalidation; requirement 4 needs a direct migrated-legacy-row rebuild regression. Sequence 1 documentation closeout is underway; Step 4 source changes have not begun. B3–B6 and R7-C remain separately gated. PLAN.md is the sole current status authority.
 
 ## Open the smallest relevant set of documents
 

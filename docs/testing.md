@@ -453,9 +453,9 @@ The first hosted run failed before application tests because revision ID `0016_t
 
 **Acceptance and merge:** The Operator explicitly accepted Step 2 on 2026-11-07. PR #46 merged to `main` at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Hosted CI on the final documentation closeout head passed [run 42350516648](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42350516648). Step 2 is accepted and closed. B2 Step 3 may proceed; B3–B6 and R7-C remain unauthorized.
 
-## R7-B B2 Step 3 — current-pointer canonicality (CORRECTION APPLIED; CORRECTED-HEAD HOSTED CI PASSED; local re-verification and acceptance pending)
+## R7-B B2 Step 3 — current-pointer canonicality (ACCEPTED AND MERGED — PR #48; 738 TESTS PASSED LOCALLY AND HOSTED)
 
-Step 2 was accepted and merged through PR #46 at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Step 3 implementation is in draft PR [#48](https://github.com/abtn/Watch-Architecture-Rev2/pull/48), branch `r7b-b2-step3-history-aware-canonicality`.
+Step 2 was accepted and merged through PR #46 at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. Step 3 was explicitly accepted and merged through PR [#48](https://github.com/abtn/Watch-Architecture-Rev2/pull/48) at merge commit `1ba9f38ec2fa0b7c4a748181bce4096d8f65b356` (PR head `fcb9f4bd9b56b2353299828a7db39619a4650604`).
 
 The canonicality reader now resolves `KnowledgeItem.current_learning_change_id`, validates create-root versus later-transition target semantics, and delegates full accepted-chain, snapshot, approval-task, pinned-policy, decision-event, committed-timestamp, and D7 overlay verification to B1's `reconstruct_knowledge_item_history`. Indexer, retriever, Context validation, and due-review readers load the current LearningChange pointer. Actual lifecycle commits remain create-only; no migration or schema change is introduced.
 
@@ -477,6 +477,39 @@ Synthetic accepted-revision tests cover:
 
 The corrected code/test head `673de5f74e734e3a9fa6059b3f4333e93a055a99` passed hosted CI [run 42382712672](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42382712672): fresh PostgreSQL migration and single-head checks, Ruff, Mypy (32 source files), **738 tests passed** (74 warnings), and disposable-container cleanup. This is hosted evidence for the corrected head; Operator-local exact-head re-verification remains pending.
 
-**Verification disposition:** corrected-head hosted CI passed. The earlier Operator-local verification applies only to head `326be859d36d82c042fe5b183e16a9168f7b3e4b`; corrected-head Operator-local re-verification and explicit Operator acceptance remain pending. Final technical review of the corrected code/test head found no further blocker. PR #48 remains draft and unmerged. The documentation closeout head must pass hosted CI before final acceptance.
+**Acceptance and verification disposition (2026-11-07):** the Operator accepted Step 3 and authorized merge. PR #48 merged to `main` at `1ba9f38ec2fa0b7c4a748181bce4096d8f65b356`. Corrected-head hosted CI run [42383223932](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42383223932) passed. Operator-local exact-head verification on `fcb9f4bd9b56b2353299828a7db39619a4650604` passed Ruff, Mypy (32 source files), migration/single-head checks at `0016_team_exp_history_pins`, and the full suite (**738 passed, 74 Alembic deprecation warnings**). The environment was restored and the disposable PostgreSQL container was removed. No persistent `watch` database was targeted. Step 3 is accepted and closed; actual lifecycle commits remain create-only.
 
-**Boundaries:** no live revise/revalidate/supersede/retire commit path; no B2 Step 4 publication refactor, Step 5 retrieval rollout, Step 6 Context manifest v3, Step 7 approval refactor, B3–B6, or R7-C.
+**Boundaries:** no live revise/revalidate/supersede/retire commit path; Step 4 publication changes, Step 5 retrieval rollout, Step 6 Context manifest v3, and Step 7 approval refactor remain unimplemented. B3–B6 and R7-C remain unauthorized.
+
+
+## R7-B B2 Step 4 — requirement gap analysis on merged main (Sequences 2–3; 2026-11-07)
+
+**Exact baseline:** merged `main` at `1ba9f38ec2fa0b7c4a748181bce4096d8f65b356` (PR #48 merge). The inspection was read-only and covered `core/knowledge_index.py`, `tests/test_team_experience.py`, `migrations/versions/0016_team_experience_history_pins.py`, and `tests/test_team_experience_projection_migration.py`. No local test execution, source/test edit, migration, provider call, database operation, or persistent-state access occurred in this investigation.
+
+### Requirement-by-requirement disposition
+
+| Step 4 requirement | Code evidence on baseline | Existing test evidence | Gap / disposition |
+|---|---|---|---|
+| 1. Bind exact current LearningChange ID and v2 content-hash scheme to every chunk and index-state row; check them in `_projection_matches` and final publication. | `index_knowledge_item` constructs chunks with both pins. `_upsert_index_state` writes both pins. `_projection_matches` requires the current pointer and v2 scheme on state and every chunk. Final publication re-locks the KnowledgeItem, validates its current LearningChange chain, and checks version/hash/origin/current pointer before inserting rows constructed from the same source state. | `test_separate_team_experience_projection_is_idempotent_and_retrievable` checks chunk and index-state pins. `test_revalidation_pointer_only_transition_invalidates_old_projection` proves a pointer-only change invalidates old projection rows until republished. | **Satisfied.** No Step 4 implementation change identified. |
+| 2. Recheck item ID/Team, current pointer, version/hash, scheme, status, D7 eligibility, canonical history, and embedding-space identity immediately before publication. | The final transaction selects the item by ID with `FOR UPDATE`; `_accepted_learning_change_is_canonical` validates the accepted current pointer and reconstructed history; `_review_date_is_eligible` enforces active status and a future timezone-aware UTC `review_after`; `_upsert_index_state` rechecks Team, version, origin/current pointers and semantic hash and writes the v2 scheme. But provider-space identity is checked only after embedding and before row construction/final transaction. There is no provider-space revalidation at the final publication boundary. | Canonicality/current-pointer and D7 tests cover canonical state and eligibility. No deterministic test changes the provider's current space after the post-embedding check but before publication. | **One confirmed narrow implementation gap:** final provider-space revalidation. The observed window can publish a projection marked `published` for a provider space that changed after the earlier check. Retrieval still requires query/chunk/state space identity to match; no cross-space retrieval was demonstrated. |
+| 3. Mark a required refresh stale before the provider call; atomically publish replacement chunks and matching index state after checks. | `_record_index_state(status="stale")` commits before `embed()`. The final transaction deletes old chunks, inserts replacement chunks, and upserts the matching `published` index-state record in one transaction. Retrieval requires `st.status = 'published'`. | `test_failed_publication_records_staleness_and_rebuilds` proves provider failure leaves the old chunks undiscoverable and a later rebuild succeeds. | **Satisfied.** No Step 4 implementation change identified. |
+| 4. Make `rebuild_all` discover `legacy-opaque`/stale rows for ordinary republish. | `rebuild_all()` unions item IDs from active eligible KnowledgeItems, existing `TeamExperienceChunk` rows, and `TeamExperienceIndexState` rows. Migrated legacy rows remain discoverable through the projection tables and are routed through `index_knowledge_item`. | `test_0016_preserves_legacy_projection_bytes_and_marks_them_opaque_and_stale` proves legacy rows are preserved, marked opaque, and index state marked stale. `test_failed_publication_records_staleness_and_rebuilds` proves ordinary stale-row rebuild. Neither directly rebuilds a migrated `legacy-opaque` row. | **Implementation present; direct regression coverage missing.** Add a migration-to-`rebuild_all` integration regression; no new discovery algorithm is indicated. |
+
+### Existing test inventory relevant to Step 4
+
+- `test_separate_team_experience_projection_is_idempotent_and_retrievable`: successful publication, idempotency, and current-pointer/hash-scheme pins on chunks and index state.
+- `test_failed_publication_records_staleness_and_rebuilds`: stale-before-embedding failure behavior, retrieval exclusion, and successful retry/rebuild.
+- `test_revalidation_pointer_only_transition_invalidates_old_projection`: old projection rejection when only the current LearningChange pointer changes, followed by successful republish.
+- `test_unconfigured_review_date_is_not_indexed` and `test_review_expired_knowledge_is_not_indexed`: D7 eligibility exclusions.
+- `test_0016_preserves_legacy_projection_bytes_and_marks_them_opaque_and_stale`: migration preserves old projection values, marks index state stale, and sets `legacy-opaque`/NULL-pointer pins.
+- `test_0016_accepts_v2_pins_and_rejects_invalid_scheme_and_cross_team_pointer`: supported scheme and same-Team pointer constraints.
+- `test_0016_failed_migration_rolls_back_schema_and_existing_rows`: failed migration rollback.
+
+### Bounded Step 4 implementation/test delta
+
+1. Add a deterministic provider-space interleaving regression: provider reports space A after embedding validation, changes to B before the final publication boundary, and the indexer must not publish the A batch as current. Preserve stale/fail-closed state and prove a subsequent B retry can publish normally.
+2. Add a direct migration-to-rebuild regression: start with a migrated `legacy-opaque`/stale projection, invoke `rebuild_all()`, and prove normal indexing republishes v2 pins and makes the item retrievable.
+3. Preserve all already-satisfied Step 4 behavior. Do not add a provider lock, new migration, provider abstraction, state machine, or broad retrieval changes without separate evidence.
+4. Keep lifecycle commits create-only. Steps 5–7, B3–B6, and R7-C are outside this work.
+
+**Sequence 3 disposition:** requirement-by-requirement gap analysis is complete. **Sequence 4 has not started**; this record authorizes no source edit by itself. Sequence 1 documentation closeout is being synchronized with this finding. No Step 4 tests were run during this read-only analysis.

@@ -27,7 +27,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** work is focused on checking the quality of saved lessons and deciding how they should change over time. B1 was accepted and merged on 2026-11-06. B2 Step 1 and Step 2 are accepted and merged; Step 2 merged through PR [#46](https://github.com/abtn/Watch-Architecture-Rev2/pull/46) at `669d2e8140036ea4db07cbc44b33f6baa2e2608d`. B2 Step 3 is in progress, making canonicality follow the current LearningChange pointer and validating the full B1 history chain. B3–B6 and R7-C remain separately gated.
+- **R7:** work is focused on checking the quality of saved lessons and deciding how they should change over time. B1 and B2 Steps 1–3 are accepted and merged. Step 3 merged through PR [#48](https://github.com/abtn/Watch-Architecture-Rev2/pull/48) at `1ba9f38ec2fa0b7c4a748181bce4096d8f65b356`; corrected-head hosted and Operator-local verification passed 738 tests. Step 4 requirement gap analysis is complete: pointer/hash-scheme pins and stale/atomic publication are already implemented; the remaining bounded delta is final provider-space revalidation and a direct migrated-legacy-row rebuild regression. Documentation closeout is underway; no Step 4 source changes have begun. B3–B6 and R7-C remain separately gated.
 
 Later R7 phases have not yet been authorized.
 
