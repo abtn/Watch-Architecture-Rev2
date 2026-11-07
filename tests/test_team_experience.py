@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import patch
 from decimal import Decimal
 from typing import Any, Sequence
 from uuid import UUID, uuid4
@@ -10,7 +12,7 @@ import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from core.context_assembly import TaskContextAssembler
+from core.context_assembly import TaskContextAssembler, TaskContextError
 from core.embeddings import EmbeddingBatch, EmbeddingSpace
 from core.knowledge_index import (
     HybridKnowledgeRetriever,
@@ -517,6 +519,191 @@ class TeamExperienceEnv:
         self.learning_change_ids.append(change_id)
         return change_id
 
+    def add_accepted_revalidation(
+        self,
+        item_id: UUID,
+        *,
+        committed_at: datetime | None = None,
+    ) -> UUID:
+        """Create a synthetic accepted revalidation after a recorded review."""
+        change_id, proposer_task_id, approval_task_id = (uuid4() for _ in range(3))
+        commit_time = committed_at or datetime.now(timezone.utc)
+        started_at = commit_time - timedelta(seconds=1)
+        operator_id = "test-host|operator-revalidator"
+        proposal_hash = "sha256:" + "1" * 64
+        evidence_basis_hash = "sha256:" + "2" * 64
+        snapshot_ref, snapshot_hash = self.snapshot_store.put(
+            b'{"result_category":"success_learning_change_accepted"}'
+        )
+
+        with self.session_factory.begin() as session:
+            item = session.get(KnowledgeItem, item_id)
+            assert item is not None and item.status == "needs_review"
+            previous_state = knowledge_item_state(item)
+            policy = session.scalar(
+                select(TeamPolicy).where(
+                    TeamPolicy.team_id == self.team_id,
+                    TeamPolicy.version == self.policy_version,
+                )
+            )
+            assert policy is not None
+            interval_days = knowledge_item_review_interval_days(
+                policy.rules, policy.schema_version
+            )
+            review_after = (
+                commit_time + timedelta(days=interval_days)
+                if interval_days is not None
+                else None
+            )
+            committed_state = dict(previous_state)
+            committed_state.update(
+                {
+                    "status": "active",
+                    "last_validated_at": commit_time.isoformat(),
+                    "current_learning_change_id": str(change_id),
+                    "review_after": review_after.isoformat() if review_after else None,
+                }
+            )
+            session.add_all(
+                [
+                    Task(
+                        id=proposer_task_id,
+                        team_id=self.team_id,
+                        task_type="propose_learning_change",
+                        status="done",
+                        attempt_count=1,
+                        policy_version=self.policy_version,
+                        allowed_writes=["LearningChange"],
+                        budget={
+                            "max_tool_calls": 0,
+                            "max_cost_usd": 0.0,
+                            "deadline_seconds": 60,
+                        },
+                        created_at=started_at,
+                        completed_at=commit_time,
+                    ),
+                    Task(
+                        id=approval_task_id,
+                        team_id=self.team_id,
+                        task_type="approve_learning_change",
+                        status="done",
+                        attempt_count=1,
+                        policy_version=self.policy_version,
+                        allowed_writes=["LearningChange", "KnowledgeItem"],
+                        budget={
+                            "max_tool_calls": 0,
+                            "max_cost_usd": 0.0,
+                            "deadline_seconds": 30,
+                        },
+                        created_at=started_at,
+                        completed_at=commit_time,
+                    ),
+                ]
+            )
+            session.flush()
+            session.add(
+                LearningChange(
+                    id=change_id,
+                    team_id=self.team_id,
+                    target_kind="knowledge_item",
+                    target_id=item.id,
+                    operation="revalidate",
+                    proposed_state={
+                        "proposal_hash": proposal_hash,
+                        "evidence_basis_hash": evidence_basis_hash,
+                    },
+                    previous_state=encode_state_snapshot(previous_state),
+                    committed_state=encode_state_snapshot(committed_state),
+                    evidence_basis=[],
+                    evidence_basis_hash=evidence_basis_hash,
+                    status="accepted",
+                    idempotency_key=f"synthetic-revalidate-{change_id}",
+                    proposed_by_task_id=proposer_task_id,
+                    committed_by_task_id=approval_task_id,
+                    operator_id=operator_id,
+                    decision_reason=None,
+                    created_at=started_at,
+                    committed_at=commit_time,
+                )
+            )
+            session.flush()
+            item.status = "active"
+            item.last_validated_at = commit_time
+            item.current_learning_change_id = change_id
+            item.review_after = review_after
+            item.updated_at = commit_time
+            session.flush()
+            outcome = Outcome(
+                id=uuid4(),
+                team_id=self.team_id,
+                subject_kind="task",
+                subject_id=approval_task_id,
+                outcome_type="task_execution",
+                expected=None,
+                observation_snapshot_ref=snapshot_ref,
+                observation_hash=snapshot_hash,
+                observed_at=commit_time,
+                recorded_by_task_id=approval_task_id,
+            )
+            session.add(outcome)
+            session.flush()
+            session.add_all(
+                [
+                    Event(
+                        id=uuid4(),
+                        task_id=approval_task_id,
+                        type="task_started",
+                        payload={
+                            "from_status": "pending",
+                            "to_status": "running",
+                            "attempt_count": 1,
+                        },
+                        created_at=started_at,
+                    ),
+                    Event(
+                        id=uuid4(),
+                        task_id=approval_task_id,
+                        type="learning_change_accepted",
+                        payload={
+                            "schema_version": 1,
+                            "learning_change_id": str(change_id),
+                            "operation": "revalidate",
+                            "decision": "accept",
+                            "operator_id": operator_id,
+                            "approval_task_id": str(approval_task_id),
+                            "attempt_count": 1,
+                            "evidence_basis_hash": evidence_basis_hash,
+                            "proposal_hash": proposal_hash,
+                            "committed_at": commit_time.isoformat(),
+                            "knowledge_item_id": str(item.id),
+                            "knowledge_item_version": item.version,
+                        },
+                        created_at=commit_time,
+                    ),
+                    Event(
+                        id=uuid4(),
+                        task_id=approval_task_id,
+                        type="task_completed",
+                        payload={
+                            "from_status": "running",
+                            "to_status": "done",
+                            "attempt_count": 1,
+                            "result_category": "success_learning_change_accepted",
+                            "failure_reason": None,
+                            "outcome_id": str(outcome.id),
+                            "observation_snapshot_ref": snapshot_ref,
+                            "observation_hash": snapshot_hash,
+                            "learning_change_id": str(change_id),
+                        },
+                        created_at=commit_time,
+                    ),
+                ]
+            )
+
+        self.task_ids.extend([proposer_task_id, approval_task_id])
+        self.learning_change_ids.append(change_id)
+        return change_id
+
     def add_strategy_task(self, statement: str = "Apply the alpha practice.") -> UUID:
         objective_id, task_id = uuid4(), uuid4()
         with self.session_factory.begin() as session:
@@ -888,6 +1075,82 @@ def test_review_expired_knowledge_is_not_indexed(
         ) is None
 
 
+def test_revalidation_pointer_only_transition_invalidates_old_projection(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    now = datetime.now(timezone.utc)
+    item_id = experience_env.add_accepted_item(
+        committed_at=now - timedelta(days=40),
+        review_interval_days=30,
+    )
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+    indexed = indexer.index_knowledge_item(
+        item_id, now=now - timedelta(days=20)
+    )
+    assert indexed.outcome == "indexed"
+
+    retriever = HybridKnowledgeRetriever(
+        experience_env.session_factory, experience_env.snapshot_store, provider
+    )
+    # Read the valid pre-review projection at a time when the item was still eligible.
+    with patch("core.knowledge_index.datetime") as mocked_datetime:
+        mocked_datetime.now.return_value = now - timedelta(days=20)
+        old_passages = retriever.retrieve(experience_env.team_id, "alpha practice")
+    assert old_passages
+    old_passage = old_passages[0]
+
+    review_task_id = experience_env.add_review_task()
+    review_result = TaskRuntime(
+        experience_env.session_factory, experience_env.snapshot_store
+    ).complete_knowledge_review(review_task_id)
+    assert review_result.status == "done"
+
+    old_pointer = experience_env.learning_change_ids[0]
+    new_pointer = experience_env.add_accepted_revalidation(
+        item_id, committed_at=now
+    )
+
+    with experience_env.session_factory() as session:
+        item = session.get(KnowledgeItem, item_id)
+        state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == item_id
+            )
+        )
+        chunk = session.scalar(
+            select(TeamExperienceChunk).where(
+                TeamExperienceChunk.knowledge_item_id == item_id
+            )
+        )
+        assert item is not None and state is not None and chunk is not None
+        assert item.version == 1
+        assert item.current_learning_change_id == new_pointer
+        assert item.status == "active"
+        assert item.last_validated_at == now
+        assert state.current_learning_change_id == old_pointer
+        assert chunk.current_learning_change_id == old_pointer
+        with pytest.raises(
+            TaskContextError, match="team_experience_index_not_published"
+        ):
+            TaskContextAssembler._validate_team_experience_passage(
+                session,
+                SimpleNamespace(team_id=experience_env.team_id),
+                old_passage,
+                now,
+            )
+
+    # Retrieval must reject the old projection despite unchanged content and version.
+    assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
+
+    # A fresh publication carries the new pointer and becomes retrievable again.
+    rebuilt = indexer.index_knowledge_item(item_id, now=now)
+    assert rebuilt.outcome == "indexed"
+    passages = retriever.retrieve(experience_env.team_id, "alpha practice")
+    assert passages
+    assert all(p.knowledge_item_id == item_id for p in passages)
+
+ 
 def test_needs_review_item_is_not_retrievable_even_if_projection_remains(
     experience_env: TeamExperienceEnv,
 ) -> None:
