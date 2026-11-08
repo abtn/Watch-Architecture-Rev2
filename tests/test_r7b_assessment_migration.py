@@ -669,35 +669,35 @@ def test_0017_rejects_whitespace_only_provenance_and_evaluator_identity(
                 connection, team_id, "assess_knowledge_revalidation"
             )
             invalid_value = "   "
-            _clone_assessment_row(
-                connection,
-                "knowledge_revalidation_assessments",
-                rows.revalidation_id,
-                {
-                    "id": uuid4(),
-                    "task_id": task_id,
-                    "learning_change_id": change_id,
-                    "request_event_id": request_id,
-                    "recorded_event_id": recorded_id,
-                    "idempotency_key": (
-                        invalid_value
-                        if field == "idempotency_key"
-                        else f"whitespace-{field}-{uuid4().hex}"
-                    ),
-                    "evaluator_identity": (
-                        invalid_value
-                        if field == "evaluator_identity"
-                        else "test-evaluator"
-                    ),
-                    "evaluator_revision": (
-                        invalid_value
-                        if field == "evaluator_revision"
-                        else "test-revision"
-                    ),
-                },
-            )
-            # The clone above must fail at the database boundary. Use a savepoint
-            # so each independent negative case leaves the fixture transaction usable.
+            with pytest.raises(DBAPIError):
+                with connection.begin_nested():
+                    _clone_assessment_row(
+                        connection,
+                        "knowledge_revalidation_assessments",
+                        rows.revalidation_id,
+                        {
+                            "id": uuid4(),
+                            "task_id": task_id,
+                            "learning_change_id": change_id,
+                            "request_event_id": request_id,
+                            "recorded_event_id": recorded_id,
+                            "idempotency_key": (
+                                invalid_value
+                                if field == "idempotency_key"
+                                else f"whitespace-{field}-{uuid4().hex}"
+                            ),
+                            "evaluator_identity": (
+                                invalid_value
+                                if field == "evaluator_identity"
+                                else "test-evaluator"
+                            ),
+                            "evaluator_revision": (
+                                invalid_value
+                                if field == "evaluator_revision"
+                                else "test-revision"
+                            ),
+                        },
+                    )
 
 
 def test_0017_rejects_cross_team_wrong_operation_and_wrong_event_task(
@@ -726,6 +726,17 @@ def test_0017_rejects_cross_team_wrong_operation_and_wrong_event_task(
                 "VALUES (:id, 'assessment_cross_team_test', 'active')"
             ),
             {"id": other_team_id},
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO team_policies (
+                    id, team_id, version, schema_version, rules
+                )
+                VALUES (:id, :team_id, 1, 2, '{}'::jsonb)
+                """
+            ),
+            {"id": uuid4(), "team_id": other_team_id},
         )
         task_id, request_id, recorded_id = _insert_task_events(
             connection, other_team_id, "assess_knowledge_revalidation"
@@ -771,6 +782,48 @@ def test_0017_rejects_cross_team_wrong_operation_and_wrong_event_task(
                         "request_event_id": request_id,
                         "recorded_event_id": recorded_id,
                         "idempotency_key": f"wrong-op-{uuid4().hex}",
+                    },
+                )
+
+        # A lifecycle proposal whose operation is supersede cannot be
+        # recorded with an incomplete successor binding.
+        lifecycle = connection.execute(
+            text(
+                "SELECT * FROM knowledge_lifecycle_assessments WHERE id = :id"
+            ),
+            {"id": rows.lifecycle_id},
+        ).mappings().one()
+        supersede_change = uuid4()
+        _clone_learning_change(
+            connection,
+            lifecycle["learning_change_id"],
+            supersede_change,
+            f"incomplete-supersede-{uuid4().hex}",
+            operation="supersede",
+        )
+        _insert_operator_provenance(
+            connection, supersede_change, lifecycle["team_id"]
+        )
+        lifecycle_task, lifecycle_request, lifecycle_recorded = _insert_task_events(
+            connection, lifecycle["team_id"], "assess_knowledge_lifecycle"
+        )
+        with pytest.raises(DBAPIError):
+            with connection.begin_nested():
+                _clone_assessment_row(
+                    connection,
+                    "knowledge_lifecycle_assessments",
+                    rows.lifecycle_id,
+                    {
+                        "id": uuid4(),
+                        "learning_change_id": supersede_change,
+                        "task_id": lifecycle_task,
+                        "operation": "supersede",
+                        "variant_payload": json.dumps(
+                            {"successor_team_id": str(lifecycle["team_id"])}
+                        ),
+                        "request_event_id": lifecycle_request,
+                        "recorded_event_id": lifecycle_recorded,
+                        "idempotency_key": f"incomplete-supersede-{uuid4().hex}",
                     },
                 )
 
