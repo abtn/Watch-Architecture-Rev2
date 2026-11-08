@@ -279,7 +279,11 @@ def upgrade() -> None:
         sa.Column("proposal_hash", sa.String(length=71), nullable=False),
         sa.Column("proposed_state_hash", sa.String(length=71), nullable=False),
         sa.Column("evidence_basis_hash", sa.String(length=71), nullable=False),
-        sa.Column("evidence_refs", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column(
+            "evidence_refs",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=False,
+        ),
         sa.Column("assessment_version", sa.Integer(), nullable=False),
         sa.Column(
             "operator_rationale",
