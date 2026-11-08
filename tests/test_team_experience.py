@@ -226,7 +226,20 @@ class TeamExperienceEnv:
                         ),
                     },
                     previous_state=None,
-                    committed_state=encode_state_snapshot(committed_state),
+                    committed_state=(
+                        encode_state_snapshot(committed_state)
+                        if supersedes_item_id is not None
+                        else {
+                            key: value
+                            for key, value in committed_state.items()
+                            if key
+                            not in {
+                                "current_learning_change_id",
+                                "supersedes_item_id",
+                                "superseded_by_id",
+                            }
+                        }
+                    ),
                     evidence_basis=[],
                     evidence_basis_hash=evidence_basis_hash,
                     status="accepted",
@@ -1360,7 +1373,6 @@ def test_needs_review_item_is_not_retrievable_even_if_projection_remains(
         experience_env.session_factory, experience_env.snapshot_store, provider
     )
     assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
-
 
 
 def test_pending_supersession_candidate_is_hidden_until_reciprocal_commit(
