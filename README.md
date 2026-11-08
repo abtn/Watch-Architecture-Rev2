@@ -27,7 +27,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** work is focused on checking the quality of saved lessons and deciding how they should change over time. R7-B B1 and B2 Steps 1–8 are merged (PRs #43, #45, #46, #48, #50, #52, #53, #55, #56 and #57). Step 8's integrated regression suite passed hosted CI on exact head `114a6311534cd116190e3c2f4143fdfb1a2c979b` (806 tests). Step 9 is in documentation/planning for final exact-head verification and formal B2 exit; Operator-local verification remains outstanding. The active approval allowlist remains exactly `create`; B3–B6 and R7-C are separately gated.
+- **R7:** work is focused on checking the quality of saved lessons and deciding how they should change over time. R7-B B1 and B2 Steps 1–8 are accepted and merged (PRs #43, #45, #46, #48, #50, #52, #53, #55, #56 and #57). Step 9 hosted and Operator-local full verification both passed on merged implementation commit `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31` (806 tests, 77 warnings); local fresh migration/single-head, Ruff and Mypy also passed. Separate focused-test execution, `git diff --check`, complete final diff review and explicit B2 exit acceptance remain outstanding. B2 is not formally closed. The active approval allowlist remains exactly `create`; B3–B6 and R7-C remain separately gated.
 
 B3–B6 and R7-C have not yet been authorized.
 
