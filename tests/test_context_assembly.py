@@ -246,6 +246,52 @@ def test_assembly_persists_bounded_context_snapshot_and_manifest(
     ]
 
 
+@pytest.mark.parametrize(
+    "manifest_version",
+    ["r6e-context-manifest-v1", "r6e-context-manifest-v2"],
+)
+def test_historical_context_manifest_replay_remains_byte_exact(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    context_fixture,
+    manifest_version: str,
+) -> None:
+    fixture, passages = context_fixture
+    initial = TaskContextAssembler(
+        session_factory, snapshot_store, _FakeRetriever(passages)
+    ).assemble(fixture.task_id)
+
+    historical_manifest = dict(initial.manifest)
+    historical_manifest["schema_version"] = manifest_version
+    historical_document = dict(initial.document)
+    historical_document["manifest"] = historical_manifest
+    historical_bytes = _canonical_json(historical_document).encode("utf-8")
+    historical_ref, historical_hash = snapshot_store.put(historical_bytes)
+
+    with session_factory.begin() as session:
+        event = session.get(Event, initial.event_id)
+        assert event is not None
+        event.payload = {
+            "schema_version": manifest_version,
+            "snapshot_ref": historical_ref,
+            "content_hash": historical_hash,
+            "manifest": historical_manifest,
+        }
+
+    replay_retriever = _FakeRetriever(())
+    replay = TaskContextAssembler(
+        session_factory, snapshot_store, replay_retriever
+    ).assemble(fixture.task_id)
+
+    assert replay.replayed is True
+    assert replay.snapshot_ref == historical_ref
+    assert replay.content_hash == historical_hash
+    assert replay.manifest == historical_manifest
+    assert replay.document == historical_document
+    assert snapshot_store.read(replay.snapshot_ref) == historical_bytes
+    assert replay_retriever.calls == []
+
+
 def test_context_event_does_not_invalidate_domain_state_assessment(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
