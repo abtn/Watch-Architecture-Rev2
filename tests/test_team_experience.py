@@ -2144,3 +2144,91 @@ def test_offset_aware_d7_review_boundary_is_strict(
     )
     assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
 
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "current_pointer",
+        "wrong_team",
+        "wrong_target",
+        "wrong_status",
+        "invalid_snapshot",
+        "wrong_scheme",
+        "stale_state",
+        "chunk_hash",
+    ],
+)
+def test_canonicality_tampering_blocks_retrieval_and_context_inclusion(
+    experience_env: TeamExperienceEnv,
+    tamper: str,
+) -> None:
+    item_id = experience_env.add_accepted_item()
+    if tamper == "current_pointer":
+        experience_env.add_accepted_revision(
+            item_id,
+            body="The revised alpha practice preserves contrary evidence.",
+        )
+
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+    assert indexer.index_knowledge_item(item_id).outcome == "indexed"
+    task_id = experience_env.add_strategy_task(
+        "Use the alpha practice to review a new source."
+    )
+
+    with experience_env.session_factory.begin() as session:
+        item = session.get(KnowledgeItem, item_id)
+        state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == item_id
+            )
+        )
+        chunk = session.scalar(
+            select(TeamExperienceChunk).where(
+                TeamExperienceChunk.knowledge_item_id == item_id
+            )
+        )
+        assert item is not None and state is not None and chunk is not None
+        learning_change = session.get(
+            LearningChange, item.current_learning_change_id
+        )
+        assert learning_change is not None
+
+        if tamper == "current_pointer":
+            origin_id = experience_env.learning_change_ids[0]
+            state.current_learning_change_id = origin_id
+            chunk.current_learning_change_id = origin_id
+        elif tamper == "wrong_team":
+            other_team_id = uuid4()
+            session.add(
+                Team(id=other_team_id, domain="other", status="active")
+            )
+            session.flush()
+            chunk.team_id = other_team_id
+        elif tamper == "wrong_target":
+            learning_change.target_id = item_id
+        elif tamper == "wrong_status":
+            item.status = "needs_review"
+        elif tamper == "invalid_snapshot":
+            committed_state = dict(learning_change.committed_state)
+            committed_state["body"] = "Tampered committed content."
+            learning_change.committed_state = committed_state
+        elif tamper == "wrong_scheme":
+            state.content_hash_scheme = "legacy-opaque"
+            chunk.content_hash_scheme = "legacy-opaque"
+        elif tamper == "stale_state":
+            state.status = "stale"
+        elif tamper == "chunk_hash":
+            chunk.chunk_hash = "sha256:" + "f" * 64
+
+    retriever = HybridKnowledgeRetriever(
+        experience_env.session_factory, experience_env.snapshot_store, provider
+    )
+    assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
+
+    assembled = TaskContextAssembler(
+        experience_env.session_factory,
+        experience_env.snapshot_store,
+        retriever,
+    ).assemble(task_id)
+    assert assembled.document["knowledge"]["team_experience"] == []
+
