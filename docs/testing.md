@@ -513,3 +513,31 @@ The corrected code/test head `673de5f74e734e3a9fa6059b3f4333e93a055a99` passed h
 4. Keep lifecycle commits create-only. Steps 5–7, B3–B6, and R7-C are outside this work.
 
 **Sequence 3 disposition:** requirement-by-requirement gap analysis is complete. **Sequence 4 has not started**; this record authorizes no source edit by itself. Sequence 1 documentation closeout is being synchronized with this finding. No Step 4 tests were run during this read-only analysis.
+
+
+## R7-B B2 Step 4 — publication-boundary hardening (ACCEPTED AND MERGED — PR #50)
+
+PR [#50](https://github.com/abtn/Watch-Architecture-Rev2/pull/50) merged to `main` at `96447318484d539ffa240745b9adc95b8b510871`; final PR head was `6b15a55478c2ec6b0e933201aa5f250adb38b449`. The implementation rechecks provider embedding-space identity at the final publication boundary, fails closed on provider-space change/error without publishing replacement chunks or incrementing the attempt count a second time, and adds a direct rebuild regression for the post-0016 legacy-opaque/stale projection state.
+
+- Hosted CI passed on the exact PR head: [run 42389377578](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42389377578).
+- Hosted CI passed on the merge commit: [run 42389752995](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42389752995).
+- Operator-local exact merged-head verification on `96447318484d539ffa240745b9adc95b8b510871` passed: fresh disposable PostgreSQL migration to the single head `0016_team_exp_history_pins`, Ruff, Mypy (32 source files), **740 tests passed, 74 warnings**, `git diff --check`, environment restoration, and disposable-container cleanup. The persistent `watch` database was not targeted.
+- Coverage qualification: the rebuild regression simulates the post-migration legacy-opaque/stale state and then calls `rebuild_all()`; it does not run Alembic migration and rebuild in one integrated fixture. Migration marking/preservation is tested separately.
+
+## R7-B B2 Step 5 — reciprocal supersession retrieval gates (ACCEPTED AND MERGED — PR #52)
+
+PR [#52](https://github.com/abtn/Watch-Architecture-Rev2/pull/52) merged to `main` at `bc0d71e20fbe3ed01ef13493099a80367d8a5a42`; exact PR head `a9f72979c4da8b5c02705ca812760ed4386a40ba`. The retriever excludes predecessors with a committed successor and validates a candidate's reciprocal predecessor relationship against canonical supersession history within the retriever's consistent snapshot. Existing D7 eligibility remains enforced. Regression cases cover pending candidate visibility, predecessor review/due/retired states, and canonical reciprocal supersession. No schema or migration change was introduced.
+
+- Hosted CI passed on the exact PR head: [run 42462369436](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42462369436), including migration/single-head checks, Ruff, Mypy, full pytest suite, and cleanup.
+- Operator-local exact-head verification was skipped at the Operator's direction. No local test count is claimed.
+
+## R7-B B2 Step 6 — Context manifest v3 (ACCEPTED AND MERGED — PR #53)
+
+PR [#53](https://github.com/abtn/Watch-Architecture-Rev2/pull/53) merged to `main` at `70ee2217aa7dc20e32b263a597af9b1b37261e29`; exact PR head `f0efbbb79f827fd48b9862262adccba15eabd2e9`. New Context manifests record the current LearningChange ID and content-hash scheme. Final Context validation independently checks canonical history and reciprocal supersession visibility. Historical manifest v1/v2 replay remains immutable and byte-exact; the outer Task Context schema remains v2.
+
+- Hosted CI passed on the exact PR head: [run 42464991372](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42464991372), including migration/single-head checks, Ruff, Mypy, full pytest suite, and cleanup.
+- Operator-local exact-head verification was skipped at the Operator's direction. No local test count is claimed.
+
+## R7-B B2 Step 7 — approval-validation refactoring
+
+**Planning/documentation only (2026-11-08).** No source changes or test results are claimed in this checkpoint. The accepted scope is to separate common approval-request integrity validation from create-specific eligibility/commit validation while retaining an active approval allowlist of exactly `create`. The implementation plan names the current enforcement points and required regression matrix. No Task registration, write scope, schema, migration, runtime, provider, or authentication changes are authorized by this planning record.
