@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 Steps 1–8 are accepted and merged. The merged B2 implementation commit `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31` passed hosted and Operator-local exact-SHA verification (fresh migration/single-head, Ruff, Mypy, 806 tests, 77 warnings). B2 was formally closed by explicit Operator instruction on 2026-11-08 with three residuals retained, not passed: no separate focused regression run, no recorded `git diff --check`, and no complete line-by-line final diff review. The local-before-documentation-PR sequence deviation is recorded in `docs/testing.md`. The detailed B3 assessment sequence is documented in `docs/development/r7-b-implementation-plan.md`; read-only preflight and contract planning may proceed, but B3 implementation requires separate written authorization. The active approval allowlist remains exactly `create`. PLAN.md is the sole current status authority.
+R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 are complete/closed as recorded in PLAN.md. B3.2 schema/migration PR #60 is merged at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; final PR-head hosted CI passed (823 tests, 95 warnings). Checkpoint 4 post-merge contract review and exact-merge Operator-local verification remain pending. The earlier local run on `02913493f1c82bda25aaa8e843097b9f4c2a7c52` predates final PR fixes and is not exact-merge evidence. B3.3 is next but has not started; implementation remains separately gated. The active approval allowlist remains exactly `create`. PLAN.md is the sole current status authority.
 
 ## Open the smallest relevant set of documents
 
