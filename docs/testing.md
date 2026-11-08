@@ -614,3 +614,31 @@ The Operator-local exact-code-head verification occurred while the Step 9 docume
 - B3.0 read-only preflight and B3.1 contract planning/review may proceed.
 - B3 implementation requires separate written Operator authorization. B4–B6 and R7-C remain unauthorized.
 - No production source, test, migration, schema, runtime, Task registration, provider, authentication, or database configuration change is part of this closure record.
+
+
+## R7-B B3.2 — Immutable assessment schema and Checkpoint 4
+
+**Implementation:** PR [#60](https://github.com/abtn/Watch-Architecture-Rev2/pull/60) merged to `main` at `31be3a25cf7f52ca81eab65cc10280a855738c3d`. The final PR head was `0eecefedbc4ef6e4b60cbd8c3eacf31e1256f362`.
+
+**Hosted exact-PR-head CI:** [run 42496681657](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42496681657) passed:
+- Fresh PostgreSQL migration and single Alembic head.
+- Ruff.
+- Mypy.
+- Full test suite: **823 passed, 95 warnings in 58.97s**.
+
+**Schema scope delivered**
+- Migration `0017_r7b_assessments` creates `learning_change_operator_provenance`, `knowledge_revalidation_assessments`, and `knowledge_lifecycle_assessments`.
+- ORM metadata adds the two separate assessment models and immutable Operator provenance mapping.
+- Composite ownership/attribution constraints bind Team, Task, proposal operation, proposal target, KnowledgeItem, request/recorded Events, and successor references.
+- Database uniqueness protects assessment identity, Task/idempotency, and request/recorded Event identity. Checks enforce hash formats, operation vocabularies, positive versions/attempts, JSON payload shape, and strict retire/supersede variants.
+- PostgreSQL triggers reject row UPDATE/DELETE and statement TRUNCATE for both assessment tables and Operator provenance.
+- Downgrade refuses to remove persisted assessment/provenance history; empty-schema downgrade is separately tested.
+- Final PR fixes reject whitespace-only provenance, evaluator identity/revision, and idempotency values in both ORM and migration constraints.
+
+**Important historical-pointer distinction:** assessment proposal references remain target-bound to the exact KnowledgeItem. The historical `current_learning_change_id` pointer is intentionally Team-bound only because B1 backfills it to the original create LearningChange, whose `target_id` is NULL. This is not a relaxation of the proposal-to-target FK. The successor's historical current pointer follows the same rule.
+
+**Earlier Operator-local verification — pre-final-fix head only:** local verification on `02913493f1c82bda25aaa8e843097b9f4c2a7c52` passed migration to `0017_r7b_assessments`, single-head checks, Ruff, Mypy, 13 focused tests, 819 full-suite tests, and `git diff --check`. It predates the final PR corrections and is not exact-merge verification.
+
+**Checkpoint 4 remains open:** Operator-local verification must be rerun against merge commit `31be3a25cf7f52ca81eab65cc10280a855738c3d` using a fresh disposable PostgreSQL database. Run the migration/single-head checks, both assessment focused test files, Ruff, Mypy, full suite, and `git diff --check`; record the exact SHA, warning details, environment restoration, and disposable-container cleanup. Any Alembic `path_separator` deprecation warnings should be reported separately, not silently treated as test failures or ignored.
+
+**Authority boundary:** B3.2 adds persistence contracts only. It does not register `assess_knowledge_revalidation` or `assess_knowledge_lifecycle`, add worker write grants, implement assessment services, or enable lifecycle commits. The approval allowlist remains exactly `create`. B3.3 is next after Checkpoint 4 closeout and separate written implementation authorization.
