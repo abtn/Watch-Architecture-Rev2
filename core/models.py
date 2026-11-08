@@ -1086,7 +1086,7 @@ class LearningChangeOperatorProvenance(Base):
             name="fk_learning_change_operator_provenance_learning_change_team",
         ),
         CheckConstraint(
-            "length(issuer) > 0 AND length(subject) > 0",
+            "length(btrim(issuer)) > 0 AND length(btrim(subject)) > 0",
             name="ck_learning_change_operator_provenance_identity",
         ),
     )
@@ -1119,7 +1119,7 @@ class KnowledgeRevalidationAssessment(Base):
                 "learning_changes.operation",
                 "learning_changes.team_id",
             ],
-            name="fk_knowledge_revalidation_assessments_learning_change_operation_team",
+            name="fk_kra_learning_change_operation_team",
         ),
         ForeignKeyConstraint(
             ["learning_change_id", "knowledge_item_id", "team_id"],
@@ -1128,7 +1128,7 @@ class KnowledgeRevalidationAssessment(Base):
                 "learning_changes.target_id",
                 "learning_changes.team_id",
             ],
-            name="fk_knowledge_revalidation_assessments_learning_change_target_team",
+            name="fk_kra_learning_change_target_team",
         ),
         ForeignKeyConstraint(
             ["knowledge_item_id", "team_id"],
@@ -1136,13 +1136,9 @@ class KnowledgeRevalidationAssessment(Base):
             name="fk_knowledge_revalidation_assessments_knowledge_item_team",
         ),
         ForeignKeyConstraint(
-            ["current_learning_change_id", "knowledge_item_id", "team_id"],
-            [
-                "learning_changes.id",
-                "learning_changes.target_id",
-                "learning_changes.team_id",
-            ],
-            name="fk_knowledge_revalidation_assessments_current_change_target_team",
+            ["current_learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_knowledge_revalidation_assessments_current_change_team",
         ),
         ForeignKeyConstraint(
             ["request_event_id", "task_id"],
@@ -1187,8 +1183,9 @@ class KnowledgeRevalidationAssessment(Base):
             name="ck_knowledge_revalidation_assessments_version_attempt",
         ),
         CheckConstraint(
-            "length(idempotency_key) > 0 AND length(evaluator_identity) > 0 "
-            "AND length(evaluator_revision) > 0",
+            "length(btrim(idempotency_key)) > 0 AND "
+            "length(btrim(evaluator_identity)) > 0 AND "
+            "length(btrim(evaluator_revision)) > 0",
             name="ck_knowledge_revalidation_assessments_identity",
         ),
         CheckConstraint(
@@ -1294,7 +1291,7 @@ class KnowledgeLifecycleAssessment(Base):
                 "learning_changes.operation",
                 "learning_changes.team_id",
             ],
-            name="fk_knowledge_lifecycle_assessments_learning_change_operation_team",
+            name="fk_kla_learning_change_operation_team",
         ),
         ForeignKeyConstraint(
             ["learning_change_id", "knowledge_item_id", "team_id"],
@@ -1311,13 +1308,9 @@ class KnowledgeLifecycleAssessment(Base):
             name="fk_knowledge_lifecycle_assessments_knowledge_item_team",
         ),
         ForeignKeyConstraint(
-            ["current_learning_change_id", "knowledge_item_id", "team_id"],
-            [
-                "learning_changes.id",
-                "learning_changes.target_id",
-                "learning_changes.team_id",
-            ],
-            name="fk_knowledge_lifecycle_assessments_current_change_target_team",
+            ["current_learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_knowledge_lifecycle_assessments_current_change_team",
         ),
         ForeignKeyConstraint(
             ["successor_knowledge_item_id", "team_id"],
@@ -1325,17 +1318,9 @@ class KnowledgeLifecycleAssessment(Base):
             name="fk_knowledge_lifecycle_assessments_successor_item_team",
         ),
         ForeignKeyConstraint(
-            [
-                "successor_current_learning_change_id",
-                "successor_knowledge_item_id",
-                "team_id",
-            ],
-            [
-                "learning_changes.id",
-                "learning_changes.target_id",
-                "learning_changes.team_id",
-            ],
-            name="fk_knowledge_lifecycle_assessments_successor_current_change_target_team",
+            ["successor_current_learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_kla_successor_current_change_team",
         ),
         ForeignKeyConstraint(
             ["learning_change_id"],
@@ -1386,7 +1371,7 @@ class KnowledgeLifecycleAssessment(Base):
             name="ck_knowledge_lifecycle_assessments_version_attempt",
         ),
         CheckConstraint(
-            "length(idempotency_key) > 0",
+            "length(btrim(idempotency_key)) > 0",
             name="ck_knowledge_lifecycle_assessments_idempotency",
         ),
         CheckConstraint(
@@ -1419,7 +1404,8 @@ class KnowledgeLifecycleAssessment(Base):
             "successor_content_hash_scheme IS NULL AND successor_status IS NULL AND "
             "successor_review_after IS NULL AND successor_state_hash IS NULL) OR "
             "(operation = 'supersede' AND "
-            "jsonb_object_length(variant_payload) = 1 AND "
+            "variant_payload = jsonb_build_object("
+            "'successor_team_id', variant_payload->'successor_team_id') AND "
             "variant_payload ? 'successor_team_id' AND "
             "variant_payload->>'successor_team_id' IS NOT NULL AND "
             "variant_payload->>'successor_team_id' = team_id::text AND "
