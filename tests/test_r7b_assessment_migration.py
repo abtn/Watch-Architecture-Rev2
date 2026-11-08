@@ -136,7 +136,8 @@ def _seed_assessment_rows(
         )
         connection.execute(
             text(
-                "INSERT INTO team_policies (id, team_id, version, schema_version, rules) "
+                "INSERT INTO team_policies "
+                "(id, team_id, version, schema_version, rules) "
                 "VALUES (:id, :team_id, 1, 2, CAST(:rules AS jsonb))"
             ),
             {
