@@ -2022,6 +2022,7 @@ def test_rebuild_all_republishes_legacy_opaque_projection_and_restores_retrieval
     assert passages
     assert all(passage.knowledge_item_id == item_id for passage in passages)
 
+
 def test_accepted_create_flows_through_v2_projection_retrieval_and_context_v3(
     experience_env: TeamExperienceEnv,
 ) -> None:
