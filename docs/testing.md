@@ -612,7 +612,7 @@ The Operator-local exact-code-head verification occurred while the Step 9 docume
 - The active approval allowlist remains exactly `create`.
 - B2 closure does not authorize revise, revalidate, supersede, or retire commits.
 - B3.0 read-only preflight and B3.1 contract planning/review may proceed.
-- B3 implementation requires separate written Operator authorization. B4–B6 and R7-C remain unauthorized.
+- At the B2 closeout record's point in time, B3 implementation still required separate written Operator authorization; the subsequent B3.3 authorization is recorded in the Checkpoint 4 disposition below. B4–B6 and R7-C remain unauthorized.
 - No production source, test, migration, schema, runtime, Task registration, provider, authentication, or database configuration change is part of this closure record.
 
 
@@ -655,6 +655,9 @@ The Operator-local exact-code-head verification occurred while the Step 9 docume
 
 This is exact-merge local evidence, not a result on the PR head or the earlier pre-final-fix commit.
 
-**Checkpoint 4 disposition:** exact-merge local execution is now satisfied. Formal Operator acceptance/closeout remains pending and is not inferred from successful tests or this documentation update.
+**Checkpoint 4 disposition (2026-11-08): ACCEPTED BY EXPLICIT OPERATOR INSTRUCTION.** Exact-merge local execution and the schema/contract review are accepted as complete. The Operator also explicitly authorized B3.3 — Revalidation assessment service and Task — by the same written instruction to merge the verified documentation update and start the next checkpoint. Authorization is limited to B3.3; it does not authorize B3.4–B3.9 or any later phase.
 
-**Authority boundary:** B3.2 adds persistence contracts only. It does not register `assess_knowledge_revalidation` or `assess_knowledge_lifecycle`, add worker write grants, implement assessment services, or enable lifecycle commits. The approval allowlist remains exactly `create`. B3.3 is next after Checkpoint 4 closeout and separate written implementation authorization.
+**Authority boundary:** B3.2 adds persistence contracts only. It does not register `assess_knowledge_revalidation` or `assess_knowledge_lifecycle`, add worker write grants, implement assessment services, or enable lifecycle commits. The approval allowlist remains exactly `create`. B3.3 implementation is now authorized and starts as the next stage. Its Task remains subject to the stated narrow write scope and existing TaskRuntime; no worker may write `KnowledgeItem` or `LearningChange`. B3.4–B3.9 remain separately gated.
+
+
+**Operator decision record (2026-11-08):** The Operator instructed: “If all is alright merge and start next checkpoint.” After PR #61 head/CI and scope verification, this was applied as formal acceptance of Checkpoint 4 and explicit authorization to begin B3.3 only.
