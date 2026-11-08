@@ -12,7 +12,6 @@ import pytest
 from sqlalchemy import Engine, select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import sessionmaker
-
 from test_r7b_history_migration import (
     MigrationSandbox,
     _insert_legacy_knowledge_item,
