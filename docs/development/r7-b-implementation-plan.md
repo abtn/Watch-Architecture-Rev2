@@ -2,7 +2,7 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (updated 2026-11-08):** **B0 complete; B1 accepted and merged; B2 formally closed by explicit Operator instruction on 2026-11-08, with accepted residual verification gaps; B3 planning/preflight documented.** B2 Steps 1–8 are accepted and merged. The merged implementation commit `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31` passed hosted run [42479112563](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42479112563) and Operator-local exact-SHA verification (fresh migration/single-head, Ruff, Mypy, 806 tests, 77 warnings). Closure retains three residuals, not passes: prescribed focused groups were not separately run; `git diff --check` was not recorded; complete line-by-line final diff review was not completed. The local run preceded merge of the Step 9 documentation PR; this procedural sequence deviation is recorded. The active approval allowlist remains exactly `create`. B3.0/B3.1 planning may proceed; B3 implementation requires separate written Operator authorization. B4–B6 and R7-C remain unauthorized.
+**Status (updated 2026-11-08):** **B0 complete; B1 accepted and merged; B2 formally closed with accepted residual verification gaps; B3.2 merged by PR #60; Checkpoint 4 post-merge review and exact-merge local verification pending.** PR #60 merged to `main` at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; final PR head `0eecefedbc4ef6e4b60cbd8c3eacf31e1256f362` passed hosted CI run [42496681657](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42496681657): fresh PostgreSQL migration/single-head, Ruff, Mypy, and 823 tests (95 warnings). Earlier local verification on `02913493f1c82bda25aaa8e843097b9f4c2a7c52` passed 13 focused and 819 full tests with static checks, but predates final PR fixes and is not exact-merge evidence. B3.3 has not started; its implementation remains gated on Checkpoint 4 closeout and separate written Operator authorization. The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain unauthorized.
 
 
 
@@ -418,7 +418,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 **B2 closeout reference:** B2 is formally closed by explicit Operator instruction on 2026-11-08. The three retained residual verification gaps are recorded in `PLAN.md` and `docs/testing.md`; none is represented as passed. This does not expand B2's create-only authority.
 
 
-**Status:** planning and read-only preflight only. B2 is formally closed with the residuals recorded above. B3 has not been implementation-authorized. The Operator may complete B3.0 inventory and B3.1 contract review now. Before B3.2 schema work or any source/test/migration/Task changes, separate written Operator authorization for B3 implementation must exist. This section is a work plan, not permission to create migrations, models, Tasks, or write paths.
+**Status:** B3.2 schema/migration/immutability implementation is merged through PR #60. Checkpoint 4 is the post-merge review and exact-merge local verification gate; it is not yet closed. The final PR head passed hosted CI, while Operator-local verification on the exact merge commit remains pending. B3.3 is the next planned stage but has not started. This document update records the current implementation state; it does not authorize B3.3 or widen any Task/approval authority.
 
 **Goal:** add immutable, operation-specific assessment records and narrow recording Tasks. These assessments supply validated evidence to the existing trusted Operator approval path; they do not authorize or commit lifecycle transitions.
 
@@ -494,6 +494,38 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 3. Never run migration experiments against persistent `watch`.
 
 **Expected output:** two typed immutable persistence contracts, migration and DB-level rejection tests; no lifecycle commit capability.
+
+#### B3.2 Checkpoint 4 — Post-merge contract review and exact-merge verification
+
+**Status:** in progress; PR #60 is merged, but B3.2 closeout is not yet recorded.
+
+**Merged implementation and hosted evidence**
+- PR [#60](https://github.com/abtn/Watch-Architecture-Rev2/pull/60) merged to `main` at `31be3a25cf7f52ca81eab65cc10280a855738c3d`.
+- Final PR head: `0eecefedbc4ef6e4b60cbd8c3eacf31e1256f362`.
+- Hosted CI [run 42496681657](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42496681657) passed on the exact PR head: fresh PostgreSQL migration and single-head checks, Ruff, Mypy, and 823 tests (95 warnings).
+
+**Contract review findings**
+1. The migration creates separate `knowledge_revalidation_assessments` and `knowledge_lifecycle_assessments` tables, plus immutable `learning_change_operator_provenance`.
+2. Composite constraints bind assessment Team, Task, exact proposal operation, proposal target, KnowledgeItem, request/recorded Events, and lifecycle successor to the required same-Team/Task relationships. The proposal's target reference remains target-bound.
+3. The historical `current_learning_change_id` references are intentionally Team-bound rather than target-bound: B1 backfills the historical current pointer to the original create LearningChange, whose `target_id` is NULL. This exception does not weaken the target-bound FK from the proposed LearningChange to the exact KnowledgeItem. The successor current pointer follows the same historical-pointer rule.
+4. Assessment identity, Task/idempotency, request Event, and recorded Event uniqueness are database-enforced. Hash format, operation vocabulary, positive versions/attempts, JSON array shape, and retire/supersede variant shape have database checks.
+5. Row UPDATE/DELETE and statement TRUNCATE are rejected for both assessment tables and Operator provenance. Downgrade refuses to remove persisted assessment/provenance history; empty-schema downgrade is covered separately.
+6. The final PR corrections align ORM and migration checks for whitespace-only provenance/evaluator/idempotency values and retain negative PostgreSQL tests for cross-Team references, invalid proposal operation, Event/Task attribution, duplicate identity, invalid retire/supersede shapes, and successor deletion.
+7. No assessment Task registration, worker write grant, assessment service, lifecycle commit, or approval expansion is included in B3.2. The active approval allowlist remains exactly `create`.
+
+**Earlier Operator-local evidence — not exact-merge evidence**
+- The earlier local run was on `02913493f1c82bda25aaa8e843097b9f4c2a7c52`, before the final PR fixes. It reached `0017_r7b_assessments`, verified one Alembic head, passed Ruff/Mypy, 13 focused tests, 819 full-suite tests, and `git diff --check`.
+- Because the final PR head added the whitespace-only identity corrections and additional PostgreSQL regression coverage, this earlier local result must not be reported as verification of merge commit `31be3a25cf7f52ca81eab65cc10280a855738c3d`.
+
+**Operator-local Checkpoint 4 exit requirements**
+1. Synchronize local `main` to exact merge commit `31be3a25cf7f52ca81eab65cc10280a855738c3d` without discarding local work.
+2. Confirm clean worktree, exact HEAD, and `origin/main` relation before tests.
+3. Run migration upgrade and verify `0017_r7b_assessments` is the database revision and the single Alembic head on a fresh disposable PostgreSQL database.
+4. Run `tests/test_r7b_assessment_migration.py` and `tests/test_r7b_assessment_models.py` as focused groups, then Ruff, Mypy, the full suite, and `git diff --check`.
+5. Restore original `DATABASE_URL` and `TEST_DATABASE_URL`; confirm only the disposable container created by the runner was removed. Never target persistent `watch` or host port 5432.
+6. Record exact local SHA, exact commands/results, warning details (including any Alembic `path_separator` deprecation warnings), and cleanup evidence. Compare the local SHA to the merged implementation SHA; do not substitute the PR head or an earlier pre-fix commit.
+
+**Checkpoint 4 acceptance boundary:** B3.2 may be recorded closed only after the schema/contract review and exact-merge local verification are accepted and documented. B3.3 remains the next stage, but this closeout does not itself authorize its implementation. The create-only approval allowlist and all B3 authority boundaries remain unchanged.
 
 #### B3.3 — Revalidation assessment service and Task
 
