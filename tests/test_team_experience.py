@@ -226,11 +226,7 @@ class TeamExperienceEnv:
                         ),
                     },
                     previous_state=None,
-                    committed_state=(
-                        encode_state_snapshot(committed_state)
-                        if supersedes_item_id is not None
-                        else committed_state
-                    ),
+                    committed_state=encode_state_snapshot(committed_state),
                     evidence_basis=[],
                     evidence_basis_hash=evidence_basis_hash,
                     status="accepted",
