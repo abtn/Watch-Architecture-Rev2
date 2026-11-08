@@ -5,19 +5,25 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import Engine, select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import sessionmaker
+
 from core.embeddings import EmbeddingBatch, EmbeddingSpace
 from core.knowledge_index import (
     HybridKnowledgeRetriever,
     TeamExperienceIndexer,
 )
 from core.learning_history import KNOWLEDGE_CONTENT_HASH_SCHEME
-from core.models import KnowledgeItem, TeamExperienceChunk, TeamExperienceIndexState
+from core.models import (
+    KnowledgeItem,
+    TeamExperienceChunk,
+    TeamExperienceIndexState,
+)
 from core.snapshot_store import SnapshotStore
 from test_r7b_history_migration import (
     MigrationSandbox,
@@ -364,6 +370,7 @@ def test_0016_failed_migration_rolls_back_schema_and_existing_rows(
     assert "content_hash_scheme" not in columns
     assert revision == "0015_r7b_history"
 
+
 class _MigrationEmbeddingProvider:
     def current_space(self) -> EmbeddingSpace:
         return EmbeddingSpace(
@@ -383,7 +390,7 @@ class _MigrationEmbeddingProvider:
 
 def test_real_0016_migration_blocks_legacy_projection_until_application_rebuild(
     pre_0016_schema: ProjectionMigrationSandbox,
-    tmp_path,
+    tmp_path: Path,
 ) -> None:
     _upgrade_to_revision(
         pre_0016_schema.engine,
