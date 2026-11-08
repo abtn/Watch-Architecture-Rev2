@@ -16,13 +16,6 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-IMMUTABLE_TABLES = (
-    "learning_change_operator_provenance",
-    "knowledge_revalidation_assessments",
-    "knowledge_lifecycle_assessments",
-)
-
-
 def _create_immutability_protection() -> None:
     op.execute(
         """
@@ -63,6 +56,24 @@ def _create_immutability_protection() -> None:
 
 
 def upgrade() -> None:
+    # These composite parent keys were introduced by the B3.2 ORM contract.
+    # The referenced primary keys alone cannot support the composite FKs below.
+    op.create_unique_constraint(
+        "uq_learning_changes_id_operation_team",
+        "learning_changes",
+        ["id", "operation", "team_id"],
+    )
+    op.create_unique_constraint(
+        "uq_learning_changes_id_target_team",
+        "learning_changes",
+        ["id", "target_id", "team_id"],
+    )
+    op.create_unique_constraint(
+        "uq_events_id_task",
+        "events",
+        ["id", "task_id"],
+    )
+
     op.create_table(
         "learning_change_operator_provenance",
         sa.Column("learning_change_id", sa.Uuid(), nullable=False),
@@ -499,3 +510,14 @@ def downgrade() -> None:
     op.drop_table("knowledge_lifecycle_assessments")
     op.drop_table("knowledge_revalidation_assessments")
     op.drop_table("learning_change_operator_provenance")
+    op.drop_constraint(
+        "uq_events_id_task", "events", type_="unique"
+    )
+    op.drop_constraint(
+        "uq_learning_changes_id_target_team", "learning_changes", type_="unique"
+    )
+    op.drop_constraint(
+        "uq_learning_changes_id_operation_team",
+        "learning_changes",
+        type_="unique",
+    )
