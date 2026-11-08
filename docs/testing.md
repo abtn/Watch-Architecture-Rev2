@@ -631,7 +631,7 @@ The Operator-local exact-code-head verification occurred while the Step 9 docume
 - ORM metadata adds the two separate assessment models and immutable Operator provenance mapping.
 - Composite ownership/attribution constraints bind Team, Task, proposal operation, proposal target, KnowledgeItem, request/recorded Events, and successor references.
 - Database uniqueness protects assessment identity, Task/idempotency, and request/recorded Event identity. Checks enforce hash formats, operation vocabularies, positive versions/attempts, JSON payload shape, and strict retire/supersede variants.
-- PostgreSQL triggers reject row UPDATE/DELETE and statement TRUNCATE for both assessment tables and Operator provenance.
+- PostgreSQL triggers reject row UPDATE/DELETE and statement TRUNCATE for both assessment tables and Operator provenance. No application database role existed to receive a narrower privilege boundary, so no role was invented or altered; privileged superuser/replication bypass remains an operational boundary.
 - Downgrade refuses to remove persisted assessment/provenance history; empty-schema downgrade is separately tested.
 - Final PR fixes reject whitespace-only provenance, evaluator identity/revision, and idempotency values in both ORM and migration constraints.
 
