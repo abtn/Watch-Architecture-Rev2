@@ -1399,7 +1399,10 @@ def test_pending_supersession_candidate_is_hidden_until_reciprocal_commit(
     assert {passage.knowledge_item_id for passage in passages} == {predecessor_id}
 
 
-@pytest.mark.parametrize("predecessor_disposition", ["needs_review", "due"])
+@pytest.mark.parametrize(
+    "predecessor_disposition",
+    ["needs_review", "due", "retired_without_successor"],
+)
 def test_pending_candidate_and_ineligible_predecessor_are_both_hidden(
     experience_env: TeamExperienceEnv,
     predecessor_disposition: str,
@@ -1421,8 +1424,10 @@ def test_pending_candidate_and_ineligible_predecessor_are_both_hidden(
         assert predecessor is not None
         if predecessor_disposition == "needs_review":
             predecessor.status = "needs_review"
-        else:
+        elif predecessor_disposition == "due":
             predecessor.review_after = datetime.now(timezone.utc) - timedelta(seconds=1)
+        else:
+            predecessor.status = "retired"
 
     retriever = HybridKnowledgeRetriever(
         experience_env.session_factory, experience_env.snapshot_store, provider
