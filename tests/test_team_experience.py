@@ -1211,6 +1211,12 @@ def test_failed_publication_records_staleness_and_rebuilds(
     rebuilt = indexer.rebuild_all()
     assert len(rebuilt) == 1
     assert rebuilt[0].outcome == "indexed"
+    calls_after_rebuild = provider.calls
+
+    repeated_rebuild = indexer.rebuild_all()
+    assert len(repeated_rebuild) == 1
+    assert repeated_rebuild[0].outcome == "unchanged"
+    assert provider.calls == calls_after_rebuild
 
     with experience_env.session_factory() as session:
         state = session.scalar(
@@ -2014,3 +2020,127 @@ def test_rebuild_all_republishes_legacy_opaque_projection_and_restores_retrieval
     passages = retriever.retrieve(experience_env.team_id, "alpha practice")
     assert passages
     assert all(passage.knowledge_item_id == item_id for passage in passages)
+
+def test_accepted_create_flows_through_v2_projection_retrieval_and_context_v3(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    item_id = experience_env.add_accepted_item()
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+
+    indexed = indexer.index_knowledge_item(item_id)
+    assert indexed.outcome == "indexed"
+
+    with experience_env.session_factory() as session:
+        item = session.get(KnowledgeItem, item_id)
+        assert item is not None
+        assert item.current_learning_change_id is not None
+        assert item.origin_learning_change_id == item.current_learning_change_id
+        learning_change = session.get(
+            LearningChange, item.current_learning_change_id
+        )
+        assert learning_change is not None
+        assert learning_change.status == "accepted"
+        assert learning_change.operation == "create"
+        assert learning_change.target_kind == "knowledge_item"
+        assert learning_change.target_id is None
+        assert indexed.item_content_hash == knowledge_item_content_hash(item)
+        state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == item_id
+            )
+        )
+        chunks = list(
+            session.scalars(
+                select(TeamExperienceChunk).where(
+                    TeamExperienceChunk.knowledge_item_id == item_id
+                )
+            )
+        )
+        assert state is not None
+        assert state.current_learning_change_id == item.current_learning_change_id
+        assert state.content_hash_scheme == KNOWLEDGE_CONTENT_HASH_SCHEME
+        assert chunks
+        assert all(
+            chunk.current_learning_change_id == item.current_learning_change_id
+            and chunk.content_hash_scheme == KNOWLEDGE_CONTENT_HASH_SCHEME
+            for chunk in chunks
+        )
+
+    retriever = HybridKnowledgeRetriever(
+        experience_env.session_factory, experience_env.snapshot_store, provider
+    )
+    passages = retriever.retrieve(experience_env.team_id, "alpha practice")
+    assert passages
+    assert all(passage.knowledge_item_id == item_id for passage in passages)
+    assert all(
+        passage.current_learning_change_id
+        == experience_env.learning_change_ids[0]
+        for passage in passages
+    )
+
+    task_id = experience_env.add_strategy_task(
+        "Use the accepted alpha practice to review a new source."
+    )
+    assembled = TaskContextAssembler(
+        experience_env.session_factory,
+        experience_env.snapshot_store,
+        retriever,
+    ).assemble(task_id)
+
+    entries = assembled.document["knowledge"]["team_experience"]
+    assert entries
+    assert entries[0]["knowledge_item_id"] == str(item_id)
+    assert entries[0]["current_learning_change_id"] == str(
+        experience_env.learning_change_ids[0]
+    )
+    assert entries[0]["content_hash_scheme"] == KNOWLEDGE_CONTENT_HASH_SCHEME
+    assert assembled.manifest["schema_version"] == "r6e-context-manifest-v3"
+    selected = assembled.manifest["selected"]
+    assert selected
+    assert any(
+        entry["knowledge_item_id"] == str(item_id)
+        and entry["origin_learning_change_id"]
+        == str(experience_env.learning_change_ids[0])
+        and entry["current_learning_change_id"]
+        == str(experience_env.learning_change_ids[0])
+        and entry["content_hash_scheme"] == KNOWLEDGE_CONTENT_HASH_SCHEME
+        for entry in selected
+    )
+
+
+def test_offset_aware_d7_review_boundary_is_strict(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    offset = timezone(timedelta(hours=5, minutes=30))
+    review_boundary = datetime(2026, 12, 31, 12, 0, tzinfo=offset)
+    item_id = experience_env.add_accepted_item(
+        committed_at=review_boundary - timedelta(days=30),
+        review_interval_days=30,
+    )
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+
+    before_boundary = indexer.index_knowledge_item(
+        item_id, now=review_boundary - timedelta(microseconds=1)
+    )
+    assert before_boundary.outcome == "indexed"
+
+    at_boundary = indexer.index_knowledge_item(item_id, now=review_boundary)
+    assert at_boundary.outcome == "ineligible"
+
+    with experience_env.session_factory() as session:
+        state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == item_id
+            )
+        )
+    assert state is not None
+    assert state.status == "ineligible"
+    assert state.chunk_count == 0
+
+    retriever = HybridKnowledgeRetriever(
+        experience_env.session_factory, experience_env.snapshot_store, provider
+    )
+    assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
+
