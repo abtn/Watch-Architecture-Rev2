@@ -584,7 +584,7 @@ For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeI
 
 ## 7. R7 Task/write-scope matrix — phase-gated extensions
 
-**Status:** `assess_knowledge_quality` is active in §§3–5 and operative §4 after PR #39 merged. The R7-B contracts below are frozen design only following B0 acceptance on 2026-11-05. They remain non-active: no R7-B Task registration, worker write grant, application write scope, or implementation authority is added by this documentation.
+**Status:** `assess_knowledge_quality` is active in §§3–5 and operative §4 after PR #39 merged. B3.2 persistence models/tables for `KnowledgeRevalidationAssessment` and `KnowledgeLifecycleAssessment`, plus immutable Operator provenance, are merged through PR #60 and migration `0017_r7b_assessments`. The R7-B assessment Task contracts below remain non-active: no R7-B Task registration, worker write grant, application write scope, or assessment service is added by B3.2. Checkpoint 4 exact-merge local verification/closeout is pending; B3.3 has not started.
 
 | Proposed Task / operation | Purpose and authority | Proposed worker write scope | Application / TaskRuntime side effects | Explicitly forbidden |
 |---|---|---|---|---|
