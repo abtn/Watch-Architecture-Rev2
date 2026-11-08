@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.context_assembly import TaskContextAssembler, TaskContextError
@@ -118,7 +119,9 @@ class TeamExperienceEnv:
         status: str = "active",
         supersedes_item_id: UUID | None = None,
     ) -> UUID:
-        committed_time = committed_at or datetime.now(timezone.utc)
+        committed_time = (committed_at or datetime.now(timezone.utc)).astimezone(
+            timezone.utc
+        )
         interval = (
             self.review_interval_days
             if review_interval_days is ...
@@ -2165,7 +2168,16 @@ def test_canonicality_tampering_blocks_retrieval_and_context_inclusion(
     tamper: str,
 ) -> None:
     item_id = experience_env.add_accepted_item()
+    other_item_id: UUID | None = None
     if tamper == "current_pointer":
+        experience_env.add_accepted_revision(
+            item_id,
+            body="The revised alpha practice preserves contrary evidence.",
+        )
+    elif tamper == "wrong_target":
+        other_item_id = experience_env.add_accepted_item(
+            title="Beta practice for independent source review"
+        )
         experience_env.add_accepted_revision(
             item_id,
             body="The revised alpha practice preserves contrary evidence.",
@@ -2206,9 +2218,13 @@ def test_canonicality_tampering_blocks_retrieval_and_context_inclusion(
                 Team(id=other_team_id, domain="other", status="active")
             )
             session.flush()
-            chunk.team_id = other_team_id
+            with pytest.raises(IntegrityError):
+                with session.begin_nested():
+                    chunk.team_id = other_team_id
+                    session.flush()
         elif tamper == "wrong_target":
-            learning_change.target_id = item_id
+            assert other_item_id is not None
+            learning_change.target_id = other_item_id
         elif tamper == "wrong_status":
             item.status = "needs_review"
         elif tamper == "invalid_snapshot":
@@ -2216,6 +2232,8 @@ def test_canonicality_tampering_blocks_retrieval_and_context_inclusion(
             committed_state["body"] = "Tampered committed content."
             learning_change.committed_state = committed_state
         elif tamper == "wrong_scheme":
+            state.current_learning_change_id = None
+            chunk.current_learning_change_id = None
             state.content_hash_scheme = "legacy-opaque"
             chunk.content_hash_scheme = "legacy-opaque"
         elif tamper == "stale_state":
