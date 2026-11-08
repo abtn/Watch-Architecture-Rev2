@@ -114,6 +114,7 @@ class TeamExperienceEnv:
         committed_at: datetime | None = None,
         review_interval_days: int | None | object = ...,
         status: str = "active",
+        supersedes_item_id: UUID | None = None,
     ) -> UUID:
         committed_time = committed_at or datetime.now(timezone.utc)
         interval = (
@@ -165,6 +166,11 @@ class TeamExperienceEnv:
             "last_validated_at": None,
             "review_after": review_after.isoformat() if review_after else None,
             "origin_learning_change_id": str(learning_change_id),
+            "current_learning_change_id": str(learning_change_id),
+            "supersedes_item_id": (
+                str(supersedes_item_id) if supersedes_item_id is not None else None
+            ),
+            "superseded_by_id": None,
         }
         snapshot_ref, snapshot_hash = self.snapshot_store.put(
             b'{"result_category":"success_learning_change_accepted"}'
@@ -253,6 +259,8 @@ class TeamExperienceEnv:
                         review_after=review_after,
                         origin_learning_change_id=learning_change_id,
                         current_learning_change_id=learning_change_id,
+                        supersedes_item_id=supersedes_item_id,
+                        superseded_by_id=None,
                     ),
                     Outcome(
                         id=uuid4(),
@@ -493,6 +501,181 @@ class TeamExperienceEnv:
                             "committed_at": commit_time.isoformat(),
                             "knowledge_item_id": str(item.id),
                             "knowledge_item_version": item.version,
+                        },
+                        created_at=commit_time,
+                    ),
+                    Event(
+                        id=uuid4(),
+                        task_id=approval_task_id,
+                        type="task_completed",
+                        payload={
+                            "from_status": "running",
+                            "to_status": "done",
+                            "attempt_count": 1,
+                            "result_category": "success_learning_change_accepted",
+                            "failure_reason": None,
+                            "outcome_id": str(outcome.id),
+                            "observation_snapshot_ref": snapshot_ref,
+                            "observation_hash": snapshot_hash,
+                            "learning_change_id": str(change_id),
+                        },
+                        created_at=commit_time,
+                    ),
+                ]
+            )
+
+        self.task_ids.extend([proposer_task_id, approval_task_id])
+        self.learning_change_ids.append(change_id)
+        return change_id
+
+
+    def add_accepted_supersession(
+        self,
+        predecessor_id: UUID,
+        successor_id: UUID,
+        *,
+        committed_at: datetime | None = None,
+    ) -> UUID:
+        """Create a synthetic accepted supersession for retrieval-gate tests."""
+        change_id, proposer_task_id, approval_task_id = (uuid4() for _ in range(3))
+        commit_time = committed_at or datetime.now(timezone.utc)
+        started_at = commit_time - timedelta(seconds=1)
+        operator_id = "test-host|operator-superseder"
+        proposal_hash = "sha256:" + "3" * 64
+        evidence_basis_hash = "sha256:" + "4" * 64
+        snapshot_ref, snapshot_hash = self.snapshot_store.put(
+            b'{"result_category":"success_learning_change_accepted"}'
+        )
+
+        with self.session_factory.begin() as session:
+            predecessor = session.get(KnowledgeItem, predecessor_id)
+            successor = session.get(KnowledgeItem, successor_id)
+            assert predecessor is not None and successor is not None
+            assert predecessor.team_id == successor.team_id == self.team_id
+            assert successor.supersedes_item_id == predecessor.id
+            previous_state = knowledge_item_state(predecessor)
+            committed_state = dict(previous_state)
+            committed_state.update(
+                {
+                    "status": "retired",
+                    "current_learning_change_id": str(change_id),
+                    "superseded_by_id": str(successor_id),
+                }
+            )
+
+            session.add_all(
+                [
+                    Task(
+                        id=proposer_task_id,
+                        team_id=self.team_id,
+                        task_type="propose_learning_change",
+                        status="done",
+                        attempt_count=1,
+                        policy_version=self.policy_version,
+                        allowed_writes=["LearningChange"],
+                        budget={
+                            "max_tool_calls": 0,
+                            "max_cost_usd": 0.0,
+                            "deadline_seconds": 60,
+                        },
+                        created_at=started_at,
+                        completed_at=commit_time,
+                    ),
+                    Task(
+                        id=approval_task_id,
+                        team_id=self.team_id,
+                        task_type="approve_learning_change",
+                        status="done",
+                        attempt_count=1,
+                        policy_version=self.policy_version,
+                        allowed_writes=["LearningChange", "KnowledgeItem"],
+                        budget={
+                            "max_tool_calls": 0,
+                            "max_cost_usd": 0.0,
+                            "deadline_seconds": 30,
+                        },
+                        created_at=started_at,
+                        completed_at=commit_time,
+                    ),
+                ]
+            )
+            session.flush()
+            session.add(
+                LearningChange(
+                    id=change_id,
+                    team_id=self.team_id,
+                    target_kind="knowledge_item",
+                    target_id=predecessor.id,
+                    operation="supersede",
+                    proposed_state={
+                        "proposal_hash": proposal_hash,
+                        "evidence_basis_hash": evidence_basis_hash,
+                    },
+                    previous_state=encode_state_snapshot(previous_state),
+                    committed_state=encode_state_snapshot(committed_state),
+                    evidence_basis=[],
+                    evidence_basis_hash=evidence_basis_hash,
+                    status="accepted",
+                    idempotency_key=f"synthetic-supersede-{change_id}",
+                    proposed_by_task_id=proposer_task_id,
+                    committed_by_task_id=approval_task_id,
+                    operator_id=operator_id,
+                    decision_reason=None,
+                    created_at=started_at,
+                    committed_at=commit_time,
+                )
+            )
+            session.flush()
+            predecessor.status = "retired"
+            predecessor.current_learning_change_id = change_id
+            predecessor.superseded_by_id = successor_id
+            predecessor.updated_at = commit_time
+            session.flush()
+
+            outcome = Outcome(
+                id=uuid4(),
+                team_id=self.team_id,
+                subject_kind="task",
+                subject_id=approval_task_id,
+                outcome_type="task_execution",
+                expected=None,
+                observation_snapshot_ref=snapshot_ref,
+                observation_hash=snapshot_hash,
+                observed_at=commit_time,
+                recorded_by_task_id=approval_task_id,
+            )
+            session.add(outcome)
+            session.flush()
+            session.add_all(
+                [
+                    Event(
+                        id=uuid4(),
+                        task_id=approval_task_id,
+                        type="task_started",
+                        payload={
+                            "from_status": "pending",
+                            "to_status": "running",
+                            "attempt_count": 1,
+                        },
+                        created_at=started_at,
+                    ),
+                    Event(
+                        id=uuid4(),
+                        task_id=approval_task_id,
+                        type="learning_change_accepted",
+                        payload={
+                            "schema_version": 1,
+                            "learning_change_id": str(change_id),
+                            "operation": "supersede",
+                            "decision": "accept",
+                            "operator_id": operator_id,
+                            "approval_task_id": str(approval_task_id),
+                            "attempt_count": 1,
+                            "evidence_basis_hash": evidence_basis_hash,
+                            "proposal_hash": proposal_hash,
+                            "committed_at": commit_time.isoformat(),
+                            "knowledge_item_id": str(predecessor.id),
+                            "knowledge_item_version": predecessor.version,
                         },
                         created_at=commit_time,
                     ),
@@ -1172,6 +1355,95 @@ def test_needs_review_item_is_not_retrievable_even_if_projection_remains(
         experience_env.session_factory, experience_env.snapshot_store, provider
     )
     assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
+
+
+
+def test_pending_supersession_candidate_is_hidden_until_reciprocal_commit(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    predecessor_id = experience_env.add_accepted_item()
+    candidate_id = experience_env.add_accepted_item(
+        title="Replacement alpha practice for source review",
+        statement="Use the replacement alpha checklist before accepting a source.",
+        body="The replacement alpha practice preserves contrary evidence.",
+        supersedes_item_id=predecessor_id,
+    )
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+    assert indexer.index_knowledge_item(predecessor_id).outcome == "indexed"
+    assert indexer.index_knowledge_item(candidate_id).outcome == "indexed"
+
+    retriever = HybridKnowledgeRetriever(
+        experience_env.session_factory, experience_env.snapshot_store, provider
+    )
+    passages = retriever.retrieve(experience_env.team_id, "alpha practice")
+
+    assert passages
+    assert {passage.knowledge_item_id for passage in passages} == {predecessor_id}
+
+
+@pytest.mark.parametrize("predecessor_disposition", ["needs_review", "due"])
+def test_pending_candidate_and_ineligible_predecessor_are_both_hidden(
+    experience_env: TeamExperienceEnv,
+    predecessor_disposition: str,
+) -> None:
+    predecessor_id = experience_env.add_accepted_item()
+    candidate_id = experience_env.add_accepted_item(
+        title="Replacement alpha practice for source review",
+        statement="Use the replacement alpha checklist before accepting a source.",
+        body="The replacement alpha practice preserves contrary evidence.",
+        supersedes_item_id=predecessor_id,
+    )
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+    assert indexer.index_knowledge_item(predecessor_id).outcome == "indexed"
+    assert indexer.index_knowledge_item(candidate_id).outcome == "indexed"
+
+    with experience_env.session_factory.begin() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        assert predecessor is not None
+        if predecessor_disposition == "needs_review":
+            predecessor.status = "needs_review"
+        else:
+            predecessor.review_after = datetime.now(timezone.utc) - timedelta(seconds=1)
+
+    retriever = HybridKnowledgeRetriever(
+        experience_env.session_factory, experience_env.snapshot_store, provider
+    )
+    assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
+
+
+def test_committed_supersession_hides_predecessor_and_publishes_candidate(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    predecessor_id = experience_env.add_accepted_item()
+    candidate_id = experience_env.add_accepted_item(
+        title="Replacement alpha practice for source review",
+        statement="Use the replacement alpha checklist before accepting a source.",
+        body="The replacement alpha practice preserves contrary evidence.",
+        supersedes_item_id=predecessor_id,
+    )
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+    assert indexer.index_knowledge_item(predecessor_id).outcome == "indexed"
+    assert indexer.index_knowledge_item(candidate_id).outcome == "indexed"
+
+    experience_env.add_accepted_supersession(predecessor_id, candidate_id)
+
+    retriever = HybridKnowledgeRetriever(
+        experience_env.session_factory, experience_env.snapshot_store, provider
+    )
+    passages = retriever.retrieve(experience_env.team_id, "alpha practice")
+
+    assert passages
+    assert {passage.knowledge_item_id for passage in passages} == {candidate_id}
+    with experience_env.session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        candidate = session.get(KnowledgeItem, candidate_id)
+        assert predecessor is not None and candidate is not None
+        assert predecessor.status == "retired"
+        assert predecessor.superseded_by_id == candidate_id
+        assert candidate.supersedes_item_id == predecessor_id
 
 
 def test_tampered_projection_is_discarded_by_canonical_retrieval(
