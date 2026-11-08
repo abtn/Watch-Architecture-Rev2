@@ -151,6 +151,8 @@ class RetrievedPassage:
     knowledge_item_id: UUID | None = None
     knowledge_item_version: int | None = None
     origin_learning_change_id: UUID | None = None
+    current_learning_change_id: UUID | None = None
+    content_hash_scheme: str | None = None
 
 
 class SignalIndexer:
@@ -1656,6 +1658,8 @@ def _bound_passages(
                 knowledge_item_id=row.get("knowledge_item_id"),
                 knowledge_item_version=row.get("item_version"),
                 origin_learning_change_id=row.get("origin_learning_change_id"),
+                current_learning_change_id=row.get("current_learning_change_id"),
+                content_hash_scheme=row.get("content_hash_scheme"),
             )
         )
         total_characters += len(passage_text)

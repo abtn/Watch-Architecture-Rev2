@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
@@ -19,6 +19,7 @@ from core.knowledge_index import (
     KnowledgeIndexError,
     TeamExperienceIndexer,
     _accepted_learning_change_is_canonical,
+    knowledge_item_content_hash,
 )
 from core.learning_history import (
     KNOWLEDGE_CONTENT_HASH_SCHEME,
@@ -1539,12 +1540,23 @@ def test_later_task_receives_team_experience_in_immutable_context(
     assert knowledge["team_experience"]
     assert knowledge["team_experience"][0]["knowledge_item_id"] == str(item_id)
     assert knowledge["team_experience"][0]["knowledge_item_version"] == 2
+    assert knowledge["team_experience"][0]["current_learning_change_id"] == str(
+        experience_env.learning_change_ids[-1]
+    )
+    assert knowledge["team_experience"][0]["content_hash_scheme"] == (
+        KNOWLEDGE_CONTENT_HASH_SCHEME
+    )
     selected = assembled.manifest["selected"]
     assert selected
     assert selected[0]["logical_core"] == "team_experience"
     assert selected[0]["origin_learning_change_id"] == str(
         experience_env.learning_change_ids[0]
     )
+    assert selected[0]["current_learning_change_id"] == str(
+        experience_env.learning_change_ids[-1]
+    )
+    assert selected[0]["content_hash_scheme"] == KNOWLEDGE_CONTENT_HASH_SCHEME
+    assert assembled.manifest["schema_version"] == "r6e-context-manifest-v3"
     stored = experience_env.snapshot_store.read(assembled.snapshot_ref)
     assert b'"team_experience"' in stored
     assert assembled.event_id is not None
@@ -1557,6 +1569,72 @@ def test_later_task_receives_team_experience_in_immutable_context(
     assert replay.replayed is True
     assert replay.snapshot_ref == assembled.snapshot_ref
     assert replay.event_id == assembled.event_id
+
+
+def test_context_final_validation_rechecks_reciprocal_supersession_visibility(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    predecessor_id = experience_env.add_accepted_item()
+    candidate_id = experience_env.add_accepted_item(
+        title="Replacement alpha practice for source review",
+        statement="Use the replacement alpha checklist before accepting a source.",
+        body="The replacement alpha practice preserves contrary evidence.",
+        supersedes_item_id=predecessor_id,
+    )
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+    assert indexer.index_knowledge_item(predecessor_id).outcome == "indexed"
+    assert indexer.index_knowledge_item(candidate_id).outcome == "indexed"
+
+    retriever = HybridKnowledgeRetriever(
+        experience_env.session_factory, experience_env.snapshot_store, provider
+    )
+    predecessor_passages = retriever.retrieve(
+        experience_env.team_id, "alpha practice"
+    )
+    predecessor_passage = next(
+        passage
+        for passage in predecessor_passages
+        if passage.knowledge_item_id == predecessor_id
+    )
+
+    with experience_env.session_factory() as session:
+        candidate = session.get(KnowledgeItem, candidate_id)
+        candidate_chunk = session.scalar(
+            select(TeamExperienceChunk)
+            .where(TeamExperienceChunk.knowledge_item_id == candidate_id)
+            .order_by(TeamExperienceChunk.chunk_index)
+        )
+        assert candidate is not None and candidate_chunk is not None
+        candidate_passage = replace(
+            predecessor_passage,
+            content_hash=knowledge_item_content_hash(candidate),
+            chunk_id=candidate_chunk.id,
+            chunk_index=candidate_chunk.chunk_index,
+            text=candidate_chunk.chunk_text,
+            chunk_hash=candidate_chunk.chunk_hash,
+            knowledge_item_id=candidate.id,
+            knowledge_item_version=candidate.version,
+            origin_learning_change_id=candidate.origin_learning_change_id,
+            current_learning_change_id=candidate.current_learning_change_id,
+            content_hash_scheme=candidate_chunk.content_hash_scheme,
+        )
+        scope = SimpleNamespace(team_id=experience_env.team_id)
+        with pytest.raises(
+            TaskContextError, match="team_experience_supersession_not_visible"
+        ):
+            TaskContextAssembler._validate_team_experience_passage(
+                session, scope, candidate_passage, datetime.now(timezone.utc)
+            )
+
+    experience_env.add_accepted_supersession(predecessor_id, candidate_id)
+    with experience_env.session_factory() as session:
+        TaskContextAssembler._validate_team_experience_passage(
+            session,
+            SimpleNamespace(team_id=experience_env.team_id),
+            candidate_passage,
+            datetime.now(timezone.utc),
+        )
 
 
 def test_review_knowledge_task_atomically_marks_due_items_and_replays_once(
