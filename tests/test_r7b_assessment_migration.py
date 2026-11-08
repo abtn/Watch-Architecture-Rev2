@@ -446,6 +446,9 @@ def test_0017_creates_contract_constraints_and_immutability_triggers(
         "knowledge_lifecycle_assessments",
     }
     expected_constraints = {
+        "uq_learning_changes_id_operation_team",
+        "uq_learning_changes_id_target_team",
+        "uq_events_id_task",
         "fk_learning_change_operator_provenance_learning_change_team",
         "ck_learning_change_operator_provenance_identity",
         "fk_knowledge_revalidation_assessments_task_team",
