@@ -1404,6 +1404,8 @@ class KnowledgeLifecycleAssessment(Base):
             "successor_review_after IS NULL AND successor_state_hash IS NULL) OR "
             "(operation = 'supersede' AND "
             "jsonb_object_length(variant_payload) = 1 AND "
+            "variant_payload ? 'successor_team_id' AND "
+            "variant_payload->>'successor_team_id' IS NOT NULL AND "
             "variant_payload->>'successor_team_id' = team_id::text AND "
             "successor_knowledge_item_id IS NOT NULL AND "
             "successor_current_learning_change_id IS NOT NULL AND "
