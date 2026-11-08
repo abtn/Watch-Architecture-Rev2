@@ -637,7 +637,7 @@ The Operator-local exact-code-head verification occurred while the Step 9 docume
 
 **Important historical-pointer distinction:** assessment proposal references remain target-bound to the exact KnowledgeItem. The historical `current_learning_change_id` pointer is intentionally Team-bound only because B1 backfills it to the original create LearningChange, whose `target_id` is NULL. This is not a relaxation of the proposal-to-target FK. The successor's historical current pointer follows the same rule.
 
-**Earlier Operator-local verification — pre-final-fix head only:** local verification on `02913493f1c82bda25aaa8e843097b9f4c2a7c52` passed migration to `0017_r7b_assessments`, single-head checks, Ruff, Mypy, 13 focused tests, 819 full-suite tests, and `git diff --check`. It predates the final PR corrections and is not exact-merge verification.
+**Earlier Operator-local verification — pre-final-fix head only:** local verification on `02913493f1c82bda25aaa8e843097b9f4c2a7c52` passed migration to `0017_r7b_assessments`, single-head checks, Ruff, Mypy, 13 focused tests, 819 full-suite tests (87 warnings), and `git diff --check`. It predates the final PR corrections and is not exact-merge verification.
 
 **Checkpoint 4 remains open:** Operator-local verification must be rerun against merge commit `31be3a25cf7f52ca81eab65cc10280a855738c3d` using a fresh disposable PostgreSQL database. Run the migration/single-head checks, both assessment focused test files, Ruff, Mypy, full suite, and `git diff --check`; record the exact SHA, warning details, environment restoration, and disposable-container cleanup. Any Alembic `path_separator` deprecation warnings should be reported separately, not silently treated as test failures or ignored.
 
