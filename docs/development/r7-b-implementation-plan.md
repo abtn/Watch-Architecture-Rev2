@@ -514,7 +514,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 7. No assessment Task registration, worker write grant, assessment service, lifecycle commit, or approval expansion is included in B3.2. The active approval allowlist remains exactly `create`.
 
 **Earlier Operator-local evidence — not exact-merge evidence**
-- The earlier local run was on `02913493f1c82bda25aaa8e843097b9f4c2a7c52`, before the final PR fixes. It reached `0017_r7b_assessments`, verified one Alembic head, passed Ruff/Mypy, 13 focused tests, 819 full-suite tests, and `git diff --check`.
+- The earlier local run was on `02913493f1c82bda25aaa8e843097b9f4c2a7c52`, before the final PR fixes. It reached `0017_r7b_assessments`, verified one Alembic head, passed Ruff/Mypy, 13 focused tests, 819 full-suite tests (87 warnings), and `git diff --check`.
 - Because the final PR head added the whitespace-only identity corrections and additional PostgreSQL regression coverage, this earlier local result must not be reported as verification of merge commit `31be3a25cf7f52ca81eab65cc10280a855738c3d`.
 
 **Operator-local Checkpoint 4 exit requirements**
