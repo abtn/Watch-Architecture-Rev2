@@ -2,7 +2,7 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (updated 2026-11-08):** **B0 complete; B1 accepted and merged; B2 Steps 1–8 accepted and merged; Step 9 exact-head verification partially evidenced, exit review still open.** Steps 1–7 are merged through PRs #45, #46, #48, #50, #52, #53 and #55. Step 8 inspection/documentation PR #56 merged at `58d88bafdf33e8ce1af2f5a7ba9af11bfd84cb32`; integrated regression PR #57 merged at `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`. PR #57 exact head `114a6311534cd116190e3c2f4143fdfb1a2c979b` passed hosted CI run [42478536427](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42478536427) (806 tests, 77 warnings). The merged implementation commit `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31` subsequently passed both hosted run [42479112563](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42479112563) and Operator-local verification (806 tests, 77 warnings; migration/single-head, Ruff and Mypy passed). The local/hosted code SHA matched. Separate focused-test execution, `git diff --check`, complete final diff review, evidence synchronization, and explicit B2 exit acceptance remain outstanding. The active approval allowlist remains exactly `create`; B3–B6 and R7-C remain unauthorized.
+**Status (updated 2026-11-08):** **B0 complete; B1 accepted and merged; B2 Steps 1–8 accepted and merged; Step 9 exact-head verification partially evidenced, exit review still open.** Steps 1–7 are merged through PRs #45, #46, #48, #50, #52, #53 and #55. Step 8 inspection/documentation PR #56 merged at `58d88bafdf33e8ce1af2f5a7ba9af11bfd84cb32`; integrated regression PR #57 merged at `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`. PR #57 exact head `114a6311534cd116190e3c2f4143fdfb1a2c979b` passed hosted CI run [42478536427](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42478536427) (806 tests, 77 warnings). The merged implementation commit `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31` subsequently passed both hosted run [42479112563](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42479112563) and Operator-local verification (806 tests, 77 warnings; migration/single-head, Ruff and Mypy passed). The local/hosted code SHA matched. Separate focused-test execution, `git diff --check`, complete final diff review, evidence synchronization, and explicit B2 exit acceptance remain outstanding. The active approval allowlist remains exactly `create`. B3 planning/preflight is documented; B3 implementation remains unauthorized until formal B2 exit and separate written Operator authorization. B4–B6 and R7-C remain unauthorized.
 
 
 
@@ -223,7 +223,7 @@ B0 closes when:
 
 **Goal:** define and implement the stable semantic content-hash contract, invalidate and safely republish old Team Experience projections, and make indexing, retrieval, and Context assembly validate the B1 current-learning-change chain. B2 must complete before B4 because revalidation depends on a hash that does not change when review metadata changes.
 
-**Status (2026-11-08):** B2 implementation was separately authorized on 2026-11-06. Steps 1–8 are accepted and merged through PR #57. Step 8 added the integrated create-to-Context-v3, real migration-to-rebuild, failed-publication idempotency, canonicality/tampering, offset-aware D7, and immutable v1/v2 replay regressions. Hosted CI passed on exact PR head `114a6311534cd116190e3c2f4143fdfb1a2c979b`: 806 tests, 77 warnings, fresh PostgreSQL migration/single-head, Ruff and Mypy. Step 9 planning is documentation-only; the exact-head Operator-local verification and formal B2 exit gate remain open. B3–B6 and R7-C remain unauthorized.
+**Status (2026-11-08):** B2 implementation was separately authorized on 2026-11-06. Steps 1–8 are accepted and merged through PR #57. Step 8 added the integrated create-to-Context-v3, real migration-to-rebuild, failed-publication idempotency, canonicality/tampering, offset-aware D7, and immutable v1/v2 replay regressions. Hosted CI passed on exact PR head `114a6311534cd116190e3c2f4143fdfb1a2c979b`: 806 tests, 77 warnings, fresh PostgreSQL migration/single-head, Ruff and Mypy. Step 9 hosted and Operator-local exact-code-head verification passed on `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`; the focused-only run, `git diff --check`, complete final diff review, and formal B2 exit disposition remain open. B3 planning/preflight is documented only; B3 implementation remains gated. B4–B6 and R7-C remain unauthorized.
 
 ### Frozen compatibility contract
 
@@ -370,7 +370,7 @@ B0 closes when:
 - Database-enforced cross-Team projection integrity is asserted separately because the composite constraint rejects the mutation before retrieval.
 - Existing D5 focused matrix and Step 7 create-only approval matrix remain intact; no redundant D5 test expansion or approval-authority change was introduced.
 
-**Step 8 boundary:** the integrated regression implementation is complete and merged. The create-only allowlist remains exactly `{create}`. Step 8 completion does not constitute B2 exit; Step 9 exact-head verification and explicit Operator acceptance remain required. B3–B6 and R7-C remain unauthorized.
+**Step 8 boundary:** the integrated regression implementation is complete and merged. The create-only allowlist remains exactly `{create}`. Step 8 completion does not constitute B2 exit; Step 9 exit review and explicit Operator acceptance remain required. B3 planning/preflight is documented only; B3 implementation remains unauthorized. B4–B6 and R7-C remain unauthorized.
 
 **Step 9 — Exact-head verification and formal B2 exit gate (verification evidence recorded; exit open)**
 
@@ -388,7 +388,7 @@ B0 closes when:
 
 **Scope boundary:** the reviewed B2 implementation remains limited to hash/history/projection/retrieval/Context and create-only approval behavior. The active approval allowlist remains exactly `{create}`. No B3 assessment Tasks/models, B4 revise/revalidate writes, B5 candidate creation/supersede/retire writes, B6 expansion, R7-C reference/use/benchmark, new runtime/dispatcher/scheduler/public API/auth stack, or production provider is authorized or included in this documentation update.
 
-**B2 exit disposition:** B2 remains OPEN. Before presenting it for Operator acceptance, finish the focused regression groups, run and record `git diff --check`, complete the final line-by-line diff/scope review, and ensure PLAN/testing/implementation records agree. The Operator must then explicitly accept formal B2 closure. This document does not grant that acceptance. B3–B6 and R7-C remain unauthorized.
+**B2 exit disposition:** B2 remains OPEN. Before presenting it for Operator acceptance, finish or explicitly disposition the focused regression groups, run and record `git diff --check`, complete the final line-by-line diff/scope review, and ensure PLAN/testing/implementation records agree. The Operator must then explicitly accept formal B2 closure. This document does not grant that acceptance. B3 planning/preflight may proceed as read-only documentation work; B3 implementation still requires B2 closure and separate written authorization. B4–B6 and R7-C remain unauthorized.
 
 **Documentation boundary:** this PR updates project status and verification records only. It does not change source, tests, migrations, schema, runtime, provider, authentication, Task grants, or database configuration.
 
@@ -415,7 +415,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 
 ## Phase B3: Typed assessments and recording Tasks
 
-**Status:** planning sequence only. B3 has not been implementation-authorized. B2 formal exit must be recorded first, followed by separate written Operator authorization for B3 implementation. This section is a work plan, not permission to create migrations, models, Tasks, or write paths.
+**Status:** planning and read-only preflight only. B3 has not been implementation-authorized. The Operator may complete B3.0 inventory and B3.1 contract review while B2 exit remains open. Before B3.2 schema work or any source/test/migration/Task changes, B2 formal exit must be recorded and separate written Operator authorization for B3 implementation must exist. This section is a work plan, not permission to create migrations, models, Tasks, or write paths.
 
 **Goal:** add immutable, operation-specific assessment records and narrow recording Tasks. These assessments supply validated evidence to the existing trusted Operator approval path; they do not authorize or commit lifecycle transitions.
 
@@ -431,7 +431,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 - The active lifecycle approval allowlist remains exactly `create` throughout B3. B3 does not enable revise, revalidate, supersede, or retire commits.
 - Reuse the existing TaskRuntime, Task admission/finalization/recovery, Event, and immutable-record patterns. No second runtime, dispatcher, scheduler, auth stack, or autonomous approval.
 
-### B3 implementation sequence — execute only after the entry gate
+### B3 sequence — planning may start now; implementation requires the entry gate
 
 #### B3.0 — Entry gate and exact-head preflight
 
@@ -442,13 +442,13 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 4. Report discrepancies between this plan and code. Stop on any conflict with B0.3 or the authority boundary; do not invent a workaround.
 
 **Operator / local side**
-1. Confirm B2 formal exit is recorded in `PLAN.md` and its documentation PR is merged.
-2. Confirm a separate written B3 implementation authorization exists. Planning and preflight alone do not satisfy this requirement.
-3. Run the standard local preflight: repository root, branch, HEAD, clean/dirty worktree, `origin/main` relation, Python/uv environment, and current Alembic head. Do not discard or stash local changes.
-4. Use only a fresh disposable PostgreSQL database/container and a dynamically assigned loopback port for database-backed verification. Do not inspect or target persistent `watch`; never use host port 5432 as the test target.
-5. Give the agent the exact verified base SHA and the preflight report. Do not let the agent infer the local checkout state.
+1. Record the B2 gate as currently open and list its remaining exit items; do not treat planning or preflight as B2 acceptance.
+2. Run the read-only local preflight: repository root, branch, HEAD, clean/dirty worktree, `origin/main` relation, Python/uv environment, and current Alembic head. Do not discard or stash local changes.
+3. Give the agent the exact observed base SHA and preflight report. Do not let the agent infer the local checkout state.
+4. Do not run migrations or database-backed tests in this read-only planning step. When implementation is later authorized, use only a fresh disposable PostgreSQL database/container and a dynamically assigned loopback port; do not inspect or target persistent `watch` or host port 5432.
+5. Before B3.2, verify that B2 formal exit is recorded in `PLAN.md`, its documentation PR is merged, and separate written B3 implementation authorization exists.
 
-**Expected output:** a read-only B3 inventory and a recorded entry-gate report. No code, migration, Task registration, or authority change.
+**Expected output:** a read-only B3 inventory and a recorded preflight report. No code, migration, database mutation, Task registration, or authority change.
 
 #### B3.1 — Freeze the typed assessment contracts
 
@@ -472,6 +472,8 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 **Operator review point:** review the field/binding matrix and the exact distinction between revalidation and lifecycle variants before schema work begins.
 
 **Expected output:** a reviewed contract table, serialization/hash specification, and negative-case matrix. No code yet.
+
+**Implementation authorization gate:** B3.2 and every later implementation stage require both (a) formal B2 exit recorded in `PLAN.md` after the required checks are completed or explicitly dispositioned, and (b) separate written Operator authorization for B3 implementation. If either is absent, stop after B3.0/B3.1 planning.
 
 #### B3.2 — Schema, migration, and immutability
 
