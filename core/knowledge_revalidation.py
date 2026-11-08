@@ -339,6 +339,7 @@ def _target_state_from_proposal(
 
 def _build_canonical_pack(
     session: Session,
+    session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
     learning_change: LearningChange,
     source_task: Task,
@@ -384,7 +385,7 @@ def _build_canonical_pack(
         )
     try:
         pack = ExperienceDistiller(
-            session.get_bind(), snapshot_store, provider=None
+            session_factory, snapshot_store, provider=None
         )._build_pack(
             session,
             source_task,
@@ -412,6 +413,7 @@ def _build_canonical_pack(
 
 def _proposal_context(
     session: Session,
+    session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
     learning_change: LearningChange,
     *,
@@ -546,7 +548,7 @@ def _proposal_context(
                 f"knowledge_revalidation_target_history_{error.reason}"
             ) from error
     pack = _build_canonical_pack(
-        session, snapshot_store, learning_change, source_task
+        session, session_factory, snapshot_store, learning_change, source_task
     )
     return (
         target,
@@ -562,6 +564,7 @@ def _proposal_context(
 
 def build_revalidation_task_request(
     session: Session,
+    session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
     learning_change: LearningChange,
     *,
@@ -578,6 +581,7 @@ def build_revalidation_task_request(
         pack,
     ) = _proposal_context(
         session,
+        session_factory,
         snapshot_store,
         learning_change,
         require_current=require_current,
@@ -614,6 +618,7 @@ def build_revalidation_task_request(
 def validate_revalidation_task_request(
     session: Session,
     task: Task,
+    session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
     *,
     require_proposed: bool = True,
@@ -690,6 +695,7 @@ def validate_revalidation_task_request(
         pack,
     ) = _proposal_context(
         session,
+        session_factory,
         snapshot_store,
         learning_change,
         require_current=require_current,
@@ -894,13 +900,14 @@ class KnowledgeRevalidationAssessmentService:
                     "knowledge_revalidation_learning_change_missing"
                 )
             task_id, payload = build_revalidation_task_request(
-                session, self._snapshot_store, change, require_current=True
+                session, self._session_factory, self._snapshot_store, change,
+                require_current=True
             )
             existing = session.get(Task, task_id)
             if existing is not None:
                 try:
                     validate_revalidation_task_request(
-                        session, existing, self._snapshot_store,
+                        session, existing, self._session_factory, self._snapshot_store,
                         require_proposed=True, require_current=True,
                     )
                 except KnowledgeRevalidationAssessmentError as error:
@@ -914,8 +921,7 @@ class KnowledgeRevalidationAssessmentService:
                 task_type=TASK_TYPE,
                 status="pending",
                 attempt_count=0,
-                policy_version=change.proposed_by_task_id
-                and session.get(Task, change.proposed_by_task_id).policy_version,
+                policy_version=payload["policy_version"],
                 objective_id=None,
                 plan_id=None,
                 plan_action_id=None,
@@ -965,7 +971,7 @@ class KnowledgeRevalidationAssessmentService:
                     "knowledge_revalidation_task_not_running"
                 )
             context = validate_revalidation_task_request(
-                session, task, self._snapshot_store,
+                session, task, self._session_factory, self._snapshot_store,
                 require_proposed=True, require_current=True,
             )
             existing = session.scalar(
@@ -1080,6 +1086,7 @@ def require_recorded_assessment(
     session: Session,
     learning_change: LearningChange,
     snapshot_store: SnapshotStore,
+    session_factory: sessionmaker[Session],
     *,
     require_task_done: bool,
     require_current: bool,
@@ -1113,13 +1120,12 @@ def require_recorded_assessment(
         or task.max_attempts != TASK_MAX_ATTEMPTS
         or task.budget != TASK_BUDGET
         or assessment.task_attempt != task.attempt_count
-        or assessment.status if hasattr(assessment, "status") else False
     ):
         raise KnowledgeRevalidationAssessmentError(
             "knowledge_revalidation_assessment_binding_invalid"
         )
     context = validate_revalidation_task_request(
-        session, task, snapshot_store,
+        session, task, session_factory, snapshot_store,
         require_proposed=not require_task_done,
         require_current=require_current,
     )
