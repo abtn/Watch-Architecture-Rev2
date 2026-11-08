@@ -25,6 +25,7 @@ from core.knowledge_index import (
     RetrievedPassage,
     _accepted_learning_change_is_canonical,
     _review_date_is_eligible,
+    _supersession_publication_is_visible,
     chunk_source_text,
     content_hash,
     knowledge_item_committed_state_matches,
@@ -54,7 +55,8 @@ from core.state_assessment import (
 )
 
 CONTEXT_SCHEMA_VERSION = "r6e-task-context-v2"
-CONTEXT_MANIFEST_VERSION = "r6e-context-manifest-v2"
+CONTEXT_MANIFEST_VERSION = "r6e-context-manifest-v3"
+PREVIOUS_CONTEXT_MANIFEST_VERSION = "r6e-context-manifest-v2"
 LEGACY_CONTEXT_MANIFEST_VERSION = "r6e-context-manifest-v1"
 RETRIEVAL_CONFIGURATION_VERSION = "postgres-hybrid-rrf-v2"
 
@@ -162,6 +164,7 @@ class TaskContextAssembler:
             schema_version = payload.get("schema_version")
             if schema_version not in {
                 CONTEXT_MANIFEST_VERSION,
+                PREVIOUS_CONTEXT_MANIFEST_VERSION,
                 LEGACY_CONTEXT_MANIFEST_VERSION,
             }:
                 raise TaskContextError("context_manifest_version_unsupported")
@@ -636,6 +639,8 @@ class TaskContextAssembler:
             or passage.knowledge_item_id is None
             or passage.knowledge_item_version is None
             or passage.origin_learning_change_id is None
+            or passage.current_learning_change_id is None
+            or passage.content_hash_scheme is None
         ):
             raise TaskContextError("invalid_team_experience_provenance")
 
@@ -662,6 +667,8 @@ class TaskContextAssembler:
         current_hash = knowledge_item_content_hash(item)
         if passage.content_hash != current_hash:
             raise TaskContextError("team_experience_content_hash_mismatch")
+        if not _supersession_publication_is_visible(session, item, {}):
+            raise TaskContextError("team_experience_supersession_not_visible")
 
         index_state = session.scalar(
             select(TeamExperienceIndexState).where(
@@ -677,7 +684,9 @@ class TaskContextAssembler:
             or index_state.origin_learning_change_id
             != item.origin_learning_change_id
             or index_state.current_learning_change_id != item.current_learning_change_id
+            or passage.current_learning_change_id != item.current_learning_change_id
             or index_state.content_hash_scheme != KNOWLEDGE_CONTENT_HASH_SCHEME
+            or passage.content_hash_scheme != KNOWLEDGE_CONTENT_HASH_SCHEME
             or index_state.embedding_space_key != passage.embedding_space_key
             or index_state.chunk_count <= passage.chunk_index
         ):
@@ -711,7 +720,9 @@ class TaskContextAssembler:
             or chunk.item_content_hash != current_hash
             or chunk.origin_learning_change_id != item.origin_learning_change_id
             or chunk.current_learning_change_id != item.current_learning_change_id
+            or chunk.current_learning_change_id != passage.current_learning_change_id
             or chunk.content_hash_scheme != KNOWLEDGE_CONTENT_HASH_SCHEME
+            or chunk.content_hash_scheme != passage.content_hash_scheme
             or chunk.chunk_index != passage.chunk_index
             or chunk.chunk_text != expected_text
             or chunk.chunk_hash != passage.chunk_hash
@@ -781,6 +792,10 @@ class TaskContextAssembler:
                         "origin_learning_change_id": str(
                             passage.origin_learning_change_id
                         ),
+                        "current_learning_change_id": str(
+                            passage.current_learning_change_id
+                        ),
+                        "content_hash_scheme": passage.content_hash_scheme,
                     }
                 )
             selected.append(selected_entry)
@@ -873,6 +888,10 @@ class TaskContextAssembler:
                         "origin_learning_change_id": str(
                             passage.origin_learning_change_id
                         ),
+                        "current_learning_change_id": str(
+                            passage.current_learning_change_id
+                        ),
+                        "content_hash_scheme": passage.content_hash_scheme,
                         "chunk_id": str(passage.chunk_id),
                         "chunk_index": passage.chunk_index,
                         "chunk_hash": passage.chunk_hash,
