@@ -13,7 +13,6 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from core.learning_commit import LearningCommitCorrupt, LearningCommitService
 from core.knowledge_quality import (
     DIMENSIONS,
     EVALUATOR_IDENTITY,
@@ -33,6 +32,7 @@ from core.knowledge_quality import (
 from core.knowledge_quality import TASK_BUDGET as QUALITY_TASK_BUDGET
 from core.knowledge_quality import TASK_MAX_ATTEMPTS as QUALITY_TASK_MAX_ATTEMPTS
 from core.knowledge_quality import TASK_TYPE as QUALITY_TASK_TYPE
+from core.learning_commit import LearningCommitCorrupt, LearningCommitService
 from core.models import (
     Event,
     KnowledgeQualityAssessment,
