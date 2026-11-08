@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 Steps 1–8 are accepted and merged. Step 8 PR #56 merged at `58d88bafdf33e8ce1af2f5a7ba9af11bfd84cb32`; PR #57 merged at `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`, with hosted CI passing on exact head `114a6311534cd116190e3c2f4143fdfb1a2c979b` (806 tests, 77 warnings). Step 9 verification planning is documentation-only; exact-head Operator-local verification and formal B2 exit remain open. The active approval allowlist remains exactly `create`; B3–B6 and R7-C remain separately gated. PLAN.md is the sole current status authority.
+R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 Steps 1–8 are accepted and merged. Step 8 PR #56 merged at `58d88bafdf33e8ce1af2f5a7ba9af11bfd84cb32`; PR #57 merged at `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`. The merged implementation commit `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31` passed hosted run [42479112563](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42479112563) and Operator-local exact-SHA verification (fresh migration/single-head, Ruff, Mypy, 806 tests, 77 warnings). The local disposable container was confirmed absent. Focused-only test execution, `git diff --check`, complete final diff review and formal B2 exit acceptance remain open; see `docs/testing.md`. Local verification preceded merge of the Step 9 planning PR, a recorded sequence deviation. The active approval allowlist remains exactly `create`; B3–B6 and R7-C remain separately gated. PLAN.md is the sole current status authority.
 
 ## Open the smallest relevant set of documents
 
