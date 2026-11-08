@@ -639,6 +639,22 @@ The Operator-local exact-code-head verification occurred while the Step 9 docume
 
 **Earlier Operator-local verification — pre-final-fix head only:** local verification on `02913493f1c82bda25aaa8e843097b9f4c2a7c52` passed migration to `0017_r7b_assessments`, single-head checks, Ruff, Mypy, 13 focused tests, 819 full-suite tests (87 warnings), and `git diff --check`. It predates the final PR corrections and is not exact-merge verification.
 
-**Checkpoint 4 remains open:** Operator-local verification must be rerun against merge commit `31be3a25cf7f52ca81eab65cc10280a855738c3d` using a fresh disposable PostgreSQL database. Run the migration/single-head checks, both assessment focused test files, Ruff, Mypy, full suite, and `git diff --check`; record the exact SHA, warning details, environment restoration, and disposable-container cleanup. Any Alembic `path_separator` deprecation warnings should be reported separately, not silently treated as test failures or ignored.
+**Operator-local exact-merge verification — PASSED (2026-11-08)**
+
+- Tested SHA: `31be3a25cf7f52ca81eab65cc10280a855738c3d`; local `main` was fast-forwarded to the exact `origin/main` merge commit after a clean-worktree preflight.
+- `uv sync --locked` passed.
+- Fresh disposable PostgreSQL container `watch-r7b-b3c4-15bc377052`, database `watch_r7b_b3c4_15bc377052`, dynamically assigned loopback port `29544`.
+- `uv run alembic upgrade head` passed; database revision and sole Alembic head: `0017_r7b_assessments`.
+- Focused tests: `uv run pytest tests/test_r7b_assessment_models.py -q` → **9 passed**; `uv run pytest tests/test_r7b_assessment_migration.py -q` → **8 passed, 18 warnings**.
+- `uv run ruff check core tests migrations` passed.
+- `uv run mypy core` passed (33 source files).
+- `uv run pytest -q` → **823 passed, 95 warnings in 123.45s**.
+- Both `git diff --check 31be3a25cf7f52ca81eab65cc10280a855738c3d^ 31be3a25cf7f52ca81eab65cc10280a855738c3d` and worktree `git diff --check` passed.
+- Original `DATABASE_URL` and `TEST_DATABASE_URL` values were restored. The runner removed only its disposable container; removal was confirmed. Persistent `watch` and host port 5432 were not targeted.
+- All 95 warnings were Alembic `path_separator` deprecation warnings: 18 from assessment migration tests, 65 from `tests/test_r7b_history_migration.py`, and 12 from `tests/test_team_experience_projection_migration.py`. They did not fail tests or checks.
+
+This is exact-merge local evidence, not a result on the PR head or the earlier pre-final-fix commit.
+
+**Checkpoint 4 disposition:** exact-merge local execution is now satisfied. Formal Operator acceptance/closeout remains pending and is not inferred from successful tests or this documentation update.
 
 **Authority boundary:** B3.2 adds persistence contracts only. It does not register `assess_knowledge_revalidation` or `assess_knowledge_lifecycle`, add worker write grants, implement assessment services, or enable lifecycle commits. The approval allowlist remains exactly `create`. B3.3 is next after Checkpoint 4 closeout and separate written implementation authorization.
