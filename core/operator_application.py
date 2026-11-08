@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
@@ -23,6 +22,14 @@ from core.knowledge_quality import (
     require_recorded_assessment,
 )
 from core.models import Event, LearningChange, Task, Team, TeamPolicy
+from core.operator_approval import (
+    OperatorApprovalValidationError,
+    build_request_fingerprint,
+    canonical_operator_identity,
+    is_supported_learning_change,
+    parse_request_event_payload,
+    validate_decision_reason,
+)
 from core.snapshot_store import SnapshotStore
 
 _APPROVAL_ACTION = "approve_learning_change"
@@ -164,10 +171,10 @@ class OperatorApplicationAdapter:
             if learning_change is None:
                 raise LearningChangeNotApprovable("learning_change_not_found")
 
-            if (
-                learning_change.target_kind != "knowledge_item"
-                or learning_change.operation != "create"
-                or learning_change.target_id is not None
+            if not is_supported_learning_change(
+                target_kind=learning_change.target_kind,
+                operation=learning_change.operation,
+                target_id=learning_change.target_id,
             ):
                 raise LearningChangeNotApprovable(
                     "only_knowledge_item_create_is_supported"
@@ -501,14 +508,10 @@ def _validate_request(
     if request.decision not in ("accept", "reject"):
         raise OperatorApplicationError("invalid_decision")
 
-    reason = request.rejection_reason
-    if request.decision == "reject":
-        if not isinstance(reason, str) or not reason.strip():
-            raise OperatorApplicationError("rejection_reason_required")
-        return reason.strip()
-    if reason is not None:
-        raise OperatorApplicationError("rejection_reason_not_allowed")
-    return None
+    try:
+        return validate_decision_reason(request.decision, request.rejection_reason)
+    except OperatorApprovalValidationError as error:
+        raise OperatorApplicationError(error.reason) from error
 
 
 def _canonical_operator_identity(
@@ -521,28 +524,10 @@ def _canonical_operator_identity(
     ):
         raise InvalidOperatorPrincipal("invalid_operator_grants")
 
-    identity_parts = {
-        "issuer": principal.issuer,
-        "subject": principal.subject,
-    }
-    for label, value in identity_parts.items():
-        if (
-            not isinstance(value, str)
-            or not value
-            or value != value.strip()
-            or any(unicodedata.category(character) == "Cc" for character in value)
-        ):
-            raise InvalidOperatorPrincipal(f"invalid_operator_{label}")
-
-    canonical = json.dumps(
-        {"iss": principal.issuer, "sub": principal.subject},
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    if len(canonical) > 255:
-        raise InvalidOperatorPrincipal("operator_identity_too_long")
-    return canonical
+    try:
+        return canonical_operator_identity(principal.issuer, principal.subject)
+    except OperatorApprovalValidationError as error:
+        raise InvalidOperatorPrincipal(error.reason) from error
 
 
 def _require_team_grant(
@@ -572,24 +557,15 @@ def _request_fingerprint(
     quality_assessment_id: UUID | None,
     quality_assessment_hash: str | None,
 ) -> str:
-    canonical = json.dumps(
-        {
-            "operation": _APPROVAL_ACTION,
-            "team_id": str(team_id),
-            "learning_change_id": str(learning_change_id),
-            "decision": decision,
-            "rejection_reason": rejection_reason,
-            "operator_id": operator_id,
-            "knowledge_quality_assessment_id": (
-                str(quality_assessment_id) if quality_assessment_id else None
-            ),
-            "knowledge_quality_assessment_hash": quality_assessment_hash,
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
+    return build_request_fingerprint(
+        team_id=team_id,
+        learning_change_id=learning_change_id,
+        decision=decision,
+        rejection_reason=rejection_reason,
+        operator_id=operator_id,
+        quality_assessment_id=quality_assessment_id,
+        quality_assessment_hash=quality_assessment_hash,
     )
-    return _sha256(canonical)
 
 
 def _request_event_payload(
@@ -679,6 +655,13 @@ def _verify_existing_request(
         or task.policy_version != policy_version
     ):
         raise OperatorTaskRequestCorrupt("approval_request_policy_pin_mismatch")
+
+    try:
+        parse_request_event_payload(
+            payload, team_id=team_id, policy_version=task.policy_version
+        )
+    except OperatorApprovalValidationError as error:
+        raise OperatorTaskRequestCorrupt(error.reason) from error
 
     if payload.get("schema_version") == 1:
         if request.decision != "reject" or (

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import Barrier
 from typing import Iterator
 from uuid import UUID, uuid4
@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from core.learning_commit import LearningCommitCorrupt, LearningCommitService
 from core.knowledge_quality import (
     DIMENSIONS,
     EVALUATOR_IDENTITY,
@@ -53,7 +54,12 @@ from core.operator_application import (
     OperatorTaskRequestCorrupt,
     TrustedOperatorPrincipal,
 )
-from core.task_runtime import TaskNotEligible, TaskRuntime
+from core.task_runtime import (
+    TaskNotEligible,
+    TaskNotFinalizable,
+    TaskRuntime,
+    TerminalObservation,
+)
 
 
 @dataclass(frozen=True)
@@ -875,3 +881,216 @@ def test_task_runtime_rejects_operator_request_event_identity_tampering(
         TaskNotEligible, match="operator_task_request_fingerprint_invalid"
     ):
         TaskRuntime(session_factory).admit(request_result.task_id)
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["revise", "revalidate", "supersede", "retire"],
+)
+def test_request_creation_rejects_every_unauthorized_lifecycle_operation(
+    session_factory: sessionmaker[Session],
+    approval_context: ApprovalContext,
+    operation: str,
+) -> None:
+    with session_factory.begin() as session:
+        learning_change = session.get(
+            LearningChange, approval_context.learning_change_id
+        )
+        assert learning_change is not None
+        learning_change.operation = operation
+        learning_change.target_id = uuid4()
+
+    with pytest.raises(
+        LearningChangeNotApprovable,
+        match="only_knowledge_item_create_is_supported",
+    ):
+        OperatorApplicationAdapter(session_factory).request_learning_change_decision(
+            _principal(approval_context.team_id),
+            _request(approval_context.learning_change_id),
+        )
+
+    with session_factory() as session:
+        assert session.scalar(
+            select(func.count(Task.id)).where(
+                Task.team_id == approval_context.team_id,
+                Task.task_type == "approve_learning_change",
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count(Event.id))
+            .select_from(Event)
+            .join(Task, Task.id == Event.task_id)
+            .where(
+                Task.team_id == approval_context.team_id,
+                Event.type == "operator_task_requested",
+            )
+        ) == 0
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["revise", "revalidate", "supersede", "retire"],
+)
+def test_task_runtime_rejects_every_unauthorized_lifecycle_operation(
+    session_factory: sessionmaker[Session],
+    approval_context: ApprovalContext,
+    operation: str,
+) -> None:
+    created = OperatorApplicationAdapter(
+        session_factory
+    ).request_learning_change_decision(
+        _principal(approval_context.team_id),
+        _request(approval_context.learning_change_id),
+    )
+    with session_factory.begin() as session:
+        learning_change = session.get(
+            LearningChange, approval_context.learning_change_id
+        )
+        assert learning_change is not None
+        learning_change.operation = operation
+        learning_change.target_id = uuid4()
+
+    with pytest.raises(
+        TaskNotEligible, match="operator_task_request_target_invalid"
+    ):
+        TaskRuntime(session_factory).admit(created.task_id)
+
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        assert task.status == "pending"
+        assert task.attempt_count == 0
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_started",
+            )
+        ) == 0
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["revise", "revalidate", "supersede", "retire"],
+)
+def test_learning_commit_rechecks_create_only_eligibility(
+    session_factory: sessionmaker[Session],
+    snapshot_store,
+    approval_context: ApprovalContext,
+    operation: str,
+) -> None:
+    principal = _principal(approval_context.team_id)
+    created = OperatorApplicationAdapter(
+        session_factory
+    ).request_learning_change_decision(
+        principal, _request(approval_context.learning_change_id)
+    )
+    TaskRuntime(session_factory).admit(created.task_id)
+    with session_factory.begin() as session:
+        learning_change = session.get(
+            LearningChange, approval_context.learning_change_id
+        )
+        assert learning_change is not None
+        learning_change.operation = operation
+        learning_change.target_id = uuid4()
+
+    with pytest.raises(
+        LearningCommitCorrupt, match="operator_task_request_target_invalid"
+    ):
+        LearningCommitService(session_factory, snapshot_store).decide(
+            created.task_id, 1, principal
+        )
+
+    with session_factory() as session:
+        learning_change = session.get(
+            LearningChange, approval_context.learning_change_id
+        )
+        assert learning_change is not None
+        assert learning_change.status == "proposed"
+        assert learning_change.committed_by_task_id is None
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["revise", "revalidate", "supersede", "retire"],
+)
+def test_finalization_rejects_every_unauthorized_lifecycle_operation(
+    session_factory: sessionmaker[Session],
+    approval_context: ApprovalContext,
+    operation: str,
+) -> None:
+    created = OperatorApplicationAdapter(
+        session_factory
+    ).request_learning_change_decision(
+        _principal(approval_context.team_id),
+        _request(approval_context.learning_change_id),
+    )
+    TaskRuntime(session_factory).admit(created.task_id)
+    with session_factory.begin() as session:
+        learning_change = session.get(
+            LearningChange, approval_context.learning_change_id
+        )
+        assert learning_change is not None
+        learning_change.operation = operation
+        learning_change.target_id = uuid4()
+
+    observation = TerminalObservation(
+        task_id=created.task_id,
+        attempt=1,
+        result_category="success_learning_change_accepted",
+        observed_at=datetime.now(timezone.utc),
+        learning_change_id=approval_context.learning_change_id,
+    )
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        with pytest.raises(
+            TaskNotFinalizable, match="operator_task_request_event_invalid"
+        ):
+            TaskRuntime._validate_learning_change_decision_result(
+                session, task, observation
+            )
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["revise", "revalidate", "supersede", "retire"],
+)
+def test_interrupted_recovery_rejects_every_unauthorized_lifecycle_operation(
+    session_factory: sessionmaker[Session],
+    approval_context: ApprovalContext,
+    operation: str,
+) -> None:
+    created = OperatorApplicationAdapter(
+        session_factory
+    ).request_learning_change_decision(
+        _principal(approval_context.team_id),
+        _request(approval_context.learning_change_id),
+    )
+    TaskRuntime(session_factory).admit(created.task_id)
+    now = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        learning_change = session.get(
+            LearningChange, approval_context.learning_change_id
+        )
+        assert learning_change is not None
+        learning_change.operation = operation
+        learning_change.target_id = uuid4()
+        started = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_started",
+            )
+        )
+        assert started is not None
+        started.created_at = now - timedelta(seconds=61)
+
+    with pytest.raises(
+        TaskNotFinalizable, match="operator_task_request_event_invalid"
+    ):
+        TaskRuntime(session_factory).recover_interrupted(now=now)
+
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        assert task.status == "running"
+        assert task.attempt_count == 1
