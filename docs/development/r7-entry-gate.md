@@ -2,9 +2,9 @@
 
 ## Status and authority
 
-**R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 complete; B1 merged; B2 Steps 1–7 accepted and merged; Step 8 inspection/documentation in progress; Step 9 open. B2 is not formally closed. B3–B6 and R7-C remain unauthorized.
+**R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 complete; B1 merged; B2 Steps 1–8 accepted and merged; Step 9 verification planning in progress. B2 is not formally closed. B3–B6 and R7-C remain unauthorized.
 
-- This document records the accepted R7 architecture and separate phase gates. R7-A is complete. R7-B B0 is complete; B1 was accepted and merged through PR #43. B2 Steps 1–7 are accepted and merged through PRs #45, #46, #48, #50, #52, #53 and #55. Step 7 PR #55 merged at `47aad564ac0496f4ff984bc4d937355922d36c77` after hosted and Operator-local exact-head verification (793 tests). Step 8 inspection/documentation is in progress for the integrated regression fixtures defined in the R7-B plan; Step 9 remains open. The active approval allowlist remains exactly `create`. B2 is not formally closed; B3–B6 and R7-C remain unauthorized.
+- This document records the accepted R7 architecture and separate phase gates. R7-A is complete. R7-B B0 is complete; B1 was accepted and merged through PR #43. B2 Steps 1–8 are accepted and merged through PRs #45–#57. Step 8 PR #56 merged at `58d88bafdf33e8ce1af2f5a7ba9af11bfd84cb32`; PR #57 merged at `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`. Hosted CI passed on exact PR #57 head `114a6311534cd116190e3c2f4143fdfb1a2c979b` (806 tests, 77 warnings). Step 9 is now a documentation/planning checkpoint for exact-head verification and formal B2 exit; Operator-local verification on the Step 8 code head remains outstanding. The active approval allowlist remains exactly `create`. B2 is not formally closed; B3–B6 and R7-C remain unauthorized.
 - ADR-0032 remains **Accepted — 2026-11-04 for the original R7 architecture and R7-A scope**. Its R7-B D1/D5 design extension and B0.3 integrity contracts are separately accepted for design on 2026-11-05; this does not authorize implementation.
 - PLAN.md remains the sole authority for milestone status and next action.
 - R6 is formally complete through R6-G. R6-G approval and merge do not authorize R7.
@@ -27,13 +27,13 @@ R7 starts from the current main tree after R7-A was merged:
 - D9 remains ingestion execution-contract conformance only. R7-A adds distinct KnowledgeQualityAssessment for create proposals; no production evaluator provider was selected.
 - LearningChange schema vocabulary includes create/revise/retire, but commit service and approval guards remain create-only. Schema strings do not authorize implementation.
 - KnowledgeItem has origin_learning_change_id only; current_learning_change_id and superseded_by_id are not implemented. Status remains active/needs_review/retired. review_knowledge owns only active → needs_review.
-- Team Experience projection is rebuildable. B2 Steps 2–6 now provide current LearningChange/hash-scheme pins, final provider-space publication revalidation, stale legacy republish, reciprocal supersession retrieval gates, and Context manifest v3; historical Context v1/v2 replay remains byte-exact. Step 8 is adding integrated regression fixtures across these existing paths.
+- Team Experience projection is rebuildable. B2 Steps 2–6 provide current LearningChange/hash-scheme pins, final provider-space publication revalidation, stale legacy republish, reciprocal supersession retrieval gates, and Context manifest v3; historical Context v1/v2 replay remains byte-exact. Step 8's integrated fixtures are merged; Step 9 will verify the exact final code head locally and in hosted CI.
 
 The baseline commit does not prove the Operator's local branch, HEAD, worktree or database. R7-B preflight must run against the actual checkout.
 
 ## 3. Scope and authorized delivery sequence
 
-R7-0 documentation is complete and merged. ADR-0032's original architecture acceptance is scoped to R7-A; its R7-B design extension was separately accepted on 2026-11-05. R7-A is complete and merged through PR #39. R7-B B0 is complete and B1 is accepted and merged. B2 implementation was separately authorized on 2026-11-06; Steps 1–7 are accepted and merged through PRs #45, #46, #48, #50, #52, #53 and #55. Step 8 inspection/documentation is in progress for integrated regression fixtures; Step 9 remains the final verification and formal B2 exit gate. B3–B6 and R7-C remain unauthorized.
+R7-0 documentation is complete and merged. ADR-0032's original architecture acceptance is scoped to R7-A; its R7-B design extension was separately accepted on 2026-11-05. R7-A is complete and merged through PR #39. R7-B B0 is complete and B1 is accepted and merged. B2 implementation was separately authorized on 2026-11-06; Steps 1–8 are accepted and merged through PR #57. Step 9 is the final exact-head verification and formal B2 exit gate; this checkpoint only plans that work and does not execute it. B3–B6 and R7-C remain unauthorized.
 
 ### R7-A — Evidence relationships and knowledge-quality assessment
 
@@ -65,7 +65,7 @@ Exit requirements:
 
 ### R7-B — Canonical KnowledgeItem lifecycle
 
-**Status (2026-11-08):** B0 is complete. B1 was accepted and merged through PR #43. B2 Steps 1–7 are accepted and merged through PRs #45, #46, #48, #50, #52, #53 and #55. Step 7 passed hosted and Operator-local exact-head verification (793 tests). Step 8 inspection/documentation is in progress for the integrated fixture matrix; Step 9 and formal B2 exit remain open. The active approval allowlist must remain exactly `create`. B3–B6 and R7-C remain unauthorized.
+**Status (2026-11-08):** B0 is complete. B1 was accepted and merged through PR #43. B2 Steps 1–8 are accepted and merged through PR #57. Step 8 exact-head hosted CI passed (806 tests, 77 warnings); Operator-local verification on the same code head remains outstanding. Step 9 planning is documentation-only; final exact-head verification and formal B2 exit remain open. The active approval allowlist must remain exactly `create`. B3–B6 and R7-C remain unauthorized.
 
 R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path to revise, revalidate, supersede and retire KnowledgeItems. It preserves stable item identity, immutable origin provenance, current-pointer history, Team isolation, D7 review rules, and fail-closed retrieval. It adds no runtime, dispatcher, scheduler, public API/auth stack or production evaluator provider.
 
@@ -81,7 +81,7 @@ R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path 
 6. **B5 — Supersede/retire/candidate creation:** create-with-successor, reciprocal publication gate, D7-aware commit, abandoned-candidate rules, consistent-snapshot Context validation, and Team-scoped graph lock.
 7. **B6 — Legacy compatibility and hardening:** legacy Events/snapshots, repeated review/revalidation, replay after later transitions, mutation rejection and full regression verification.
 
-**Implementation gate:** B1 and B2 were separately authorized; B2 Steps 1–7 are accepted and merged. Step 8 is in inspection/documentation only at this checkpoint; its integrated test implementation remains bounded by the frozen B2 contract. The active approval allowlist remains exactly `create`. Step 9 and formal B2 exit remain open. B3–B6 require their own later phase authorizations. No R7-C work is authorized.
+**Implementation gate:** B1 and B2 were separately authorized; B2 Steps 1–8 are accepted and merged. Step 9 planning is documentation-only; its execution is limited to final exact-head verification and the explicit B2 exit gate. The active approval allowlist remains exactly `create`. B3–B6 require their own later phase authorizations. No R7-C work is authorized.
 
 ### R7-C — Retrieval quality and downstream-use evaluation
 
@@ -200,4 +200,4 @@ No source code, tests, migrations, schema, runtime configuration, provider confi
 
 **R7-A closeout:** PR #39 merged to main at 75122a7b34c15e2445b81a2a719020667b55bf06. Tested head 47ffa532dacbc10b146ac7b0768302761a2a0b1b has identical Git tree. Hosted CI [41844600681](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41844600681) passed; Operator-local disposable-PostgreSQL verification passed 631 tests in 79.22s, fresh single-head 0014_knowledge_quality migration, Ruff, Mypy and cleanup.
 
-**Current gate:** R7-0, R7-A, R7-B B0 and B1 are complete. B2 Steps 1–7 are accepted and merged. Step 8 inspection/documentation is in progress; Step 9 is the final verification and explicit B2 exit review. The active approval allowlist remains exactly `create`. B3–B6 and R7-C remain unauthorized.
+**Current gate:** R7-0, R7-A, R7-B B0 and B1 are complete. B2 Steps 1–8 are accepted and merged. Step 9 verification planning is in progress; exact-head hosted and Operator-local verification plus explicit B2 exit acceptance remain outstanding. The active approval allowlist remains exactly `create`. B3–B6 and R7-C remain unauthorized.
