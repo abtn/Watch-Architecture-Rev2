@@ -125,7 +125,9 @@ def upgrade() -> None:
         sa.Column("proposal_hash", sa.String(length=71), nullable=False),
         sa.Column("proposed_state_hash", sa.String(length=71), nullable=False),
         sa.Column("evidence_basis_hash", sa.String(length=71), nullable=False),
-        sa.Column("evidence_refs", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column(
+            "evidence_refs", postgresql.JSONB(astext_type=sa.Text()), nullable=False
+        ),
         sa.Column("assessment_version", sa.Integer(), nullable=False),
         sa.Column("evaluator_identity", sa.String(length=255), nullable=False),
         sa.Column("evaluator_revision", sa.String(length=255), nullable=False),
@@ -280,7 +282,9 @@ def upgrade() -> None:
         sa.Column("evidence_refs", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("assessment_version", sa.Integer(), nullable=False),
         sa.Column(
-            "operator_rationale", postgresql.JSONB(astext_type=sa.Text()), nullable=False
+            "operator_rationale",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=False,
         ),
         sa.Column("findings", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("assessment_result", sa.String(length=32), nullable=False),
@@ -431,7 +435,8 @@ def upgrade() -> None:
             "successor_content_hash_scheme IS NULL AND successor_status IS NULL AND "
             "successor_review_after IS NULL AND successor_state_hash IS NULL) OR "
             "(operation = 'supersede' AND "
-            "variant_payload = jsonb_build_object('successor_team_id', variant_payload->'successor_team_id') AND "
+            "variant_payload = jsonb_build_object("
+            "'successor_team_id', variant_payload->'successor_team_id') AND "
             "variant_payload ? 'successor_team_id' AND "
             "variant_payload->>'successor_team_id' IS NOT NULL AND "
             "variant_payload->>'successor_team_id' = team_id::text AND "
