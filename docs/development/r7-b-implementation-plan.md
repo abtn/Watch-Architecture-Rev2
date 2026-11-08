@@ -2,7 +2,7 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (updated 2026-11-08):** **B0 complete; B1 accepted and merged; B2 formally closed with accepted residual verification gaps; B3.2 merged by PR #60; Checkpoint 4 post-merge review and exact-merge local verification pending.** PR #60 merged to `main` at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; final PR head `0eecefedbc4ef6e4b60cbd8c3eacf31e1256f362` passed hosted CI run [42496681657](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42496681657): fresh PostgreSQL migration/single-head, Ruff, Mypy, and 823 tests (95 warnings). Earlier local verification on `02913493f1c82bda25aaa8e843097b9f4c2a7c52` passed 13 focused and 819 full tests with static checks, but predates final PR fixes and is not exact-merge evidence. B3.3 has not started; its implementation remains gated on Checkpoint 4 closeout and separate written Operator authorization. The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain unauthorized.
+**Status (updated 2026-11-08):** **B0 complete; B1 accepted and merged; B2 formally closed with accepted residual verification gaps; B3.2 merged by PR #60; exact-merge Operator-local verification passed; formal Checkpoint 4 closeout pending.** PR #60 merged to `main` at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; final PR head `0eecefedbc4ef6e4b60cbd8c3eacf31e1256f362` passed hosted CI run [42496681657](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42496681657): fresh PostgreSQL migration/single-head, Ruff, Mypy, and 823 tests (95 warnings). Operator-local verification passed on the exact merge SHA: migration/single-head at `0017_r7b_assessments`, 9 model tests, 8 migration tests, Ruff, Mypy (33 files), 823 full-suite tests (95 warnings, 123.45s), and both diff checks. The disposable container was removed and database environment values restored; detailed evidence is in `docs/testing.md`. B3.3 has not started; its implementation remains gated on formal Checkpoint 4 closeout and separate written Operator authorization. The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain unauthorized.
 
 
 
@@ -497,7 +497,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 
 #### B3.2 Checkpoint 4 — Post-merge contract review and exact-merge verification
 
-**Status:** in progress; PR #60 is merged, but B3.2 closeout is not yet recorded.
+**Status:** exact-merge local verification passed on 2026-11-08; formal Checkpoint 4 acceptance/closeout remains pending.
 
 **Merged implementation and hosted evidence**
 - PR [#60](https://github.com/abtn/Watch-Architecture-Rev2/pull/60) merged to `main` at `31be3a25cf7f52ca81eab65cc10280a855738c3d`.
@@ -517,13 +517,21 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 - The earlier local run was on `02913493f1c82bda25aaa8e843097b9f4c2a7c52`, before the final PR fixes. It reached `0017_r7b_assessments`, verified one Alembic head, passed Ruff/Mypy, 13 focused tests, 819 full-suite tests (87 warnings), and `git diff --check`.
 - Because the final PR head added the whitespace-only identity corrections and additional PostgreSQL regression coverage, this earlier local result must not be reported as verification of merge commit `31be3a25cf7f52ca81eab65cc10280a855738c3d`.
 
-**Operator-local Checkpoint 4 exit requirements**
-1. Synchronize local `main` to exact merge commit `31be3a25cf7f52ca81eab65cc10280a855738c3d` without discarding local work.
-2. Confirm clean worktree, exact HEAD, and `origin/main` relation before tests.
-3. Run migration upgrade and verify `0017_r7b_assessments` is the database revision and the single Alembic head on a fresh disposable PostgreSQL database.
-4. Run `tests/test_r7b_assessment_migration.py` and `tests/test_r7b_assessment_models.py` as focused groups, then Ruff, Mypy, the full suite, and `git diff --check`.
-5. Restore original `DATABASE_URL` and `TEST_DATABASE_URL`; confirm only the disposable container created by the runner was removed. Never target persistent `watch` or host port 5432.
-6. Record exact local SHA, exact commands/results, warning details (including any Alembic `path_separator` deprecation warnings), and cleanup evidence. Compare the local SHA to the merged implementation SHA; do not substitute the PR head or an earlier pre-fix commit.
+**Operator-local exact-merge verification — PASSED (2026-11-08)**
+
+- Tested SHA: `31be3a25cf7f52ca81eab65cc10280a855738c3d`; local `main` was fast-forwarded to the exact `origin/main` merge commit after a clean-worktree preflight.
+- `uv sync --locked` passed.
+- Fresh disposable PostgreSQL container `watch-r7b-b3c4-15bc377052`, database `watch_r7b_b3c4_15bc377052`, dynamically assigned loopback port `29544`.
+- `uv run alembic upgrade head` passed; database revision and sole Alembic head: `0017_r7b_assessments`.
+- Focused tests: `uv run pytest tests/test_r7b_assessment_models.py -q` → **9 passed**; `uv run pytest tests/test_r7b_assessment_migration.py -q` → **8 passed, 18 warnings**.
+- `uv run ruff check core tests migrations` passed.
+- `uv run mypy core` passed (33 source files).
+- `uv run pytest -q` → **823 passed, 95 warnings in 123.45s**.
+- Both `git diff --check 31be3a25cf7f52ca81eab65cc10280a855738c3d^ 31be3a25cf7f52ca81eab65cc10280a855738c3d` and worktree `git diff --check` passed.
+- Original `DATABASE_URL` and `TEST_DATABASE_URL` values were restored. The runner removed only its disposable container; removal was confirmed. Persistent `watch` and host port 5432 were not targeted.
+- All 95 warnings were Alembic `path_separator` deprecation warnings: 18 from assessment migration tests, 65 from `tests/test_r7b_history_migration.py`, and 12 from `tests/test_team_experience_projection_migration.py`. They did not fail tests or checks.
+
+This is exact-merge local evidence, not a result on the PR head or the earlier pre-final-fix commit.
 
 **Checkpoint 4 acceptance boundary:** B3.2 may be recorded closed only after the schema/contract review and exact-merge local verification are accepted and documented. B3.3 remains the next stage, but this closeout does not itself authorize its implementation. The create-only approval allowlist and all B3 authority boundaries remain unchanged.
 
