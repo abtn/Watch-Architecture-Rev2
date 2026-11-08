@@ -1136,13 +1136,9 @@ class KnowledgeRevalidationAssessment(Base):
             name="fk_knowledge_revalidation_assessments_knowledge_item_team",
         ),
         ForeignKeyConstraint(
-            ["current_learning_change_id", "knowledge_item_id", "team_id"],
-            [
-                "learning_changes.id",
-                "learning_changes.target_id",
-                "learning_changes.team_id",
-            ],
-            name="fk_knowledge_revalidation_assessments_current_change_target_team",
+            ["current_learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_knowledge_revalidation_assessments_current_change_team",
         ),
         ForeignKeyConstraint(
             ["request_event_id", "task_id"],
@@ -1311,13 +1307,9 @@ class KnowledgeLifecycleAssessment(Base):
             name="fk_knowledge_lifecycle_assessments_knowledge_item_team",
         ),
         ForeignKeyConstraint(
-            ["current_learning_change_id", "knowledge_item_id", "team_id"],
-            [
-                "learning_changes.id",
-                "learning_changes.target_id",
-                "learning_changes.team_id",
-            ],
-            name="fk_knowledge_lifecycle_assessments_current_change_target_team",
+            ["current_learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_knowledge_lifecycle_assessments_current_change_team",
         ),
         ForeignKeyConstraint(
             ["successor_knowledge_item_id", "team_id"],
@@ -1325,17 +1317,9 @@ class KnowledgeLifecycleAssessment(Base):
             name="fk_knowledge_lifecycle_assessments_successor_item_team",
         ),
         ForeignKeyConstraint(
-            [
-                "successor_current_learning_change_id",
-                "successor_knowledge_item_id",
-                "team_id",
-            ],
-            [
-                "learning_changes.id",
-                "learning_changes.target_id",
-                "learning_changes.team_id",
-            ],
-            name="fk_knowledge_lifecycle_assessments_successor_current_change_target_team",
+            ["successor_current_learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_knowledge_lifecycle_assessments_successor_current_change_team",
         ),
         ForeignKeyConstraint(
             ["learning_change_id"],
