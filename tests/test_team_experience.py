@@ -2145,6 +2145,7 @@ def test_offset_aware_d7_review_boundary_is_strict(
     )
     assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
 
+
 @pytest.mark.parametrize(
     "tamper",
     [
@@ -2232,6 +2233,7 @@ def test_canonicality_tampering_blocks_retrieval_and_context_inclusion(
         retriever,
     ).assemble(task_id)
     assert assembled.document["knowledge"]["team_experience"] == []
+
 
 @pytest.mark.parametrize(
     "manifest_version",
