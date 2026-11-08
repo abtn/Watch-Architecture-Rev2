@@ -1108,7 +1108,8 @@ class KnowledgeRevalidationAssessment(Base):
     __tablename__ = "knowledge_revalidation_assessments"
     __table_args__ = (
         ForeignKeyConstraint(
-            ["task_id", "team_id"], ["tasks.id", "tasks.team_id"],
+            ["task_id", "team_id"],
+            ["tasks.id", "tasks.team_id"],
             name="fk_knowledge_revalidation_assessments_task_team",
         ),
         ForeignKeyConstraint(
@@ -1140,21 +1141,26 @@ class KnowledgeRevalidationAssessment(Base):
             name="fk_knowledge_revalidation_assessments_current_change_team",
         ),
         ForeignKeyConstraint(
-            ["request_event_id", "task_id"], ["events.id", "events.task_id"],
+            ["request_event_id", "task_id"],
+            ["events.id", "events.task_id"],
             name="fk_knowledge_revalidation_assessments_request_event_task",
         ),
         ForeignKeyConstraint(
-            ["recorded_event_id", "task_id"], ["events.id", "events.task_id"],
+            ["recorded_event_id", "task_id"],
+            ["events.id", "events.task_id"],
             name="fk_knowledge_revalidation_assessments_recorded_event_task",
         ),
         UniqueConstraint(
-            "id", "team_id", name="uq_knowledge_revalidation_assessments_id_team"
+            "id", "team_id",
+            name="uq_knowledge_revalidation_assessments_id_team",
         ),
         UniqueConstraint(
             "team_id", "learning_change_id",
             name="uq_knowledge_revalidation_assessments_team_learning_change",
         ),
-        UniqueConstraint("task_id", name="uq_knowledge_revalidation_assessments_task"),
+        UniqueConstraint(
+            "task_id", name="uq_knowledge_revalidation_assessments_task"
+        ),
         UniqueConstraint(
             "task_id", "idempotency_key",
             name="uq_knowledge_revalidation_assessments_task_idempotency",
@@ -1179,7 +1185,7 @@ class KnowledgeRevalidationAssessment(Base):
         CheckConstraint(
             "length(idempotency_key) > 0 AND length(evaluator_identity) > 0 "
             "AND length(evaluator_revision) > 0",
-            name="ck_knowledge_revalidation_assessments_idempotency",
+            name="ck_knowledge_revalidation_assessments_identity",
         ),
         CheckConstraint(
             "target_content_hash ~ '^sha256:[0-9a-f]{64}$' AND "
@@ -1220,22 +1226,30 @@ class KnowledgeRevalidationAssessment(Base):
     team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     task_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     task_attempt: Mapped[int] = mapped_column(nullable=False)
-    learning_change_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    learning_change_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
     operation: Mapped[str] = mapped_column(
         String(16), nullable=False, default="revalidate", server_default="revalidate"
     )
-    knowledge_item_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    knowledge_item_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
     current_learning_change_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), nullable=False
     )
     target_content_version: Mapped[int] = mapped_column(nullable=False)
     target_content_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    target_content_hash_scheme: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_content_hash_scheme: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )
     target_state_hash: Mapped[str] = mapped_column(String(71), nullable=False)
     proposal_hash: Mapped[str] = mapped_column(String(71), nullable=False)
     proposed_state_hash: Mapped[str] = mapped_column(String(71), nullable=False)
     evidence_basis_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    evidence_refs: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    evidence_refs: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False
+    )
     assessment_version: Mapped[int] = mapped_column(nullable=False)
     evaluator_identity: Mapped[str] = mapped_column(String(255), nullable=False)
     evaluator_revision: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -1244,9 +1258,15 @@ class KnowledgeRevalidationAssessment(Base):
     assessment_result: Mapped[str] = mapped_column(String(32), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     request_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    request_event_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    request_event_payload_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    recorded_event_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    request_event_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
+    request_event_payload_hash: Mapped[str] = mapped_column(
+        String(71), nullable=False
+    )
+    recorded_event_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -1259,21 +1279,31 @@ class KnowledgeLifecycleAssessment(Base):
     __tablename__ = "knowledge_lifecycle_assessments"
     __table_args__ = (
         ForeignKeyConstraint(
-            ["task_id", "team_id"], ["tasks.id", "tasks.team_id"],
+            ["task_id", "team_id"],
+            ["tasks.id", "tasks.team_id"],
             name="fk_knowledge_lifecycle_assessments_task_team",
         ),
         ForeignKeyConstraint(
             ["learning_change_id", "operation", "team_id"],
-            ["learning_changes.id", "learning_changes.operation", "learning_changes.team_id"],
+            [
+                "learning_changes.id",
+                "learning_changes.operation",
+                "learning_changes.team_id",
+            ],
             name="fk_knowledge_lifecycle_assessments_learning_change_operation_team",
         ),
         ForeignKeyConstraint(
             ["learning_change_id", "knowledge_item_id", "team_id"],
-            ["learning_changes.id", "learning_changes.target_id", "learning_changes.team_id"],
+            [
+                "learning_changes.id",
+                "learning_changes.target_id",
+                "learning_changes.team_id",
+            ],
             name="fk_knowledge_lifecycle_assessments_learning_change_target_team",
         ),
         ForeignKeyConstraint(
-            ["knowledge_item_id", "team_id"], ["knowledge_items.id", "knowledge_items.team_id"],
+            ["knowledge_item_id", "team_id"],
+            ["knowledge_items.id", "knowledge_items.team_id"],
             name="fk_knowledge_lifecycle_assessments_knowledge_item_team",
         ),
         ForeignKeyConstraint(
@@ -1297,21 +1327,26 @@ class KnowledgeLifecycleAssessment(Base):
             name="fk_knowledge_lifecycle_assessments_operator_provenance",
         ),
         ForeignKeyConstraint(
-            ["request_event_id", "task_id"], ["events.id", "events.task_id"],
+            ["request_event_id", "task_id"],
+            ["events.id", "events.task_id"],
             name="fk_knowledge_lifecycle_assessments_request_event_task",
         ),
         ForeignKeyConstraint(
-            ["recorded_event_id", "task_id"], ["events.id", "events.task_id"],
+            ["recorded_event_id", "task_id"],
+            ["events.id", "events.task_id"],
             name="fk_knowledge_lifecycle_assessments_recorded_event_task",
         ),
         UniqueConstraint(
-            "id", "team_id", name="uq_knowledge_lifecycle_assessments_id_team"
+            "id", "team_id",
+            name="uq_knowledge_lifecycle_assessments_id_team",
         ),
         UniqueConstraint(
             "team_id", "learning_change_id",
             name="uq_knowledge_lifecycle_assessments_team_learning_change",
         ),
-        UniqueConstraint("task_id", name="uq_knowledge_lifecycle_assessments_task"),
+        UniqueConstraint(
+            "task_id", name="uq_knowledge_lifecycle_assessments_task"
+        ),
         UniqueConstraint(
             "task_id", "idempotency_key",
             name="uq_knowledge_lifecycle_assessments_task_idempotency",
@@ -1387,7 +1422,7 @@ class KnowledgeLifecycleAssessment(Base):
         ),
         CheckConstraint(
             "successor_content_hash IS NULL OR "
-            "successor_content_hash ~ '^sha256:[0-9a-f]{64}
+            "successor_content_hash ~ '^sha256:[0-9a-f]{64}$'",
             name="ck_knowledge_lifecycle_assessments_successor_hash",
         ),
         CheckConstraint(
@@ -1402,7 +1437,7 @@ class KnowledgeLifecycleAssessment(Base):
         ),
         CheckConstraint(
             "successor_state_hash IS NULL OR "
-            "successor_state_hash ~ '^sha256:[0-9a-f]{64}
+            "successor_state_hash ~ '^sha256:[0-9a-f]{64}$'",
             name="ck_knowledge_lifecycle_assessments_successor_state_hash",
         ),
         CheckConstraint(
@@ -1419,20 +1454,32 @@ class KnowledgeLifecycleAssessment(Base):
     team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     task_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     task_attempt: Mapped[int] = mapped_column(nullable=False)
-    learning_change_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    learning_change_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
     operation: Mapped[str] = mapped_column(String(16), nullable=False)
-    knowledge_item_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    current_learning_change_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    knowledge_item_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
+    current_learning_change_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
     target_content_version: Mapped[int] = mapped_column(nullable=False)
     target_content_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    target_content_hash_scheme: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_content_hash_scheme: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )
     target_state_hash: Mapped[str] = mapped_column(String(71), nullable=False)
     proposal_hash: Mapped[str] = mapped_column(String(71), nullable=False)
     proposed_state_hash: Mapped[str] = mapped_column(String(71), nullable=False)
     evidence_basis_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    evidence_refs: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    evidence_refs: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False
+    )
     assessment_version: Mapped[int] = mapped_column(nullable=False)
-    operator_rationale: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    operator_rationale: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False
+    )
     findings: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
     assessment_result: Mapped[str] = mapped_column(String(32), nullable=False)
     variant_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -1449,177 +1496,27 @@ class KnowledgeLifecycleAssessment(Base):
     successor_content_hash_scheme: Mapped[str | None] = mapped_column(
         String(64), nullable=True
     )
-    successor_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    successor_status: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
     successor_review_after: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    successor_state_hash: Mapped[str | None] = mapped_column(String(71), nullable=True)
-    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
-    request_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    request_event_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    request_event_payload_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    recorded_event_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    payload_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-",
-            name="ck_knowledge_lifecycle_assessments_successor_hash",
-        ),
-        CheckConstraint(
-            "successor_content_hash_scheme IS NULL OR successor_content_hash_scheme = 'watch.r7b.knowledge-content.v2'",
-            name="ck_knowledge_lifecycle_assessments_successor_hash_scheme",
-        ),
-        CheckConstraint(
-            "successor_status IS NULL OR successor_status IN ('active', 'needs_review', 'retired')",
-            name="ck_knowledge_lifecycle_assessments_successor_status",
-        ),
-        CheckConstraint(
-            "successor_state_hash IS NULL OR successor_state_hash ~ '^sha256:[0-9a-f]{64}$'",
-            name="ck_knowledge_lifecycle_assessments_successor_state_hash",
-        ),
-        CheckConstraint(
-            "assessment_result IN ('eligible', 'ineligible')",
-            name="ck_knowledge_lifecycle_assessments_result",
-        ),
-        CheckConstraint("request_event_id <> recorded_event_id", name="ck_knowledge_lifecycle_assessments_distinct_events"),
+    successor_state_hash: Mapped[str | None] = mapped_column(
+        String(71), nullable=True
     )
-
-    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-    team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    task_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    task_attempt: Mapped[int] = mapped_column(nullable=False)
-    learning_change_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    operation: Mapped[str] = mapped_column(String(16), nullable=False)
-    knowledge_item_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    current_learning_change_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    target_content_version: Mapped[int] = mapped_column(nullable=False)
-    target_content_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    target_content_hash_scheme: Mapped[str] = mapped_column(String(64), nullable=False)
-    target_state_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    proposal_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    proposed_state_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    evidence_basis_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    evidence_refs: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
-    assessment_version: Mapped[int] = mapped_column(nullable=False)
-    operator_rationale: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    findings: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
-    assessment_result: Mapped[str] = mapped_column(String(32), nullable=False)
-    variant_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    successor_knowledge_item_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
-    successor_current_learning_change_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
-    successor_content_version: Mapped[int | None] = mapped_column(nullable=True)
-    successor_content_hash: Mapped[str | None] = mapped_column(String(71), nullable=True)
-    successor_content_hash_scheme: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    successor_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    successor_review_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    successor_state_hash: Mapped[str | None] = mapped_column(String(71), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     request_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    request_event_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    request_event_payload_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    recorded_event_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    payload_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-",
-            name="ck_knowledge_lifecycle_assessments_successor_state_hash",
-        ),
-        CheckConstraint(
-            "assessment_result IN ('eligible', 'ineligible')",
-            name="ck_knowledge_lifecycle_assessments_result",
-        ),
-        CheckConstraint("request_event_id <> recorded_event_id", name="ck_knowledge_lifecycle_assessments_distinct_events"),
+    request_event_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
     )
-
-    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-    team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    task_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    task_attempt: Mapped[int] = mapped_column(nullable=False)
-    learning_change_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    operation: Mapped[str] = mapped_column(String(16), nullable=False)
-    knowledge_item_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    current_learning_change_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    target_content_version: Mapped[int] = mapped_column(nullable=False)
-    target_content_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    target_content_hash_scheme: Mapped[str] = mapped_column(String(64), nullable=False)
-    target_state_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    proposal_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    proposed_state_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    evidence_basis_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    evidence_refs: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
-    assessment_version: Mapped[int] = mapped_column(nullable=False)
-    operator_rationale: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    findings: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
-    assessment_result: Mapped[str] = mapped_column(String(32), nullable=False)
-    variant_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    successor_knowledge_item_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
-    successor_current_learning_change_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
-    successor_content_version: Mapped[int | None] = mapped_column(nullable=True)
-    successor_content_hash: Mapped[str | None] = mapped_column(String(71), nullable=True)
-    successor_content_hash_scheme: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    successor_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    successor_review_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    successor_state_hash: Mapped[str | None] = mapped_column(String(71), nullable=True)
-    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
-    request_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    request_event_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    request_event_payload_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    recorded_event_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    payload_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-",
-            name="ck_knowledge_lifecycle_assessments_successor_hash",
-        ),
-        CheckConstraint(
-            "successor_content_hash_scheme IS NULL OR successor_content_hash_scheme = 'watch.r7b.knowledge-content.v2'",
-            name="ck_knowledge_lifecycle_assessments_successor_hash_scheme",
-        ),
-        CheckConstraint(
-            "successor_status IS NULL OR successor_status IN ('active', 'needs_review', 'retired')",
-            name="ck_knowledge_lifecycle_assessments_successor_status",
-        ),
-        CheckConstraint(
-            "successor_state_hash IS NULL OR successor_state_hash ~ '^sha256:[0-9a-f]{64}$'",
-            name="ck_knowledge_lifecycle_assessments_successor_state_hash",
-        ),
-        CheckConstraint(
-            "assessment_result IN ('eligible', 'ineligible')",
-            name="ck_knowledge_lifecycle_assessments_result",
-        ),
-        CheckConstraint("request_event_id <> recorded_event_id", name="ck_knowledge_lifecycle_assessments_distinct_events"),
+    request_event_payload_hash: Mapped[str] = mapped_column(
+        String(71), nullable=False
     )
-
-    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-    team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    task_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    task_attempt: Mapped[int] = mapped_column(nullable=False)
-    learning_change_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    operation: Mapped[str] = mapped_column(String(16), nullable=False)
-    knowledge_item_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    current_learning_change_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    target_content_version: Mapped[int] = mapped_column(nullable=False)
-    target_content_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    target_content_hash_scheme: Mapped[str] = mapped_column(String(64), nullable=False)
-    target_state_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    proposal_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    proposed_state_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    evidence_basis_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    evidence_refs: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
-    assessment_version: Mapped[int] = mapped_column(nullable=False)
-    operator_rationale: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    findings: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
-    assessment_result: Mapped[str] = mapped_column(String(32), nullable=False)
-    variant_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    successor_knowledge_item_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
-    successor_current_learning_change_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
-    successor_content_version: Mapped[int | None] = mapped_column(nullable=True)
-    successor_content_hash: Mapped[str | None] = mapped_column(String(71), nullable=True)
-    successor_content_hash_scheme: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    successor_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    successor_review_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    successor_state_hash: Mapped[str | None] = mapped_column(String(71), nullable=True)
-    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
-    request_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    request_event_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    request_event_payload_hash: Mapped[str] = mapped_column(String(71), nullable=False)
-    recorded_event_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
-    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_event_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     payload_hash: Mapped[str] = mapped_column(String(71), nullable=False)
