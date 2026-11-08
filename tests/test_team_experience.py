@@ -42,6 +42,7 @@ from core.models import (
 )
 from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
 from core.snapshot_store import SnapshotStore
+from core.state_assessment import _canonical_json
 from core.task_runtime import TaskNotFinalizable, TaskRuntime, TerminalObservation
 
 
@@ -2231,4 +2232,66 @@ def test_canonicality_tampering_blocks_retrieval_and_context_inclusion(
         retriever,
     ).assemble(task_id)
     assert assembled.document["knowledge"]["team_experience"] == []
+
+@pytest.mark.parametrize(
+    "manifest_version",
+    ["r6e-context-manifest-v1", "r6e-context-manifest-v2"],
+)
+def test_legacy_context_replay_with_team_experience_does_not_recalculate_item_hash(
+    experience_env: TeamExperienceEnv,
+    manifest_version: str,
+) -> None:
+    item_id = experience_env.add_accepted_item()
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+    assert indexer.index_knowledge_item(item_id).outcome == "indexed"
+    task_id = experience_env.add_strategy_task(
+        "Use the alpha practice to review a new source."
+    )
+    retriever = HybridKnowledgeRetriever(
+        experience_env.session_factory, experience_env.snapshot_store, provider
+    )
+    initial = TaskContextAssembler(
+        experience_env.session_factory,
+        experience_env.snapshot_store,
+        retriever,
+    ).assemble(task_id)
+    assert initial.document["knowledge"]["team_experience"]
+
+    historical_manifest = dict(initial.manifest)
+    historical_manifest["schema_version"] = manifest_version
+    historical_document = dict(initial.document)
+    historical_document["manifest"] = historical_manifest
+    historical_bytes = _canonical_json(historical_document).encode("utf-8")
+    historical_ref, historical_hash = experience_env.snapshot_store.put(
+        historical_bytes
+    )
+
+    with experience_env.session_factory.begin() as session:
+        event = session.get(Event, initial.event_id)
+        assert event is not None
+        event.payload = {
+            "schema_version": manifest_version,
+            "snapshot_ref": historical_ref,
+            "content_hash": historical_hash,
+            "manifest": historical_manifest,
+        }
+        item = session.get(KnowledgeItem, item_id)
+        assert item is not None
+        item.body = "Changed after the historical Context snapshot."
+
+    provider_calls_before_replay = provider.calls
+    replay = TaskContextAssembler(
+        experience_env.session_factory,
+        experience_env.snapshot_store,
+        retriever,
+    ).assemble(task_id)
+
+    assert replay.replayed is True
+    assert replay.snapshot_ref == historical_ref
+    assert replay.content_hash == historical_hash
+    assert replay.manifest == historical_manifest
+    assert replay.document == historical_document
+    assert experience_env.snapshot_store.read(replay.snapshot_ref) == historical_bytes
+    assert provider.calls == provider_calls_before_replay
 
