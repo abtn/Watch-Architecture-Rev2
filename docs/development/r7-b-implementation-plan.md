@@ -2,7 +2,7 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (updated 2026-11-08):** **B0 complete; B1 accepted and merged; B2 formally closed with accepted residual verification gaps; B3.2 merged by PR #60; exact-merge Operator-local verification passed; formal Checkpoint 4 closeout pending.** PR #60 merged to `main` at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; final PR head `0eecefedbc4ef6e4b60cbd8c3eacf31e1256f362` passed hosted CI run [42496681657](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42496681657): fresh PostgreSQL migration/single-head, Ruff, Mypy, and 823 tests (95 warnings). Operator-local verification passed on the exact merge SHA: migration/single-head at `0017_r7b_assessments`, 9 model tests, 8 migration tests, Ruff, Mypy (33 files), 823 full-suite tests (95 warnings, 123.45s), and both diff checks. The disposable container was removed and database environment values restored; detailed evidence is in `docs/testing.md`. B3.3 has not started; its implementation remains gated on formal Checkpoint 4 closeout and separate written Operator authorization. The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain unauthorized.
+**Status (updated 2026-11-08):** **B0 complete; B1 accepted and merged; B2 formally closed with accepted residual verification gaps; B3.2 merged by PR #60; exact-merge Operator-local verification passed; Checkpoint 4 formally accepted on 2026-11-08; B3.3 explicitly authorized.** PR #60 merged to `main` at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; final PR head `0eecefedbc4ef6e4b60cbd8c3eacf31e1256f362` passed hosted CI run [42496681657](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42496681657): fresh PostgreSQL migration/single-head, Ruff, Mypy, and 823 tests (95 warnings). Operator-local verification passed on the exact merge SHA: migration/single-head at `0017_r7b_assessments`, 9 model tests, 8 migration tests, Ruff, Mypy (33 files), 823 full-suite tests (95 warnings, 123.45s), and both diff checks. The disposable container was removed and database environment values restored; detailed evidence is in `docs/testing.md`. B3.3 is the current authorized implementation stage by explicit Operator instruction on 2026-11-08; authorization does not extend to B3.4–B3.9. The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain unauthorized.
 
 
 
@@ -418,7 +418,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 **B2 closeout reference:** B2 is formally closed by explicit Operator instruction on 2026-11-08. The three retained residual verification gaps are recorded in `PLAN.md` and `docs/testing.md`; none is represented as passed. This does not expand B2's create-only authority.
 
 
-**Status:** B3.2 schema/migration/immutability implementation is merged through PR #60. Checkpoint 4 is the post-merge review and exact-merge local verification gate; it is not yet closed. The final PR head passed hosted CI, while Operator-local verification on the exact merge commit remains pending. B3.3 is the next planned stage but has not started. This document update records the current implementation state; it does not authorize B3.3 or widen any Task/approval authority.
+**Status:** B3.2 schema/migration/immutability implementation is merged through PR #60. Checkpoint 4 was formally accepted by the Operator on 2026-11-08 after contract review and exact-merge local verification. B3.3 is explicitly authorized; no later B3 stage is authorized by that decision.
 
 **Goal:** add immutable, operation-specific assessment records and narrow recording Tasks. These assessments supply validated evidence to the existing trusted Operator approval path; they do not authorize or commit lifecycle transitions.
 
@@ -434,7 +434,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 - The active lifecycle approval allowlist remains exactly `create` throughout B3. B3 does not enable revise, revalidate, supersede, or retire commits.
 - Reuse the existing TaskRuntime, Task admission/finalization/recovery, Event, and immutable-record patterns. No second runtime, dispatcher, scheduler, auth stack, or autonomous approval.
 
-### B3 sequence — planning may start now; implementation requires the entry gate
+### B3 sequence — B3.3 authorized; later implementation stages remain separately gated
 
 #### B3.0 — Entry gate and exact-head preflight
 
@@ -476,7 +476,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 
 **Expected output:** a reviewed contract table, serialization/hash specification, and negative-case matrix. No code yet.
 
-**Implementation authorization gate:** B3.2 and every later implementation stage require both (a) formal B2 exit recorded in `PLAN.md` after the required checks are completed or explicitly dispositioned, and (b) separate written Operator authorization for B3 implementation. If either is absent, stop after B3.0/B3.1 planning.
+**Implementation authorization gate:** Checkpoint 4 is formally accepted, and the Operator's 2026-11-08 instruction explicitly authorizes B3.3 only. This authorization covers the B3.3 revalidation evidence-basis builder, freshness validation, injected evaluator boundary, `assess_knowledge_revalidation` implementation, and its scoped tests. B3.4–B3.9 require separate written Operator authorization; if the work reaches the end of B3.3, stop there. The active approval allowlist remains exactly `create`.
 
 #### B3.2 — Schema, migration, and immutability
 
@@ -497,7 +497,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 
 #### B3.2 Checkpoint 4 — Post-merge contract review and exact-merge verification
 
-**Status:** exact-merge local verification passed on 2026-11-08; formal Checkpoint 4 acceptance/closeout remains pending.
+**Status:** exact-merge local verification passed and Checkpoint 4 was formally accepted on 2026-11-08 by explicit Operator instruction.
 
 **Merged implementation and hosted evidence**
 - PR [#60](https://github.com/abtn/Watch-Architecture-Rev2/pull/60) merged to `main` at `31be3a25cf7f52ca81eab65cc10280a855738c3d`.
@@ -533,9 +533,11 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 
 This is exact-merge local evidence, not a result on the PR head or the earlier pre-final-fix commit.
 
-**Checkpoint 4 acceptance boundary:** B3.2 may be recorded closed only after the schema/contract review and exact-merge local verification are accepted and documented. B3.3 remains the next stage, but this closeout does not itself authorize its implementation. The create-only approval allowlist and all B3 authority boundaries remain unchanged.
+**Checkpoint 4 acceptance and B3.3 authorization (2026-11-08):** The Operator accepted the B3.2 contract review and exact-merge local verification, then explicitly authorized the next checkpoint. B3.3 — Revalidation assessment service and Task — is authorized. This decision is scoped to B3.3 only; B3.4–B3.9 and all later phases remain gated. The create-only approval allowlist and all other B3 authority boundaries remain unchanged.
 
 #### B3.3 — Revalidation assessment service and Task
+
+**Status (2026-11-08): AUTHORIZED BY EXPLICIT OPERATOR INSTRUCTION.** This is the active implementation stage. Authorization is limited to B3.3; it does not activate the assessment Tasks in the registry or grant either worker canonical `KnowledgeItem`/`LearningChange` writes. The approval allowlist remains exactly `create`.
 
 **Agent / coding side**
 1. Implement a narrow evidence-basis builder that reconstructs the basis from canonical Outcomes, recorded Evaluations, Events, EvidenceLinks, immutable Snapshots, and other explicitly permitted canonical references. Do not treat retrieved chunks, similarity ranks, transcripts, or model assertions as canonical evidence.
