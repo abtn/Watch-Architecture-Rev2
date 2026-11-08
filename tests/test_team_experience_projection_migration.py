@@ -85,6 +85,10 @@ def pre_0016_schema(
     session_factory = sessionmaker(
         bind=pre_0015_schema.engine, expire_on_commit=False
     )
+    snapshot_store = SnapshotStore(tmp_path)
+    observation_ref, observation_hash = snapshot_store.put(
+        b'{"result_category":"success_learning_change_accepted"}'
+    )
     with session_factory.begin() as session:
         for current_team_id, current_item_id, current_change_id in (
             (team_id, item_id, learning_change_id),
@@ -103,8 +107,6 @@ def pre_0016_schema(
                 "proposal_hash": proposal_hash,
                 "evidence_basis_hash": change.evidence_basis_hash,
             }
-            observation_ref = f"migration-test:{current_item_id}"
-            observation_hash = "sha256:" + "d" * 64
             outcome_id = uuid4()
             session.add(
                 Outcome(
