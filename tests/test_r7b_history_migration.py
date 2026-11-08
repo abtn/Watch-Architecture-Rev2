@@ -98,9 +98,11 @@ def _legacy_snapshot(
     team_id: UUID,
     learning_change_id: UUID,
     title: str,
+    *,
+    committed_at: datetime,
 ) -> dict[str, object]:
-    """Return the exact unwrapped create-snapshot shape written before B1."""
-    review_after = datetime(2026, 12, 1, tzinfo=timezone.utc)
+    """Return a legacy create snapshot with its policy-derived review date."""
+    review_after = committed_at + timedelta(days=42)
     return {
         "id": str(item_id),
         "team_id": str(team_id),
@@ -138,8 +140,14 @@ def _insert_legacy_knowledge_item(
     """Insert a realistic accepted create and its pre-B1 KnowledgeItem row."""
     proposer_task_id = uuid4()
     approval_task_id = uuid4()
-    snapshot = _legacy_snapshot(item_id, team_id, learning_change_id, title)
     committed_at = created_at + timedelta(minutes=5)
+    snapshot = _legacy_snapshot(
+        item_id,
+        team_id,
+        learning_change_id,
+        title,
+        committed_at=committed_at,
+    )
     task_budget = json.dumps(
         {"max_tool_calls": 0, "max_cost_usd": 0.0, "deadline_seconds": 60}
     )
@@ -156,14 +164,21 @@ def _insert_legacy_knowledge_item(
         connection.execute(
             text(
                 """
-                INSERT INTO team_policies (id, team_id, version, rules)
-                VALUES (:id, :team_id, 1, CAST(:rules AS jsonb))
+                INSERT INTO team_policies (
+                    id, team_id, version, schema_version, rules
+                )
+                VALUES (:id, :team_id, 1, 2, CAST(:rules AS jsonb))
                 """
             ),
             {
                 "id": uuid4(),
                 "team_id": team_id,
-                "rules": json.dumps({"sources": []}),
+                "rules": json.dumps(
+                    {
+                        "sources": [],
+                        "review": {"knowledge_item_interval_days": 42},
+                    }
+                ),
             },
         )
 
