@@ -27,7 +27,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** work is focused on checking the quality of saved lessons and deciding how they should change over time. R7-B B1 and B2 Steps 1–6 are merged (PRs #43, #45, #46, #48, #50, #52 and #53). Step 7 planning is underway for separating approval validation while the active operation allowlist remains exactly `create`. B2 Steps 8–9 and formal exit remain open; B3–B6 and R7-C are separately gated.
+- **R7:** work is focused on checking the quality of saved lessons and deciding how they should change over time. R7-B B1 and B2 Steps 1–7 are merged (PRs #43, #45, #46, #48, #50, #52, #53 and #55). Step 8 inspection/documentation is underway to specify integrated regression fixtures across the existing B2 paths; Step 9 remains the separate final verification and formal exit gate. The active approval allowlist remains exactly `create`; B3–B6 and R7-C are separately gated.
 
 B3–B6 and R7-C have not yet been authorized.
 
