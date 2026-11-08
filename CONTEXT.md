@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 are complete/closed as recorded in PLAN.md. B3.2 schema/migration PR #60 is merged at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; final PR-head hosted CI passed (823 tests, 95 warnings). Checkpoint 4 post-merge contract review and exact-merge Operator-local verification remain pending. The earlier local run on `02913493f1c82bda25aaa8e843097b9f4c2a7c52` predates final PR fixes and is not exact-merge evidence. B3.3 is next but has not started; implementation remains separately gated. The active approval allowlist remains exactly `create`. PLAN.md is the sole current status authority.
+R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 are complete/closed as recorded in PLAN.md. B3.2 schema/migration PR #60 is merged at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; final PR-head hosted CI passed (823 tests, 95 warnings). Operator-local exact-merge verification passed on the same merge SHA: migration/single-head at `0017_r7b_assessments`, 17 focused tests, Ruff, Mypy, 823 full-suite tests (95 warnings, 123.45s), and both diff checks; disposable-container removal and environment restoration were confirmed. Formal Checkpoint 4 acceptance/closeout remains pending. B3.3 is next but has not started or been authorized; the active approval allowlist remains exactly `create`. PLAN.md is the sole current status authority.
 
 ## Open the smallest relevant set of documents
 
