@@ -86,88 +86,92 @@ def pre_0016_schema(
         bind=pre_0015_schema.engine, expire_on_commit=False
     )
     with session_factory.begin() as session:
-        change = session.get(LearningChange, learning_change_id)
-        assert change is not None
-        approval_task = session.get(Task, change.committed_by_task_id)
-        assert approval_task is not None
-        approval_task.task_type = "approve_learning_change"
-        approval_task.allowed_writes = ["LearningChange", "KnowledgeItem"]
-        approval_task.completed_at = change.committed_at
-        proposal_hash = "sha256:" + "c" * 64
-        change.proposed_state = {
-            **change.proposed_state,
-            "proposal_hash": proposal_hash,
-            "evidence_basis_hash": change.evidence_basis_hash,
-        }
-        observation_ref = f"migration-test:{item_id}"
-        observation_hash = "sha256:" + "d" * 64
-        outcome_id = uuid4()
-        session.add(
-            Outcome(
-                id=outcome_id,
-                team_id=team_id,
-                subject_kind="task",
-                subject_id=approval_task.id,
-                outcome_type="task_execution",
-                expected=None,
-                observation_snapshot_ref=observation_ref,
-                observation_hash=observation_hash,
-                observed_at=change.committed_at,
-                recorded_by_task_id=approval_task.id,
+        for current_team_id, current_item_id, current_change_id in (
+            (team_id, item_id, learning_change_id),
+            (other_team_id, other_item_id, other_change_id),
+        ):
+            change = session.get(LearningChange, current_change_id)
+            assert change is not None
+            approval_task = session.get(Task, change.committed_by_task_id)
+            assert approval_task is not None
+            approval_task.task_type = "approve_learning_change"
+            approval_task.allowed_writes = ["LearningChange", "KnowledgeItem"]
+            approval_task.completed_at = change.committed_at
+            proposal_hash = "sha256:" + "c" * 64
+            change.proposed_state = {
+                **change.proposed_state,
+                "proposal_hash": proposal_hash,
+                "evidence_basis_hash": change.evidence_basis_hash,
+            }
+            observation_ref = f"migration-test:{current_item_id}"
+            observation_hash = "sha256:" + "d" * 64
+            outcome_id = uuid4()
+            session.add(
+                Outcome(
+                    id=outcome_id,
+                    team_id=current_team_id,
+                    subject_kind="task",
+                    subject_id=approval_task.id,
+                    outcome_type="task_execution",
+                    expected=None,
+                    observation_snapshot_ref=observation_ref,
+                    observation_hash=observation_hash,
+                    observed_at=change.committed_at,
+                    recorded_by_task_id=approval_task.id,
+                )
             )
-        )
-        session.add_all(
-            [
-                Event(
-                    id=uuid4(),
-                    task_id=approval_task.id,
-                    type="task_started",
-                    payload={
-                        "from_status": "pending",
-                        "to_status": "running",
-                        "attempt_count": 1,
-                    },
-                    created_at=approval_task.created_at,
-                ),
-                Event(
-                    id=uuid4(),
-                    task_id=approval_task.id,
-                    type="learning_change_accepted",
-                    payload={
-                        "schema_version": 1,
-                        "learning_change_id": str(change.id),
-                        "operation": change.operation,
-                        "decision": "accept",
-                        "operator_id": change.operator_id,
-                        "approval_task_id": str(approval_task.id),
-                        "attempt_count": 1,
-                        "evidence_basis_hash": change.evidence_basis_hash,
-                        "proposal_hash": proposal_hash,
-                        "committed_at": change.committed_at.isoformat(),
-                        "knowledge_item_id": str(item_id),
-                        "knowledge_item_version": 1,
-                    },
-                    created_at=change.committed_at,
-                ),
-                Event(
-                    id=uuid4(),
-                    task_id=approval_task.id,
-                    type="task_completed",
-                    payload={
-                        "from_status": "running",
-                        "to_status": "done",
-                        "attempt_count": 1,
-                        "result_category": "success_learning_change_accepted",
-                        "failure_reason": None,
-                        "outcome_id": str(outcome_id),
-                        "observation_snapshot_ref": observation_ref,
-                        "observation_hash": observation_hash,
-                        "learning_change_id": str(change.id),
-                    },
-                    created_at=change.committed_at,
-                ),
-            ]
-        )
+            session.add_all(
+                [
+                    Event(
+                        id=uuid4(),
+                        task_id=approval_task.id,
+                        type="task_started",
+                        payload={
+                            "from_status": "pending",
+                            "to_status": "running",
+                            "attempt_count": 1,
+                        },
+                        created_at=approval_task.created_at,
+                    ),
+                    Event(
+                        id=uuid4(),
+                        task_id=approval_task.id,
+                        type="learning_change_accepted",
+                        payload={
+                            "schema_version": 1,
+                            "learning_change_id": str(change.id),
+                            "operation": change.operation,
+                            "decision": "accept",
+                            "operator_id": change.operator_id,
+                            "approval_task_id": str(approval_task.id),
+                            "attempt_count": 1,
+                            "evidence_basis_hash": change.evidence_basis_hash,
+                            "proposal_hash": proposal_hash,
+                            "committed_at": change.committed_at.isoformat(),
+                            "knowledge_item_id": str(current_item_id),
+                            "knowledge_item_version": 1,
+                        },
+                        created_at=change.committed_at,
+                    ),
+                    Event(
+                        id=uuid4(),
+                        task_id=approval_task.id,
+                        type="task_completed",
+                        payload={
+                            "from_status": "running",
+                            "to_status": "done",
+                            "attempt_count": 1,
+                            "result_category": "success_learning_change_accepted",
+                            "failure_reason": None,
+                            "outcome_id": str(outcome_id),
+                            "observation_snapshot_ref": observation_ref,
+                            "observation_hash": observation_hash,
+                            "learning_change_id": str(change.id),
+                        },
+                        created_at=change.committed_at,
+                    ),
+                ]
+            )
 
     with pre_0015_schema.engine.begin() as connection:
         connection.execute(
