@@ -3394,6 +3394,22 @@ class TaskRuntime:
                     or observation.strategy_event_id is not None
                     or observation.plan_id is not None
                     or observation.plan_event_id is not None
+                    or observation.knowledge_revalidation_assessment_id is not None
+                ):
+                    raise TaskNotFinalizable("terminal_evidence_not_allowed")
+            elif observation.result_category in _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES:
+                if observation.knowledge_revalidation_assessment_id is None:
+                    raise TaskNotFinalizable(
+                        "knowledge_revalidation_assessment_id_required"
+                    )
+                if (
+                    observation.signals
+                    or observation.evaluation_id is not None
+                    or observation.learning_change_id is not None
+                    or observation.strategy_event_id is not None
+                    or observation.plan_id is not None
+                    or observation.plan_event_id is not None
+                    or observation.knowledge_quality_assessment_id is not None
                 ):
                     raise TaskNotFinalizable("terminal_evidence_not_allowed")
             elif (observation.signals or observation.evaluation_id is not None
@@ -3401,7 +3417,8 @@ class TaskRuntime:
                 or observation.strategy_event_id is not None
                 or observation.plan_id is not None
                 or observation.plan_event_id is not None
-                or observation.knowledge_quality_assessment_id is not None):
+                or observation.knowledge_quality_assessment_id is not None
+                or observation.knowledge_revalidation_assessment_id is not None):
                 raise TaskNotFinalizable("terminal_evidence_not_allowed")
             return
 
@@ -3412,6 +3429,7 @@ class TaskRuntime:
             or observation.plan_id is not None
             or observation.plan_event_id is not None
             or observation.knowledge_quality_assessment_id is not None
+            or observation.knowledge_revalidation_assessment_id is not None
         ):
             raise TaskNotFinalizable("terminal_evidence_not_allowed")
         if not observation.failure_reason or not observation.failure_reason.strip():
