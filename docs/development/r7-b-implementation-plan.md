@@ -372,7 +372,7 @@ B0 closes when:
 
 **Step 8 boundary:** the integrated regression implementation is complete and merged. The create-only allowlist remains exactly `{create}`. Step 8 completion does not constitute B2 exit; Step 9 exit review and explicit Operator acceptance remain required. B3 planning/preflight is documented only; B3 implementation remains unauthorized. B4–B6 and R7-C remain unauthorized.
 
-**Step 9 — Exact-head verification and formal B2 exit gate (verification evidence recorded; exit open)**
+**Step 9 — Exact-head verification and formal B2 exit gate (Operator-closed 2026-11-08 with accepted residuals)**
 
 **Execution record (2026-11-08):** the exact merged implementation commit under test was `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`. Hosted run [42479112563](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42479112563) and Operator-local verification both passed on this same commit. PR #57's exact head `114a6311534cd116190e3c2f4143fdfb1a2c979b` also passed hosted run [42478536427](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42478536427); it is retained as PR-head evidence, not confused with the merge-commit exact-SHA run. Full local evidence and outstanding checks are recorded in `docs/testing.md`.
 
@@ -409,7 +409,7 @@ Stop and report a design discrepancy before implementing a workaround if: any hi
 
 B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleAssessment (B3); revise/revalidate writes (B4); candidate creation, supersede, or retire writes (B5); repeated legacy lifecycle hardening assigned to B6; TaskKnowledgeReference/KnowledgeUseAssessment or retrieval benchmarking (R7-C); a new runtime, dispatcher, scheduler, public API/auth stack, production evaluator/provider, or second commit path.
 
-**B2 exit:** the full B2 acceptance matrix is green on the exact PR head, no stop condition is open, the implementation and verification record is synchronized, and the Operator explicitly accepts the B2 exit. B3 remains separately gated.
+**B2 exit criterion:** either the full B2 acceptance matrix is green on the exact PR head with synchronized implementation/verification records, or the Operator explicitly accepts closure with any uncompleted checks recorded as residuals rather than passes. B2 was closed through the latter disposition on 2026-11-08. B3 implementation remains separately gated.
 
 
 
