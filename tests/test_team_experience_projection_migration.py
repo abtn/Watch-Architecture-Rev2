@@ -13,6 +13,15 @@ from sqlalchemy import Engine, select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import sessionmaker
 
+from test_r7b_history_migration import (
+    MigrationSandbox,
+    _insert_legacy_knowledge_item,
+    _upgrade_to_revision,
+)
+from test_r7b_history_migration import (
+    pre_0015_schema as _pre_0015_schema_fixture,
+)
+
 from core.embeddings import EmbeddingBatch, EmbeddingSpace
 from core.knowledge_index import (
     HybridKnowledgeRetriever,
@@ -25,15 +34,6 @@ from core.models import (
     TeamExperienceIndexState,
 )
 from core.snapshot_store import SnapshotStore
-from test_r7b_history_migration import (
-    MigrationSandbox,
-    _insert_legacy_knowledge_item,
-    _upgrade_to_revision,
-)
-from test_r7b_history_migration import (
-    pre_0015_schema as _pre_0015_schema_fixture,
-)
-
 pre_0015_schema = _pre_0015_schema_fixture
 
 
