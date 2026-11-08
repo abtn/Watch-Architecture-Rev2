@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import sessionmaker
 from core.embeddings import EmbeddingBatch, EmbeddingSpace
@@ -478,7 +478,6 @@ def test_real_0016_migration_blocks_legacy_projection_until_application_rebuild(
         for passage in passages
     )
 
-    calls_after_publication = provider_calls = 0
     repeated = indexer.rebuild_all(now=now)
     repeated_result = next(
         entry
