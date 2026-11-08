@@ -351,7 +351,7 @@ B0 closes when:
 - Existing create accept/reject behavior remains intact: accepted create binds the recorded quality assessment and creates one canonical KnowledgeItem; rejection creates none; decision Event and canonical mutation remain atomic.
 - Existing same-key replay, conflicting-key behavior, concurrent competing approval Tasks, lost-response replay, interrupted recovery, and TaskRuntime terminal finalization remain covered and unchanged.
 
-**Step 7 acceptance:** all common-integrity and create-specific checks are separated without weakening any boundary; the active allowlist is exactly `{create}`; all four later lifecycle operations fail closed with stable reasons at every applicable layer; no Task/schema/write-scope/runtime/provider/auth changes are introduced; focused tests, Ruff, Mypy and the full suite pass. Step 7 completion does not close B2: Step 8 integrated fixtures and Step 9 final B2 exit remain required.
+**Step 7 acceptance:** all common-integrity and create-specific checks are separated without weakening any boundary; the active allowlist is exactly `{create}`; all four later lifecycle operations fail closed with stable reasons at every applicable layer; no Task/schema/write-scope/runtime/provider/auth changes are introduced; focused tests, Ruff, Mypy and the full suite pass. Step 7 completion did not close B2: Step 8 integrated fixtures and Step 9 final B2 exit were still required.
 
 **Implementation authorization and boundary:** Step 7 was explicitly authorized on 2026-11-08 and merged through PR #55. That authorization did not widen the active operation allowlist; only `knowledge_item/create/NULL target` is eligible.
 
