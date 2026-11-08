@@ -1118,7 +1118,10 @@ def test_0017_accepts_complete_supersede_binding_and_restricts_successor_delete(
                 "supersedes_item_id": predecessor["id"],
                 "title": "Valid successor assessment fixture",
                 "statement": "A valid successor fixture for the migration contract.",
-                "body": "This successor exists to exercise the complete supersede binding.",
+                "body": (
+                    "This successor exists to exercise the complete "
+                    "supersede binding."
+                ),
             },
         )
         successor = connection.execute(
