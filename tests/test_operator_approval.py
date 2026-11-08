@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -62,9 +62,7 @@ def test_schema_v2_request_payload_round_trips(decision: str) -> None:
 
     assert parsed.schema_version == 2
     assert parsed.decision == decision
-    assert parsed.learning_change_id == __import__("uuid").UUID(
-        payload["learning_change_id"]
-    )
+    assert parsed.learning_change_id == UUID(payload["learning_change_id"])
     if decision == "accept":
         assert parsed.quality_assessment_id is not None
         assert parsed.quality_assessment_hash == "sha256:" + "a" * 64
