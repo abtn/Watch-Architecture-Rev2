@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -210,9 +211,11 @@ def _normalize_json(value: Any) -> Any:
                 "knowledge_revalidation_timestamp_not_aware"
             ) from error
     if isinstance(value, float):
-        raise KnowledgeRevalidationAssessmentError(
-            "knowledge_revalidation_json_float_forbidden"
-        )
+        if not math.isfinite(value):
+            raise KnowledgeRevalidationAssessmentError(
+                "knowledge_revalidation_number_not_finite"
+            )
+        return value
     if value is None or isinstance(value, (str, int, bool)):
         return value
     if isinstance(value, list):
@@ -899,6 +902,10 @@ class KnowledgeRevalidationAssessmentService:
                 raise KnowledgeRevalidationAssessmentError(
                     "knowledge_revalidation_learning_change_missing"
                 )
+            if change.status != "proposed":
+                raise KnowledgeRevalidationAssessmentError(
+                    "knowledge_revalidation_learning_change_not_proposed"
+                )
             task_id, payload = build_revalidation_task_request(
                 session, self._session_factory, self._snapshot_store, change,
                 require_current=True
@@ -982,8 +989,22 @@ class KnowledgeRevalidationAssessmentService:
                 )
             )
             if existing is not None:
+                try:
+                    verified = require_recorded_assessment(
+                        session,
+                        context.learning_change,
+                        self._snapshot_store,
+                        self._session_factory,
+                        require_task_done=False,
+                        require_current=True,
+                    )
+                except KnowledgeRevalidationAssessmentError as error:
+                    raise KnowledgeRevalidationAssessmentError(
+                        "knowledge_revalidation_existing_assessment_corrupt"
+                    ) from error
                 if (
-                    existing.task_id != task.id
+                    verified.id != existing.id
+                    or existing.task_id != task.id
                     or existing.task_attempt != task.attempt_count
                     or existing.evaluator_identity != identity
                     or existing.evaluator_revision != revision
