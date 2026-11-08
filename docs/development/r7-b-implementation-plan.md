@@ -2,7 +2,7 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (2026-11-08):** **B0 complete; B1 accepted and merged; B2 Steps 1–8 accepted and merged; Step 9 verification planning in progress.** Steps 1–7 are merged through PRs #45, #46, #48, #50, #52, #53 and #55. Step 8 inspection/documentation PR #56 merged at `58d88bafdf33e8ce1af2f5a7ba9af11bfd84cb32`; integrated regression PR #57 merged at `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`. PR #57 exact head `114a6311534cd116190e3c2f4143fdfb1a2c979b` passed hosted CI run `42478536427` (806 tests, 77 warnings; fresh migration/single-head, Ruff and Mypy passed). Step 9 is documentation/planning only in this checkpoint; Operator-local exact-head verification and formal B2 exit acceptance remain outstanding. B3–B6 and R7-C remain unauthorized.
+**Status (updated 2026-11-08):** **B0 complete; B1 accepted and merged; B2 Steps 1–8 accepted and merged; Step 9 exact-head verification partially evidenced, exit review still open.** Steps 1–7 are merged through PRs #45, #46, #48, #50, #52, #53 and #55. Step 8 inspection/documentation PR #56 merged at `58d88bafdf33e8ce1af2f5a7ba9af11bfd84cb32`; integrated regression PR #57 merged at `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`. PR #57 exact head `114a6311534cd116190e3c2f4143fdfb1a2c979b` passed hosted CI run [42478536427](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42478536427) (806 tests, 77 warnings). The merged implementation commit `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31` subsequently passed both hosted run [42479112563](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42479112563) and Operator-local verification (806 tests, 77 warnings; migration/single-head, Ruff and Mypy passed). The local/hosted code SHA matched. Separate focused-test execution, `git diff --check`, complete final diff review, evidence synchronization, and explicit B2 exit acceptance remain outstanding. The active approval allowlist remains exactly `create`; B3–B6 and R7-C remain unauthorized.
 
 
 
@@ -372,41 +372,25 @@ B0 closes when:
 
 **Step 8 boundary:** the integrated regression implementation is complete and merged. The create-only allowlist remains exactly `{create}`. Step 8 completion does not constitute B2 exit; Step 9 exact-head verification and explicit Operator acceptance remain required. B3–B6 and R7-C remain unauthorized.
 
-**Step 9 — Exact-head verification and formal B2 exit gate (planning checkpoint only)**
+**Step 9 — Exact-head verification and formal B2 exit gate (verification evidence recorded; exit open)**
 
-**Planning status (2026-11-08):** this documentation-only checkpoint defines the verification procedure after Step 8. It does not execute tests, migrations, static checks, database operations, or formal B2 acceptance. The final code head to verify must be the exact merged Step 8 implementation plus any subsequent B2-authorized code corrections; record the immutable SHA before starting and use that same SHA for hosted and Operator-local evidence. If documentation-only Step 9 planning is merged after the Step 8 code, record both the documentation merge SHA and the exact code tree/commit SHA under test; do not imply that a docs-only commit changes the code being verified.
+**Execution record (2026-11-08):** the exact merged implementation commit under test was `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`. Hosted run [42479112563](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42479112563) and Operator-local verification both passed on this same commit. PR #57's exact head `114a6311534cd116190e3c2f4143fdfb1a2c979b` also passed hosted run [42478536427](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42478536427); it is retained as PR-head evidence, not confused with the merge-commit exact-SHA run. Full local evidence and outstanding checks are recorded in `docs/testing.md`.
 
-**Preflight and identity:**
+**Preflight and identity — PASS:** local checkout was repository root, branch `main`, HEAD `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`, equal to `origin/main`; worktree clean before and after. `uv sync --locked` passed. No code changed during verification.
 
-1. Confirm the checkout is the intended repository, on the dedicated verification branch or exact verification worktree, with a clean worktree and no staged/unstaged/untracked user changes. Do not reset, stash, overwrite, or clean unrelated work.
-2. Fetch `origin`; record `main`, branch, HEAD, and merge-base. Confirm the exact implementation commit under test is an ancestor of the verification HEAD and identify any code changes after it. No code change may be introduced after verification without rerunning affected checks and hosted CI on the new exact head.
-3. Confirm the Step 8 PR #57 merge is present and that the PR head `114a6311534cd116190e3c2f4143fdfb1a2c979b` is the tested implementation tree. Record Step 8 hosted CI run #567; keep Operator-local evidence separate.
+**Database and migration — PASS:** a fresh disposable PostgreSQL container `watch-b2-step9-clean-d8f56de433`, database `watch_b2_step9_clean`, dynamically assigned loopback port `10891`; full Alembic chain from empty DB; current revision `0016_team_exp_history_pins`; exactly one head. Container was subsequently confirmed absent. Persistent `watch` and port `5432` were not targeted.
 
-**Database and migration proof:**
+**Static and full verification — PASS:** Ruff; Mypy (33 source files); full pytest suite once, without preceding focused tests: **806 passed, 77 warnings in 136.25s**. Warning counts: 65 in `tests/test_r7b_history_migration.py` and 12 in `tests/test_team_experience_projection_migration.py`, including the Alembic `path_separator` deprecation warning. Hosted run 42479112563 passed the corresponding migration/static/full-suite job on the same implementation SHA (806 tests, 77 warnings).
 
-1. Use a newly created disposable PostgreSQL container/database with a unique name and dynamically assigned loopback port. Never connect to the persistent `watch` database or port `5432`; never reuse an existing project database/container.
-2. Apply the complete Alembic migration chain from an empty database. Verify the current revision is `0016_team_exp_history_pins` and `alembic heads` reports exactly one head.
-3. Exercise the migration-sensitive regression fixtures, including preservation of legacy projection bytes, `legacy-opaque`/stale marking, retrieval exclusion before republish, successful application rebuild, restored retrieval, and migration rollback/failure behavior. Capture the disposable container/database identity and cleanup result.
+**Not yet evidenced as separate Step 9 checks:** focused regression groups were not separately invoked on the local run; `git diff --check` was not recorded; and a complete line-by-line final diff/scope review remains outstanding. The full-suite pass is not represented as a separate focused-run pass. The changed-file inventory and key create-only approval guards have been reviewed; no scope expansion was identified in those reviewed surfaces.
 
-**Test and static verification:**
+**Sequence deviation:** Operator-local verification occurred while this Step 9 planning PR (#58) was still open and unmerged, although this plan originally specified merging the planning checkpoint before execution. This deviation is recorded transparently. It does not create a code-SHA mismatch: hosted and local verification both tested the unchanged implementation commit `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`. PR #58 is documentation-only; its later documentation commits do not alter the implementation code tree under test.
 
-1. Run focused regression groups covering history/hash canonicality, migration, Team Experience indexing/publication, retrieval gates, Context assembly/replay, Operator application/approval, LearningCommitService, and TaskRuntime admission/finalization/recovery.
-2. Run Ruff and Mypy using the repository's configured full-project commands.
-3. Run the complete pytest suite against the disposable database. Record exact passed/failed/skipped counts, duration, and warning categories; warnings are not silently treated as failures or omitted.
-4. Run `git diff --check` and inspect the complete changed-file list and final diff. The B2 implementation must remain within the accepted hash, history, projection, retrieval, Context, and create-only approval boundaries.
+**Scope boundary:** the reviewed B2 implementation remains limited to hash/history/projection/retrieval/Context and create-only approval behavior. The active approval allowlist remains exactly `{create}`. No B3 assessment Tasks/models, B4 revise/revalidate writes, B5 candidate creation/supersede/retire writes, B6 expansion, R7-C reference/use/benchmark, new runtime/dispatcher/scheduler/public API/auth stack, or production provider is authorized or included in this documentation update.
 
-**Exact-head equivalence and evidence:**
+**B2 exit disposition:** B2 remains OPEN. Before presenting it for Operator acceptance, finish the focused regression groups, run and record `git diff --check`, complete the final line-by-line diff/scope review, and ensure PLAN/testing/implementation records agree. The Operator must then explicitly accept formal B2 closure. This document does not grant that acceptance. B3–B6 and R7-C remain unauthorized.
 
-- Hosted CI must pass on the exact final PR head. Record PR number, head SHA, run URL/ID, and each workflow result.
-- Operator-local verification must run against the same code tree/commit SHA as hosted CI. A different commit, uncommitted code change, or post-CI patch invalidates equivalence and requires rerunning the applicable checks.
-- Record local branch/HEAD, clean worktree, disposable database and Alembic head, focused tests, Ruff, Mypy, full-suite counts/duration/warnings, `git diff --check`, and disposable-resource cleanup.
-- Review the PR diff for scope leaks: no B3 assessment models/Tasks; no B4 revise/revalidate writes; no B5 candidate creation/supersede/retire writes; no B6 scope expansion; no R7-C TaskKnowledgeReference, KnowledgeUseAssessment, or retrieval benchmark; no new runtime, dispatcher, scheduler, public API/auth stack, or production provider.
-
-**B2 exit decision (not granted by this plan):**
-
-B2 may be presented for Operator acceptance only when the complete Steps 1–8 acceptance matrix is green on the exact final code head, all migration/static/focused/full-suite/hosted/local checks pass, the hosted and local code heads are identical, no stop condition or unexplained scope change remains, and the implementation/testing/PLAN records agree. The Operator must then explicitly accept formal B2 closure. Until that decision is recorded, B2 remains open and B3–B6/R7-C remain unauthorized.
-
-**Step 9 planning boundary:** documentation and verification planning only. No code, tests, migration, schema, runtime, provider, authentication, active Task grant, or database changes are authorized by this checkpoint. Actual verification begins only after this planning checkpoint is accepted/merged and the Operator directs execution.
+**Documentation boundary:** this PR updates project status and verification records only. It does not change source, tests, migrations, schema, runtime, provider, authentication, Task grants, or database configuration.
 
 ### B2 acceptance criteria
 
