@@ -118,16 +118,48 @@ def test_legacy_schema_v1_rejection_remains_valid() -> None:
 @pytest.mark.parametrize(
     ("mutation", "reason"),
     [
-        (lambda p: p.update(schema_version=True), "operator_task_request_payload_invalid"),
-        (lambda p: p.update(operation="revise"), "operator_task_request_payload_invalid"),
-        (lambda p: p.update(decision="maybe"), "operator_task_request_payload_invalid"),
-        (lambda p: p.update(rejection_reason="unexpected"), "operator_task_request_payload_invalid"),
-        (lambda p: p.update(operator_id='{"sub":"operator-42","iss":"https://host.example/identity"}'), "operator_task_request_identity_invalid"),
-        (lambda p: p.update(idempotency_key_hash="not-a-hash"), "operator_task_request_payload_invalid"),
-        (lambda p: p.update(knowledge_quality_assessment_id="not-a-uuid"), "operator_quality_assessment_reference_invalid"),
-        (lambda p: p.update(learning_change_id="NOT-A-UUID"), "operator_task_request_target_invalid"),
-        (lambda p: p.update(policy_version=5), "operator_task_request_payload_invalid"),
-        (lambda p: p.update(request_fingerprint="sha256:" + "f" * 64), "operator_task_request_fingerprint_invalid"),
+        (
+            lambda p: p.update(schema_version=True),
+            "operator_task_request_payload_invalid",
+        ),
+        (
+            lambda p: p.update(operation="revise"),
+            "operator_task_request_payload_invalid",
+        ),
+        (
+            lambda p: p.update(decision="maybe"),
+            "operator_task_request_payload_invalid",
+        ),
+        (
+            lambda p: p.update(rejection_reason="unexpected"),
+            "operator_task_request_payload_invalid",
+        ),
+        (
+            lambda p: p.update(
+                operator_id='{"sub":"operator-42","iss":"https://host.example/identity"}'
+            ),
+            "operator_task_request_identity_invalid",
+        ),
+        (
+            lambda p: p.update(idempotency_key_hash="not-a-hash"),
+            "operator_task_request_payload_invalid",
+        ),
+        (
+            lambda p: p.update(knowledge_quality_assessment_id="not-a-uuid"),
+            "operator_quality_assessment_reference_invalid",
+        ),
+        (
+            lambda p: p.update(learning_change_id="NOT-A-UUID"),
+            "operator_task_request_target_invalid",
+        ),
+        (
+            lambda p: p.update(policy_version=5),
+            "operator_task_request_payload_invalid",
+        ),
+        (
+            lambda p: p.update(request_fingerprint="sha256:" + "f" * 64),
+            "operator_task_request_fingerprint_invalid",
+        ),
     ],
 )
 def test_schema_v2_malformed_common_integrity_fails_closed(
