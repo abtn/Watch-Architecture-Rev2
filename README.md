@@ -27,9 +27,9 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** work is focused on checking the quality of saved lessons and deciding how saved knowledge should be validated and evolve. B2 Steps 1–8 are merged. Hosted and Operator-local exact-code-head verification passed on `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31` (fresh migration/single-head, Ruff, Mypy, 806 tests, 77 warnings). B2 was formally closed by explicit Operator instruction on 2026-11-08 with three residuals retained, not passed: no separate focused regression run, no recorded `git diff --check`, and no complete line-by-line final diff review. The detailed B3 assessment plan is documented for read-only preflight and contract planning; B3 implementation requires separate written Operator authorization. The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain separately gated.
+- **R7:** work is focused on checking the quality of saved lessons and how saved knowledge should be validated and evolve. B2 is closed with its accepted residual verification gaps recorded. B3.2 assessment persistence is merged through PR #60 at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; final PR-head hosted CI passed (823 tests, 95 warnings). Exact-merge Operator-local verification and Checkpoint 4 closeout remain pending. B3.3 has not started. The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain separately gated.
 
-B3 planning/preflight may proceed; B3 implementation requires separate written Operator authorization. B4–B6 and R7-C remain unauthorized.
+Checkpoint 4 must close before B3.3 begins. This documentation update does not authorize B3.3 implementation. B4–B6 and R7-C remain separately gated.
 
 ## Future plan
 
