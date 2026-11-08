@@ -2,7 +2,7 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (2026-11-08):** **B0 complete; B1 accepted and merged; B2 Steps 1–7 accepted and merged; Step 8 inspection/documentation in progress; Step 9 open.** Steps 1–6 merged through PRs #45, #46, #48, #50, #52 and #53. Step 7 merged through PR #55 at `47aad564ac0496f4ff984bc4d937355922d36c77`; exact implementation head `534a7fad6b6cb3cfa3fd7381bcdb0d8ecdb1b8e2` passed hosted CI run `42468214569` and Operator-local verification (793 tests, Ruff, Mypy, fresh disposable PostgreSQL migration to the single `0016_team_exp_history_pins` head). Step 8 inspection/documentation is limited to identifying and specifying missing integrated fixtures; no Step 8 fixture implementation has begun. B3–B6 and R7-C remain unauthorized.
+**Status (updated 2026-11-08):** **B0 complete; B1 accepted and merged; B2 formally closed by explicit Operator instruction on 2026-11-08, with accepted residual verification gaps; B3 planning/preflight documented.** B2 Steps 1–8 are accepted and merged. The merged implementation commit `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31` passed hosted run [42479112563](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42479112563) and Operator-local exact-SHA verification (fresh migration/single-head, Ruff, Mypy, 806 tests, 77 warnings). Closure retains three residuals, not passes: prescribed focused groups were not separately run; `git diff --check` was not recorded; complete line-by-line final diff review was not completed. The local run preceded merge of the Step 9 documentation PR; this procedural sequence deviation is recorded. The active approval allowlist remains exactly `create`. B3.0/B3.1 planning may proceed; B3 implementation requires separate written Operator authorization. B4–B6 and R7-C remain unauthorized.
 
 
 
@@ -223,7 +223,7 @@ B0 closes when:
 
 **Goal:** define and implement the stable semantic content-hash contract, invalidate and safely republish old Team Experience projections, and make indexing, retrieval, and Context assembly validate the B1 current-learning-change chain. B2 must complete before B4 because revalidation depends on a hash that does not change when review metadata changes.
 
-**Status (2026-11-08):** B2 implementation was separately authorized on 2026-11-06. Steps 1–6 are accepted and merged through PRs #45, #46, #48, #50, #52 and #53; Step 7 is accepted and merged through PR #55. Step 8 is now in inspection/documentation: the purpose is to close the remaining integrated-fixture gaps without changing the B2 contract or widening authority. Step 9 remains the final exact-head verification and formal B2 exit gate. B3–B6 and R7-C remain unauthorized.
+**Status (2026-11-08):** B2 implementation was separately authorized on 2026-11-06 and is formally closed by explicit Operator instruction on 2026-11-08. Steps 1–8 are accepted and merged through PR #57. Hosted and Operator-local exact-code-head verification passed on `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`: fresh migration/single-head, Ruff, Mypy, and 806 tests (77 warnings). Closure retains three uncompleted checks as residuals: no separate focused regression run, no recorded `git diff --check`, and no complete line-by-line final diff review. The local-before-documentation-PR sequence deviation remains recorded. B3 planning/preflight is documented; implementation still requires separate written Operator authorization. B4–B6 and R7-C remain unauthorized.
 
 ### Frozen compatibility contract
 
@@ -351,49 +351,46 @@ B0 closes when:
 - Existing create accept/reject behavior remains intact: accepted create binds the recorded quality assessment and creates one canonical KnowledgeItem; rejection creates none; decision Event and canonical mutation remain atomic.
 - Existing same-key replay, conflicting-key behavior, concurrent competing approval Tasks, lost-response replay, interrupted recovery, and TaskRuntime terminal finalization remain covered and unchanged.
 
-**Step 7 acceptance:** all common-integrity and create-specific checks are separated without weakening any boundary; the active allowlist is exactly `{create}`; all four later lifecycle operations fail closed with stable reasons at every applicable layer; no Task/schema/write-scope/runtime/provider/auth changes are introduced; focused tests, Ruff, Mypy and the full suite pass. Step 7 completion does not close B2: Step 8 integrated fixtures and Step 9 final B2 exit remain required.
+**Step 7 acceptance:** all common-integrity and create-specific checks are separated without weakening any boundary; the active allowlist is exactly `{create}`; all four later lifecycle operations fail closed with stable reasons at every applicable layer; no Task/schema/write-scope/runtime/provider/auth changes are introduced; focused tests, Ruff, Mypy and the full suite pass. Step 7 completion did not close B2: Step 8 integrated fixtures and Step 9 final B2 exit were still required.
 
 **Implementation authorization and boundary:** Step 7 was explicitly authorized on 2026-11-08 and merged through PR #55. That authorization did not widen the active operation allowlist; only `knowledge_item/create/NULL target` is eligible.
 
-**Step 8 — Add integrated regression fixtures**
+**Step 8 — Integrated regression fixtures (ACCEPTED AND MERGED — PRs #56 and #57)**
 
-**Inspection/documentation checkpoint (2026-11-08):** read-only coverage inspection was performed against merged `main` at `47aad564ac0496f4ff984bc4d937355922d36c77`. This checkpoint updates the implementation plan only; no Step 8 source or test changes have begun.
+**Closeout (2026-11-08):** Step 8 documentation/inspection PR #56 merged at `58d88bafdf33e8ce1af2f5a7ba9af11bfd84cb32`; integrated test fixtures PR #57 merged at `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`. PR #57 exact implementation head `114a6311534cd116190e3c2f4143fdfb1a2c979b` passed hosted CI run [42478536427](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42478536427): fresh PostgreSQL migration and single Alembic head, Ruff, Mypy, and **806 tests passed, 77 warnings**. The warnings were non-failing Alembic `path_separator` deprecations. Step 8 changed only three test files; no production source, migration, schema, runtime, provider, authentication, or database configuration changed. Operator-local exact-head verification on the Step 8 code head is not yet recorded and is required in Step 9.
 
-**Existing coverage inventory and remaining integrated gaps:**
+**Delivered integrated coverage:**
 
-| Frozen Step 8 path | Existing coverage observed | Remaining Step 8 fixture requirement |
-|---|---|---|
-| Accepted create → canonical LearningChange/current pointer → v2 hash → projection → retrieval → Context v3 | The approval, history, hash, Team Experience, retrieval, and Context paths each have focused tests across `test_operator_application.py`, `test_learning_history.py`, `test_knowledge_content_hash.py`, `test_team_experience.py`, and `test_context_assembly.py`. | Add one integrated fixture that follows the accepted create through all these boundaries and asserts the v3 manifest pins origin/current LearningChange IDs and the v2 scheme. |
-| Real `0016` migration → legacy opaque/stale projection → blocked retrieval → rebuild → restored retrieval | `test_0016_preserves_legacy_projection_bytes_and_marks_them_opaque_and_stale` exercises the migration; `test_rebuild_all_republishes_legacy_opaque_projection_and_restores_retrieval` simulates the resulting state manually. | Combine migration and application-level rebuild/retrieval in one isolated integration fixture using the migration sandbox; preserve and assert historical chunk/embedding bytes before republish. |
-| Failed republish → stale/undiscoverable → retry/rebuild | `test_failed_publication_records_staleness_and_rebuilds` covers a failed refresh, stale state, undiscoverability, and one successful rebuild. | Extend the fixture to assert retry/rebuild idempotency and stable published pins/chunk set across a repeated rebuild; do not weaken the existing attempt-count/error assertions. |
-| Canonical pointer/Team/target/status/snapshot/chain/scheme/chunk tampering | Focused history, retrieval, Context, migration and projection tests cover several individual corruptions, including cross-Team target, stale pointer, needs-review status and tampered chunk text. | Build a parameterized negative matrix at retrieval and final Context validation boundaries for the remaining independently meaningful tamper dimensions; preserve fail-closed no-passage/no-inclusion assertions. |
-| D7 review eligibility | Existing tests cover NULL review configuration, expired review dates, and `needs_review` exclusion. | Add explicit non-UTC/offset-aware boundary cases and ensure due/NULL/needs_review behavior is asserted at both retrieval and Context inclusion where applicable. |
-| D5 pending/reciprocal successor visibility | Existing tests cover pending candidate visibility, ineligible predecessor states (`needs_review`, due, retired without successor), committed reciprocal supersession, and final Context revalidation. | Reconcile test cases against the complete D5 matrix in ADR-0032; add only missing combinations, including no simultaneous predecessor/candidate exposure. |
-| Context v1/v2 replay and v3 provenance | `test_historical_context_manifest_replay_remains_byte_exact` covers v1/v2 replay; Context v3 is covered by the Step 6 implementation tests and current assembly tests. | Add/extend assertions that v1/v2 replay does not invoke content-hash recalculation and v3 selected manifest/document entries contain origin/current IDs and `content_hash_scheme`. |
-| Create-only approval across request/admission/commit/finalization/recovery | Step 7 has a four-operation rejection matrix across request creation, TaskRuntime admission/finalization/recovery and direct LearningCommitService; pure schema-v1/v2 parsing has dedicated tests. | Preserve these cases in the integrated B2 regression suite and add end-to-end create accept/reject/replay assertions where they intersect the read path; do not duplicate pure helper tests. |
+- Accepted create → canonical LearningChange/current pointer → v2 hash → Team Experience projection → retrieval → Context manifest v3.
+- Real Alembic `0016` migration → legacy-opaque/stale projection blocked from retrieval → application `rebuild_all()` → republished v2/current-pointer pins → retrieval restored.
+- Failed publication → stale/undiscoverable projection → successful rebuild → repeated rebuild returns unchanged without another embedding publication.
+- Canonicality/projection tampering matrix across current pointer, Team, target, status, committed snapshot, hash scheme, stale state, and chunk hash; rejected data remains absent from retrieval and Context.
+- Offset-aware D7 boundary behavior; before-boundary eligibility and exact-boundary ineligibility.
+- Context v1/v2 replay remains byte-exact without reassembling or recalculating the KnowledgeItem hash.
+- Database-enforced cross-Team projection integrity is asserted separately because the composite constraint rejects the mutation before retrieval.
+- Existing D5 focused matrix and Step 7 create-only approval matrix remain intact; no redundant D5 test expansion or approval-authority change was introduced.
 
-The existing `test_rebuild_all_republishes_legacy_opaque_projection_and_restores_retrieval` is a useful application-level regression but manually seeds the post-migration state. It is not evidence that the actual Alembic migration and rebuild operate correctly in one fixture. The Step 8 migration/rebuild integration must use an isolated disposable schema/database and must not inspect or modify the persistent `watch` database.
+**Step 8 boundary:** the integrated regression implementation is complete and merged. The create-only allowlist remains exactly `{create}`. Step 8 completion does not constitute B2 exit; Step 9 exit review and explicit Operator acceptance remain required. B3 planning/preflight is documented only; B3 implementation remains unauthorized. B4–B6 and R7-C remain unauthorized.
 
-**Step 8 execution boundary:** only integrated regression fixtures and their directly necessary test support are in scope after this inspection checkpoint. No production behavior, schema, migration, Task registration/write scope, runtime, provider, authentication, or approval allowlist changes are authorized. The allowlist remains exactly `{create}`; B3–B6 and R7-C remain unauthorized.
+**Step 9 — Exact-head verification and formal B2 exit gate (Operator-closed 2026-11-08 with accepted residuals)**
 
+**Execution record (2026-11-08):** the exact merged implementation commit under test was `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`. Hosted run [42479112563](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42479112563) and Operator-local verification both passed on this same commit. PR #57's exact head `114a6311534cd116190e3c2f4143fdfb1a2c979b` also passed hosted run [42478536427](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42478536427); it is retained as PR-head evidence, not confused with the merge-commit exact-SHA run. Full local evidence and outstanding checks are recorded in `docs/testing.md`.
 
+**Preflight and identity — PASS:** local checkout was repository root, branch `main`, HEAD `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`, equal to `origin/main`; worktree clean before and after. `uv sync --locked` passed. No code changed during verification.
 
-Cover the whole read path, not only helpers:
+**Database and migration — PASS:** a fresh disposable PostgreSQL container `watch-b2-step9-clean-d8f56de433`, database `watch_b2_step9_clean`, dynamically assigned loopback port `10891`; full Alembic chain from empty DB; current revision `0016_team_exp_history_pins`; exactly one head. Container was subsequently confirmed absent. Persistent `watch` and port `5432` were not targeted.
 
-- New create → accepted LearningChange → current pointer → v2 hash → projection publication → retrieval → Context v3.
-- Existing projection with unknown historical hash → `legacy-opaque` marker and stale state → no retrieval → explicit successful republish → v2 projection and retrieval.
-- Republish failure after stale marking → old chunks remain undiscoverable; retry/rebuild succeeds idempotently.
-- Current-pointer mismatch, wrong Team, wrong target, wrong status, invalid snapshot, broken chain, wrong scheme, or tampered chunk/state → no passage and no Context inclusion.
-- D7 due/NULL/non-UTC/needs_review cases and the full D5 pending/reciprocal successor visibility matrix.
-- Context v1/v2 replay remains exact under its existing snapshot/Event validation, without requiring legacy KnowledgeItem content-hash recalculation; new Context v3 records origin/current IDs and the v2 hash scheme.
-- Operator request creation, TaskRuntime admission/finalization/recovery, LearningCommitService, idempotency and replay continue to accept only create and reject every not-yet-authorized lifecycle operation at each boundary.
+**Static and full verification — PASS:** Ruff; Mypy (33 source files); full pytest suite once, without preceding focused tests: **806 passed, 77 warnings in 136.25s**. Warning counts: 65 in `tests/test_r7b_history_migration.py` and 12 in `tests/test_team_experience_projection_migration.py`, including the Alembic `path_separator` deprecation warning. Hosted run 42479112563 passed the corresponding migration/static/full-suite job on the same implementation SHA (806 tests, 77 warnings).
 
-**Step 9 — Exact-head verification and B2 exit gate**
+**Not yet evidenced as separate Step 9 checks:** focused regression groups were not separately invoked on the local run; `git diff --check` was not recorded; and a complete line-by-line final diff/scope review remains outstanding. The full-suite pass is not represented as a separate focused-run pass. The changed-file inventory and key create-only approval guards have been reviewed; no scope expansion was identified in those reviewed surfaces.
 
-1. Run focused hash, migration, Team Experience, retrieval, Context, Operator adapter, LearningCommit, and TaskRuntime tests.
-2. Against a fresh disposable PostgreSQL database, run the full migration chain and verify exactly one Alembic head at `0016_team_exp_history_pins`; exercise legacy-row preservation, stale gating, republish, and rollback behavior.
-3. Run Ruff, Mypy, the full test suite, `git diff --check`, and hosted CI on the exact final PR head. Record local operator evidence separately from hosted CI.
-4. Review the changed-file list and PR diff: only the B2 hash/projection/consumer/Context/approval-guard scope is allowed. Confirm no B3 assessment models/Tasks, B4 revise/revalidate writes, B5 create-with-successor/supersede/retire writes, or R7-C work slipped in.
+**Sequence deviation:** Operator-local verification occurred while this Step 9 planning PR (#58) was still open and unmerged, although this plan originally specified merging the planning checkpoint before execution. This deviation is recorded transparently. It does not create a code-SHA mismatch: hosted and local verification both tested the unchanged implementation commit `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`. PR #58 is documentation-only; its later documentation commits do not alter the implementation code tree under test.
+
+**Scope boundary:** the reviewed B2 implementation remains limited to hash/history/projection/retrieval/Context and create-only approval behavior. The active approval allowlist remains exactly `{create}`. No B3 assessment Tasks/models, B4 revise/revalidate writes, B5 candidate creation/supersede/retire writes, B6 expansion, R7-C reference/use/benchmark, new runtime/dispatcher/scheduler/public API/auth stack, or production provider is authorized or included in this documentation update.
+
+**B2 exit disposition (2026-11-08): CLOSED BY EXPLICIT OPERATOR INSTRUCTION.** The Operator instructed “Close B2.” The exact-code-head hosted/local technical evidence is positive, and the Operator accepted closure while retaining these residual verification gaps: (1) prescribed focused groups were not separately run; (2) `git diff --check` was not recorded; (3) complete line-by-line final diff review was not completed. These are accepted residuals, not passed checks. The local verification preceded merge of the Step 9 documentation PR; this sequence deviation remains explicit. The active approval allowlist remains exactly `{create}`. B3 planning/preflight may proceed; B3 implementation requires separate written authorization. B4–B6 and R7-C remain unauthorized.
+
+**Documentation boundary:** this PR updates project status and verification records only. It does not change source, tests, migrations, schema, runtime, provider, authentication, Task grants, or database configuration.
 
 ### B2 acceptance criteria
 
@@ -412,22 +409,205 @@ Stop and report a design discrepancy before implementing a workaround if: any hi
 
 B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleAssessment (B3); revise/revalidate writes (B4); candidate creation, supersede, or retire writes (B5); repeated legacy lifecycle hardening assigned to B6; TaskKnowledgeReference/KnowledgeUseAssessment or retrieval benchmarking (R7-C); a new runtime, dispatcher, scheduler, public API/auth stack, production evaluator/provider, or second commit path.
 
-**B2 exit:** the full B2 acceptance matrix is green on the exact PR head, no stop condition is open, the implementation and verification record is synchronized, and the Operator explicitly accepts the B2 exit. B3 remains separately gated.
+**B2 exit criterion:** either the full B2 acceptance matrix is green on the exact PR head with synchronized implementation/verification records, or the Operator explicitly accepts closure with any uncompleted checks recorded as residuals rather than passes. B2 was closed through the latter disposition on 2026-11-08. B3 implementation remains separately gated.
 
 
 
-## Phase B3: Assessments
+## Phase B3: Typed assessments and recording Tasks
 
-**Goal:** the typed assessment records and their recording paths.
+**B2 closeout reference:** B2 is formally closed by explicit Operator instruction on 2026-11-08. The three retained residual verification gaps are recorded in `PLAN.md` and `docs/testing.md`; none is represented as passed. This does not expand B2's create-only authority.
 
-1. `KnowledgeRevalidationAssessment` (immutable). Binds item ID, Team, current `LearningChange`, content version, content hash (new scheme), fresh evidence-basis hash and references (per the B0 freshness rule), evaluator identity/revision, typed findings. Narrow `assess_knowledge_revalidation` Task writes only this and Task-attributed Events. Do not reuse `KnowledgeQualityAssessment`.
-2. `KnowledgeLifecycleAssessment` (immutable), strict operation-specific payloads, bound to the exact `LearningChange` proposal, recorded by the narrow deterministic `assess_knowledge_lifecycle` Task:
-   - *retire:* exact target state, reason, evidence references, findings.
-   - *supersede:* the above plus successor ID, pointer, version, content hash, status, `review_after`, the predecessor's actual current status/state, and evidence/rationale for the replacement relationship.
-3. Injectable evaluator boundary with deterministic test evaluators. No production provider.
-4. Application validation of every assessment at approval time: ownership, hashes, evaluator identity/revision, pointer/version match, policy pin, Task scope, and the full fingerprint binding (B0.3 item 4).
 
-**Acceptance:** each assessment rejects mismatched pointer/version/hash, cross-Team references and wrong-operation payloads; assessments are immutable; assessment Tasks cannot write `LearningChange` or `KnowledgeItem`.
+**Status:** planning and read-only preflight only. B2 is formally closed with the residuals recorded above. B3 has not been implementation-authorized. The Operator may complete B3.0 inventory and B3.1 contract review now. Before B3.2 schema work or any source/test/migration/Task changes, separate written Operator authorization for B3 implementation must exist. This section is a work plan, not permission to create migrations, models, Tasks, or write paths.
+
+**Goal:** add immutable, operation-specific assessment records and narrow recording Tasks. These assessments supply validated evidence to the existing trusted Operator approval path; they do not authorize or commit lifecycle transitions.
+
+**Frozen B3 boundaries**
+
+- Add only `KnowledgeRevalidationAssessment` and `KnowledgeLifecycleAssessment`, with the operation-specific variants defined below. Do not reuse `KnowledgeQualityAssessment`.
+- Add only the narrow assessment Tasks `assess_knowledge_revalidation` and `assess_knowledge_lifecycle`.
+- The revalidation assessment is bound to the exact current item state and a freshly rebuilt, verified evidence basis. A timestamp alone never establishes freshness.
+- Lifecycle assessment is deterministic and operation-specific. It records structured Operator rationale, evidence references, and findings; no model scoring.
+- Evaluator/assessor implementations are injected behind a narrow boundary. Tests use deterministic fakes. No production provider or model is selected.
+- Each assessment Task may record only its own typed assessment and Task-attributed Events. It cannot write `LearningChange` or `KnowledgeItem`.
+- Approval-time validation binds the assessment to the exact proposal, target state, evidence, policy pin, Task scope, and host-supplied Operator identity/fingerprint required by B0.3.
+- The active lifecycle approval allowlist remains exactly `create` throughout B3. B3 does not enable revise, revalidate, supersede, or retire commits.
+- Reuse the existing TaskRuntime, Task admission/finalization/recovery, Event, and immutable-record patterns. No second runtime, dispatcher, scheduler, auth stack, or autonomous approval.
+
+### B3 sequence — planning may start now; implementation requires the entry gate
+
+#### B3.0 — Entry gate and exact-head preflight
+
+**Agent / coding side**
+1. Read the current `PLAN.md`, this B3 section, ADR-0032 B0.1–B0.3, the accepted B1/B2 implementation, `docs/tasks.md`, and the existing R7-A quality-assessment implementation.
+2. Trace the actual code paths for assessment persistence, Task creation/admission, TaskRuntime finalization/recovery, Task-attributed Events, immutable-row enforcement, approval request fingerprints, and create-only lifecycle guards. Verify every symbol against current `main`; do not rely on stale line numbers or assume the earlier R7-A pattern is identical.
+3. Produce a read-only inventory: files/classes/functions to extend, migration head, constraints/triggers available, existing event/outcome semantics, current assessment replay/idempotency behavior, and every guard that must remain create-only.
+4. Report discrepancies between this plan and code. Stop on any conflict with B0.3 or the authority boundary; do not invent a workaround.
+
+**Operator / local side**
+1. Confirm the B2 closure record and understand its accepted residuals; do not relabel those residuals as passed checks.
+2. Run the read-only local preflight: repository root, branch, HEAD, clean/dirty worktree, `origin/main` relation, Python/uv environment, and current Alembic head. Do not discard or stash local changes.
+3. Give the agent the exact observed base SHA and preflight report. Do not let the agent infer the local checkout state.
+4. Do not run migrations or database-backed tests in this read-only planning step. When implementation is later authorized, use only a fresh disposable PostgreSQL database/container and a dynamically assigned loopback port; do not inspect or target persistent `watch` or host port 5432.
+5. Before B3.2, verify that B2 formal exit is recorded in `PLAN.md`, its documentation PR is merged, and separate written B3 implementation authorization exists.
+
+**Expected output:** a read-only B3 inventory and a recorded preflight report. No code, migration, database mutation, Task registration, or authority change.
+
+#### B3.1 — Freeze the typed assessment contracts
+
+**Agent / coding side**
+1. Define the immutable `KnowledgeRevalidationAssessment` contract. It must bind:
+   - KnowledgeItem ID and Team ID;
+   - exact current `LearningChange` pointer;
+   - expected content version and v2 content hash/scheme;
+   - rebuilt evidence-basis hash and canonical evidence references;
+   - evaluator identity and revision;
+   - typed findings/disposition and the complete assessment payload hash;
+   - creating Task identity and the provenance needed to verify the recorded assessment.
+2. Define the immutable `KnowledgeLifecycleAssessment` envelope and strict discriminated payloads:
+   - **retire variant:** exact target state, operation, structured Operator rationale/reason, evidence references, deterministic findings;
+   - **supersede variant:** all required predecessor bindings plus exact successor ID, Team, current pointer, version, content hash, status, `review_after`, and the evidence/rationale for the replacement relationship.
+3. Bind each assessment to the exact proposed `LearningChange` and its proposal/proposed-state hashes. A lifecycle assessment must not be reusable for another operation, target, proposal, or successor state.
+4. Specify canonical serialization and payload-hash inputs using the accepted B0.3 rules and existing repository canonicalization helpers. Preserve array order where the contract requires it; do not introduce unreviewed normalization.
+5. Define stable validation failure categories for missing, stale, malformed, cross-Team, wrong-operation, and hash-mismatched assessments.
+6. Do not add fields, status values, uniqueness rules, or new authority semantics that are not required by B0.3 or proven necessary by the existing persistence/idempotency contract. Surface any unresolved schema decision for Operator review before implementation.
+
+**Operator review point:** review the field/binding matrix and the exact distinction between revalidation and lifecycle variants before schema work begins.
+
+**Expected output:** a reviewed contract table, serialization/hash specification, and negative-case matrix. No code yet.
+
+**Implementation authorization gate:** B3.2 and every later implementation stage require both (a) formal B2 exit recorded in `PLAN.md` after the required checks are completed or explicitly dispositioned, and (b) separate written Operator authorization for B3 implementation. If either is absent, stop after B3.0/B3.1 planning.
+
+#### B3.2 — Schema, migration, and immutability
+
+**Agent / coding side**
+1. Recheck the actual current migration head and model conventions. Select the next migration revision only after the exact base is confirmed; never guess or reuse a revision identifier.
+2. Add separate persistence models/tables for the two typed assessment records. Enforce Team ownership and same-Team relationships to the target, proposal, and creating Task using the strongest supported database constraints.
+3. Encode operation-specific payload shape so a retire assessment cannot carry supersede-only fields and a supersede assessment cannot omit its successor binding.
+4. Add database-level immutability protection consistent with existing immutable assessment/history records. Updates and deletes must be rejected; ordinary creation and required Task/Event attribution must remain possible.
+5. Add migration upgrade/downgrade tests and positive/negative constraint tests. Preserve all existing records and historical replay bytes.
+6. Do not change `KnowledgeItem`, `LearningChange`, their commit constraints, the create-only approval allowlist, or any projection/retrieval schema in B3.
+
+**Operator / local side**
+1. Review the migration plan and exact schema diff before running it.
+2. Verify the migration on a fresh disposable database and confirm one Alembic head.
+3. Never run migration experiments against persistent `watch`.
+
+**Expected output:** two typed immutable persistence contracts, migration and DB-level rejection tests; no lifecycle commit capability.
+
+#### B3.3 — Revalidation assessment service and Task
+
+**Agent / coding side**
+1. Implement a narrow evidence-basis builder that reconstructs the basis from canonical Outcomes, recorded Evaluations, Events, EvidenceLinks, immutable Snapshots, and other explicitly permitted canonical references. Do not treat retrieved chunks, similarity ranks, transcripts, or model assertions as canonical evidence.
+2. At assessment time, revalidate reference existence, Team ownership, canonical IDs, snapshot/source hashes, provenance and quote constraints, and the exact current item pointer/version/content hash.
+3. Apply the B0 freshness rule: existing canonical observations may qualify only while temporally relevant and source-valid. Time-sensitive/current-condition claims, expired or changed sources, and material newer or contradictory evidence require new observations. A timestamp alone is insufficient.
+4. Place the evaluator behind an injected protocol that returns an untrusted typed draft. Validate the draft and all bindings in application code before persisting the immutable assessment. Tests use deterministic fakes; no production evaluator is wired.
+5. Implement `assess_knowledge_revalidation` as an ordinary Task on the existing TaskRuntime. Its exact write scope is only `KnowledgeRevalidationAssessment` plus Task-attributed Events through the established runtime mechanism.
+6. Make retries, idempotency, replay, interrupted-task recovery, and terminal outcomes consistent with the verified R7-A Task pattern. Replaying a completed Task must return the same recorded assessment, not call the evaluator again or create a second assessment.
+7. Fail closed when the item pointer/version/hash changes during assessment or evidence reconstruction; the result must not be accepted as current.
+
+**Operator review point:** inspect the evidence freshness truth table and the allowed canonical evidence sources before accepting the implementation.
+
+**Expected output:** deterministic tests for fresh/adequate evidence, stale or changed sources, new-observation-required cases, cross-Team references, pointer races, malformed evaluator drafts, retry and replay.
+
+#### B3.4 — Lifecycle assessment service and Task
+
+**Agent / coding side**
+1. Implement deterministic, operation-specific assessment validation for `retire` and `supersede`. Do not use model scoring or a production evaluator.
+2. Require structured Operator rationale, evidence references, and deterministic findings for each variant.
+3. For retire, bind the exact target ID, Team, current pointer, version, status, content hash, and full-state snapshot expected by the proposal.
+4. For supersede, additionally bind the exact successor's ID, Team, current pointer, version, content hash, status, and `review_after`; bind the predecessor's actual current state and the explicit replacement rationale/evidence.
+5. Enforce strict discriminated payload validation. Wrong-operation fields, missing successor fields, stale target/successor bindings, and cross-Team relationships fail closed.
+6. Implement `assess_knowledge_lifecycle` as an ordinary Task on the existing TaskRuntime. Its exact write scope is only `KnowledgeLifecycleAssessment` plus Task-attributed Events through the established runtime mechanism.
+7. Ensure replay returns the same immutable assessment and never silently reassesses a completed Task against newer state.
+
+**Operator review point:** review the retire/supersede payload examples and confirm they match the frozen B0.1 candidate and graph rules. B3 assessment does not create candidates or commit supersession.
+
+**Expected output:** deterministic retire/supersede contract tests, stale-binding tests, cross-Team rejection, Task scope, replay and immutability coverage.
+
+#### B3.5 — TaskRuntime, recovery, and Event integration
+
+**Agent / coding side**
+1. Register both Task types only through the existing Task registry/admission path and only after their exact request-event and Task-shape validators are implemented.
+2. Verify exact `allowed_writes`, budget, attempts, deadline, and Task linkage against the actual repository conventions. Do not copy values blindly from R7-A.
+3. Ensure TaskRuntime admission, finalization, interrupted-task recovery, retry fencing, and committed-observation replay recognize each assessment Task without broadening unrelated Task types.
+4. Record the required request/recorded Events with Task attribution and immutable payload hashes. Event replay must prove the same Task, assessment ID, Team, and proposal binding.
+5. Confirm neither assessment Task can pass admission/finalization/recovery with `KnowledgeItem` or `LearningChange` in its write scope or mutate either table through a side path.
+6. Test missing/corrupt Events, duplicate recording, retry after partial failure, terminal replay, and conflicting idempotency keys.
+
+**Expected output:** narrow TaskRuntime integration and explicit proof that the existing runtime remains the only execution path.
+
+#### B3.6 — Approval-time assessment binding
+
+**Agent / coding side**
+1. Extend the existing approval validation path to load and independently verify the required assessment for the requested operation. Do not trust an assessment ID or Task status alone.
+2. Recompute/verify the assessment payload hash and validate the full target/proposal/evidence binding, Team ownership, current pointer/version/content hash, evaluator identity/revision, pinned TeamPolicy version, and Task write scope.
+3. For supersede, revalidate the complete successor binding, including `review_after`, against current canonical state at approval time.
+4. Include assessment payload hashes—not only assessment IDs—in the immutable approval-request fingerprint and committed decision record, together with the host-supplied canonical Operator identity as required by B0.3.
+5. Reuse of an idempotency key with a different principal, assessment payload, proposal, target state, or successor state must conflict. Stale or mismatched assessments cannot be accepted; a new proposal and assessment are required.
+6. Keep the active approval allowlist exactly `create`. Add validation infrastructure only; do not admit `revalidate`, `supersede`, or `retire` commits in B3. `revise` remains B4 scope.
+
+**Operator review point:** inspect the final fingerprint field matrix and prove that B3 has not widened the approval allowlist.
+
+**Expected output:** approval-gate tests for missing, duplicate, stale, tampered, wrong-operation, cross-Team, wrong-principal, and successor-mismatch assessments, while all non-create commits remain rejected.
+
+#### B3.7 — Integrated regression matrix
+
+Add end-to-end tests that traverse the real persistence, TaskRuntime, Event, assessment, and approval-validation boundaries. At minimum cover:
+
+- valid revalidation assessment bound to a fresh current evidence basis;
+- evidence freshness failures: expired/changed source, time-sensitive claim without new observations, material contradiction, missing canonical reference, invalid provenance;
+- pointer/version/content-hash drift before and during assessment and again before approval;
+- cross-Team target, evidence, proposal, Task, and successor references;
+- immutable assessment update/delete rejection at the database boundary;
+- malformed and cross-operation lifecycle payloads;
+- retire target binding and full-state mismatch;
+- supersede successor ID/pointer/version/hash/status/`review_after` mismatch;
+- evaluator identity/revision mismatch and malformed/untrusted evaluator draft;
+- exact Task write-scope rejection for `KnowledgeItem` and `LearningChange`;
+- request/recorded Event integrity, idempotency conflicts, retry, interrupted recovery, and byte/ID-stable terminal replay;
+- approval fingerprint binds the full assessment payload and host principal;
+- all non-create lifecycle approval attempts remain rejected, including admission, finalization, recovery, and commit-service boundaries.
+
+Tests must assert both the intended assessment record and the absence of unauthorized canonical writes. Do not rely solely on unit tests that bypass TaskRuntime, database constraints, or approval validation.
+
+#### B3.8 — Exact-head verification and exit review
+
+**Agent / coding side**
+1. Run the prescribed focused groups independently before the full suite; record exact commands and results.
+2. Run Ruff, Mypy, and `git diff --check`.
+3. Review the complete diff against the B3 changed-file allowlist and this phase boundary. Report every changed file and explain any necessary support change outside the core assessment paths.
+4. Verify no production provider, new runtime/dispatcher/scheduler, authentication stack, direct KnowledgeItem/LearningChange write, or non-create approval grant was introduced.
+5. Ensure hosted CI passes on the exact final PR head.
+
+**Operator / local side**
+1. Preflight the exact PR head and clean worktree before syncing/testing.
+2. Run migrations and the full suite against a fresh disposable PostgreSQL instance on a dynamically assigned loopback port.
+3. Run the same focused groups, Ruff, Mypy, and diff check locally; record the exact tested SHA.
+4. Confirm the disposable container is removed and both database environment variables are restored; do not touch persistent `watch` or host port 5432.
+5. Compare hosted and local tested code SHAs; investigate any mismatch rather than calling it exact-head verification.
+
+**Expected output:** reproducible hosted/local evidence on one exact code SHA, complete diff/scope review, and a B3 exit recommendation.
+
+#### B3.9 — Documentation closeout and separate gate
+
+1. Update `PLAN.md`, this implementation plan, `docs/testing.md`, ADR-0032 progression, Task documentation, CHANGE_MAP, README, and CONTEXT so that status, task names, write scopes, and authority boundaries agree.
+2. Record actual merged commit, exact hosted/local tested SHA, focused/full test counts, warnings, migration head, static checks, diff review, and any deviations. Do not turn unrun checks into passes.
+3. Obtain explicit Operator acceptance of B3 exit before marking B3 complete.
+4. Keep B4–B6 and R7-C separately gated. B3 exit does not authorize any lifecycle commit path.
+
+### B3 acceptance criteria
+
+- Both assessment types are immutable and operation-specific, with canonical payload hashes and complete target/proposal/evidence bindings.
+- Revalidation freshness follows B0.2/B0.3; canonical evidence references and source hashes are revalidated at assessment time.
+- Lifecycle assessment is deterministic, contains structured Operator rationale/evidence/findings, and strictly separates retire from supersede.
+- Both assessment Tasks use the existing TaskRuntime, exact narrow write scopes, attributable Events, idempotency, recovery, and stable replay.
+- Approval-time validation independently verifies the exact assessment payload and all B0.3 fingerprint bindings.
+- The active approval allowlist remains exactly `create`; B3 introduces no lifecycle commit capability.
+- Focused and full tests, fresh migration/single-head, Ruff, Mypy, `git diff --check`, complete scope review, and hosted/local exact-head verification pass.
+- No production evaluator/provider, new runtime/dispatcher/scheduler/auth stack, direct canonical writes, or R7-C work is introduced.
+
+**B3 stop conditions:** stop and return to the Operator if the frozen contracts cannot be represented without changing B0.3, if canonical evidence freshness cannot be verified, if assessment immutability or exact Task scope cannot be enforced, if the approval fingerprint cannot bind all required data, or if implementation would require widening the create-only allowlist. Do not proceed into B4 to work around a B3 blocker.
 
 ---
 
