@@ -154,7 +154,7 @@ def upgrade() -> None:
                 "learning_changes.operation",
                 "learning_changes.team_id",
             ],
-            name="fk_knowledge_revalidation_assessments_learning_change_operation_team",
+            name="fk_kra_learning_change_operation_team",
         ),
         sa.ForeignKeyConstraint(
             ["learning_change_id", "knowledge_item_id", "team_id"],
@@ -163,7 +163,7 @@ def upgrade() -> None:
                 "learning_changes.target_id",
                 "learning_changes.team_id",
             ],
-            name="fk_knowledge_revalidation_assessments_learning_change_target_team",
+            name="fk_kra_learning_change_target_team",
         ),
         sa.ForeignKeyConstraint(
             ["knowledge_item_id", "team_id"],
@@ -317,7 +317,7 @@ def upgrade() -> None:
                 "learning_changes.operation",
                 "learning_changes.team_id",
             ],
-            name="fk_knowledge_lifecycle_assessments_learning_change_operation_team",
+            name="fk_kla_learning_change_operation_team",
         ),
         sa.ForeignKeyConstraint(
             ["learning_change_id", "knowledge_item_id", "team_id"],
@@ -346,7 +346,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["successor_current_learning_change_id", "team_id"],
             ["learning_changes.id", "learning_changes.team_id"],
-            name="fk_knowledge_lifecycle_assessments_successor_current_change_team",
+            name="fk_kla_successor_current_change_team",
         ),
         sa.ForeignKeyConstraint(
             ["learning_change_id"],
