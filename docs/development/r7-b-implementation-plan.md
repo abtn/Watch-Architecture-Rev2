@@ -413,18 +413,196 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 
 
 
-## Phase B3: Assessments
+## Phase B3: Typed assessments and recording Tasks
 
-**Goal:** the typed assessment records and their recording paths.
+**Status:** planning sequence only. B3 has not been implementation-authorized. B2 formal exit must be recorded first, followed by separate written Operator authorization for B3 implementation. This section is a work plan, not permission to create migrations, models, Tasks, or write paths.
 
-1. `KnowledgeRevalidationAssessment` (immutable). Binds item ID, Team, current `LearningChange`, content version, content hash (new scheme), fresh evidence-basis hash and references (per the B0 freshness rule), evaluator identity/revision, typed findings. Narrow `assess_knowledge_revalidation` Task writes only this and Task-attributed Events. Do not reuse `KnowledgeQualityAssessment`.
-2. `KnowledgeLifecycleAssessment` (immutable), strict operation-specific payloads, bound to the exact `LearningChange` proposal, recorded by the narrow deterministic `assess_knowledge_lifecycle` Task:
-   - *retire:* exact target state, reason, evidence references, findings.
-   - *supersede:* the above plus successor ID, pointer, version, content hash, status, `review_after`, the predecessor's actual current status/state, and evidence/rationale for the replacement relationship.
-3. Injectable evaluator boundary with deterministic test evaluators. No production provider.
-4. Application validation of every assessment at approval time: ownership, hashes, evaluator identity/revision, pointer/version match, policy pin, Task scope, and the full fingerprint binding (B0.3 item 4).
+**Goal:** add immutable, operation-specific assessment records and narrow recording Tasks. These assessments supply validated evidence to the existing trusted Operator approval path; they do not authorize or commit lifecycle transitions.
 
-**Acceptance:** each assessment rejects mismatched pointer/version/hash, cross-Team references and wrong-operation payloads; assessments are immutable; assessment Tasks cannot write `LearningChange` or `KnowledgeItem`.
+**Frozen B3 boundaries**
+
+- Add only `KnowledgeRevalidationAssessment` and `KnowledgeLifecycleAssessment`, with the operation-specific variants defined below. Do not reuse `KnowledgeQualityAssessment`.
+- Add only the narrow assessment Tasks `assess_knowledge_revalidation` and `assess_knowledge_lifecycle`.
+- The revalidation assessment is bound to the exact current item state and a freshly rebuilt, verified evidence basis. A timestamp alone never establishes freshness.
+- Lifecycle assessment is deterministic and operation-specific. It records structured Operator rationale, evidence references, and findings; no model scoring.
+- Evaluator/assessor implementations are injected behind a narrow boundary. Tests use deterministic fakes. No production provider or model is selected.
+- Each assessment Task may record only its own typed assessment and Task-attributed Events. It cannot write `LearningChange` or `KnowledgeItem`.
+- Approval-time validation binds the assessment to the exact proposal, target state, evidence, policy pin, Task scope, and host-supplied Operator identity/fingerprint required by B0.3.
+- The active lifecycle approval allowlist remains exactly `create` throughout B3. B3 does not enable revise, revalidate, supersede, or retire commits.
+- Reuse the existing TaskRuntime, Task admission/finalization/recovery, Event, and immutable-record patterns. No second runtime, dispatcher, scheduler, auth stack, or autonomous approval.
+
+### B3 implementation sequence — execute only after the entry gate
+
+#### B3.0 — Entry gate and exact-head preflight
+
+**Agent / coding side**
+1. Read the current `PLAN.md`, this B3 section, ADR-0032 B0.1–B0.3, the accepted B1/B2 implementation, `docs/tasks.md`, and the existing R7-A quality-assessment implementation.
+2. Trace the actual code paths for assessment persistence, Task creation/admission, TaskRuntime finalization/recovery, Task-attributed Events, immutable-row enforcement, approval request fingerprints, and create-only lifecycle guards. Verify every symbol against current `main`; do not rely on stale line numbers or assume the earlier R7-A pattern is identical.
+3. Produce a read-only inventory: files/classes/functions to extend, migration head, constraints/triggers available, existing event/outcome semantics, current assessment replay/idempotency behavior, and every guard that must remain create-only.
+4. Report discrepancies between this plan and code. Stop on any conflict with B0.3 or the authority boundary; do not invent a workaround.
+
+**Operator / local side**
+1. Confirm B2 formal exit is recorded in `PLAN.md` and its documentation PR is merged.
+2. Confirm a separate written B3 implementation authorization exists. Planning and preflight alone do not satisfy this requirement.
+3. Run the standard local preflight: repository root, branch, HEAD, clean/dirty worktree, `origin/main` relation, Python/uv environment, and current Alembic head. Do not discard or stash local changes.
+4. Use only a fresh disposable PostgreSQL database/container and a dynamically assigned loopback port for database-backed verification. Do not inspect or target persistent `watch`; never use host port 5432 as the test target.
+5. Give the agent the exact verified base SHA and the preflight report. Do not let the agent infer the local checkout state.
+
+**Expected output:** a read-only B3 inventory and a recorded entry-gate report. No code, migration, Task registration, or authority change.
+
+#### B3.1 — Freeze the typed assessment contracts
+
+**Agent / coding side**
+1. Define the immutable `KnowledgeRevalidationAssessment` contract. It must bind:
+   - KnowledgeItem ID and Team ID;
+   - exact current `LearningChange` pointer;
+   - expected content version and v2 content hash/scheme;
+   - rebuilt evidence-basis hash and canonical evidence references;
+   - evaluator identity and revision;
+   - typed findings/disposition and the complete assessment payload hash;
+   - creating Task identity and the provenance needed to verify the recorded assessment.
+2. Define the immutable `KnowledgeLifecycleAssessment` envelope and strict discriminated payloads:
+   - **retire variant:** exact target state, operation, structured Operator rationale/reason, evidence references, deterministic findings;
+   - **supersede variant:** all required predecessor bindings plus exact successor ID, Team, current pointer, version, content hash, status, `review_after`, and the evidence/rationale for the replacement relationship.
+3. Bind each assessment to the exact proposed `LearningChange` and its proposal/proposed-state hashes. A lifecycle assessment must not be reusable for another operation, target, proposal, or successor state.
+4. Specify canonical serialization and payload-hash inputs using the accepted B0.3 rules and existing repository canonicalization helpers. Preserve array order where the contract requires it; do not introduce unreviewed normalization.
+5. Define stable validation failure categories for missing, stale, malformed, cross-Team, wrong-operation, and hash-mismatched assessments.
+6. Do not add fields, status values, uniqueness rules, or new authority semantics that are not required by B0.3 or proven necessary by the existing persistence/idempotency contract. Surface any unresolved schema decision for Operator review before implementation.
+
+**Operator review point:** review the field/binding matrix and the exact distinction between revalidation and lifecycle variants before schema work begins.
+
+**Expected output:** a reviewed contract table, serialization/hash specification, and negative-case matrix. No code yet.
+
+#### B3.2 — Schema, migration, and immutability
+
+**Agent / coding side**
+1. Recheck the actual current migration head and model conventions. Select the next migration revision only after the exact base is confirmed; never guess or reuse a revision identifier.
+2. Add separate persistence models/tables for the two typed assessment records. Enforce Team ownership and same-Team relationships to the target, proposal, and creating Task using the strongest supported database constraints.
+3. Encode operation-specific payload shape so a retire assessment cannot carry supersede-only fields and a supersede assessment cannot omit its successor binding.
+4. Add database-level immutability protection consistent with existing immutable assessment/history records. Updates and deletes must be rejected; ordinary creation and required Task/Event attribution must remain possible.
+5. Add migration upgrade/downgrade tests and positive/negative constraint tests. Preserve all existing records and historical replay bytes.
+6. Do not change `KnowledgeItem`, `LearningChange`, their commit constraints, the create-only approval allowlist, or any projection/retrieval schema in B3.
+
+**Operator / local side**
+1. Review the migration plan and exact schema diff before running it.
+2. Verify the migration on a fresh disposable database and confirm one Alembic head.
+3. Never run migration experiments against persistent `watch`.
+
+**Expected output:** two typed immutable persistence contracts, migration and DB-level rejection tests; no lifecycle commit capability.
+
+#### B3.3 — Revalidation assessment service and Task
+
+**Agent / coding side**
+1. Implement a narrow evidence-basis builder that reconstructs the basis from canonical Outcomes, recorded Evaluations, Events, EvidenceLinks, immutable Snapshots, and other explicitly permitted canonical references. Do not treat retrieved chunks, similarity ranks, transcripts, or model assertions as canonical evidence.
+2. At assessment time, revalidate reference existence, Team ownership, canonical IDs, snapshot/source hashes, provenance and quote constraints, and the exact current item pointer/version/content hash.
+3. Apply the B0 freshness rule: existing canonical observations may qualify only while temporally relevant and source-valid. Time-sensitive/current-condition claims, expired or changed sources, and material newer or contradictory evidence require new observations. A timestamp alone is insufficient.
+4. Place the evaluator behind an injected protocol that returns an untrusted typed draft. Validate the draft and all bindings in application code before persisting the immutable assessment. Tests use deterministic fakes; no production evaluator is wired.
+5. Implement `assess_knowledge_revalidation` as an ordinary Task on the existing TaskRuntime. Its exact write scope is only `KnowledgeRevalidationAssessment` plus Task-attributed Events through the established runtime mechanism.
+6. Make retries, idempotency, replay, interrupted-task recovery, and terminal outcomes consistent with the verified R7-A Task pattern. Replaying a completed Task must return the same recorded assessment, not call the evaluator again or create a second assessment.
+7. Fail closed when the item pointer/version/hash changes during assessment or evidence reconstruction; the result must not be accepted as current.
+
+**Operator review point:** inspect the evidence freshness truth table and the allowed canonical evidence sources before accepting the implementation.
+
+**Expected output:** deterministic tests for fresh/adequate evidence, stale or changed sources, new-observation-required cases, cross-Team references, pointer races, malformed evaluator drafts, retry and replay.
+
+#### B3.4 — Lifecycle assessment service and Task
+
+**Agent / coding side**
+1. Implement deterministic, operation-specific assessment validation for `retire` and `supersede`. Do not use model scoring or a production evaluator.
+2. Require structured Operator rationale, evidence references, and deterministic findings for each variant.
+3. For retire, bind the exact target ID, Team, current pointer, version, status, content hash, and full-state snapshot expected by the proposal.
+4. For supersede, additionally bind the exact successor's ID, Team, current pointer, version, content hash, status, and `review_after`; bind the predecessor's actual current state and the explicit replacement rationale/evidence.
+5. Enforce strict discriminated payload validation. Wrong-operation fields, missing successor fields, stale target/successor bindings, and cross-Team relationships fail closed.
+6. Implement `assess_knowledge_lifecycle` as an ordinary Task on the existing TaskRuntime. Its exact write scope is only `KnowledgeLifecycleAssessment` plus Task-attributed Events through the established runtime mechanism.
+7. Ensure replay returns the same immutable assessment and never silently reassesses a completed Task against newer state.
+
+**Operator review point:** review the retire/supersede payload examples and confirm they match the frozen B0.1 candidate and graph rules. B3 assessment does not create candidates or commit supersession.
+
+**Expected output:** deterministic retire/supersede contract tests, stale-binding tests, cross-Team rejection, Task scope, replay and immutability coverage.
+
+#### B3.5 — TaskRuntime, recovery, and Event integration
+
+**Agent / coding side**
+1. Register both Task types only through the existing Task registry/admission path and only after their exact request-event and Task-shape validators are implemented.
+2. Verify exact `allowed_writes`, budget, attempts, deadline, and Task linkage against the actual repository conventions. Do not copy values blindly from R7-A.
+3. Ensure TaskRuntime admission, finalization, interrupted-task recovery, retry fencing, and committed-observation replay recognize each assessment Task without broadening unrelated Task types.
+4. Record the required request/recorded Events with Task attribution and immutable payload hashes. Event replay must prove the same Task, assessment ID, Team, and proposal binding.
+5. Confirm neither assessment Task can pass admission/finalization/recovery with `KnowledgeItem` or `LearningChange` in its write scope or mutate either table through a side path.
+6. Test missing/corrupt Events, duplicate recording, retry after partial failure, terminal replay, and conflicting idempotency keys.
+
+**Expected output:** narrow TaskRuntime integration and explicit proof that the existing runtime remains the only execution path.
+
+#### B3.6 — Approval-time assessment binding
+
+**Agent / coding side**
+1. Extend the existing approval validation path to load and independently verify the required assessment for the requested operation. Do not trust an assessment ID or Task status alone.
+2. Recompute/verify the assessment payload hash and validate the full target/proposal/evidence binding, Team ownership, current pointer/version/content hash, evaluator identity/revision, pinned TeamPolicy version, and Task write scope.
+3. For supersede, revalidate the complete successor binding, including `review_after`, against current canonical state at approval time.
+4. Include assessment payload hashes—not only assessment IDs—in the immutable approval-request fingerprint and committed decision record, together with the host-supplied canonical Operator identity as required by B0.3.
+5. Reuse of an idempotency key with a different principal, assessment payload, proposal, target state, or successor state must conflict. Stale or mismatched assessments cannot be accepted; a new proposal and assessment are required.
+6. Keep the active approval allowlist exactly `create`. Add validation infrastructure only; do not admit `revalidate`, `supersede`, or `retire` commits in B3. `revise` remains B4 scope.
+
+**Operator review point:** inspect the final fingerprint field matrix and prove that B3 has not widened the approval allowlist.
+
+**Expected output:** approval-gate tests for missing, duplicate, stale, tampered, wrong-operation, cross-Team, wrong-principal, and successor-mismatch assessments, while all non-create commits remain rejected.
+
+#### B3.7 — Integrated regression matrix
+
+Add end-to-end tests that traverse the real persistence, TaskRuntime, Event, assessment, and approval-validation boundaries. At minimum cover:
+
+- valid revalidation assessment bound to a fresh current evidence basis;
+- evidence freshness failures: expired/changed source, time-sensitive claim without new observations, material contradiction, missing canonical reference, invalid provenance;
+- pointer/version/content-hash drift before and during assessment and again before approval;
+- cross-Team target, evidence, proposal, Task, and successor references;
+- immutable assessment update/delete rejection at the database boundary;
+- malformed and cross-operation lifecycle payloads;
+- retire target binding and full-state mismatch;
+- supersede successor ID/pointer/version/hash/status/`review_after` mismatch;
+- evaluator identity/revision mismatch and malformed/untrusted evaluator draft;
+- exact Task write-scope rejection for `KnowledgeItem` and `LearningChange`;
+- request/recorded Event integrity, idempotency conflicts, retry, interrupted recovery, and byte/ID-stable terminal replay;
+- approval fingerprint binds the full assessment payload and host principal;
+- all non-create lifecycle approval attempts remain rejected, including admission, finalization, recovery, and commit-service boundaries.
+
+Tests must assert both the intended assessment record and the absence of unauthorized canonical writes. Do not rely solely on unit tests that bypass TaskRuntime, database constraints, or approval validation.
+
+#### B3.8 — Exact-head verification and exit review
+
+**Agent / coding side**
+1. Run the prescribed focused groups independently before the full suite; record exact commands and results.
+2. Run Ruff, Mypy, and `git diff --check`.
+3. Review the complete diff against the B3 changed-file allowlist and this phase boundary. Report every changed file and explain any necessary support change outside the core assessment paths.
+4. Verify no production provider, new runtime/dispatcher/scheduler, authentication stack, direct KnowledgeItem/LearningChange write, or non-create approval grant was introduced.
+5. Ensure hosted CI passes on the exact final PR head.
+
+**Operator / local side**
+1. Preflight the exact PR head and clean worktree before syncing/testing.
+2. Run migrations and the full suite against a fresh disposable PostgreSQL instance on a dynamically assigned loopback port.
+3. Run the same focused groups, Ruff, Mypy, and diff check locally; record the exact tested SHA.
+4. Confirm the disposable container is removed and both database environment variables are restored; do not touch persistent `watch` or host port 5432.
+5. Compare hosted and local tested code SHAs; investigate any mismatch rather than calling it exact-head verification.
+
+**Expected output:** reproducible hosted/local evidence on one exact code SHA, complete diff/scope review, and a B3 exit recommendation.
+
+#### B3.9 — Documentation closeout and separate gate
+
+1. Update `PLAN.md`, this implementation plan, `docs/testing.md`, ADR-0032 progression, Task documentation, CHANGE_MAP, README, and CONTEXT so that status, task names, write scopes, and authority boundaries agree.
+2. Record actual merged commit, exact hosted/local tested SHA, focused/full test counts, warnings, migration head, static checks, diff review, and any deviations. Do not turn unrun checks into passes.
+3. Obtain explicit Operator acceptance of B3 exit before marking B3 complete.
+4. Keep B4–B6 and R7-C separately gated. B3 exit does not authorize any lifecycle commit path.
+
+### B3 acceptance criteria
+
+- Both assessment types are immutable and operation-specific, with canonical payload hashes and complete target/proposal/evidence bindings.
+- Revalidation freshness follows B0.2/B0.3; canonical evidence references and source hashes are revalidated at assessment time.
+- Lifecycle assessment is deterministic, contains structured Operator rationale/evidence/findings, and strictly separates retire from supersede.
+- Both assessment Tasks use the existing TaskRuntime, exact narrow write scopes, attributable Events, idempotency, recovery, and stable replay.
+- Approval-time validation independently verifies the exact assessment payload and all B0.3 fingerprint bindings.
+- The active approval allowlist remains exactly `create`; B3 introduces no lifecycle commit capability.
+- Focused and full tests, fresh migration/single-head, Ruff, Mypy, `git diff --check`, complete scope review, and hosted/local exact-head verification pass.
+- No production evaluator/provider, new runtime/dispatcher/scheduler/auth stack, direct canonical writes, or R7-C work is introduced.
+
+**B3 stop conditions:** stop and return to the Operator if the frozen contracts cannot be represented without changing B0.3, if canonical evidence freshness cannot be verified, if assessment immutability or exact Task scope cannot be enforced, if the approval fingerprint cannot bind all required data, or if implementation would require widening the create-only allowlist. Do not proceed into B4 to work around a B3 blocker.
 
 ---
 
