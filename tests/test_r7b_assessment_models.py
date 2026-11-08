@@ -167,6 +167,7 @@ def test_lifecycle_variant_and_closed_vocabulary_constraints_are_declared():
     assert "operation IN ('retire', 'supersede')" in sql
     assert "variant_payload = '{}'::jsonb" in sql
     assert "variant_payload ? 'successor_team_id'" in sql
+    assert "jsonb_build_object" in sql
     assert "successor_knowledge_item_id <> knowledge_item_id" in sql
     assert "successor_status IN ('active', 'needs_review', 'retired')" in sql
     assert "watch.r7b.knowledge-content.v2" in sql
