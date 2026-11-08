@@ -20,6 +20,7 @@ from core.models import (
     EvidenceLink,
     KnowledgeItem,
     KnowledgeQualityAssessment,
+    KnowledgeRevalidationAssessment,
     LearningChange,
     Outcome,
     Plan,
@@ -67,6 +68,20 @@ _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES = frozenset(
     {"success_knowledge_quality_assessed"}
 )
 _KNOWLEDGE_QUALITY_TASK_TYPE = "assess_knowledge_quality"
+_KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES = frozenset(
+    {"success_knowledge_revalidation_assessed"}
+)
+_KNOWLEDGE_REVALIDATION_TASK_TYPE = "assess_knowledge_revalidation"
+_KNOWLEDGE_REVALIDATION_REQUEST_EVENT_TYPE = (
+    "knowledge_revalidation_assessment_task_requested"
+)
+_KNOWLEDGE_REVALIDATION_ALLOWED_WRITES = ["KnowledgeRevalidationAssessment"]
+_KNOWLEDGE_REVALIDATION_MAX_ATTEMPTS = 3
+_KNOWLEDGE_REVALIDATION_BUDGET = {
+    "max_tool_calls": 0,
+    "max_cost_usd": 0.0,
+    "deadline_seconds": 30,
+}
 _KNOWLEDGE_QUALITY_REQUEST_EVENT_TYPE = "knowledge_quality_assessment_task_requested"
 _KNOWLEDGE_QUALITY_RECORDED_EVENT_TYPE = "knowledge_quality_assessment_recorded"
 _KNOWLEDGE_QUALITY_ALLOWED_WRITES = ["KnowledgeQualityAssessment"]
@@ -87,6 +102,7 @@ _SUCCESS_CATEGORIES = (
     | _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES
     | _KNOWLEDGE_REVIEW_SUCCESS_CATEGORIES
     | _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES
+    | _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES
     | _CONTROL_TASK_SUCCESS_CATEGORIES
 )
 _RESULT_CATEGORIES = _SUCCESS_CATEGORIES | {"terminal_failure"}
@@ -156,6 +172,7 @@ class TerminalObservation:
         "success_learning_change_accepted", "success_learning_change_rejected",
         "success_knowledge_reviewed",
         "success_knowledge_quality_assessed",
+        "success_knowledge_revalidation_assessed",
         "success_strategy_accepted",
         "success_strategy_rejected", "success_plan_created", "terminal_failure"
     ]
@@ -168,6 +185,7 @@ class TerminalObservation:
     plan_id: UUID | None = None
     plan_event_id: UUID | None = None
     knowledge_quality_assessment_id: UUID | None = None
+    knowledge_revalidation_assessment_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -345,6 +363,20 @@ class TaskRuntime:
             elif self._is_r6g_evaluation_task(session, task):
                 try:
                     self._validate_evaluation_task_request(session, task)
+                except TaskNotFinalizable as error:
+                    raise TaskNotEligible(str(error)) from error
+            elif self._is_knowledge_revalidation_task(session, task):
+                if self._snapshot_store is None:
+                    raise TaskNotEligible(
+                        "knowledge_revalidation_snapshot_store_required"
+                    )
+                try:
+                    self._validate_knowledge_revalidation_task_request(
+                        session,
+                        task,
+                        require_proposed=True,
+                        require_current=True,
+                    )
                 except TaskNotFinalizable as error:
                     raise TaskNotEligible(str(error)) from error
             elif self._is_knowledge_quality_task(session, task):
@@ -659,6 +691,19 @@ class TaskRuntime:
                         in _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES
                     ),
                 )
+            if self._is_knowledge_revalidation_task(session, task):
+                self._validate_knowledge_revalidation_task_shell(session, task)
+                if observation.result_category in _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES:
+                    if self._snapshot_store is None:
+                        raise TaskNotFinalizable(
+                            "knowledge_revalidation_snapshot_store_required"
+                        )
+                    self._validate_knowledge_revalidation_task_request(
+                        session,
+                        task,
+                        require_proposed=task.status == "running",
+                        require_current=task.status == "running",
+                    )
             if (
                 observation.result_category == "success_knowledge_reviewed"
                 and task.task_type != "review_knowledge"
@@ -676,6 +721,18 @@ class TaskRuntime:
                 )
             elif observation.knowledge_quality_assessment_id is not None:
                 raise TaskNotFinalizable("knowledge_quality_assessment_id_not_allowed")
+
+            if observation.result_category in _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES:
+                self._validate_knowledge_revalidation_result(
+                    session,
+                    task,
+                    observation,
+                    allow_completed=task.status == "done",
+                )
+            elif observation.knowledge_revalidation_assessment_id is not None:
+                raise TaskNotFinalizable(
+                    "knowledge_revalidation_assessment_id_not_allowed"
+                )
 
             if (
                 observation.result_category
@@ -753,6 +810,15 @@ class TaskRuntime:
             ):
                 raise TaskNotFinalizable(
                     "knowledge_quality_task_requires_assessment_result"
+                )
+            if (
+                task.task_type == _KNOWLEDGE_REVALIDATION_TASK_TYPE
+                and observation.result_category in _SUCCESS_CATEGORIES
+                and observation.result_category
+                not in _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES
+            ):
+                raise TaskNotFinalizable(
+                    "knowledge_revalidation_task_requires_assessment_result"
                 )
             if (
                 task.task_type == "review_knowledge"
@@ -860,6 +926,15 @@ class TaskRuntime:
                                 )
                             }
                             if observation.knowledge_quality_assessment_id is not None
+                            else {}
+                        ),
+                        **(
+                            {
+                                "knowledge_revalidation_assessment_id": str(
+                                    observation.knowledge_revalidation_assessment_id
+                                )
+                            }
+                            if observation.knowledge_revalidation_assessment_id is not None
                             else {}
                         ),
                     },
@@ -1230,13 +1305,18 @@ class TaskRuntime:
                 recovered_observation = (
                     self._committed_operator_decision_observation(session, task)
                 )
+            elif self._is_knowledge_revalidation_task(session, task):
+                recovered_observation = (
+                    self._committed_knowledge_revalidation_assessment_observation(
+                        session, task
+                    )
+                )
             elif self._is_knowledge_quality_task(session, task):
                 recovered_observation = (
                     self._committed_knowledge_quality_assessment_observation(
                         session, task
                     )
-                )
-            elif self._is_r6g_evaluation_task(session, task):
+                )            elif self._is_r6g_evaluation_task(session, task):
                 recovered_observation = self._committed_evaluation_observation(
                     session, task
                 )
@@ -3046,6 +3126,10 @@ class TaskRuntime:
         if observation.knowledge_quality_assessment_id is not None:
             payload["knowledge_quality_assessment_id"] = str(
                 observation.knowledge_quality_assessment_id
+            )
+        if observation.knowledge_revalidation_assessment_id is not None:
+            payload["knowledge_revalidation_assessment_id"] = str(
+                observation.knowledge_revalidation_assessment_id
             )
         return payload
 
