@@ -29,7 +29,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 - **R7:** work is focused on checking the quality of saved lessons and deciding how they should change over time. R7-B B1 and B2 Steps 1–8 are accepted and merged (PRs #43, #45, #46, #48, #50, #52, #53, #55, #56 and #57). Step 9 hosted and Operator-local full verification both passed on merged implementation commit `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31` (806 tests, 77 warnings); local fresh migration/single-head, Ruff and Mypy also passed. The separately prescribed focused-test execution, `git diff --check`, complete final diff review and explicit B2 exit acceptance remain outstanding; B2 is not yet formally closed. The ordered B3 assessment plan is documented for planning/preflight only; B3 implementation requires B2 formal exit and separate written authorization. The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain separately gated.
 
-B3–B6 and R7-C have not yet been authorized.
+B3 assessment planning is documented only; B3 implementation requires formal B2 exit and separate written Operator authorization. B4–B6 and R7-C remain unauthorized.
 
 ## Future plan
 
