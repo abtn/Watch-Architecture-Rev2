@@ -12,7 +12,7 @@ This file is the **single source of current milestone status**. Other documents 
 
 ## Next actionable step
 
-B2 Steps 1–6 are accepted and merged (PRs #45, #46, #48, #50, #52 and #53). Implement Step 7: separate common approval-request integrity validation from create-specific eligibility/commit validation across `OperatorApplicationAdapter`, `LearningCommitService`, and TaskRuntime, without widening authority. The active approval allowlist must remain exactly `create`; `revise`, `revalidate`, `supersede`, and `retire` must continue to fail closed. After Step 7, Step 8 adds integrated regression fixtures; Step 9 performs the final B2 verification and explicit exit review. B2 is not formally complete. B3–B6 and R7-C remain unauthorized.
+B2 Steps 1–6 are accepted and merged (PRs #45, #46, #48, #50, #52 and #53). Step 7's approval-validation refactor is implemented and passed hosted CI and operator-local exact implementation-head verification; PR #55 is open for review/merge decision. The active approval allowlist remains exactly `create`; `revise`, `revalidate`, `supersede`, and `retire` continue to fail closed. After Step 7 is merged, Step 8 adds integrated regression fixtures; Step 9 performs the final B2 verification and explicit exit review. B2 is not formally complete. B3–B6 and R7-C remain unauthorized.
 
 ## Milestone overview
 
@@ -27,7 +27,7 @@ B2 Steps 1–6 are accepted and merged (PRs #45, #46, #48, #50, #52 and #53). Im
 | R4 | **Complete** (closed 2026-10-20) | StrategyProposal boundary, multi-Vision/Workstream/Action semantics, deterministic validation and reconstruction. |
 | R5 | **Complete — closed 2026-10-24 by explicit operator decision** | Materialize one accepted Strategy as one durable Plan and ordinary Tasks; retain the Task-execution dependency for R6. |
 | R6 | **COMPLETE — G0 through R6-G; formally closed 2026-11-04.** | The integrated three-case source→Evaluation→distillation→Operator→Team Experience path passed the ten-proof technical review and received explicit Operator exit approval. PR #35 merged to `main` at `56745b613b5b77a21a514b4e261d3450f90c0df1`; final PR-head CI passed, and exact implementation-head hosted/local verification is recorded below. D10 remains create-only; R7 implementation remains separately gated. |
-| R7 | **R7-0/R7-A/B0 complete; B1 merged; B2 Steps 1–6 accepted and merged; Step 7 planning/docs in progress; Steps 8–9 open.** | PRs #43, #45, #46, #48, #50, #52 and #53 are merged. Step 4 exact merged-head local verification passed 740 tests; Steps 5–6 hosted CI passed and local exact-head verification was skipped at Operator direction. Step 7 is planned to refactor approval validation while retaining the create-only allowlist. B2 exit remains open; B3–B6 and R7-C remain unauthorized. |
+| R7 | **R7-0/R7-A/B0 complete; B1 merged; B2 Steps 1–6 accepted and merged; Step 7 implemented and verified, PR #55 open; Steps 8–9 open.** | PRs #43, #45, #46, #48, #50, #52 and #53 are merged. Step 4 exact merged-head local verification passed 740 tests; Steps 5–6 hosted CI passed and local exact-head verification was skipped at Operator direction. Step 7 passed hosted and operator-local verification on implementation head `534a7fad6b6cb3cfa3fd7381bcdb0d8ecdb1b8e2` (793 tests in each environment); PR #55 remains open for review. B2 exit remains open; B3–B6 and R7-C remain unauthorized. |
 | R8 | Future | Multi-domain pressure test. |
 | R9 | Future | Codified agent-assisted production workflow. |
 
