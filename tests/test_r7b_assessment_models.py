@@ -203,22 +203,14 @@ def test_lifecycle_assessment_requires_original_operator_provenance():
     assert provenance.c.subject.nullable is False
 
 
-def test_historical_target_pointers_are_bound_to_their_knowledge_items():
-    expected_target_pointer = (
-        "current_learning_change_id",
-        "knowledge_item_id",
-        "team_id",
-    )
+def test_historical_current_pointers_allow_create_origins_and_preserve_team_binding():
     for model in (KnowledgeRevalidationAssessment, KnowledgeLifecycleAssessment):
         foreign_keys = _constraints(model.__table__, sa.ForeignKeyConstraint)
         assert any(
-            tuple(column.name for column in fk.columns) == expected_target_pointer
+            tuple(column.name for column in fk.columns)
+            == ("current_learning_change_id", "team_id")
             and tuple(element.target_fullname for element in fk.elements)
-            == (
-                "learning_changes.id",
-                "learning_changes.target_id",
-                "learning_changes.team_id",
-            )
+            == ("learning_changes.id", "learning_changes.team_id")
             for fk in foreign_keys.values()
         )
 
@@ -227,16 +219,24 @@ def test_historical_target_pointers_are_bound_to_their_knowledge_items():
     )
     assert any(
         tuple(column.name for column in fk.columns)
-        == (
-            "successor_current_learning_change_id",
-            "successor_knowledge_item_id",
-            "team_id",
-        )
+        == ("successor_current_learning_change_id", "team_id")
         and tuple(element.target_fullname for element in fk.elements)
-        == (
-            "learning_changes.id",
-            "learning_changes.target_id",
-            "learning_changes.team_id",
-        )
+        == ("learning_changes.id", "learning_changes.team_id")
         for fk in lifecycle_fks.values()
     )
+
+
+def test_assessment_proposal_target_is_bound_to_the_exact_knowledge_item():
+    for model in (KnowledgeRevalidationAssessment, KnowledgeLifecycleAssessment):
+        foreign_keys = _constraints(model.__table__, sa.ForeignKeyConstraint)
+        assert any(
+            tuple(column.name for column in fk.columns)
+            == ("learning_change_id", "knowledge_item_id", "team_id")
+            and tuple(element.target_fullname for element in fk.elements)
+            == (
+                "learning_changes.id",
+                "learning_changes.target_id",
+                "learning_changes.team_id",
+            )
+            for fk in foreign_keys.values()
+        )
