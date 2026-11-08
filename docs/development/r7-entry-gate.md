@@ -27,13 +27,13 @@ R7 starts from the current main tree after R7-A was merged:
 - D9 remains ingestion execution-contract conformance only. R7-A adds distinct KnowledgeQualityAssessment for create proposals; no production evaluator provider was selected.
 - LearningChange schema vocabulary includes create/revise/retire, but commit service and approval guards remain create-only. Schema strings do not authorize implementation.
 - KnowledgeItem has origin_learning_change_id only; current_learning_change_id and superseded_by_id are not implemented. Status remains active/needs_review/retired. review_knowledge owns only active → needs_review.
-- Team Experience projection is rebuildable. On merged main, chunks and index-state rows pin the current LearningChange ID and v2 content-hash scheme; retrieval and Context validation enforce those pins. Step 4's remaining publication delta is provider-space revalidation at the final boundary; Context manifest v3 remains Step 6 work.
+- Team Experience projection is rebuildable. B2 Steps 2–6 now provide current LearningChange/hash-scheme pins, final provider-space publication revalidation, stale legacy republish, reciprocal supersession retrieval gates, and Context manifest v3; historical Context v1/v2 replay remains byte-exact. Step 8 is adding integrated regression fixtures across these existing paths.
 
 The baseline commit does not prove the Operator's local branch, HEAD, worktree or database. R7-B preflight must run against the actual checkout.
 
 ## 3. Scope and authorized delivery sequence
 
-R7-0 documentation is complete and merged. ADR-0032's original architecture acceptance is scoped to R7-A; its R7-B design extension was separately accepted on 2026-11-05. R7-A is complete and merged through PR #39. R7-B B0 is complete and B1 is accepted and merged. B2 implementation was separately authorized on 2026-11-06; Steps 1–3 are accepted and merged. Step 4 requirement gap analysis is complete; its bounded remaining delta is final provider-space revalidation and a direct legacy-row rebuild regression. Sequence 1 documentation closeout is in progress; Sequence 4 has not started. B3–B6 and R7-C remain unauthorized.
+R7-0 documentation is complete and merged. ADR-0032's original architecture acceptance is scoped to R7-A; its R7-B design extension was separately accepted on 2026-11-05. R7-A is complete and merged through PR #39. R7-B B0 is complete and B1 is accepted and merged. B2 implementation was separately authorized on 2026-11-06; Steps 1–7 are accepted and merged through PRs #45, #46, #48, #50, #52, #53 and #55. Step 8 inspection/documentation is in progress for integrated regression fixtures; Step 9 remains the final verification and formal B2 exit gate. B3–B6 and R7-C remain unauthorized.
 
 ### R7-A — Evidence relationships and knowledge-quality assessment
 
