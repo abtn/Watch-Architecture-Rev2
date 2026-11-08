@@ -578,6 +578,48 @@ def _clone_assessment_row(
     )
 
 
+
+def _clone_knowledge_item(
+    connection,
+    source_id: UUID,
+    new_id: UUID,
+    overrides: dict[str, object],
+) -> None:
+    columns = list(
+        connection.scalars(
+            text(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'knowledge_items'
+                ORDER BY ordinal_position
+                """
+            )
+        )
+    )
+    expressions = []
+    parameters: dict[str, object] = {"source_id": source_id}
+    for column in columns:
+        if column == "id":
+            expressions.append(":new_id")
+            parameters["new_id"] = new_id
+        elif column in overrides:
+            expressions.append(f":override_{column}")
+            parameters[f"override_{column}"] = overrides[column]
+        else:
+            expressions.append(f"source.{column}")
+    quoted_columns = ", ".join(f'"{column}"' for column in columns)
+    connection.execute(
+        text(
+            f'INSERT INTO "knowledge_items" ({quoted_columns}) '
+            f'SELECT {", ".join(expressions)} '
+            'FROM "knowledge_items" AS source WHERE source.id = :source_id'
+        ),
+        parameters,
+    )
+
+
 def _insert_operator_provenance(
     connection,
     learning_change_id: UUID,
@@ -1033,6 +1075,117 @@ def test_0017_creates_contract_constraints_and_immutability_triggers(
     assert expected_tables <= tables
     assert expected_constraints <= constraints
     assert expected_triggers <= triggers
+
+
+
+def test_0017_accepts_complete_supersede_binding_and_restricts_successor_delete(
+    assessment_migration_schema: AssessmentMigrationSandbox,
+) -> None:
+    sandbox = assessment_migration_schema
+    _upgrade_assessment_schema(sandbox)
+    rows = _seed_assessment_rows(sandbox)
+    digest = "sha256:" + ("b" * 64)
+
+    with sandbox.engine.begin() as connection:
+        lifecycle = connection.execute(
+            text(
+                "SELECT * FROM knowledge_lifecycle_assessments WHERE id = :id"
+            ),
+            {"id": rows.lifecycle_id},
+        ).mappings().one()
+        predecessor = connection.execute(
+            text(
+                "SELECT * FROM knowledge_items WHERE id = :id"
+            ),
+            {"id": lifecycle["knowledge_item_id"]},
+        ).mappings().one()
+
+        successor_create_change = uuid4()
+        _clone_learning_change(
+            connection,
+            predecessor["current_learning_change_id"],
+            successor_create_change,
+            f"successor-create-{uuid4().hex}",
+            operation="create",
+        )
+        successor_item_id = uuid4()
+        _clone_knowledge_item(
+            connection,
+            predecessor["id"],
+            successor_item_id,
+            {
+                "current_learning_change_id": successor_create_change,
+                "supersedes_item_id": predecessor["id"],
+                "title": "Valid successor assessment fixture",
+                "statement": "A valid successor fixture for the migration contract.",
+                "body": "This successor exists to exercise the complete supersede binding.",
+            },
+        )
+        successor = connection.execute(
+            text("SELECT * FROM knowledge_items WHERE id = :id"),
+            {"id": successor_item_id},
+        ).mappings().one()
+
+        supersede_change = uuid4()
+        _clone_learning_change(
+            connection,
+            lifecycle["learning_change_id"],
+            supersede_change,
+            f"valid-supersede-{uuid4().hex}",
+            operation="supersede",
+        )
+        _insert_operator_provenance(
+            connection, supersede_change, lifecycle["team_id"]
+        )
+        task_id, request_id, recorded_id = _insert_task_events(
+            connection, lifecycle["team_id"], "assess_knowledge_lifecycle"
+        )
+        assessment_id = uuid4()
+        _clone_assessment_row(
+            connection,
+            "knowledge_lifecycle_assessments",
+            rows.lifecycle_id,
+            {
+                "id": assessment_id,
+                "task_id": task_id,
+                "learning_change_id": supersede_change,
+                "operation": "supersede",
+                "variant_payload": json.dumps(
+                    {"successor_team_id": str(lifecycle["team_id"])}
+                ),
+                "successor_knowledge_item_id": successor_item_id,
+                "successor_current_learning_change_id": (
+                    successor["current_learning_change_id"]
+                ),
+                "successor_content_version": successor["version"],
+                "successor_content_hash": digest,
+                "successor_content_hash_scheme": (
+                    "watch.r7b.knowledge-content.v2"
+                ),
+                "successor_status": successor["status"],
+                "successor_review_after": successor["review_after"],
+                "successor_state_hash": digest,
+                "request_event_id": request_id,
+                "recorded_event_id": recorded_id,
+                "idempotency_key": f"valid-supersede-{uuid4().hex}",
+            },
+        )
+
+        persisted = connection.scalar(
+            text(
+                "SELECT count(*) FROM knowledge_lifecycle_assessments "
+                "WHERE id = :id AND operation = 'supersede'"
+            ),
+            {"id": assessment_id},
+        )
+        assert persisted == 1
+
+        with pytest.raises(DBAPIError):
+            with connection.begin_nested():
+                connection.execute(
+                    text("DELETE FROM knowledge_items WHERE id = :id"),
+                    {"id": successor_item_id},
+                )
 
 
 def test_0017_row_and_truncate_mutations_are_rejected(
