@@ -27,9 +27,9 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** work is focused on checking the quality of saved lessons and deciding how saved knowledge should be validated and evolve. B2 Steps 1–8 are merged. Hosted and Operator-local exact-code-head verification passed on `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31` (fresh migration/single-head, Ruff, Mypy, 806 tests, 77 warnings). B2 was formally closed by explicit Operator instruction on 2026-11-08 with three residuals retained, not passed: no separate focused regression run, no recorded `git diff --check`, and no complete line-by-line final diff review. The detailed B3 assessment plan is documented for read-only preflight and contract planning; B3 implementation requires separate written Operator authorization. The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain separately gated.
+- **R7:** work is focused on checking the quality of saved lessons and how saved knowledge should be validated and evolve. B2 is closed with its accepted residual verification gaps recorded. B3.2 assessment persistence is merged through PR #60 at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; hosted CI passed (823 tests, 95 warnings), and exact-merge Operator-local verification passed on the same SHA (17 focused tests, Ruff, Mypy, 823 full-suite tests, 95 warnings, both diff checks). The disposable container was removed and environment values restored. Checkpoint 4 was formally accepted on 2026-11-08, and B3.3 — Revalidation assessment service and Task — is explicitly authorized and is the next active stage. Later B3 stages remain gated. The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain separately gated.
 
-B3 planning/preflight may proceed; B3 implementation requires separate written Operator authorization. B4–B6 and R7-C remain unauthorized.
+Checkpoint 4 was formally accepted on 2026-11-08. B3.3 is separately authorized; this does not authorize later B3 stages, B4–B6, or R7-C.
 
 ## Future plan
 

@@ -612,5 +612,52 @@ The Operator-local exact-code-head verification occurred while the Step 9 docume
 - The active approval allowlist remains exactly `create`.
 - B2 closure does not authorize revise, revalidate, supersede, or retire commits.
 - B3.0 read-only preflight and B3.1 contract planning/review may proceed.
-- B3 implementation requires separate written Operator authorization. B4–B6 and R7-C remain unauthorized.
+- At the B2 closeout record's point in time, B3 implementation still required separate written Operator authorization; the subsequent B3.3 authorization is recorded in the Checkpoint 4 disposition below. B4–B6 and R7-C remain unauthorized.
 - No production source, test, migration, schema, runtime, Task registration, provider, authentication, or database configuration change is part of this closure record.
+
+
+## R7-B B3.2 — Immutable assessment schema and Checkpoint 4
+
+**Implementation:** PR [#60](https://github.com/abtn/Watch-Architecture-Rev2/pull/60) merged to `main` at `31be3a25cf7f52ca81eab65cc10280a855738c3d`. The final PR head was `0eecefedbc4ef6e4b60cbd8c3eacf31e1256f362`.
+
+**Hosted exact-PR-head CI:** [run 42496681657](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42496681657) passed:
+- Fresh PostgreSQL migration and single Alembic head.
+- Ruff.
+- Mypy.
+- Full test suite: **823 passed, 95 warnings in 58.97s**.
+
+**Schema scope delivered**
+- Migration `0017_r7b_assessments` creates `learning_change_operator_provenance`, `knowledge_revalidation_assessments`, and `knowledge_lifecycle_assessments`.
+- ORM metadata adds the two separate assessment models and immutable Operator provenance mapping.
+- Composite ownership/attribution constraints bind Team, Task, proposal operation, proposal target, KnowledgeItem, request/recorded Events, and successor references.
+- Database uniqueness protects assessment identity, Task/idempotency, and request/recorded Event identity. Checks enforce hash formats, operation vocabularies, positive versions/attempts, JSON payload shape, and strict retire/supersede variants.
+- PostgreSQL triggers reject row UPDATE/DELETE and statement TRUNCATE for both assessment tables and Operator provenance. No application database role existed to receive a narrower privilege boundary, so no role was invented or altered; privileged superuser/replication bypass remains an operational boundary.
+- Downgrade refuses to remove persisted assessment/provenance history; empty-schema downgrade is separately tested.
+- Final PR fixes reject whitespace-only provenance, evaluator identity/revision, and idempotency values in both ORM and migration constraints.
+
+**Important historical-pointer distinction:** assessment proposal references remain target-bound to the exact KnowledgeItem. The historical `current_learning_change_id` pointer is intentionally Team-bound only because B1 backfills it to the original create LearningChange, whose `target_id` is NULL. This is not a relaxation of the proposal-to-target FK. The successor's historical current pointer follows the same rule.
+
+**Earlier Operator-local verification — pre-final-fix head only:** local verification on `02913493f1c82bda25aaa8e843097b9f4c2a7c52` passed migration to `0017_r7b_assessments`, single-head checks, Ruff, Mypy, 13 focused tests, 819 full-suite tests (87 warnings), and `git diff --check`. It predates the final PR corrections and is not exact-merge verification.
+
+**Operator-local exact-merge verification — PASSED (2026-11-08)**
+
+- Tested SHA: `31be3a25cf7f52ca81eab65cc10280a855738c3d`; local `main` was fast-forwarded to the exact `origin/main` merge commit after a clean-worktree preflight.
+- `uv sync --locked` passed.
+- Fresh disposable PostgreSQL container `watch-r7b-b3c4-15bc377052`, database `watch_r7b_b3c4_15bc377052`, dynamically assigned loopback port `29544`.
+- `uv run alembic upgrade head` passed; database revision and sole Alembic head: `0017_r7b_assessments`.
+- Focused tests: `uv run pytest tests/test_r7b_assessment_models.py -q` → **9 passed**; `uv run pytest tests/test_r7b_assessment_migration.py -q` → **8 passed, 18 warnings**.
+- `uv run ruff check core tests migrations` passed.
+- `uv run mypy core` passed (33 source files).
+- `uv run pytest -q` → **823 passed, 95 warnings in 123.45s**.
+- Both `git diff --check 31be3a25cf7f52ca81eab65cc10280a855738c3d^ 31be3a25cf7f52ca81eab65cc10280a855738c3d` and worktree `git diff --check` passed.
+- Original `DATABASE_URL` and `TEST_DATABASE_URL` values were restored. The runner removed only its disposable container; removal was confirmed. Persistent `watch` and host port 5432 were not targeted.
+- All 95 warnings were Alembic `path_separator` deprecation warnings: 18 from assessment migration tests, 65 from `tests/test_r7b_history_migration.py`, and 12 from `tests/test_team_experience_projection_migration.py`. They did not fail tests or checks.
+
+This is exact-merge local evidence, not a result on the PR head or the earlier pre-final-fix commit.
+
+**Checkpoint 4 disposition (2026-11-08): ACCEPTED BY EXPLICIT OPERATOR INSTRUCTION.** Exact-merge local execution and the schema/contract review are accepted as complete. The Operator also explicitly authorized B3.3 — Revalidation assessment service and Task — by the same written instruction to merge the verified documentation update and start the next checkpoint. Authorization is limited to B3.3; it does not authorize B3.4–B3.9 or any later phase.
+
+**Authority boundary:** B3.2 adds persistence contracts only. It does not register `assess_knowledge_revalidation` or `assess_knowledge_lifecycle`, add worker write grants, implement assessment services, or enable lifecycle commits. The approval allowlist remains exactly `create`. B3.3 implementation is now authorized and starts as the next stage. Its Task remains subject to the stated narrow write scope and existing TaskRuntime; no worker may write `KnowledgeItem` or `LearningChange`. B3.4–B3.9 remain separately gated.
+
+
+**Operator decision record (2026-11-08):** The Operator instructed: “If all is alright merge and start next checkpoint.” After PR #61 head/CI and scope verification, this was applied as formal acceptance of Checkpoint 4 and explicit authorization to begin B3.3 only.
