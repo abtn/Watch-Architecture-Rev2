@@ -2150,11 +2150,51 @@ def test_offset_aware_d7_review_boundary_is_strict(
     assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
 
 
+def test_wrong_team_projection_mutation_is_rejected_by_database(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    item_id = experience_env.add_accepted_item()
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+    assert indexer.index_knowledge_item(item_id).outcome == "indexed"
+
+    with experience_env.session_factory.begin() as session:
+        chunk = session.scalar(
+            select(TeamExperienceChunk).where(
+                TeamExperienceChunk.knowledge_item_id == item_id
+            )
+        )
+        assert chunk is not None
+        original_team_id = chunk.team_id
+        other_team_id = uuid4()
+        session.add(Team(id=other_team_id, domain="other", status="active"))
+        session.flush()
+        with pytest.raises(IntegrityError):
+            with session.begin_nested():
+                chunk.team_id = other_team_id
+                session.flush()
+
+    retriever = HybridKnowledgeRetriever(
+        experience_env.session_factory, experience_env.snapshot_store, provider
+    )
+    passages = retriever.retrieve(experience_env.team_id, "alpha practice")
+    assert passages
+    assert all(passage.knowledge_item_id == item_id for passage in passages)
+
+    with experience_env.session_factory() as session:
+        unchanged_chunk = session.scalar(
+            select(TeamExperienceChunk).where(
+                TeamExperienceChunk.knowledge_item_id == item_id
+            )
+        )
+    assert unchanged_chunk is not None
+    assert unchanged_chunk.team_id == original_team_id == experience_env.team_id
+
+
 @pytest.mark.parametrize(
     "tamper",
     [
         "current_pointer",
-        "wrong_team",
         "wrong_target",
         "wrong_status",
         "invalid_snapshot",
@@ -2212,16 +2252,6 @@ def test_canonicality_tampering_blocks_retrieval_and_context_inclusion(
             origin_id = experience_env.learning_change_ids[0]
             state.current_learning_change_id = origin_id
             chunk.current_learning_change_id = origin_id
-        elif tamper == "wrong_team":
-            other_team_id = uuid4()
-            session.add(
-                Team(id=other_team_id, domain="other", status="active")
-            )
-            session.flush()
-            with pytest.raises(IntegrityError):
-                with session.begin_nested():
-                    chunk.team_id = other_team_id
-                    session.flush()
         elif tamper == "wrong_target":
             assert other_item_id is not None
             learning_change.target_id = other_item_id
