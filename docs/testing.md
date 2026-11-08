@@ -546,17 +546,38 @@ PR [#53](https://github.com/abtn/Watch-Architecture-Rev2/pull/53) merged to `mai
 - **Operator-local exact-head verification:** passed on the same implementation head `534a7fad6b6cb3cfa3fd7381bcdb0d8ecdb1b8e2`. The existing `scripts/test-disposable-postgres.ps1` runner created a disposable PostgreSQL container, applied migrations, confirmed the single Alembic head `0016_team_exp_history_pins`, passed Ruff and Mypy (33 source files), and ran the full suite: **793 passed, 74 warnings in 132.82s**. The runner removed its disposable container. Final Git status was clean on `r7b-b2-step7-approval-validation`, tracking `origin/r7b-b2-step7-approval-validation`. The warnings were Alembic `path_separator` deprecation warnings (65 from `test_r7b_history_migration.py`, 9 from `test_team_experience_projection_migration.py`). The persistent `watch` database was not targeted.
 - No Task registration, write-scope, schema, migration, runtime, provider, or authentication changes were introduced. Step 8 integrated fixtures and Step 9 formal B2 verification remain open; B3–B6 and R7-C remain unauthorized.
 
-## R7-B B2 Step 8 — inspection and documentation checkpoint (2026-11-08)
+## R7-B B2 Step 8 — integrated regression fixtures (ACCEPTED AND MERGED — PRs #56 and #57)
 
-This is a read-only coverage inventory and documentation checkpoint against merged `main` at `47aad564ac0496f4ff984bc4d937355922d36c77`. No Step 8 source or test implementation was performed in this checkpoint.
+**Closeout (2026-11-08):** PR #56 (inspection/documentation checkpoint) merged at `58d88bafdf33e8ce1af2f5a7ba9af11bfd84cb32`; PR #57 (integrated fixtures) merged at `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`. PR #57 exact head `114a6311534cd116190e3c2f4143fdfb1a2c979b` passed hosted CI run [42478536427](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42478536427): fresh PostgreSQL migration/single-head, Ruff, Mypy, and **806 passed, 77 warnings**. Operator-local verification on the same code head has not yet been recorded; it is required by Step 9.
 
-- **Integrated create-to-Context-v3 path:** existing tests cover approval creation, LearningChange/history, v2 hashing, Team Experience indexing/retrieval, and Context assembly separately. A single accepted-create fixture traversing all boundaries remains outstanding.
-- **Migration-to-rebuild path:** migration test `test_0016_preserves_legacy_projection_bytes_and_marks_them_opaque_and_stale` verifies migration preservation and stale marking. Application test `test_rebuild_all_republishes_legacy_opaque_projection_and_restores_retrieval` manually seeds the post-migration state, blocks retrieval, and verifies republish. A single isolated fixture combining the real migration with application rebuild/retrieval remains outstanding.
-- **Failed republish and retry:** `test_failed_publication_records_staleness_and_rebuilds` verifies stale/undiscoverable behavior after failure and one successful rebuild. Repeated rebuild/idempotency assertions remain to be added.
-- **Canonical tampering:** existing focused tests cover several pointer, history, Team, status, and chunk-integrity failures. Step 8 must reconcile the remaining independent negative cases against the frozen matrix and assert both no retrieval passage and no Context inclusion at the relevant boundaries.
-- **D7:** NULL review configuration, expired/due review, and `needs_review` exclusion have focused tests. Explicit non-UTC/offset-aware boundary coverage is not currently identified in `test_team_experience.py` and remains to be added or demonstrated elsewhere in the suite.
-- **D5:** pending candidate visibility, ineligible predecessor states, committed reciprocal supersession, and final Context visibility revalidation are covered. Step 8 must compare the tests with the complete ADR-0032 matrix and add only missing combinations.
-- **Context compatibility:** v1/v2 replay is byte-exact and does not reassemble/retrieve on replay. Step 8 should assert that legacy replay does not require a v2 KnowledgeItem content-hash recalculation, and that new v3 manifest/document entries pin origin/current IDs and the v2 scheme.
-- **Create-only approval:** Step 7 already provides request/admission/commit/finalization/recovery rejection coverage for all four unauthorized operations, plus common request-envelope tests. Step 8 should preserve these tests and connect create accept/reject/replay behavior to the integrated read path where useful rather than duplicating pure parser coverage.
+- Accepted create → canonical LearningChange/current pointer → v2 hash → Team Experience projection → retrieval → Context manifest v3.
+- Real Alembic `0016` migration → legacy-opaque/stale projection blocked from retrieval → application `rebuild_all()` → republished v2/current-pointer pins → retrieval restored.
+- Failed publication → stale/undiscoverable projection → successful rebuild → repeated rebuild is unchanged without another embedding publication.
+- Canonicality/tampering matrix: current pointer, Team, target, status, committed snapshot, hash scheme, stale state, and chunk hash; rejected data remains absent from retrieval and Context. Cross-Team projection mutation is separately rejected by the database composite constraint.
+- Offset-aware D7 boundary: eligible immediately before the boundary and ineligible at the exact boundary.
+- Context v1/v2 replay remains byte-exact without reassembly or KnowledgeItem hash recalculation.
+- Existing D5 visibility cases and Step 7's create-only approval matrix remain intact; no production code or authority expansion was introduced.
 
-**Boundary:** Step 8 implementation is not yet recorded as started. After this inspection/documentation checkpoint, only integrated regression fixtures and directly necessary test support are in scope. Step 9 remains the separate exact-head verification and explicit B2 exit gate. The create-only allowlist remains unchanged; B3–B6 and R7-C remain unauthorized.
+**Boundary:** Step 8 is complete and merged. The active approval allowlist remains exactly `create`; B3–B6 and R7-C remain unauthorized.
+
+## R7-B B2 Step 9 — exact-head verification and formal B2 exit (PLANNING ONLY — 2026-11-08)
+
+This checkpoint updates the verification plan only. No tests, migrations, static checks, database operations, or formal B2 acceptance have been performed by this documentation update.
+
+**Exact code-head identity:** record the final implementation SHA before verification. Hosted CI and Operator-local verification must test the same code tree/commit. The Step 8 implementation head is `114a6311534cd116190e3c2f4143fdfb1a2c979b`, hosted CI run [42478536427](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42478536427) passed, and the merged Step 8 PR #57 merge commit is `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`. This is hosted evidence only; do not report it as Operator-local verification.
+
+**Required local/hosted proof:**
+
+1. Clean preflight: repository root, branch, HEAD, `origin/main`, merge-base, clean worktree, and no untracked user files. Never reset, stash, overwrite, or clean unrelated work.
+2. Fresh disposable PostgreSQL only: apply the complete Alembic chain from an empty database; verify current revision `0016_team_exp_history_pins` and exactly one Alembic head. Use a unique container/database and dynamically assigned loopback port. Never touch persistent database `watch` or port `5432`.
+3. Focused regression groups: history/content hash, migration, Team Experience indexing/publication, retrieval gates, Context assembly/replay, Operator application/approval, LearningCommitService, and TaskRuntime admission/finalization/recovery.
+4. Static and full verification: Ruff, Mypy, full pytest suite, and `git diff --check`. Record exact counts, duration, warnings and categories.
+5. Migration-specific integrated behavior: legacy projection bytes preserved and marked `legacy-opaque`/stale, blocked before republish, successful application rebuild restores retrieval, and failure/rollback behavior remains safe.
+6. Diff/scope review: only accepted B2 hash/history/projection/retrieval/Context/create-only approval behavior. Explicitly exclude B3 assessment Tasks/models, B4 revise/revalidate writes, B5 create-with-successor/supersede/retire writes, B6 scope expansion, R7-C references/use/benchmark, new runtime/dispatcher/scheduler/auth stack, and production provider.
+7. Hosted CI must pass on the exact final PR head; Operator-local verification must run on that same code head. Any code change after CI or local verification requires the applicable checks to be repeated on the new SHA.
+
+**Evidence record must include:** PR and exact head SHA; hosted run ID/URL and per-job results; local branch/HEAD and clean worktree; disposable PostgreSQL identity/port and cleanup; Alembic revision/head count; focused tests; Ruff; Mypy; full-suite counts/duration/warnings; diff check; changed-file review; and any deviations or stop conditions.
+
+**Formal B2 exit gate:** all B2 acceptance criteria and stop conditions must be reconciled on the exact final code head; hosted and local evidence must be equivalent; implementation, PLAN, and testing records must agree; and the Operator must explicitly accept B2 closure. This plan does not grant that acceptance. Until it is recorded, B2 remains open and B3–B6/R7-C remain unauthorized.
+
+**Boundary:** this is documentation/planning only. No implementation, tests, migrations, schema, runtime, provider, authentication, active Task grant, or database changes are authorized. Actual verification starts only after this planning checkpoint is accepted/merged and the Operator directs execution.
