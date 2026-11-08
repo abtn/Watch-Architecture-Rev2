@@ -551,6 +551,52 @@ def _accepted_learning_change_is_canonical(
         and completed_payload.get("outcome_id") == str(outcome.id)
     )
 
+
+def _supersession_publication_is_visible(
+    session: Session,
+    item: KnowledgeItem,
+    cache: dict[UUID, bool],
+) -> bool:
+    """Apply the reciprocal D5 publication gate within the retrieval snapshot.
+
+    The candidate's own history is validated by the caller. A candidate remains
+    hidden until its predecessor's canonical supersede transition is committed.
+    A predecessor with a successor is never exposed. The caller runs inside the
+    retriever's REPEATABLE READ transaction, so both directions are observed
+    against one consistent canonical snapshot.
+    """
+    if item.superseded_by_id is not None:
+        return False
+    if item.supersedes_item_id is None:
+        return True
+    if item.id in cache:
+        return cache[item.id]
+
+    predecessor = session.get(KnowledgeItem, item.supersedes_item_id)
+    if (
+        predecessor is None
+        or predecessor.id == item.id
+        or predecessor.team_id != item.team_id
+        or predecessor.status != "retired"
+        or predecessor.superseded_by_id != item.id
+        or predecessor.current_learning_change_id is None
+    ):
+        cache[item.id] = False
+        return False
+
+    predecessor_change = session.get(
+        LearningChange, predecessor.current_learning_change_id
+    )
+    visible = (
+        predecessor_change is not None
+        and predecessor_change.operation == "supersede"
+        and _accepted_learning_change_is_canonical(
+            session, predecessor, predecessor_change
+        )
+    )
+    cache[item.id] = visible
+    return visible
+
 class TeamExperienceIndexer:
     """Build a separate rebuildable projection from accepted canonical Team
     Experience.
@@ -1093,6 +1139,7 @@ class HybridKnowledgeRetriever:
                     "c.team_id = :team_id "
                     "AND i.team_id = :team_id "
                     "AND i.status = 'active' "
+                    "AND i.superseded_by_id IS NULL "
                     "AND i.review_after IS NOT NULL "
                     "AND i.review_after > :now_utc "
                     "AND i.version = c.item_version "
@@ -1343,6 +1390,7 @@ class HybridKnowledgeRetriever:
     ) -> list[tuple[float, dict[str, Any]]]:
         verified: list[tuple[float, dict[str, Any]]] = []
         text_cache: dict[UUID, tuple[str, ...] | None] = {}
+        supersession_visibility_cache: dict[UUID, bool] = {}
         for score, candidate in ranked:
             row = candidate["row"]
             if (
@@ -1399,6 +1447,9 @@ class HybridKnowledgeRetriever:
                 or learning_change is None
                 or not _accepted_learning_change_is_canonical(
                     session, item, learning_change
+                )
+                or not _supersession_publication_is_visible(
+                    session, item, supersession_visibility_cache
                 )
                 or knowledge_item_content_hash(item) != row["item_content_hash"]
             ):
