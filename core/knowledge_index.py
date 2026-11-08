@@ -597,6 +597,7 @@ def _supersession_publication_is_visible(
     cache[item.id] = visible
     return visible
 
+
 class TeamExperienceIndexer:
     """Build a separate rebuildable projection from accepted canonical Team
     Experience.
