@@ -18,7 +18,6 @@ from core.knowledge_index import (
     HybridKnowledgeRetriever,
     KnowledgeIndexError,
     TeamExperienceIndexer,
-    RetrievedPassage,
     knowledge_item_content_hash,
     _accepted_learning_change_is_canonical,
 )
