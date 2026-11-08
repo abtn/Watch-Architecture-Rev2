@@ -582,7 +582,7 @@ def test_0017_row_and_truncate_mutations_are_rejected(
                 )
         with pytest.raises(DBAPIError, match="immutable"):
             with sandbox.engine.begin() as connection:
-                connection.execute(text(f"TRUNCATE TABLE {table}"))
+                connection.execute(text(f"TRUNCATE TABLE {table} CASCADE"))
 
 
 def test_0017_downgrade_refuses_to_drop_persisted_assessment_history(
