@@ -18,8 +18,8 @@ from core.knowledge_index import (
     HybridKnowledgeRetriever,
     KnowledgeIndexError,
     TeamExperienceIndexer,
-    knowledge_item_content_hash,
     _accepted_learning_change_is_canonical,
+    knowledge_item_content_hash,
 )
 from core.learning_history import (
     KNOWLEDGE_CONTENT_HASH_SCHEME,
