@@ -96,7 +96,7 @@ def upgrade() -> None:
             name="fk_learning_change_operator_provenance_learning_change_team",
         ),
         sa.CheckConstraint(
-            "length(issuer) > 0 AND length(subject) > 0",
+            "length(btrim(issuer)) > 0 AND length(btrim(subject)) > 0",
             name="ck_learning_change_operator_provenance_identity",
         ),
     )
@@ -221,8 +221,9 @@ def upgrade() -> None:
             name="ck_knowledge_revalidation_assessments_version_attempt",
         ),
         sa.CheckConstraint(
-            "length(idempotency_key) > 0 AND length(evaluator_identity) > 0 "
-            "AND length(evaluator_revision) > 0",
+            "length(btrim(idempotency_key)) > 0 AND "
+            "length(btrim(evaluator_identity)) > 0 AND "
+            "length(btrim(evaluator_revision)) > 0",
             name="ck_knowledge_revalidation_assessments_identity",
         ),
         sa.CheckConstraint(
@@ -406,7 +407,7 @@ def upgrade() -> None:
             name="ck_knowledge_lifecycle_assessments_version_attempt",
         ),
         sa.CheckConstraint(
-            "length(idempotency_key) > 0",
+            "length(btrim(idempotency_key)) > 0",
             name="ck_knowledge_lifecycle_assessments_idempotency",
         ),
         sa.CheckConstraint(
