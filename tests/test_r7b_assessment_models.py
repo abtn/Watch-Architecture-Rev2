@@ -203,17 +203,40 @@ def test_lifecycle_assessment_requires_original_operator_provenance():
     assert provenance.c.subject.nullable is False
 
 
-def test_historical_target_pointer_is_not_fk_bound_to_mutable_knowledge_item_pointer():
+def test_historical_target_pointers_are_bound_to_their_knowledge_items():
+    expected_target_pointer = (
+        "current_learning_change_id",
+        "knowledge_item_id",
+        "team_id",
+    )
     for model in (KnowledgeRevalidationAssessment, KnowledgeLifecycleAssessment):
-        table = model.__table__
-        foreign_keys = _constraints(table, sa.ForeignKeyConstraint)
-        current_pointer_fks = [
-            fk for fk in foreign_keys.values()
-            if "current_learning_change_id" in tuple(c.name for c in fk.columns)
-        ]
-        assert current_pointer_fks
-        assert all(
-            "knowledge_items.current_learning_change_id"
-            not in " ".join(element.target_fullname for element in fk.elements)
-            for fk in current_pointer_fks
+        foreign_keys = _constraints(model.__table__, sa.ForeignKeyConstraint)
+        assert any(
+            tuple(column.name for column in fk.columns) == expected_target_pointer
+            and tuple(element.target_fullname for element in fk.elements)
+            == (
+                "learning_changes.id",
+                "learning_changes.target_id",
+                "learning_changes.team_id",
+            )
+            for fk in foreign_keys.values()
         )
+
+    lifecycle_fks = _constraints(
+        KnowledgeLifecycleAssessment.__table__, sa.ForeignKeyConstraint
+    )
+    assert any(
+        tuple(column.name for column in fk.columns)
+        == (
+            "successor_current_learning_change_id",
+            "successor_knowledge_item_id",
+            "team_id",
+        )
+        and tuple(element.target_fullname for element in fk.elements)
+        == (
+            "learning_changes.id",
+            "learning_changes.target_id",
+            "learning_changes.team_id",
+        )
+        for fk in lifecycle_fks.values()
+    )
