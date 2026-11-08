@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 Steps 1–6 are accepted and merged. B2 Step 4 passed exact merged-head local verification (740 tests); Steps 5–6 passed hosted CI on their exact PR heads, with local exact-head verification skipped at Operator direction. Step 7 planning/documentation is in progress; no source changes have begun, and the active approval allowlist remains exactly `create`. Steps 8–9 and formal B2 exit remain open. B3–B6 and R7-C remain separately gated. PLAN.md is the sole current status authority.
+R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 Steps 1–7 are accepted and merged; Step 7 PR #55 merged at `47aad564ac0496f4ff984bc4d937355922d36c77` after hosted and Operator-local exact-head verification (793 tests). B2 Step 8 inspection/documentation is in progress and limited to integrated regression fixtures under the frozen contract; Step 9 and formal B2 exit remain open. The active approval allowlist remains exactly `create`; B3–B6 and R7-C remain separately gated. PLAN.md is the sole current status authority.
 
 ## Open the smallest relevant set of documents
 
