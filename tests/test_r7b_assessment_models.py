@@ -47,15 +47,15 @@ def test_assessment_models_expose_frozen_contract_fields():
         "recorded_at",
         "payload_hash",
     }
-    assert shared <= set(revalidation.columns)
-    assert shared <= set(lifecycle.columns)
+    assert shared <= set(revalidation.columns.keys())
+    assert shared <= set(lifecycle.columns.keys())
     assert {
         "evaluator_identity",
         "evaluator_revision",
         "freshness_disposition",
         "findings",
         "assessment_result",
-    } <= set(revalidation.columns)
+    } <= set(revalidation.columns.keys())
     assert {
         "operation",
         "operator_rationale",
@@ -70,7 +70,7 @@ def test_assessment_models_expose_frozen_contract_fields():
         "successor_status",
         "successor_review_after",
         "successor_state_hash",
-    } <= set(lifecycle.columns)
+    } <= set(lifecycle.columns.keys())
 
 
 def test_required_assessment_binding_columns_are_not_nullable():
@@ -196,7 +196,7 @@ def test_lifecycle_assessment_requires_original_operator_provenance():
     )
     provenance = LearningChangeOperatorProvenance.__table__
     assert {"learning_change_id", "team_id", "issuer", "subject", "recorded_at"} <= set(
-        provenance.columns
+        provenance.columns.keys()
     )
     assert provenance.c.learning_change_id.primary_key
     assert provenance.c.issuer.nullable is False
