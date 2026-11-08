@@ -581,3 +581,36 @@ Step 9 verification was executed against the merged implementation code head. Th
 **B2 exit disposition:** technical full-suite, migration, static-check, and exact-code-SHA hosted/local evidence are positive. B2 is nevertheless **OPEN** because the explicit focused-run and diff-check evidence, complete final diff review, final documentation synchronization, and Operator's explicit acceptance have not all been completed. Do not mark B2 closed or authorize B3–B6/R7-C from this record.
 
 **Boundary:** no source, tests, migration, schema, runtime, provider, authentication, active Task grant, or database configuration was changed by this documentation reconciliation. The disposable verification database/container was not retained.
+
+
+## R7-B B2 — Operator closure decision (2026-11-08)
+
+**Disposition: B2 formally CLOSED by explicit Operator instruction on 2026-11-08.**
+
+The Operator instructed: “Close B2.” This is the formal phase-exit decision. It accepts the remaining verification gaps as residuals; it does not convert them into passed checks or alter the historical execution record.
+
+### Evidence accepted at closure
+
+- B2 Steps 1–8 are merged; integrated regression PR #57 is merged at `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`.
+- Hosted exact-code-head CI run [42479112563](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42479112563) passed on that merged implementation commit.
+- Operator-local verification passed on the same code SHA: fresh disposable PostgreSQL migration to the single head `0016_team_exp_history_pins`, Ruff, Mypy, and full suite **806 passed, 77 warnings in 136.25s**.
+- The disposable local container was confirmed absent. The persistent `watch` database and host port 5432 were not targeted.
+- Hosted and local verification therefore tested the same implementation code SHA.
+
+### Accepted residuals — not passed checks
+
+1. The prescribed focused regression groups were not separately invoked as a distinct local command. The full suite passed, but this is not recorded as a separate focused-run pass.
+2. `git diff --check` was not recorded in the local verification.
+3. A complete line-by-line final diff review was not completed. The review performed compared the B2 changed-file inventory and inspected key create-only approval guards; no scope expansion was identified in those reviewed surfaces. This is not represented as a complete diff review.
+
+### Procedural sequence deviation
+
+The Operator-local exact-code-head verification occurred while the Step 9 documentation PR #58 was still open and unmerged, contrary to the original planned sequence. This remains recorded as a procedural deviation. It did not create a code-SHA mismatch because hosted and local verification both tested `027b9f1cb0bbd5faaaf8d6d7cc44c8359af49b31`.
+
+### Authority and follow-on boundary
+
+- The active approval allowlist remains exactly `create`.
+- B2 closure does not authorize revise, revalidate, supersede, or retire commits.
+- B3.0 read-only preflight and B3.1 contract planning/review may proceed.
+- B3 implementation requires separate written Operator authorization. B4–B6 and R7-C remain unauthorized.
+- No production source, test, migration, schema, runtime, Task registration, provider, authentication, or database configuration change is part of this closure record.
