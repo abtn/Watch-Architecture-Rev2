@@ -17,11 +17,11 @@ from core.knowledge_revalidation import (
     require_recorded_assessment,
     validate_revalidation_task_request,
 )
-from core.learning_history import KnowledgeHistoryError
 from core.models import Event, KnowledgeRevalidationAssessment, LearningChange, Outcome, Task
 from core.snapshot_store import SnapshotStore
 from core.task_runtime import (
     FailureObservation,
+    FinalizationResult,
     TaskNotEligible,
     TaskNotFinalizable,
     TaskRuntime,
@@ -107,9 +107,15 @@ class KnowledgeRevalidationAssessmentTaskRunner:
                 )
             try:
                 if task.status == "done":
+                    learning_change_id = self._request_learning_change_id(session, task)
+                    learning_change = session.get(LearningChange, learning_change_id)
+                    if learning_change is None:
+                        raise TaskNotEligible(
+                            "knowledge_revalidation_learning_change_missing"
+                        )
                     assessment = require_recorded_assessment(
                         session,
-                        session.get(LearningChange, self._request_learning_change_id(session, task)),
+                        learning_change,
                         self._snapshot_store,
                         self._session_factory,
                         require_task_done=True,
@@ -321,7 +327,7 @@ class KnowledgeRevalidationAssessmentTaskRunner:
 
     def _finalize_failure(
         self, task_id: UUID, attempt: int, reason: str
-    ):
+    ) -> FinalizationResult:
         return self._runtime.finalize(
             TerminalObservation(
                 task_id=task_id,
