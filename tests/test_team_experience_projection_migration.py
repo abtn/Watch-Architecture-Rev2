@@ -54,6 +54,7 @@ class ProjectionMigrationSandbox:
 @pytest.fixture
 def pre_0016_schema(
     pre_0015_schema: MigrationSandbox,
+    tmp_path: Path,
 ) -> Iterator[ProjectionMigrationSandbox]:
     """Create real 0015 canonical rows and pre-migration Team Experience data."""
     created_at = datetime(2026, 10, 20, tzinfo=timezone.utc)
@@ -591,4 +592,3 @@ def test_real_0016_migration_blocks_legacy_projection_until_application_rebuild(
         if entry.knowledge_item_id == pre_0016_schema.item_id
     )
     assert repeated_result.outcome == "unchanged"
-
