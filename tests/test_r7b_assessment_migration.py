@@ -435,6 +435,447 @@ def _seed_assessment_rows(
     )
 
 
+
+def _clone_learning_change(
+    connection,
+    source_id: UUID,
+    new_id: UUID,
+    idempotency_key: str,
+    *,
+    operation: str | None = None,
+) -> None:
+    connection.execute(
+        text(
+            """
+            INSERT INTO learning_changes (
+                id, team_id, target_kind, target_id, operation,
+                proposed_state, previous_state, committed_state,
+                evidence_basis, evidence_basis_hash, status,
+                idempotency_key, proposed_by_task_id, committed_by_task_id,
+                operator_id, decision_reason, created_at, committed_at
+            )
+            SELECT
+                :new_id, team_id, target_kind, target_id,
+                COALESCE(:operation, operation), proposed_state, previous_state,
+                committed_state, evidence_basis, evidence_basis_hash, status,
+                :idempotency_key, proposed_by_task_id, committed_by_task_id,
+                operator_id, decision_reason, created_at, committed_at
+            FROM learning_changes
+            WHERE id = :source_id
+            """
+        ),
+        {
+            "source_id": source_id,
+            "new_id": new_id,
+            "operation": operation,
+            "idempotency_key": idempotency_key,
+        },
+    )
+
+
+def _insert_task_events(
+    connection,
+    team_id: UUID,
+    task_type: str,
+) -> tuple[UUID, UUID, UUID]:
+    task_id = uuid4()
+    request_event_id = uuid4()
+    recorded_event_id = uuid4()
+    now = datetime.now(timezone.utc)
+    budget = json.dumps(
+        {"max_tool_calls": 0, "max_cost_usd": 0, "deadline_seconds": 60}
+    )
+    connection.execute(
+        text(
+            """
+            INSERT INTO tasks (
+                id, team_id, task_type, status, attempt_count,
+                policy_version, allowed_writes, budget, created_at, max_attempts
+            )
+            VALUES (
+                :id, :team_id, :task_type, 'running', 1, 1,
+                '[]'::jsonb, CAST(:budget AS jsonb), :created_at, 3
+            )
+            """
+        ),
+        {
+            "id": task_id,
+            "team_id": team_id,
+            "task_type": task_type,
+            "budget": budget,
+            "created_at": now,
+        },
+    )
+    for event_id, event_type in (
+        (request_event_id, "assessment.requested"),
+        (recorded_event_id, "assessment.recorded"),
+    ):
+        connection.execute(
+            text(
+                """
+                INSERT INTO events (id, task_id, type, payload, created_at)
+                VALUES (:id, :task_id, :type, '{}'::jsonb, :created_at)
+                """
+            ),
+            {
+                "id": event_id,
+                "task_id": task_id,
+                "type": event_type,
+                "created_at": now,
+            },
+        )
+    return task_id, request_event_id, recorded_event_id
+
+
+def _clone_assessment_row(
+    connection,
+    table: str,
+    source_id: UUID,
+    overrides: dict[str, object],
+) -> None:
+    if table not in {
+        "knowledge_revalidation_assessments",
+        "knowledge_lifecycle_assessments",
+    }:
+        raise ValueError(f"Unsupported assessment table: {table}")
+    columns = list(
+        connection.scalars(
+            text(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = :table
+                ORDER BY ordinal_position
+                """
+            ),
+            {"table": table},
+        )
+    )
+    if not columns or "id" not in columns:
+        raise RuntimeError(f"Assessment columns unavailable for {table}")
+    expressions = []
+    parameters: dict[str, object] = {"source_id": source_id}
+    for column in columns:
+        if column in overrides:
+            parameter = f"override_{column}"
+            if column == "variant_payload":
+                expressions.append(f"CAST(:{parameter} AS jsonb)")
+            else:
+                expressions.append(f":{parameter}")
+            parameters[parameter] = overrides[column]
+        else:
+            expressions.append(f"source.{column}")
+    quoted_columns = ", ".join(f'"{column}"' for column in columns)
+    select_values = ", ".join(expressions)
+    connection.execute(
+        text(
+            f'INSERT INTO "{table}" ({quoted_columns}) '
+            f'SELECT {select_values} FROM "{table}" AS source '
+            "WHERE source.id = :source_id"
+        ),
+        parameters,
+    )
+
+
+def _insert_operator_provenance(
+    connection,
+    learning_change_id: UUID,
+    team_id: UUID,
+    *,
+    issuer: str = "https://host.example.test",
+    subject: str = "operator-negative-test",
+) -> None:
+    connection.execute(
+        text(
+            """
+            INSERT INTO learning_change_operator_provenance (
+                learning_change_id, team_id, issuer, subject, recorded_at
+            )
+            VALUES (:learning_change_id, :team_id, :issuer, :subject, :recorded_at)
+            """
+        ),
+        {
+            "learning_change_id": learning_change_id,
+            "team_id": team_id,
+            "issuer": issuer,
+            "subject": subject,
+            "recorded_at": datetime.now(timezone.utc),
+        },
+    )
+
+
+def test_0017_rejects_whitespace_only_provenance_and_evaluator_identity(
+    assessment_migration_schema: AssessmentMigrationSandbox,
+) -> None:
+    sandbox = assessment_migration_schema
+    _upgrade_assessment_schema(sandbox)
+    rows = _seed_assessment_rows(sandbox)
+
+    with sandbox.engine.begin() as connection:
+        team_id = connection.scalar(
+            text(
+                "SELECT team_id FROM learning_changes WHERE id = "
+                "(SELECT learning_change_id FROM learning_change_operator_provenance "
+                "LIMIT 1)"
+            )
+        )
+        source_lifecycle_change = connection.scalar(
+            text(
+                "SELECT learning_change_id "
+                "FROM knowledge_lifecycle_assessments WHERE id = :id"
+            ),
+            {"id": rows.lifecycle_id},
+        )
+        for field in ("issuer", "subject"):
+            change_id = uuid4()
+            _clone_learning_change(
+                connection,
+                source_lifecycle_change,
+                change_id,
+                f"whitespace-provenance-{field}-{uuid4().hex}",
+            )
+            values = {
+                "issuer": "https://host.example.test",
+                "subject": "operator-negative-test",
+            }
+            values[field] = "   "
+            with pytest.raises(DBAPIError):
+                with connection.begin_nested():
+                    _insert_operator_provenance(
+                        connection,
+                        change_id,
+                        team_id,
+                        issuer=values["issuer"],
+                        subject=values["subject"],
+                    )
+
+        source_revalidation_change = connection.scalar(
+            text(
+                "SELECT learning_change_id "
+                "FROM knowledge_revalidation_assessments WHERE id = :id"
+            ),
+            {"id": rows.revalidation_id},
+        )
+        for field in ("evaluator_identity", "evaluator_revision", "idempotency_key"):
+            change_id = uuid4()
+            _clone_learning_change(
+                connection,
+                source_revalidation_change,
+                change_id,
+                f"whitespace-assessment-{field}-{uuid4().hex}",
+            )
+            task_id, request_id, recorded_id = _insert_task_events(
+                connection, team_id, "assess_knowledge_revalidation"
+            )
+            invalid_value = "   "
+            _clone_assessment_row(
+                connection,
+                "knowledge_revalidation_assessments",
+                rows.revalidation_id,
+                {
+                    "id": uuid4(),
+                    "task_id": task_id,
+                    "learning_change_id": change_id,
+                    "request_event_id": request_id,
+                    "recorded_event_id": recorded_id,
+                    "idempotency_key": (
+                        invalid_value
+                        if field == "idempotency_key"
+                        else f"whitespace-{field}-{uuid4().hex}"
+                    ),
+                    "evaluator_identity": (
+                        invalid_value
+                        if field == "evaluator_identity"
+                        else "test-evaluator"
+                    ),
+                    "evaluator_revision": (
+                        invalid_value
+                        if field == "evaluator_revision"
+                        else "test-revision"
+                    ),
+                },
+            )
+            # The clone above must fail at the database boundary. Use a savepoint
+            # so each independent negative case leaves the fixture transaction usable.
+
+
+def test_0017_rejects_cross_team_wrong_operation_and_wrong_event_task(
+    assessment_migration_schema: AssessmentMigrationSandbox,
+) -> None:
+    sandbox = assessment_migration_schema
+    _upgrade_assessment_schema(sandbox)
+    rows = _seed_assessment_rows(sandbox)
+
+    with sandbox.engine.begin() as connection:
+        source = connection.execute(
+            text(
+                "SELECT * FROM knowledge_revalidation_assessments WHERE id = :id"
+            ),
+            {"id": rows.revalidation_id},
+        ).mappings().one()
+        team_id = source["team_id"]
+        source_change = source["learning_change_id"]
+
+        # A second Team makes the Task/Team composite binding fail independently
+        # of any application-layer ownership validation.
+        other_team_id = uuid4()
+        connection.execute(
+            text(
+                "INSERT INTO teams (id, domain, status) "
+                "VALUES (:id, 'assessment_cross_team_test', 'active')"
+            ),
+            {"id": other_team_id},
+        )
+        task_id, request_id, recorded_id = _insert_task_events(
+            connection, other_team_id, "assess_knowledge_revalidation"
+        )
+        with pytest.raises(DBAPIError):
+            with connection.begin_nested():
+                _clone_assessment_row(
+                    connection,
+                    "knowledge_revalidation_assessments",
+                    rows.revalidation_id,
+                    {
+                        "id": uuid4(),
+                        "team_id": other_team_id,
+                        "task_id": task_id,
+                        "request_event_id": request_id,
+                        "recorded_event_id": recorded_id,
+                        "idempotency_key": f"cross-team-{uuid4().hex}",
+                    },
+                )
+
+        # Clone the proposal so the assessment's unique logical identity is new.
+        wrong_operation_change = uuid4()
+        _clone_learning_change(
+            connection,
+            source_change,
+            wrong_operation_change,
+            f"wrong-operation-{uuid4().hex}",
+        )
+        task_id, request_id, recorded_id = _insert_task_events(
+            connection, team_id, "assess_knowledge_revalidation"
+        )
+        with pytest.raises(DBAPIError):
+            with connection.begin_nested():
+                _clone_assessment_row(
+                    connection,
+                    "knowledge_revalidation_assessments",
+                    rows.revalidation_id,
+                    {
+                        "id": uuid4(),
+                        "learning_change_id": wrong_operation_change,
+                        "task_id": task_id,
+                        "operation": "retire",
+                        "request_event_id": request_id,
+                        "recorded_event_id": recorded_id,
+                        "idempotency_key": f"wrong-op-{uuid4().hex}",
+                    },
+                )
+
+        # The request Event exists but belongs to a different Task.
+        task_a, _, recorded_a = _insert_task_events(
+            connection, team_id, "assess_knowledge_revalidation"
+        )
+        _, request_b, _ = _insert_task_events(
+            connection, team_id, "assessment_wrong_event_owner"
+        )
+        wrong_event_change = uuid4()
+        _clone_learning_change(
+            connection,
+            source_change,
+            wrong_event_change,
+            f"wrong-event-{uuid4().hex}",
+        )
+        with pytest.raises(DBAPIError):
+            with connection.begin_nested():
+                _clone_assessment_row(
+                    connection,
+                    "knowledge_revalidation_assessments",
+                    rows.revalidation_id,
+                    {
+                        "id": uuid4(),
+                        "learning_change_id": wrong_event_change,
+                        "task_id": task_a,
+                        "request_event_id": request_b,
+                        "recorded_event_id": recorded_a,
+                        "idempotency_key": f"wrong-event-{uuid4().hex}",
+                    },
+                )
+
+
+def test_0017_rejects_duplicate_assessment_identity_and_retire_successor_fields(
+    assessment_migration_schema: AssessmentMigrationSandbox,
+) -> None:
+    sandbox = assessment_migration_schema
+    _upgrade_assessment_schema(sandbox)
+    rows = _seed_assessment_rows(sandbox)
+
+    with sandbox.engine.begin() as connection:
+        source = connection.execute(
+            text(
+                "SELECT * FROM knowledge_revalidation_assessments WHERE id = :id"
+            ),
+            {"id": rows.revalidation_id},
+        ).mappings().one()
+        task_id, request_id, recorded_id = _insert_task_events(
+            connection, source["team_id"], "assess_knowledge_revalidation"
+        )
+        with pytest.raises(DBAPIError):
+            with connection.begin_nested():
+                _clone_assessment_row(
+                    connection,
+                    "knowledge_revalidation_assessments",
+                    rows.revalidation_id,
+                    {
+                        "id": uuid4(),
+                        "task_id": task_id,
+                        "request_event_id": request_id,
+                        "recorded_event_id": recorded_id,
+                        "idempotency_key": f"duplicate-identity-{uuid4().hex}",
+                    },
+                )
+
+        lifecycle = connection.execute(
+            text(
+                "SELECT * FROM knowledge_lifecycle_assessments WHERE id = :id"
+            ),
+            {"id": rows.lifecycle_id},
+        ).mappings().one()
+        new_change_id = uuid4()
+        _clone_learning_change(
+            connection,
+            lifecycle["learning_change_id"],
+            new_change_id,
+            f"retire-shape-{uuid4().hex}",
+        )
+        _insert_operator_provenance(
+            connection, new_change_id, lifecycle["team_id"]
+        )
+        task_id, request_id, recorded_id = _insert_task_events(
+            connection, lifecycle["team_id"], "assess_knowledge_lifecycle"
+        )
+        with pytest.raises(DBAPIError):
+            with connection.begin_nested():
+                _clone_assessment_row(
+                    connection,
+                    "knowledge_lifecycle_assessments",
+                    rows.lifecycle_id,
+                    {
+                        "id": uuid4(),
+                        "learning_change_id": new_change_id,
+                        "task_id": task_id,
+                        "request_event_id": request_id,
+                        "recorded_event_id": recorded_id,
+                        "successor_knowledge_item_id": lifecycle[
+                            "knowledge_item_id"
+                        ],
+                        "idempotency_key": f"retire-with-successor-{uuid4().hex}",
+                    },
+                )
+
+
 def test_0017_creates_contract_constraints_and_immutability_triggers(
     assessment_migration_schema: AssessmentMigrationSandbox,
 ) -> None:
