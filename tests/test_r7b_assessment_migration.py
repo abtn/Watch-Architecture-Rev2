@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections.abc import Iterator
@@ -84,6 +85,12 @@ def assessment_migration_schema(
                     text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
                 )
         admin_engine.dispose()
+
+
+def _postgres_constraint_name(name: str) -> str:
+    if len(name) <= 63:
+        return name
+    return f"{name[:54]}_{hashlib.md5(name.encode()).hexdigest()[-4:]}"
 
 
 def _upgrade_assessment_schema(
@@ -464,6 +471,9 @@ def test_0017_creates_contract_constraints_and_immutability_triggers(
         "ck_knowledge_lifecycle_assessments_operation",
         "ck_knowledge_lifecycle_assessments_variant_shape",
         "ck_knowledge_lifecycle_assessments_no_self_supersession",
+    }
+    expected_constraints = {
+        _postgres_constraint_name(name) for name in expected_constraints
     }
     expected_triggers = {
         "trg_operator_provenance_immutable_row",
