@@ -104,7 +104,9 @@ def test_required_assessment_binding_columns_are_not_nullable():
 
 
 def test_composite_parent_keys_exist_for_assessment_foreign_keys():
-    learning_change_uniques = _constraints(LearningChange.__table__, sa.UniqueConstraint)
+    learning_change_uniques = _constraints(
+        LearningChange.__table__, sa.UniqueConstraint
+    )
     assert "uq_learning_changes_id_operation_team" in learning_change_uniques
     assert "uq_learning_changes_id_target_team" in learning_change_uniques
 
