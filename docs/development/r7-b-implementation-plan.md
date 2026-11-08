@@ -325,7 +325,7 @@ B0 closes when:
 
 **Step 7 — Refactor approval validation without enabling new operations**
 
-**Planning status (2026-11-08):** documentation/planning only. No Step 7 source or test changes have begun. This plan is bounded by the already-accepted B2 create-only authority; it does not authorize any additional lifecycle operation.
+**Implementation status (2026-11-08):** Step 7 source implementation is in progress following the Operator's explicit authorization and merge of planning PR #54. The implementation remains bounded by the accepted B2 create-only authority; it does not authorize any additional lifecycle operation.
 
 **Current enforcement inventory (verified on merged main after PR #53):**
 
@@ -353,7 +353,7 @@ B0 closes when:
 
 **Step 7 acceptance:** all common-integrity and create-specific checks are separated without weakening any boundary; the active allowlist is exactly `{create}`; all four later lifecycle operations fail closed with stable reasons at every applicable layer; no Task/schema/write-scope/runtime/provider/auth changes are introduced; focused tests, Ruff, Mypy and the full suite pass. Step 7 completion does not close B2: Step 8 integrated fixtures and Step 9 final B2 exit remain required.
 
-**Implementation boundary:** this planning record authorizes no source edit by itself. Proceed with Step 7 code only after the Operator explicitly starts implementation from this frozen plan.
+**Implementation authorization:** the Operator explicitly authorized Step 7 source implementation on 2026-11-08 after planning PR #54 merged. Implementation is underway on `r7b-b2-step7-approval-validation`; the authorization does not widen the create-only operation allowlist.
 
 **Step 8 — Add integrated regression fixtures**
 

@@ -1,8 +1,6 @@
 """Application-controlled Task admission, failure reporting, and finalization."""
 
 import hashlib
-import json
-import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
@@ -32,6 +30,11 @@ from core.models import (
     TeamPolicy,
 )
 from core.objectives import ObjectiveService, TaskNotFound
+from core.operator_approval import (
+    OperatorApprovalValidationError,
+    is_supported_learning_change,
+    parse_request_event_payload,
+)
 from core.policy import InvalidPolicyError, daily_task_quota
 from core.snapshot_store import SnapshotStore
 from core.state_assessment import _canonical_json, _timestamp
@@ -532,7 +535,12 @@ class TaskRuntime:
     ) -> None:
         """Fail closed unless this is an intact, no-deadline approval Task."""
         if (
-            task.objective_id is not None
+            task.task_type != _OPERATOR_TASK_TYPE
+            or isinstance(task.attempt_count, bool)
+            or not isinstance(task.attempt_count, int)
+            or task.attempt_count < 0
+            or task.attempt_count > task.max_attempts
+            or task.objective_id is not None
             or task.plan_id is not None
             or task.plan_action_id is not None
             or task.allowed_writes != _OPERATOR_ALLOWED_WRITES
@@ -568,183 +576,23 @@ class TaskRuntime:
         ):
             raise TaskNotEligible("operator_task_request_event_invalid")
 
-        payload = request_events[0].payload
-        legacy_keys = {
-            "schema_version",
-            "operation",
-            "learning_change_id",
-            "decision",
-            "rejection_reason",
-            "operator_id",
-            "idempotency_key_hash",
-            "request_fingerprint",
-            "policy_version",
-        }
-        assessment_keys = {
-            "knowledge_quality_assessment_id",
-            "knowledge_quality_assessment_hash",
-        }
-        schema_version = payload.get("schema_version")
-        is_legacy_rejection = (
-            schema_version == 1
-            and set(payload) == legacy_keys
-            and payload.get("decision") == "reject"
-        )
-        is_assessment_request = (
-            schema_version == 2
-            and set(payload) == legacy_keys | assessment_keys
-        )
-        if not (is_legacy_rejection or is_assessment_request):
-            raise TaskNotEligible("operator_task_request_payload_invalid")
-        policy_version = payload.get("policy_version")
-        if (
-            isinstance(schema_version, bool)
-            or not isinstance(schema_version, int)
-            or payload.get("operation") != _OPERATOR_TASK_TYPE
-            or isinstance(policy_version, bool)
-            or not isinstance(policy_version, int)
-            or policy_version != task.policy_version
-        ):
-            raise TaskNotEligible("operator_task_request_payload_invalid")
-
-        decision = payload.get("decision")
-        rejection_reason = payload.get("rejection_reason")
-        if decision == "accept":
-            if rejection_reason is not None:
-                raise TaskNotEligible("operator_task_request_payload_invalid")
-        elif decision == "reject":
-            if (
-                not isinstance(rejection_reason, str)
-                or not rejection_reason
-                or rejection_reason != rejection_reason.strip()
-            ):
-                raise TaskNotEligible("operator_task_request_payload_invalid")
-        else:
-            raise TaskNotEligible("operator_task_request_payload_invalid")
-
-        operator_id = payload.get("operator_id")
-        if not isinstance(operator_id, str) or len(operator_id) > 255:
-            raise TaskNotEligible("operator_task_request_identity_invalid")
         try:
-            identity = json.loads(operator_id)
-        except (TypeError, ValueError) as error:
-            raise TaskNotEligible(
-                "operator_task_request_identity_invalid"
-            ) from error
-        if (
-            not isinstance(identity, dict)
-            or set(identity) != {"iss", "sub"}
-            or any(
-                not isinstance(identity.get(field), str)
-                or not identity[field]
-                or identity[field] != identity[field].strip()
-                or any(
-                    unicodedata.category(character) == "Cc"
-                    for character in identity[field]
-                )
-                for field in ("iss", "sub")
+            request_payload = parse_request_event_payload(
+                request_events[0].payload,
+                team_id=task.team_id,
+                policy_version=task.policy_version,
             )
-        ):
-            raise TaskNotEligible("operator_task_request_identity_invalid")
+        except OperatorApprovalValidationError as error:
+            raise TaskNotEligible(error.reason) from error
 
-        canonical_operator_id = json.dumps(
-            {"iss": identity["iss"], "sub": identity["sub"]},
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
+        decision = request_payload.decision
+        quality_assessment_id_value = (
+            str(request_payload.quality_assessment_id)
+            if request_payload.quality_assessment_id is not None
+            else None
         )
-        if canonical_operator_id != operator_id:
-            raise TaskNotEligible("operator_task_request_identity_invalid")
-
-        for field in ("idempotency_key_hash", "request_fingerprint"):
-            value = payload.get(field)
-            if (
-                not isinstance(value, str)
-                or len(value) != 71
-                or not value.startswith("sha256:")
-                or any(character not in "0123456789abcdef" for character in value[7:])
-            ):
-                raise TaskNotEligible("operator_task_request_payload_invalid")
-
-        quality_assessment_id_value = payload.get(
-            "knowledge_quality_assessment_id"
-        )
-        quality_assessment_hash = payload.get(
-            "knowledge_quality_assessment_hash"
-        )
-        if is_assessment_request:
-            if decision == "accept":
-                if (
-                    not isinstance(quality_assessment_id_value, str)
-                    or len(quality_assessment_id_value) != 36
-                    or not isinstance(quality_assessment_hash, str)
-                    or len(quality_assessment_hash) != 71
-                    or not quality_assessment_hash.startswith("sha256:")
-                    or any(
-                        character not in "0123456789abcdef"
-                        for character in quality_assessment_hash[7:]
-                    )
-                ):
-                    raise TaskNotEligible(
-                        "operator_quality_assessment_reference_invalid"
-                    )
-                try:
-                    quality_assessment_id = UUID(quality_assessment_id_value)
-                except ValueError as error:
-                    raise TaskNotEligible(
-                        "operator_quality_assessment_reference_invalid"
-                    ) from error
-                if str(quality_assessment_id) != quality_assessment_id_value:
-                    raise TaskNotEligible(
-                        "operator_quality_assessment_reference_invalid"
-                    )
-            elif (
-                quality_assessment_id_value is not None
-                or quality_assessment_hash is not None
-            ):
-                raise TaskNotEligible(
-                    "operator_quality_assessment_reference_invalid"
-                )
-        elif decision == "accept":
-            raise TaskNotEligible("operator_quality_assessment_required")
-
-        fingerprint_payload = {
-            "operation": _OPERATOR_TASK_TYPE,
-            "team_id": str(task.team_id),
-            "learning_change_id": payload.get("learning_change_id"),
-            "decision": decision,
-            "rejection_reason": rejection_reason,
-            "operator_id": operator_id,
-        }
-        if is_assessment_request:
-            fingerprint_payload["knowledge_quality_assessment_id"] = (
-                quality_assessment_id_value
-            )
-            fingerprint_payload["knowledge_quality_assessment_hash"] = (
-                quality_assessment_hash
-            )
-        expected_fingerprint = "sha256:" + hashlib.sha256(
-            json.dumps(
-                fingerprint_payload,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest()
-        if payload.get("request_fingerprint") != expected_fingerprint:
-            raise TaskNotEligible("operator_task_request_fingerprint_invalid")
-
-        learning_change_id_value = payload.get("learning_change_id")
-        if not isinstance(learning_change_id_value, str):
-            raise TaskNotEligible("operator_task_request_target_invalid")
-        try:
-            learning_change_id = UUID(learning_change_id_value)
-        except ValueError as error:
-            raise TaskNotEligible(
-                "operator_task_request_target_invalid"
-            ) from error
-        if str(learning_change_id) != learning_change_id_value:
-            raise TaskNotEligible("operator_task_request_target_invalid")
+        quality_assessment_hash = request_payload.quality_assessment_hash
+        learning_change_id = request_payload.learning_change_id
 
         learning_change = session.scalar(
             select(LearningChange)
@@ -754,9 +602,11 @@ class TaskRuntime:
         if (
             learning_change is None
             or learning_change.team_id != task.team_id
-            or learning_change.target_kind != "knowledge_item"
-            or learning_change.operation != "create"
-            or learning_change.target_id is not None
+            or not is_supported_learning_change(
+                target_kind=learning_change.target_kind,
+                operation=learning_change.operation,
+                target_id=learning_change.target_id,
+            )
         ):
             raise TaskNotEligible("operator_task_request_target_invalid")
         if decision == "accept":

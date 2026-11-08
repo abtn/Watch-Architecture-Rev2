@@ -36,8 +36,13 @@ from core.models import (
     TeamPolicy,
 )
 from core.objectives import ObjectiveService, TaskNotFound
-from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
 import core.operator_application
+from core.operator_approval import (
+    OperatorApprovalValidationError,
+    is_supported_learning_change,
+    parse_request_event_payload,
+)
+from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
 from core.task_runtime import (
     TaskNotEligible,
@@ -152,33 +157,19 @@ class LearningCommitService:
             if not isinstance(request_payload, dict):
                 raise LearningCommitCorrupt("operator_request_event_invalid")
 
-            learning_change_id_value = request_payload.get("learning_change_id")
             try:
-                learning_change_id = uuid.UUID(learning_change_id_value)
-            except (TypeError, ValueError) as error:
-                raise LearningCommitCorrupt(
-                    "operator_request_target_invalid"
-                ) from error
-            if str(learning_change_id) != learning_change_id_value:
-                raise LearningCommitCorrupt("operator_request_target_invalid")
+                approval_request = parse_request_event_payload(
+                    request_payload,
+                    team_id=task.team_id,
+                    policy_version=task.policy_version,
+                )
+            except OperatorApprovalValidationError as error:
+                raise LearningCommitCorrupt(error.reason) from error
 
-            decision_value = request_payload.get("decision")
-            if decision_value not in ("accept", "reject"):
-                raise LearningCommitCorrupt("operator_request_decision_invalid")
-            decision: Decision = decision_value
-            rejection_reason = request_payload.get("rejection_reason")
-            if decision == "accept" and rejection_reason is not None:
-                raise LearningCommitCorrupt("operator_request_reason_invalid")
-            if decision == "reject" and (
-                not isinstance(rejection_reason, str)
-                or not rejection_reason
-                or rejection_reason != rejection_reason.strip()
-            ):
-                raise LearningCommitCorrupt("operator_request_reason_invalid")
-            # TaskRuntime has already validated the complete request Event,
-            # including canonical identity shape and the request fingerprint.
-            stored_operator_id = request_payload.get("operator_id")
-            if stored_operator_id != operator_id:
+            learning_change_id = approval_request.learning_change_id
+            decision = approval_request.decision
+            rejection_reason = approval_request.rejection_reason
+            if approval_request.operator_id != operator_id:
                 raise LearningCommitError("operator_identity_mismatch")
 
             try:
@@ -215,9 +206,11 @@ class LearningCommitService:
             if learning_change.status != "proposed":
                 raise LearningCommitConflict("learning_change_not_proposed")
             if (
-                learning_change.target_kind != "knowledge_item"
-                or learning_change.operation != "create"
-                or learning_change.target_id is not None
+                not is_supported_learning_change(
+                    target_kind=learning_change.target_kind,
+                    operation=learning_change.operation,
+                    target_id=learning_change.target_id,
+                )
                 or learning_change.committed_by_task_id is not None
             ):
                 raise LearningCommitError("only_knowledge_item_create_is_supported")
@@ -298,12 +291,12 @@ class LearningCommitService:
                     )
                 except KnowledgeQualityAssessmentError as error:
                     raise LearningCommitError(str(error)) from error
-                quality_assessment_id = request_payload.get(
-                    "knowledge_quality_assessment_id"
+                quality_assessment_id = (
+                    str(approval_request.quality_assessment_id)
+                    if approval_request.quality_assessment_id is not None
+                    else None
                 )
-                quality_assessment_hash = request_payload.get(
-                    "knowledge_quality_assessment_hash"
-                )
+                quality_assessment_hash = approval_request.quality_assessment_hash
                 if (
                     quality_assessment_id != str(quality_assessment.id)
                     or quality_assessment_hash
@@ -313,8 +306,8 @@ class LearningCommitService:
                         "operator_quality_assessment_binding_invalid"
                     )
             elif (
-                request_payload.get("knowledge_quality_assessment_id") is not None
-                or request_payload.get("knowledge_quality_assessment_hash") is not None
+                approval_request.quality_assessment_id is not None
+                or approval_request.quality_assessment_hash is not None
             ):
                 raise LearningCommitError(
                     "operator_quality_assessment_not_allowed_for_rejection"
@@ -596,12 +589,26 @@ class LearningCommitService:
         if len(request_events) != 1 or not isinstance(request_events[0].payload, dict):
             raise LearningCommitCorrupt("operator_request_event_invalid")
         request_payload = request_events[0].payload
-        quality_assessment_id = request_payload.get(
-            "knowledge_quality_assessment_id"
+        try:
+            approval_request = parse_request_event_payload(
+                request_payload,
+                team_id=task.team_id,
+                policy_version=task.policy_version,
+            )
+        except OperatorApprovalValidationError as error:
+            raise LearningCommitCorrupt(error.reason) from error
+        if (
+            approval_request.operator_id != operator_id
+            or approval_request.decision != requested_decision
+            or approval_request.rejection_reason != rejection_reason
+        ):
+            raise LearningCommitCorrupt("operator_request_replay_binding_invalid")
+        quality_assessment_id = (
+            str(approval_request.quality_assessment_id)
+            if approval_request.quality_assessment_id is not None
+            else None
         )
-        quality_assessment_hash = request_payload.get(
-            "knowledge_quality_assessment_hash"
-        )
+        quality_assessment_hash = approval_request.quality_assessment_hash
         if recorded_decision == "accept":
             try:
                 quality_assessment = require_recorded_assessment(
