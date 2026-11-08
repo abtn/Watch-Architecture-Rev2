@@ -33,6 +33,7 @@ from core.models import (
     TeamExperienceIndexState,
 )
 from core.snapshot_store import SnapshotStore
+
 pre_0015_schema = _pre_0015_schema_fixture
 
 
