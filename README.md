@@ -27,9 +27,9 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** work is focused on checking the quality of saved lessons and how saved knowledge should be validated and evolve. B2 is closed with its accepted residual verification gaps recorded. B3.2 assessment persistence is merged through PR #60 at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; final PR-head hosted CI passed (823 tests, 95 warnings). Exact-merge Operator-local verification and Checkpoint 4 closeout remain pending. B3.3 has not started. The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain separately gated.
+- **R7:** work is focused on checking the quality of saved lessons and how saved knowledge should be validated and evolve. B2 is closed with its accepted residual verification gaps recorded. B3.2 assessment persistence is merged through PR #60 at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; hosted CI passed (823 tests, 95 warnings), and exact-merge Operator-local verification passed on the same SHA (17 focused tests, Ruff, Mypy, 823 full-suite tests, 95 warnings, both diff checks). The disposable container was removed and environment values restored. Formal Checkpoint 4 acceptance remains pending; B3.3 has not started and requires separate written authorization. The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain separately gated.
 
-Checkpoint 4 must close before B3.3 begins. This documentation update does not authorize B3.3 implementation. B4–B6 and R7-C remain separately gated.
+Checkpoint 4 formal acceptance must precede B3.3. This documentation update does not authorize B3.3 implementation. B4–B6 and R7-C remain separately gated.
 
 ## Future plan
 
