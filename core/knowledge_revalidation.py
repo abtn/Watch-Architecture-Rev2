@@ -7,6 +7,7 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
+from enum import Enum
 from typing import Any, Literal, Mapping
 from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
 
@@ -115,7 +116,7 @@ class KnowledgeRevalidationFinding(BaseModel):
         "freshness_unassessable",
     ]
     summary: str = Field(min_length=1, max_length=1200)
-    evidence_refs: list[str] = Field(min_length=1, max_length=256)
+    evidence_refs: tuple[str, ...] = Field(min_length=1, max_length=256)
 
     @field_validator("summary")
     @classmethod
@@ -127,8 +128,8 @@ class KnowledgeRevalidationFinding(BaseModel):
 
     @field_validator("evidence_refs")
     @classmethod
-    def unique_references(cls, values: list[str]) -> list[str]:
-        normalized = [value.strip() if isinstance(value, str) else value for value in values]
+    def unique_references(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(value.strip() if isinstance(value, str) else value for value in values)
         if any(not isinstance(value, str) or not value for value in normalized):
             raise ValueError("knowledge_revalidation_evidence_reference_required")
         if len(set(normalized)) != len(normalized):
@@ -144,7 +145,7 @@ class KnowledgeRevalidationAssessmentDraft(BaseModel):
     freshness_disposition: Literal[
         "current", "stale", "insufficient", "conflicting", "unassessable"
     ]
-    findings: list[KnowledgeRevalidationFinding] = Field(min_length=1, max_length=256)
+    findings: tuple[KnowledgeRevalidationFinding, ...] = Field(min_length=1, max_length=256)
 
 
 @dataclass(frozen=True)
@@ -197,6 +198,8 @@ def _normalize_json(value: Any) -> Any:
     """Normalize JSON-bound values without introducing float semantics."""
     if isinstance(value, UUID):
         return str(value)
+    if isinstance(value, Enum):
+        return _normalize_json(value.value)
     if isinstance(value, Decimal):
         if not value.is_finite():
             raise KnowledgeRevalidationAssessmentError(
