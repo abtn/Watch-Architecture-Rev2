@@ -1415,7 +1415,8 @@ class KnowledgeLifecycleAssessment(Base):
             "successor_content_hash IS NOT NULL AND "
             "successor_content_hash_scheme IS NOT NULL AND "
             "successor_status IS NOT NULL AND "
-            "successor_review_after IS NOT NULL AND "
+            "(successor_review_after IS NOT NULL OR "
+            "assessment_result = 'ineligible') AND "
             "successor_state_hash IS NOT NULL)",
             name="ck_knowledge_lifecycle_assessments_variant_shape",
         ),
