@@ -1318,7 +1318,9 @@ def require_recorded_assessment(
         require_current=require_current,
     )
     if (
-        assessment.operation != learning_change.operation
+        task.id != _task_id(learning_change.team_id, learning_change.id)
+        or task.policy_version != proposal.source_task.policy_version
+        or assessment.operation != learning_change.operation
         or assessment.learning_change_id != learning_change.id
         or assessment.knowledge_item_id != proposal.target.id
         or assessment.current_learning_change_id
