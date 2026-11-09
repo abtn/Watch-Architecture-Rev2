@@ -1043,7 +1043,10 @@ def derive_lifecycle_findings(
                 _finding(
                     "successor_state_binding_valid",
                     True,
-                    "The exact same-Team successor state is bound by pointer, version, content hash, and snapshot hash.",
+                    (
+                        "The exact same-Team successor state is bound by pointer, "
+                        "version, content hash, and snapshot hash."
+                    ),
                 ),
                 _finding(
                     "predecessor_successor_relationship_valid",
@@ -1059,7 +1062,10 @@ def derive_lifecycle_findings(
                 _finding(
                     "successor_review_after_eligible",
                     review_after is not None and review_after > now,
-                    "The successor review date is non-null and later than assessment time.",
+                    (
+                        "The successor review date is non-null and later than "
+                        "assessment time."
+                    ),
                     "The successor review date is null or due.",
                 ),
             ]
