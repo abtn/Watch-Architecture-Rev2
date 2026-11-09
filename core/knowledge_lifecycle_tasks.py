@@ -354,4 +354,3 @@ class KnowledgeLifecycleAssessmentTaskRunner:
                 failure_reason=reason,
             )
         )
-
