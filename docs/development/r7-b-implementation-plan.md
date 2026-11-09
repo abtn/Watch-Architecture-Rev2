@@ -2,7 +2,7 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (updated 2026-11-09):** **B0 complete; B1 accepted and merged; B2 formally closed with accepted residual verification gaps; B3.2–B3.4 accepted and merged; B3.5 plan extraction/documentation authorized only.** B3.2 merged at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; B3.3 merged at `f7683b3c7812c3250e0fed5e8e689ade6ecaeca5`; B3.4 PR [#64](https://github.com/abtn/Watch-Architecture-Rev2/pull/64) merged at `9abd949a8e682b4df75a77f03acca638a62e472e`. B3.4 final PR head `e0944645f8756b702367c69f15e2743880364694` passed Operator-local exact-head verification (migration head `0018_r7b_lifecycle_review_date`, 89 focused tests, 881 full-suite tests, Ruff, Mypy, and diff check); hosted CI run [42590404433](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42590404433) passed on implementation code head `e2fa162b6f9d77506d16458c1b24c81a57a21b66`. B3.4 implements deterministic `retire`/`supersede` assessment and immutable recording only. B3.5 planning is authorized; B3.5 runtime implementation and B3.6–B3.9, B4–B6, and R7-C remain gated. The active approval allowlist remains exactly `create`.
+**Status (updated 2026-11-10):** **B0 complete; B1 accepted and merged; B2 formally closed with accepted residual verification gaps; B3.2–B3.5 implemented and merged; B3.6–B3.9, B4–B6, and R7-C remain separately gated.** B3.2 merged at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; B3.3 merged at `f7683b3c7812c3250e0fed5e8e689ade6ecaeca5`; B3.4 merged at `9abd949a8e682b4df75a77f03acca638a62e`; B3.5 PR [#66](https://github.com/abtn/Watch-Architecture-Rev2/pull/66) merged at `a6cc81c2aef47d659252b89421e27b08735d944b` from exact PR head `65edf206eb6cd68859147ee8c2f68a4717c6fa87`. B3.5 hosted CI run [42655193654](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42655193654) and Operator-local exact-head verification both passed: fresh PostgreSQL migration/single-head at `0018_r7b_lifecycle_review_date`, 43 focused tests, Ruff, Mypy (37 source files), 884 full-suite tests (113 existing Alembic deprecation warnings), and diff checks. B3.5 implements lifecycle TaskRuntime admission, finalization, interrupted recovery, terminal replay, and a narrow TaskRunner. It does not activate automatic TaskDispatcher dispatch or permit canonical lifecycle writes. The active approval allowlist remains exactly `create`.
 
 
 
@@ -434,7 +434,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 - The active lifecycle approval allowlist remains exactly `create` throughout B3. B3 does not enable revise, revalidate, supersede, or retire commits.
 - Reuse the existing TaskRuntime, Task admission/finalization/recovery, Event, and immutable-record patterns. No second runtime, dispatcher, scheduler, auth stack, or autonomous approval.
 
-### B3 sequence — B3.2–B3.4 accepted and merged; B3.5 plan extraction authorized only; B3.6+ separately gated
+### B3 sequence — B3.2–B3.5 implemented and merged; B3.6–B3.9 separately gated
 
 #### B3.0 — Entry gate and exact-head preflight
 
@@ -577,9 +577,9 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 
 #### B3.5 — TaskRuntime, recovery, and Event integration
 
-**Status: PLAN EXTRACTION / DOCUMENTATION ONLY — AUTHORIZED 2026-11-09.** This section is the implementation plan extracted from the frozen B3.1 contracts and the actual repository state at `main` merge head `9abd949a8e682b4df75a77f03acca638a62e472e`. This authorization covers this plan and its documentation updates only. It does not authorize source-code, test, migration, TaskRunner, dispatcher, or runtime implementation. Obtain separate explicit Operator authorization before coding.
+**Status: COMPLETE — IMPLEMENTED AND MERGED (2026-11-10).** PR [#66](https://github.com/abtn/Watch-Architecture-Rev2/pull/66) merged at `a6cc81c2aef47d659252b89421e27b08735d944b` from exact PR head `65edf206eb6cd68859147ee8c2f68a4717c6fa87`. Hosted and Operator-local exact-head verification passed; full evidence is recorded in `docs/testing.md`.
 
-**Observed repository baseline — verified against current code**
+**Historical pre-implementation repository baseline — verified at base commit `9abd949a8e682b4df75a77f03acca638a62e472e`**
 
 - There is no generic Task registry in the inspected repository. `TaskRuntime` recognizes special Task types through explicit task-type constants, predicates, and branches in `admit()`, `finalize()`, and `recover_interrupted()`. Do not invent a registry or expand `TaskDispatcher`; the existing dispatcher is the bounded R6-B configured-source dispatcher.
 - Revalidation already has substantial runtime integration: `TaskRuntime` has `_is_knowledge_revalidation_task()`, request-shell/full-request validation, admission checks, typed success finalization, recorded-assessment verification, and committed-assessment recovery. `KnowledgeRevalidationAssessmentTaskRunner` already calls `TaskRuntime.admit()`, the assessment service, `finalize()`, and `report_failure()`.
@@ -589,7 +589,7 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 - `TerminalObservation` currently has a revalidation assessment ID and success category, but no lifecycle assessment ID/category. `_observation_payload()` adds optional typed IDs only when non-null. A lifecycle ID must be serialized conditionally so existing Outcome observation snapshots and historical replay payloads remain byte-for-byte compatible for Tasks that do not carry the new field.
 - `recover_interrupted()` performs read-only candidate discovery, then locks and rechecks each Task/current attempt before applying the existing retry disposition or calling the single terminal finalizer. The interruption threshold is 60 seconds. Preserve these compare-and-set and attempt-fencing semantics.
 
-**Agent / coding side — implementation sequence (after separate authorization)**
+**Agent / coding side — implementation sequence (completed in PR #66)**
 
 1. **Task recognition and admission.** Add the lifecycle Task type and request Event to the existing explicit `TaskRuntime` recognition path; do not add a generic registry. Validate exact Task shape, same-Team ownership, no Objective/Plan/Action links, exact write scope, budget, attempts, and exactly one canonical request Event. Reuse `validate_lifecycle_task_request()` for full proposal/current-state validation and require the configured `SnapshotStore`. Convert assessment validation failures to the established `TaskNotEligible`/runtime failure categories without hiding the reason.
 2. **Post-admission revalidation.** After `TaskRuntime.admit()` commits the start Event and increments the attempt, rebuild the lifecycle request context before recording. A changed proposal, target, evidence basis, predecessor, or successor between preflight and admission must not reach recording as if current.
@@ -621,6 +621,20 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 - Approval allowlist remains exactly `create`; no lifecycle commit, candidate creation, automatic dispatcher activation, API/auth, or later B3 work is included.
 
 **Expected output:** after implementation is separately authorized, a narrow TaskRuntime lifecycle integration, lifecycle TaskRunner, and focused regression proof. For the currently authorized planning slice, the expected output is this repository-grounded plan and aligned documentation only.
+
+
+**B3.5 implementation result (PR #66)**
+
+- `TaskRuntime` explicitly recognizes the lifecycle assessment Task without a generic registry. Its envelope is pinned to exactly `["KnowledgeLifecycleAssessment"]`, three attempts, zero tool calls/cost, and a 30-second deadline.
+- The typed terminal observation adds `success_knowledge_lifecycle_assessed` and an optional lifecycle assessment ID. Historical observation payloads omit the field when absent.
+- The lifecycle TaskRunner composes the B3.4 assessment adapter with TaskRuntime admission, post-admission request revalidation, assessment recording, finalization, replay, and recovery. TaskRuntime remains the sole owner of Task transitions, attempt fencing, terminal Outcomes, and lifecycle Events.
+- Recovery reconstructs success only from a valid immutable assessment and its recorded Event. Interrupted attempts without a committed assessment use the existing retry disposition; stale proposals fail deterministically; corrupt or mismatched records fail closed.
+- Failed Task replay validates every attempt's start/failure/retry history, identifies terminal failure at the current attempt, and binds it to the unique terminal Event and Outcome. Regression coverage includes interrupted first attempt → retry → terminal failure → repeated replay without duplicate terminal records.
+- Existing revalidation TaskRuntime behavior remains covered. No TaskDispatcher activation, generic registry, migration, public API/auth, canonical KnowledgeItem/LearningChange write, approval expansion, or B4–B6 work was introduced.
+
+**Exact-head verification:** PR head `65edf206eb6cd68859147ee8c2f68a4717c6fa87`; squash merge commit `a6cc81c2aef47d659252b89421e27b08735d944b`. Hosted CI run [42655193654](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42655193654) passed. Operator-local verification on the same PR head passed: fresh disposable PostgreSQL, sole Alembic head `0018_r7b_lifecycle_review_date`, 43 focused tests, Ruff, Mypy (37 source files), 884 full-suite tests, `git diff --check`, clean worktree, environment restoration, and container cleanup. The 113 warnings are existing Alembic `path_separator` deprecations. See `docs/testing.md` for exact details.
+
+**Boundary after B3.5:** B3.6 approval-time assessment binding has not been authorized. The approval allowlist remains exactly `create`; no lifecycle commit path is enabled. B3.7–B3.9, B4–B6, and R7-C remain separately gated.
 
 #### B3.6 — Approval-time assessment binding
 
