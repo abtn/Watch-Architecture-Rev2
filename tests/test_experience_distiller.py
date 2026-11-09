@@ -1259,11 +1259,6 @@ def _create_revalidation_proposal(
             + '","result_category":"success_learning_change_proposed"}'
         ).encode("utf-8")
     )
-    proposed_state = {
-        "proposal_hash": proposal_hash,
-        "evidence_basis_hash": None,
-        "operator_rationale": rationale,
-    }
 
     with session_factory.begin() as session:
         team = session.get(Team, fixture.team_id)
@@ -1303,10 +1298,6 @@ def _create_revalidation_proposal(
             include_version_marker=True,
         )
         previous_state = knowledge_item_state(item)
-        proposed_state["evidence_basis_hash"] = pack.basis_hash
-        proposed_state_hash = _domain_hash(
-            PROPOSED_STATE_HASH_DOMAIN, _normalize_json(proposed_state)
-        )
         change = LearningChange(
             id=learning_change_id,
             team_id=fixture.team_id,
@@ -1362,7 +1353,6 @@ def _create_revalidation_proposal(
                         "learning_change_id": str(learning_change_id),
                         "operation": "revalidate",
                         "proposal_hash": proposal_hash,
-                        "proposed_state_hash": proposed_state_hash,
                         "evidence_basis_hash": pack.basis_hash,
                         "attempt_count": 1,
                     },
