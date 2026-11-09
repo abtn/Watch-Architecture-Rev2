@@ -3142,10 +3142,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     snapshot_store,
     distillation_fixture,
 ):
-    from core.knowledge_lifecycle import (
-        KnowledgeLifecycleAssessmentService,
-        require_recorded_assessment,
-    )
+    from core.knowledge_lifecycle import require_recorded_assessment
     from core.knowledge_lifecycle_tasks import KnowledgeLifecycleAssessmentTask
     from core.models import (
         KnowledgeLifecycleAssessment,
@@ -3345,9 +3342,6 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             ]
         )
 
-    service = KnowledgeLifecycleAssessmentService(
-        session_factory, snapshot_store
-    )
     task_adapter = KnowledgeLifecycleAssessmentTask(
         session_factory, snapshot_store
     )
