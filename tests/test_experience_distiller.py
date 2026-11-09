@@ -3137,17 +3137,21 @@ def test_original_create_approval_replays_after_later_history_transition(
         _cleanup_operator_decision_task(session_factory, task_id)
 
 
+@pytest.mark.parametrize("assessment_result", ["eligible", "ineligible"])
 @pytest.mark.parametrize("crash_after_record", [False, True])
 def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     session_factory,
     snapshot_store,
     distillation_fixture,
     request,
+    monkeypatch,
+    assessment_result: str,
     crash_after_record: bool,
 ):
     from core.knowledge_lifecycle import (
         PROPOSED_STATE_HASH_DOMAIN,
         _domain_hash,
+        derive_lifecycle_findings,
         _normalize_json,
         _task_id,
         require_recorded_assessment,
@@ -3160,6 +3164,33 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         KnowledgeLifecycleAssessment,
         LearningChangeOperatorProvenance,
     )
+
+    if assessment_result == "ineligible":
+        original_derive = derive_lifecycle_findings
+
+        def derive_ineligible(
+            operation,
+            target_state,
+            successor_binding,
+            recorded_at,
+        ):
+            findings, _ = original_derive(
+                operation,
+                target_state,
+                successor_binding,
+                recorded_at,
+            )
+            findings[2] = {
+                **findings[2],
+                "outcome": "failed",
+                "summary": "The test injects an ineligible assessment finding.",
+            }
+            return findings, "ineligible"
+
+        monkeypatch.setattr(
+            "core.knowledge_lifecycle.derive_lifecycle_findings",
+            derive_ineligible,
+        )
 
     fixture = distillation_fixture(2, include_contrary=False)
     create_proposal = _distiller(
@@ -3551,7 +3582,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     else:
         first_run = runner.run(task_id)
         assert first_run.status == "done"
-        assert first_run.assessment_result == "eligible"
+        assert first_run.assessment_result == assessment_result
         assert first_run.assessment_id is not None
         assert first_run.outcome_id is not None
         assert not first_run.replayed
@@ -3616,7 +3647,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             )
 
         first = task_adapter.record(task_id)
-        assert first.assessment_result == "eligible"
+        assert first.assessment_result == assessment_result
         assert first.replayed
         assert first.assessment_id == committed_assessment.id
         assert first.assessment_payload_hash == committed_assessment.payload_hash
@@ -3667,7 +3698,8 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     assert replay.status == "done"
     assert replay.replayed
     assert replay.assessment_id == first_assessment_id
-    assert replay.assessment_result == first_assessment_result
+    assert replay.assessment_result == assessment_result
+    assert first_assessment_result == assessment_result
     assert replay.outcome_id is not None
 
     historical_payload = TaskRuntime._observation_payload(
