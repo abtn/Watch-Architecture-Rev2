@@ -3141,11 +3141,13 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     session_factory,
     snapshot_store,
     distillation_fixture,
+    request,
 ):
     from core.knowledge_lifecycle import (
         PROPOSED_STATE_HASH_DOMAIN,
         _domain_hash,
         _normalize_json,
+        _task_id,
         require_recorded_assessment,
     )
     from core.knowledge_lifecycle_tasks import KnowledgeLifecycleAssessmentTask
@@ -3352,10 +3354,69 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             ]
         )
 
+    task_id = _task_id(fixture.team_id, learning_change_id)
+
+    def cleanup_lifecycle_records():
+        with session_factory.begin() as session:
+            session.execute(
+                text(
+                    "ALTER TABLE knowledge_lifecycle_assessments "
+                    "DISABLE TRIGGER USER"
+                )
+            )
+            session.execute(
+                delete(KnowledgeLifecycleAssessment).where(
+                    KnowledgeLifecycleAssessment.task_id == task_id
+                )
+            )
+            session.execute(
+                text(
+                    "ALTER TABLE knowledge_lifecycle_assessments "
+                    "ENABLE TRIGGER USER"
+                )
+            )
+            session.execute(
+                text(
+                    "ALTER TABLE learning_change_operator_provenance "
+                    "DISABLE TRIGGER USER"
+                )
+            )
+            session.execute(
+                delete(LearningChangeOperatorProvenance).where(
+                    LearningChangeOperatorProvenance.learning_change_id
+                    == learning_change_id
+                )
+            )
+            session.execute(
+                text(
+                    "ALTER TABLE learning_change_operator_provenance "
+                    "ENABLE TRIGGER USER"
+                )
+            )
+            session.execute(
+                delete(Event).where(
+                    Event.task_id.in_([source_task_id, task_id])
+                )
+            )
+            session.execute(
+                delete(Outcome).where(
+                    Outcome.recorded_by_task_id == source_task_id
+                )
+            )
+            session.execute(
+                delete(LearningChange).where(
+                    LearningChange.id == learning_change_id
+                )
+            )
+            session.execute(
+                delete(Task).where(Task.id.in_([source_task_id, task_id]))
+            )
+
+    request.addfinalizer(cleanup_lifecycle_records)
     task_adapter = KnowledgeLifecycleAssessmentTask(
         session_factory, snapshot_store
     )
-    task_id = task_adapter.create(learning_change_id)
+    assert task_adapter.create(learning_change_id) == task_id
     assert task_adapter.create(learning_change_id) == task_id
     task_adapter.validate(task_id)
     admission = TaskRuntime(session_factory, snapshot_store).admit(task_id)
@@ -3430,56 +3491,3 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                 ),
                 {"id": first.assessment_id},
             )
-
-    with session_factory.begin() as session:
-        session.execute(
-            text(
-                "ALTER TABLE knowledge_lifecycle_assessments "
-                "DISABLE TRIGGER USER"
-            )
-        )
-        session.execute(
-            delete(KnowledgeLifecycleAssessment).where(
-                KnowledgeLifecycleAssessment.task_id == task_id
-            )
-        )
-        session.execute(
-            text(
-                "ALTER TABLE knowledge_lifecycle_assessments "
-                "ENABLE TRIGGER USER"
-            )
-        )
-        session.execute(
-            text(
-                "ALTER TABLE learning_change_operator_provenance "
-                "DISABLE TRIGGER USER"
-            )
-        )
-        session.execute(
-            delete(LearningChangeOperatorProvenance).where(
-                LearningChangeOperatorProvenance.learning_change_id
-                == learning_change_id
-            )
-        )
-        session.execute(
-            text(
-                "ALTER TABLE learning_change_operator_provenance "
-                "ENABLE TRIGGER USER"
-            )
-        )
-        session.execute(
-            delete(Event).where(Event.task_id.in_([source_task_id, task_id]))
-        )
-        session.execute(
-            delete(Outcome).where(
-                Outcome.recorded_by_task_id == source_task_id
-            )
-        )
-        session.execute(
-            delete(LearningChange).where(
-                LearningChange.id == learning_change_id
-            )
-        )
-        session.execute(
-            delete(Task).where(Task.id.in_([source_task_id, task_id]))
-        )
