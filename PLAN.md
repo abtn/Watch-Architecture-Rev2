@@ -366,7 +366,7 @@ Snapshot-first history reconstruction is conditionally accepted, subject to B1 p
 
 **B6 — Legacy compatibility and hardening:** repeated review/revalidation history, legacy Events/snapshots, approval replay after later transitions, unauthorized drift rejection and full regression verification.
 
-**Boundary:** B1 and B2 were separately authorized and merged only within their recorded scopes. B2 is formally closed by explicit Operator instruction on 2026-11-08, with three residual verification gaps retained in `docs/testing.md`. B3.2 and B3.3 are merged. B3.4 was separately authorized and implemented in PR #64; hosted CI passed, while Operator-local exact-head verification and acceptance remain pending. B3.5–B3.9 and all later phases remain separately gated. The active approval allowlist remains exactly `create`. B4–B6 require their own later phase authorizations; R7-C remains separately gated and unauthorized.
+**Boundary:** B1 and B2 were separately authorized and merged only within their recorded scopes. B2 is formally closed by explicit Operator instruction on 2026-11-08, with three residual verification gaps retained in `docs/testing.md`. B3.2–B3.4 are accepted and merged; B3.4 exact-head hosted and Operator-local verification passed. B3.5 plan extraction and documentation-only work are authorized; B3.5 runtime/source/test/migration implementation remains gated pending separate explicit Operator authorization. B3.6–B3.9 and all later phases remain separately gated. The active approval allowlist remains exactly `create`. B4–B6 require their own later phase authorizations; R7-C remains separately gated and unauthorized.
 
 ### R7-C — Retrieval quality and downstream-use evaluation — NOT AUTHORIZED
 
