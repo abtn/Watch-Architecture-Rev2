@@ -2185,7 +2185,9 @@ class TaskRuntime:
             or not isinstance(payload.get("request_hash"), str)
         ):
             raise TaskNotFinalizable("knowledge_lifecycle_request_event_invalid")
-        unsigned = {key: value for key, value in payload.items() if key != "request_hash"}
+        unsigned = {
+            key: value for key, value in payload.items() if key != "request_hash"
+        }
         if payload["request_hash"] != _sha256_json(unsigned):
             raise TaskNotFinalizable("knowledge_lifecycle_request_hash_mismatch")
         return payload
