@@ -418,7 +418,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 **B2 closeout reference:** B2 is formally closed by explicit Operator instruction on 2026-11-08. The three retained residual verification gaps are recorded in `PLAN.md` and `docs/testing.md`; none is represented as passed. This does not expand B2's create-only authority.
 
 
-**Status:** B3.2 schema/migration/immutability implementation is merged through PR #60. Checkpoint 4 was formally accepted by the Operator on 2026-11-08 after contract review and exact-merge local verification. B3.3 is explicitly authorized; no later B3 stage is authorized by that decision.
+**Status:** B3.2 schema/migration/immutability implementation and B3.3 revalidation service are merged. B3.4 lifecycle assessment service/Task adapter is implemented in PR #64; exact code head `e2fa162b6f9d77506d16458c1b24c81a57a21b66` passed hosted CI (881 passed, 113 warnings). Operator-local exact-head verification and acceptance remain pending. B3.5 TaskRuntime/recovery/Event integration and all later stages remain separately gated.
 
 **Goal:** add immutable, operation-specific assessment records and narrow recording Tasks. These assessments supply validated evidence to the existing trusted Operator approval path; they do not authorize or commit lifecycle transitions.
 
@@ -434,7 +434,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 - The active lifecycle approval allowlist remains exactly `create` throughout B3. B3 does not enable revise, revalidate, supersede, or retire commits.
 - Reuse the existing TaskRuntime, Task admission/finalization/recovery, Event, and immutable-record patterns. No second runtime, dispatcher, scheduler, auth stack, or autonomous approval.
 
-### B3 sequence — B3.3 authorized; later implementation stages remain separately gated
+### B3 sequence — B3.3 merged; B3.4 implemented with local acceptance pending; B3.5+ separately gated
 
 #### B3.0 — Entry gate and exact-head preflight
 
