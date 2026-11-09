@@ -1094,8 +1094,9 @@ class KnowledgeRevalidationAssessmentService:
                 payload_hash="",
             )
             assessment.payload_hash = assessment_payload_hash(assessment)
-            session.add(assessment)
-            session.flush()
+            # The assessment has a restrictive composite FK to its recorded
+            # Event. Insert the Task-attributed Event first in this same
+            # transaction, then insert the immutable assessment that binds it.
             session.add(
                 Event(
                     id=assessment.recorded_event_id,
@@ -1105,6 +1106,8 @@ class KnowledgeRevalidationAssessmentService:
                     created_at=now,
                 )
             )
+            session.flush()
+            session.add(assessment)
             session.flush()
             return KnowledgeRevalidationAssessmentResult(
                 assessment_id=assessment.id,
