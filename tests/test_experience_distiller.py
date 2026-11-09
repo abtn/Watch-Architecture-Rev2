@@ -1213,8 +1213,9 @@ class _FakeKnowledgeRevalidationProvider:
     evaluator_identity = "r7b-revalidation-test"
     evaluator_revision = "1"
 
-    def __init__(self) -> None:
+    def __init__(self, *, fail_first: bool = False) -> None:
         self.calls = 0
+        self.fail_first = fail_first
 
     def assess(
         self,
@@ -1226,6 +1227,8 @@ class _FakeKnowledgeRevalidationProvider:
         allowed_evidence_references: frozenset[str],
     ) -> KnowledgeRevalidationAssessmentDraft:
         self.calls += 1
+        if self.fail_first and self.calls == 1:
+            raise RuntimeError("simulated_evaluator_unavailable")
         return KnowledgeRevalidationAssessmentDraft(
             freshness_disposition="current",
             findings=(
@@ -1376,12 +1379,16 @@ def _create_revalidation_proposal(
     return source_task_id, learning_change_id
 
 
-@pytest.mark.parametrize("crash_after_record", [False, True])
+@pytest.mark.parametrize(
+    ("crash_after_record", "fail_first_attempt"),
+    [(False, False), (True, False), (False, True)],
+)
 def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
     session_factory,
     snapshot_store,
     distillation_fixture,
     crash_after_record: bool,
+    fail_first_attempt: bool,
 ):
     fixture = distillation_fixture(2, include_contrary=False)
     create_proposal = _distiller(
@@ -1428,7 +1435,9 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
     task_id = KnowledgeRevalidationAssessmentService(
         session_factory, snapshot_store
     ).create_task(revalidation_change_id)
-    provider = _FakeKnowledgeRevalidationProvider()
+    provider = _FakeKnowledgeRevalidationProvider(
+        fail_first=fail_first_attempt
+    )
 
     class CrashAfterAssessmentRecordRuntime(TaskRuntime):
         def finalize(self, observation):
@@ -1475,6 +1484,13 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
         assert recovery.completed == (task_id,)
         assert recovery.retried == ()
         assert recovery.failed == ()
+    elif fail_first_attempt:
+        first = runner.run(task_id)
+        assert first.status == "pending"
+        assert first.assessment_id is None
+        second = runner.run(task_id)
+        assert second.status == "done"
+        assert second.assessment_id is not None
     else:
         first = runner.run(task_id)
         assert first.status == "done"
@@ -1484,7 +1500,7 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
     assert replay.status == "done"
     assert replay.replayed
     assert replay.assessment_id is not None
-    assert provider.calls == 1
+    assert provider.calls == (2 if fail_first_attempt else 1)
 
     with session_factory() as session:
         item = session.get(KnowledgeItem, committed.knowledge_item_id)
@@ -1500,7 +1516,7 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
         assert item.version == 1
         assert task.status == "done"
         assert assessment.assessment_result == "supported"
-        assert assessment.task_attempt == 1
+        assert assessment.task_attempt == (2 if fail_first_attempt else 1)
         assert session.scalar(
             select(func.count(KnowledgeRevalidationAssessment.id)).where(
                 KnowledgeRevalidationAssessment.learning_change_id
