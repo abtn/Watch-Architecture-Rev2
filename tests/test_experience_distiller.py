@@ -3152,8 +3152,8 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         PROPOSED_STATE_HASH_DOMAIN,
         _domain_hash,
         _normalize_json,
-        _task_id,
         _sha256_json,
+        _task_id,
         derive_lifecycle_findings,
         require_recorded_assessment,
     )
