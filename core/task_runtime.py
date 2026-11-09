@@ -2358,7 +2358,7 @@ class TaskRuntime:
             }
             if (
                 terminal_events[0].payload != expected_terminal_payload
-                or terminal_events[0].created_at != task.completed_at
+                or terminal_events[0].created_at < observation.observed_at
             ):
                 raise TaskNotFinalizable(
                     "knowledge_lifecycle_terminal_event_invalid"
