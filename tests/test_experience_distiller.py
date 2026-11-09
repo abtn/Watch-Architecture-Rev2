@@ -3420,3 +3420,56 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                 Event.type == "knowledge_lifecycle_assessment_recorded",
             )
         ) == 1
+
+    with session_factory.begin() as session:
+        session.execute(
+            text(
+                "ALTER TABLE knowledge_lifecycle_assessments "
+                "DISABLE TRIGGER USER"
+            )
+        )
+        session.execute(
+            delete(KnowledgeLifecycleAssessment).where(
+                KnowledgeLifecycleAssessment.task_id == task_id
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE knowledge_lifecycle_assessments "
+                "ENABLE TRIGGER USER"
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE learning_change_operator_provenance "
+                "DISABLE TRIGGER USER"
+            )
+        )
+        session.execute(
+            delete(LearningChangeOperatorProvenance).where(
+                LearningChangeOperatorProvenance.learning_change_id
+                == learning_change_id
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE learning_change_operator_provenance "
+                "ENABLE TRIGGER USER"
+            )
+        )
+        session.execute(
+            delete(Event).where(Event.task_id.in_([source_task_id, task_id]))
+        )
+        session.execute(
+            delete(Outcome).where(
+                Outcome.recorded_by_task_id == source_task_id
+            )
+        )
+        session.execute(
+            delete(LearningChange).where(
+                LearningChange.id == learning_change_id
+            )
+        )
+        session.execute(
+            delete(Task).where(Task.id.in_([source_task_id, task_id]))
+        )
