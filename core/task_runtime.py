@@ -2327,13 +2327,14 @@ class TaskRuntime:
                 session.scalars(
                     select(Event).where(
                         Event.task_id == task.id,
-                        Event.type == "task_completed",
+                        Event.type.in_(_TERMINAL_EVENTS),
                     )
                 )
             )
             if (
                 len(outcomes) != 1
                 or len(terminal_events) != 1
+                or terminal_events[0].type != "task_completed"
                 or outcomes[0].team_id != task.team_id
                 or outcomes[0].subject_kind != "task"
                 or outcomes[0].subject_id != task.id
@@ -2380,8 +2381,6 @@ class TaskRuntime:
                     select(Event).where(
                         Event.task_id == task.id,
                         Event.type.in_(_TERMINAL_EVENTS),
-                        Event.payload["attempt_count"].as_integer()
-                        == observation.attempt,
                     )
                 )
             )
@@ -2434,11 +2433,29 @@ class TaskRuntime:
                 )
             )
         )
-        started_at = self._current_attempt_start(session, task)
-        if started_at is None:
+        started_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == "task_started",
+                    Event.payload["attempt_count"].as_integer()
+                    == task.attempt_count,
+                )
+            )
+        )
+        if (
+            len(started_events) != 1
+            or started_events[0].payload
+            != {
+                "from_status": "pending",
+                "to_status": "running",
+                "attempt_count": task.attempt_count,
+            }
+        ):
             raise TaskNotFinalizable(
                 "knowledge_lifecycle_task_start_event_invalid"
             )
+        started_at = started_events[0].created_at
         prior_outcomes = list(
             session.scalars(
                 select(Outcome).where(
@@ -2452,8 +2469,6 @@ class TaskRuntime:
                 select(Event).where(
                     Event.task_id == task.id,
                     Event.type.in_(_TERMINAL_EVENTS),
-                    Event.payload["attempt_count"].as_integer()
-                    == task.attempt_count,
                 )
             )
         )
