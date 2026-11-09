@@ -378,12 +378,18 @@ def test_target_binding_rejects_wrong_target_and_noncanonical_pointer():
             require_current=False,
         )
 
-    state["current_learning_change_id"] = "NOT-A-CANONICAL-UUID"
+    invalid_snapshot = {
+        **snapshot,
+        "state": {
+            **state,
+            "current_learning_change_id": "NOT-A-CANONICAL-UUID",
+        },
+    }
     invalid = SimpleNamespace(
         id=uuid4(),
         team_id=team_id,
         target_id=item_id,
-        previous_state=encode_state_snapshot(state),
+        previous_state=invalid_snapshot,
     )
     with pytest.raises(
         KnowledgeRevalidationAssessmentError,
