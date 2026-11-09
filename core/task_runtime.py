@@ -20,6 +20,7 @@ from core.models import (
     EvidenceLink,
     KnowledgeItem,
     KnowledgeQualityAssessment,
+    KnowledgeRevalidationAssessment,
     LearningChange,
     Outcome,
     Plan,
@@ -67,6 +68,20 @@ _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES = frozenset(
     {"success_knowledge_quality_assessed"}
 )
 _KNOWLEDGE_QUALITY_TASK_TYPE = "assess_knowledge_quality"
+_KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES = frozenset(
+    {"success_knowledge_revalidation_assessed"}
+)
+_KNOWLEDGE_REVALIDATION_TASK_TYPE = "assess_knowledge_revalidation"
+_KNOWLEDGE_REVALIDATION_REQUEST_EVENT_TYPE = (
+    "knowledge_revalidation_assessment_task_requested"
+)
+_KNOWLEDGE_REVALIDATION_ALLOWED_WRITES = ["KnowledgeRevalidationAssessment"]
+_KNOWLEDGE_REVALIDATION_MAX_ATTEMPTS = 3
+_KNOWLEDGE_REVALIDATION_BUDGET = {
+    "max_tool_calls": 0,
+    "max_cost_usd": 0.0,
+    "deadline_seconds": 30,
+}
 _KNOWLEDGE_QUALITY_REQUEST_EVENT_TYPE = "knowledge_quality_assessment_task_requested"
 _KNOWLEDGE_QUALITY_RECORDED_EVENT_TYPE = "knowledge_quality_assessment_recorded"
 _KNOWLEDGE_QUALITY_ALLOWED_WRITES = ["KnowledgeQualityAssessment"]
@@ -87,6 +102,7 @@ _SUCCESS_CATEGORIES = (
     | _LEARNING_CHANGE_DECISION_SUCCESS_CATEGORIES
     | _KNOWLEDGE_REVIEW_SUCCESS_CATEGORIES
     | _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES
+    | _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES
     | _CONTROL_TASK_SUCCESS_CATEGORIES
 )
 _RESULT_CATEGORIES = _SUCCESS_CATEGORIES | {"terminal_failure"}
@@ -156,6 +172,7 @@ class TerminalObservation:
         "success_learning_change_accepted", "success_learning_change_rejected",
         "success_knowledge_reviewed",
         "success_knowledge_quality_assessed",
+        "success_knowledge_revalidation_assessed",
         "success_strategy_accepted",
         "success_strategy_rejected", "success_plan_created", "terminal_failure"
     ]
@@ -168,6 +185,7 @@ class TerminalObservation:
     plan_id: UUID | None = None
     plan_event_id: UUID | None = None
     knowledge_quality_assessment_id: UUID | None = None
+    knowledge_revalidation_assessment_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -345,6 +363,20 @@ class TaskRuntime:
             elif self._is_r6g_evaluation_task(session, task):
                 try:
                     self._validate_evaluation_task_request(session, task)
+                except TaskNotFinalizable as error:
+                    raise TaskNotEligible(str(error)) from error
+            elif self._is_knowledge_revalidation_task(session, task):
+                if self._snapshot_store is None:
+                    raise TaskNotEligible(
+                        "knowledge_revalidation_snapshot_store_required"
+                    )
+                try:
+                    self._validate_knowledge_revalidation_task_request(
+                        session,
+                        task,
+                        require_proposed=True,
+                        require_current=True,
+                    )
                 except TaskNotFinalizable as error:
                     raise TaskNotEligible(str(error)) from error
             elif self._is_knowledge_quality_task(session, task):
@@ -659,6 +691,22 @@ class TaskRuntime:
                         in _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES
                     ),
                 )
+            if self._is_knowledge_revalidation_task(session, task):
+                self._validate_knowledge_revalidation_task_shell(session, task)
+                if (
+                    observation.result_category
+                    in _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES
+                ):
+                    if self._snapshot_store is None:
+                        raise TaskNotFinalizable(
+                            "knowledge_revalidation_snapshot_store_required"
+                        )
+                    self._validate_knowledge_revalidation_task_request(
+                        session,
+                        task,
+                        require_proposed=task.status == "running",
+                        require_current=task.status == "running",
+                    )
             if (
                 observation.result_category == "success_knowledge_reviewed"
                 and task.task_type != "review_knowledge"
@@ -676,6 +724,21 @@ class TaskRuntime:
                 )
             elif observation.knowledge_quality_assessment_id is not None:
                 raise TaskNotFinalizable("knowledge_quality_assessment_id_not_allowed")
+
+            if (
+                observation.result_category
+                in _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES
+            ):
+                self._validate_knowledge_revalidation_result(
+                    session,
+                    task,
+                    observation,
+                    allow_completed=task.status == "done",
+                )
+            elif observation.knowledge_revalidation_assessment_id is not None:
+                raise TaskNotFinalizable(
+                    "knowledge_revalidation_assessment_id_not_allowed"
+                )
 
             if (
                 observation.result_category
@@ -753,6 +816,15 @@ class TaskRuntime:
             ):
                 raise TaskNotFinalizable(
                     "knowledge_quality_task_requires_assessment_result"
+                )
+            if (
+                task.task_type == _KNOWLEDGE_REVALIDATION_TASK_TYPE
+                and observation.result_category in _SUCCESS_CATEGORIES
+                and observation.result_category
+                not in _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES
+            ):
+                raise TaskNotFinalizable(
+                    "knowledge_revalidation_task_requires_assessment_result"
                 )
             if (
                 task.task_type == "review_knowledge"
@@ -860,6 +932,18 @@ class TaskRuntime:
                                 )
                             }
                             if observation.knowledge_quality_assessment_id is not None
+                            else {}
+                        ),
+                        **(
+                            {
+                                "knowledge_revalidation_assessment_id": str(
+                                    observation.knowledge_revalidation_assessment_id
+                                )
+                            }
+                            if (
+                                observation.knowledge_revalidation_assessment_id
+                                is not None
+                            )
                             else {}
                         ),
                     },
@@ -1230,6 +1314,12 @@ class TaskRuntime:
                 recovered_observation = (
                     self._committed_operator_decision_observation(session, task)
                 )
+            elif self._is_knowledge_revalidation_task(session, task):
+                recovered_observation = (
+                    self._committed_knowledge_revalidation_assessment_observation(
+                        session, task
+                    )
+                )
             elif self._is_knowledge_quality_task(session, task):
                 recovered_observation = (
                     self._committed_knowledge_quality_assessment_observation(
@@ -1586,6 +1676,329 @@ class TaskRuntime:
             )
         except KnowledgeQualityAssessmentError as error:
             raise TaskNotFinalizable(error.reason) from error
+
+    @staticmethod
+    def _is_knowledge_revalidation_task(session: Session, task: Task) -> bool:
+        if task.task_type == _KNOWLEDGE_REVALIDATION_TASK_TYPE:
+            return True
+        return session.scalar(
+            select(Event.id).where(
+                Event.task_id == task.id,
+                Event.type == _KNOWLEDGE_REVALIDATION_REQUEST_EVENT_TYPE,
+            )
+        ) is not None
+
+    @staticmethod
+    def _validate_knowledge_revalidation_task_shell(
+        session: Session, task: Task
+    ) -> dict[str, Any]:
+        """Validate the narrow Task and durable request envelope without evidence IO."""
+        if (
+            task.task_type != _KNOWLEDGE_REVALIDATION_TASK_TYPE
+            or task.team_id is None
+            or task.objective_id is not None
+            or task.plan_id is not None
+            or task.plan_action_id is not None
+            or task.allowed_writes != _KNOWLEDGE_REVALIDATION_ALLOWED_WRITES
+            or task.budget != _KNOWLEDGE_REVALIDATION_BUDGET
+            or task.max_attempts != _KNOWLEDGE_REVALIDATION_MAX_ATTEMPTS
+            or isinstance(task.attempt_count, bool)
+            or not isinstance(task.attempt_count, int)
+            or task.attempt_count < 0
+            or task.attempt_count > task.max_attempts
+            or (
+                task.status in {"running", "done", "failed"}
+                and task.attempt_count < 1
+            )
+            or (task.completed_at is not None and task.status != "done")
+        ):
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_task_shape_invalid"
+            )
+        from core.knowledge_revalidation import (
+            REQUEST_EVENT_TYPE,
+            _sha256_json,
+        )
+
+        events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == REQUEST_EVENT_TYPE,
+                )
+            )
+        )
+        if len(events) != 1 or not isinstance(events[0].payload, dict):
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_request_event_invalid"
+            )
+        payload = events[0].payload
+        expected_fields = {
+            "schema_version",
+            "task_type",
+            "task_id",
+            "team_id",
+            "learning_change_id",
+            "proposed_by_task_id",
+            "knowledge_item_id",
+            "current_learning_change_id",
+            "target_content_version",
+            "target_content_hash",
+            "target_content_hash_scheme",
+            "target_state_hash",
+            "proposal_hash",
+            "proposed_state_hash",
+            "evidence_basis_hash",
+            "policy_version",
+            "idempotency_key",
+            "request_hash",
+        }
+        if (
+            set(payload) != expected_fields
+            or payload.get("schema_version") != 1
+            or payload.get("task_type") != _KNOWLEDGE_REVALIDATION_TASK_TYPE
+            or payload.get("task_id") != str(task.id)
+            or payload.get("team_id") != str(task.team_id)
+            or not isinstance(payload.get("learning_change_id"), str)
+            or not isinstance(payload.get("idempotency_key"), str)
+        ):
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_request_event_invalid"
+            )
+        unsigned = {
+            key: value for key, value in payload.items() if key != "request_hash"
+        }
+        if payload.get("request_hash") != _sha256_json(unsigned):
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_request_hash_mismatch"
+            )
+        return payload
+
+    def _validate_knowledge_revalidation_task_request(
+        self,
+        session: Session,
+        task: Task,
+        *,
+        require_proposed: bool = True,
+        require_current: bool = True,
+    ) -> Any:
+        from core.knowledge_revalidation import (
+            KnowledgeRevalidationAssessmentError,
+            validate_revalidation_task_request,
+        )
+
+        if self._snapshot_store is None:
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_snapshot_store_required"
+            )
+        self._validate_knowledge_revalidation_task_shell(session, task)
+        try:
+            return validate_revalidation_task_request(
+                session,
+                task,
+                self._session_factory,
+                self._snapshot_store,
+                require_proposed=require_proposed,
+                require_current=require_current,
+            )
+        except KnowledgeRevalidationAssessmentError as error:
+            raise TaskNotFinalizable(error.reason) from error
+
+    def _validate_knowledge_revalidation_result(
+        self,
+        session: Session,
+        task: Task,
+        observation: TerminalObservation,
+        *,
+        allow_completed: bool = False,
+    ) -> None:
+        from core.knowledge_revalidation import (
+            KnowledgeRevalidationAssessmentError,
+            require_recorded_assessment,
+        )
+
+        if (
+            task.task_type != _KNOWLEDGE_REVALIDATION_TASK_TYPE
+            or task.team_id is None
+            or task.allowed_writes != _KNOWLEDGE_REVALIDATION_ALLOWED_WRITES
+            or task.objective_id is not None
+            or task.plan_id is not None
+            or task.plan_action_id is not None
+            or task.max_attempts != _KNOWLEDGE_REVALIDATION_MAX_ATTEMPTS
+            or task.budget != _KNOWLEDGE_REVALIDATION_BUDGET
+            or task.status != ("done" if allow_completed else "running")
+            or task.attempt_count != observation.attempt
+            or observation.knowledge_revalidation_assessment_id is None
+            or self._snapshot_store is None
+        ):
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_result_task_shape_invalid"
+            )
+        assessment = session.scalar(
+            select(KnowledgeRevalidationAssessment).where(
+                KnowledgeRevalidationAssessment.id
+                == observation.knowledge_revalidation_assessment_id,
+                KnowledgeRevalidationAssessment.team_id == task.team_id,
+                KnowledgeRevalidationAssessment.task_id == task.id,
+            )
+        )
+        if assessment is None:
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_assessment_not_recorded"
+            )
+        learning_change = session.scalar(
+            select(LearningChange).where(
+                LearningChange.id == assessment.learning_change_id,
+                LearningChange.team_id == task.team_id,
+            )
+        )
+        if learning_change is None:
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_learning_change_missing"
+            )
+        try:
+            verified = require_recorded_assessment(
+                session,
+                learning_change,
+                self._snapshot_store,
+                self._session_factory,
+                require_task_done=allow_completed,
+                require_current=not allow_completed,
+            )
+        except KnowledgeRevalidationAssessmentError as error:
+            raise TaskNotFinalizable(error.reason) from error
+        if verified.id != observation.knowledge_revalidation_assessment_id:
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_assessment_binding_invalid"
+            )
+        if allow_completed:
+            if task.completed_at != observation.observed_at:
+                raise TaskNotFinalizable(
+                    "knowledge_revalidation_terminal_timestamp_mismatch"
+                )
+        elif verified.recorded_at != observation.observed_at:
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_terminal_timestamp_mismatch"
+            )
+
+    def _committed_knowledge_revalidation_assessment_observation(
+        self, session: Session, task: Task
+    ) -> TerminalObservation | None:
+        from core.knowledge_revalidation import (
+            KnowledgeRevalidationAssessmentError,
+            require_recorded_assessment,
+        )
+
+        if not self._is_knowledge_revalidation_task(session, task):
+            return None
+        payload = self._validate_knowledge_revalidation_task_shell(session, task)
+        try:
+            learning_change_id = UUID(payload["learning_change_id"])
+        except (TypeError, ValueError) as error:
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_learning_change_id_invalid"
+            ) from error
+        learning_change = session.scalar(
+            select(LearningChange).where(
+                LearningChange.id == learning_change_id,
+                LearningChange.team_id == task.team_id,
+            )
+        )
+        if learning_change is None:
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_learning_change_missing"
+            )
+        assessment = session.scalar(
+            select(KnowledgeRevalidationAssessment).where(
+                KnowledgeRevalidationAssessment.task_id == task.id,
+                KnowledgeRevalidationAssessment.team_id == task.team_id,
+            )
+        )
+        started_at = self._current_attempt_start(session, task)
+        if started_at is None:
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_task_start_event_invalid"
+            )
+        if assessment is None:
+            if task.status == "done":
+                raise TaskNotFinalizable(
+                    "knowledge_revalidation_completed_assessment_missing"
+                )
+            if learning_change.status != "proposed":
+                return TerminalObservation(
+                    task_id=task.id,
+                    attempt=task.attempt_count,
+                    result_category="terminal_failure",
+                    observed_at=started_at,
+                    failure_reason="knowledge_revalidation_learning_change_not_proposed",
+                )
+            try:
+                self._validate_knowledge_revalidation_task_request(
+                    session,
+                    task,
+                    require_proposed=True,
+                    require_current=True,
+                )
+            except TaskNotFinalizable as error:
+                return TerminalObservation(
+                    task_id=task.id,
+                    attempt=task.attempt_count,
+                    result_category="terminal_failure",
+                    observed_at=started_at,
+                    failure_reason=str(error),
+                )
+            return None
+
+        if self._snapshot_store is None:
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_snapshot_store_required"
+            )
+        try:
+            verified = require_recorded_assessment(
+                session,
+                learning_change,
+                self._snapshot_store,
+                self._session_factory,
+                require_task_done=task.status == "done",
+                require_current=task.status == "running",
+            )
+        except KnowledgeRevalidationAssessmentError as error:
+            if task.status == "done":
+                raise TaskNotFinalizable(error.reason) from error
+            return TerminalObservation(
+                task_id=task.id,
+                attempt=task.attempt_count,
+                result_category="terminal_failure",
+                observed_at=started_at,
+                failure_reason=error.reason,
+            )
+        if verified.task_id != task.id:
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_assessment_task_mismatch"
+            )
+        if task.status == "done":
+            outcomes = list(
+                session.scalars(
+                    select(Outcome).where(
+                        Outcome.recorded_by_task_id == task.id,
+                        Outcome.outcome_type == "task_execution",
+                    )
+                )
+            )
+            if len(outcomes) != 1 or outcomes[0].observed_at is None:
+                raise TaskNotFinalizable(
+                    "knowledge_revalidation_task_outcome_missing"
+                )
+            observed_at = outcomes[0].observed_at
+        else:
+            observed_at = verified.recorded_at
+        return TerminalObservation(
+            task_id=task.id,
+            attempt=task.attempt_count,
+            result_category="success_knowledge_revalidation_assessed",
+            observed_at=observed_at,
+            knowledge_revalidation_assessment_id=verified.id,
+        )
 
     def _create_knowledge_quality_task_request(
         self, session: Session,
@@ -2992,6 +3405,25 @@ class TaskRuntime:
                     or observation.strategy_event_id is not None
                     or observation.plan_id is not None
                     or observation.plan_event_id is not None
+                    or observation.knowledge_revalidation_assessment_id is not None
+                ):
+                    raise TaskNotFinalizable("terminal_evidence_not_allowed")
+            elif (
+                observation.result_category
+                in _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES
+            ):
+                if observation.knowledge_revalidation_assessment_id is None:
+                    raise TaskNotFinalizable(
+                        "knowledge_revalidation_assessment_id_required"
+                    )
+                if (
+                    observation.signals
+                    or observation.evaluation_id is not None
+                    or observation.learning_change_id is not None
+                    or observation.strategy_event_id is not None
+                    or observation.plan_id is not None
+                    or observation.plan_event_id is not None
+                    or observation.knowledge_quality_assessment_id is not None
                 ):
                     raise TaskNotFinalizable("terminal_evidence_not_allowed")
             elif (observation.signals or observation.evaluation_id is not None
@@ -2999,7 +3431,8 @@ class TaskRuntime:
                 or observation.strategy_event_id is not None
                 or observation.plan_id is not None
                 or observation.plan_event_id is not None
-                or observation.knowledge_quality_assessment_id is not None):
+                or observation.knowledge_quality_assessment_id is not None
+                or observation.knowledge_revalidation_assessment_id is not None):
                 raise TaskNotFinalizable("terminal_evidence_not_allowed")
             return
 
@@ -3010,6 +3443,7 @@ class TaskRuntime:
             or observation.plan_id is not None
             or observation.plan_event_id is not None
             or observation.knowledge_quality_assessment_id is not None
+            or observation.knowledge_revalidation_assessment_id is not None
         ):
             raise TaskNotFinalizable("terminal_evidence_not_allowed")
         if not observation.failure_reason or not observation.failure_reason.strip():
@@ -3046,6 +3480,10 @@ class TaskRuntime:
         if observation.knowledge_quality_assessment_id is not None:
             payload["knowledge_quality_assessment_id"] = str(
                 observation.knowledge_quality_assessment_id
+            )
+        if observation.knowledge_revalidation_assessment_id is not None:
+            payload["knowledge_revalidation_assessment_id"] = str(
+                observation.knowledge_revalidation_assessment_id
             )
         return payload
 
