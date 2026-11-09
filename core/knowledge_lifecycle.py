@@ -191,6 +191,7 @@ class LifecycleProposalContext:
     evidence_pack: Any
     rationale: dict[str, Any]
     operator_provenance: LearningChangeOperatorProvenance
+    successor_id: UUID | None
 
 
 @dataclass(frozen=True)
@@ -354,10 +355,7 @@ def _validate_proposed_state(
     }
     successor_id: UUID | None = None
     if operation == "supersede":
-        expected_keys |= {
-            "successor_knowledge_item_id",
-            "successor_team_id",
-        }
+        expected_keys.add("successor_knowledge_item_id")
     if set(state) != expected_keys:
         raise KnowledgeLifecycleAssessmentError(
             "knowledge_lifecycle_proposed_state_shape_invalid"
@@ -380,14 +378,6 @@ def _validate_proposed_state(
             state.get("successor_knowledge_item_id"),
             "knowledge_lifecycle_successor_id_invalid",
         )
-        successor_team_id = _canonical_uuid(
-            state.get("successor_team_id"),
-            "knowledge_lifecycle_successor_team_invalid",
-        )
-        if successor_team_id != learning_change.team_id:
-            raise KnowledgeLifecycleAssessmentError(
-                "knowledge_lifecycle_successor_cross_team"
-            )
     proposed_state_hash = _domain_hash(
         PROPOSED_STATE_HASH_DOMAIN,
         _normalize_json(state),
@@ -733,6 +723,7 @@ def _proposal_context(
         evidence_pack=pack,
         rationale=rationale,
         operator_provenance=provenance,
+        successor_id=successor_id,
     )
 
 
@@ -747,19 +738,17 @@ def _successor_binding(
         raise KnowledgeLifecycleAssessmentError(
             "knowledge_lifecycle_successor_not_allowed"
         )
-    successor_id = _canonical_uuid(
-        change.proposed_state.get("successor_knowledge_item_id"),
-        "knowledge_lifecycle_successor_id_invalid",
-    )
-    successor_team_id = _canonical_uuid(
-        change.proposed_state.get("successor_team_id"),
-        "knowledge_lifecycle_successor_team_invalid",
-    )
-    if successor_team_id != change.team_id:
+    successor_id = proposal.successor_id
+    if successor_id is None:
         raise KnowledgeLifecycleAssessmentError(
-            "knowledge_lifecycle_successor_cross_team"
+            "knowledge_lifecycle_successor_id_invalid"
         )
-    successor = session.get(KnowledgeItem, successor_id)
+    successor_query = select(KnowledgeItem).where(
+        KnowledgeItem.id == successor_id
+    )
+    if require_current:
+        successor_query = successor_query.with_for_update()
+    successor = session.scalar(successor_query)
     if successor is None:
         raise KnowledgeLifecycleAssessmentError(
             "knowledge_lifecycle_successor_not_found"
@@ -1380,6 +1369,14 @@ def require_recorded_assessment(
             "knowledge_lifecycle_request_binding_invalid"
         )
     successor_binding = _stored_successor_binding(assessment)
+    if require_current and learning_change.operation == "supersede":
+        live_successor_binding = _successor_binding(
+            session, proposal, require_current=True
+        )
+        if live_successor_binding != successor_binding:
+            raise KnowledgeLifecycleAssessmentError(
+                "knowledge_lifecycle_successor_stale"
+            )
     if learning_change.operation == "retire":
         if successor_binding is not None:
             raise KnowledgeLifecycleAssessmentError(
