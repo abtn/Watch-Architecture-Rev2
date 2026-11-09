@@ -1259,6 +1259,11 @@ def _create_revalidation_proposal(
             + '","result_category":"success_learning_change_proposed"}'
         ).encode("utf-8")
     )
+    proposed_state = {
+        "proposal_hash": proposal_hash,
+        "evidence_basis_hash": None,
+        "operator_rationale": rationale,
+    }
 
     with session_factory.begin() as session:
         team = session.get(Team, fixture.team_id)
@@ -1298,6 +1303,10 @@ def _create_revalidation_proposal(
             include_version_marker=True,
         )
         previous_state = knowledge_item_state(item)
+        proposed_state["evidence_basis_hash"] = pack.basis_hash
+        proposed_state_hash = _domain_hash(
+            PROPOSED_STATE_HASH_DOMAIN, _normalize_json(proposed_state)
+        )
         change = LearningChange(
             id=learning_change_id,
             team_id=fixture.team_id,
@@ -1353,6 +1362,7 @@ def _create_revalidation_proposal(
                         "learning_change_id": str(learning_change_id),
                         "operation": "revalidate",
                         "proposal_hash": proposal_hash,
+                        "proposed_state_hash": proposed_state_hash,
                         "evidence_basis_hash": pack.basis_hash,
                         "attempt_count": 1,
                     },
@@ -3142,7 +3152,12 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     snapshot_store,
     distillation_fixture,
 ):
-    from core.knowledge_lifecycle import require_recorded_assessment
+    from core.knowledge_lifecycle import (
+        PROPOSED_STATE_HASH_DOMAIN,
+        _domain_hash,
+        _normalize_json,
+        require_recorded_assessment,
+    )
     from core.knowledge_lifecycle_tasks import KnowledgeLifecycleAssessmentTask
     from core.models import (
         KnowledgeLifecycleAssessment,
@@ -3254,11 +3269,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             target_kind="knowledge_item",
             target_id=item.id,
             operation="retire",
-            proposed_state={
-                "proposal_hash": proposal_hash,
-                "evidence_basis_hash": pack.basis_hash,
-                "operator_rationale": rationale,
-            },
+            proposed_state=proposed_state,
             previous_state=encode_state_snapshot(previous_state),
             committed_state=None,
             evidence_basis=pack.evidence_basis,
