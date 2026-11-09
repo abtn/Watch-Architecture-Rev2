@@ -143,6 +143,14 @@ def test_supersede_proposal_requires_same_team_successor_identity():
         "evidence_basis_hash": "sha256:" + "b" * 64,
         "operator_rationale": _rationale(),
         "successor_knowledge_item_id": str(successor_id),
+        "successor_team_id": str(team_id),
+        "successor_current_learning_change_id": str(uuid4()),
+        "successor_content_version": 2,
+        "successor_content_hash": "sha256:" + "c" * 64,
+        "successor_content_hash_scheme": "watch.r7b.knowledge-content.v2",
+        "successor_status": "active",
+        "successor_review_after": "2026-11-10T12:00:00.000000Z",
+        "successor_state_hash": "sha256:" + "d" * 64,
     }
     change = SimpleNamespace(
         operation="supersede",
