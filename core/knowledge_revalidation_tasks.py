@@ -138,22 +138,24 @@ class KnowledgeRevalidationAssessmentTaskRunner:
                         require_current=True,
                     )
                 elif task.status == "running":
-                    assessment = session.scalar(
+                    candidate_assessment = session.scalar(
                         select(KnowledgeRevalidationAssessment).where(
                             KnowledgeRevalidationAssessment.task_id == task.id,
                             KnowledgeRevalidationAssessment.team_id == task.team_id,
                         )
                     )
-                    if assessment is None:
+                    if candidate_assessment is None:
                         raise TaskNotEligible(
                             "knowledge_revalidation_task_already_running"
                         )
-                    change = session.get(LearningChange, assessment.learning_change_id)
+                    change = session.get(
+                        LearningChange, candidate_assessment.learning_change_id
+                    )
                     if change is None:
                         raise TaskNotEligible(
                             "knowledge_revalidation_learning_change_missing"
                         )
-                    assessment = require_recorded_assessment(
+                    verified_assessment = require_recorded_assessment(
                         session,
                         change,
                         self._snapshot_store,
@@ -161,8 +163,10 @@ class KnowledgeRevalidationAssessmentTaskRunner:
                         require_task_done=False,
                         require_current=True,
                     )
-                    replay_observation = self._terminal_observation(task, assessment)
-                    replay_assessment_id = assessment.id
+                    replay_observation = self._terminal_observation(
+                        task, verified_assessment
+                    )
+                    replay_assessment_id = verified_assessment.id
                 else:
                     raise TaskNotEligible("knowledge_revalidation_task_not_pending")
             except KnowledgeRevalidationAssessmentError as error:
