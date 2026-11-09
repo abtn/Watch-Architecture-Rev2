@@ -12,9 +12,9 @@ from uuid import UUID
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.knowledge_lifecycle import (
+    KnowledgeLifecycleAssessmentError,
     KnowledgeLifecycleAssessmentResult,
     KnowledgeLifecycleAssessmentService,
-    LifecycleTaskContext,
     validate_lifecycle_task_request,
 )
 from core.models import Task
@@ -39,19 +39,22 @@ class KnowledgeLifecycleAssessmentTask:
         """Create or replay the deterministic lifecycle assessment Task."""
         return self._service.create_task(learning_change_id)
 
-    def validate(self, task_id: UUID) -> LifecycleTaskContext:
+    def validate(self, task_id: UUID) -> dict[str, object]:
         """Validate the persisted request before a worker is allowed to run."""
         with self._session_factory() as session:
             task = session.get(Task, task_id)
             if task is None:
-                raise ValueError("knowledge_lifecycle_task_not_found")
-            return validate_lifecycle_task_request(
+                raise KnowledgeLifecycleAssessmentError(
+                    "knowledge_lifecycle_task_not_found"
+                )
+            context = validate_lifecycle_task_request(
                 session,
                 task,
                 self._session_factory,
                 self._snapshot_store,
                 require_proposed=True,
             )
+            return dict(context.request_payload)
 
     def record(self, task_id: UUID) -> KnowledgeLifecycleAssessmentResult:
         """Record the deterministic assessment for an already-running Task.
