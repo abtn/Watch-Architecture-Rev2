@@ -8,7 +8,6 @@ KnowledgeItem or LearningChange.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select
@@ -314,12 +313,44 @@ class KnowledgeLifecycleAssessmentTaskRunner:
     def _finalize_failure(
         self, task_id: UUID, attempt: int, reason: str
     ) -> FinalizationResult:
+        with self._session_factory() as session:
+            task = session.get(Task, task_id)
+            if (
+                task is None
+                or task.status != "running"
+                or task.attempt_count != attempt
+            ):
+                raise TaskNotEligible(
+                    "knowledge_lifecycle_failure_attempt_stale"
+                )
+            started_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task_id,
+                        Event.type == "task_started",
+                        Event.payload["attempt_count"].as_integer() == attempt,
+                    )
+                )
+            )
+            if (
+                len(started_events) != 1
+                or started_events[0].payload
+                != {
+                    "from_status": "pending",
+                    "to_status": "running",
+                    "attempt_count": attempt,
+                }
+            ):
+                raise TaskNotEligible(
+                    "knowledge_lifecycle_task_start_event_invalid"
+                )
+            observed_at = started_events[0].created_at
         return self._runtime.finalize(
             TerminalObservation(
                 task_id=task_id,
                 attempt=attempt,
                 result_category="terminal_failure",
-                observed_at=datetime.now(timezone.utc),
+                observed_at=observed_at,
                 failure_reason=reason,
             )
         )
