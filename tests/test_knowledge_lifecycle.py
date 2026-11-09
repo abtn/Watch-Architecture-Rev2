@@ -66,8 +66,16 @@ def test_operator_rationale_preserves_original_structure_and_order():
     "invalid",
     [
         {},
-        {"schema_version": 2, "summary": "A reason", "reasons": [{"category": "x", "statement": "y"}]},
-        {"schema_version": 1, "summary": " ", "reasons": [{"category": "x", "statement": "y"}]},
+        {
+            "schema_version": 2,
+            "summary": "A reason",
+            "reasons": [{"category": "x", "statement": "y"}],
+        },
+        {
+            "schema_version": 1,
+            "summary": " ",
+            "reasons": [{"category": "x", "statement": "y"}],
+        },
         {"schema_version": 1, "summary": "A reason", "reasons": []},
         {
             "schema_version": 1,
@@ -232,7 +240,11 @@ def test_retire_findings_are_deterministic_and_eligible():
         ("active", None, {"successor_review_after_eligible"}),
         ("active", "2026-11-09T12:00:00.000000Z", {"successor_review_after_eligible"}),
         ("active", "2026-11-09T11:59:59.000000Z", {"successor_review_after_eligible"}),
-        ("retired", None, {"successor_status_eligible", "successor_review_after_eligible"}),
+        (
+            "retired",
+            None,
+            {"successor_status_eligible", "successor_review_after_eligible"},
+        ),
     ],
 )
 def test_supersede_ineligible_when_successor_status_or_review_date_blocks_d7(
