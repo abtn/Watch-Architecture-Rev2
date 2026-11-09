@@ -3906,7 +3906,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     # attempt failures. Failed replay must select the terminal attempt while
     # validating the earlier retry transition independently.
     retry_task_id = uuid4()
-    retry_started_at = failure_started_at + timedelta(seconds=10)
+    retry_started_at = datetime.now(timezone.utc) - timedelta(seconds=10)
     first_attempt_failed_at = retry_started_at + timedelta(seconds=1)
     second_attempt_started_at = first_attempt_failed_at + timedelta(seconds=1)
     retry_payload = {
