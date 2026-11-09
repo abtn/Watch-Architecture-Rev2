@@ -544,7 +544,11 @@ def _proposal_context(
             source_outcome.observation_hash,
         )
         source_observation = json.loads(source_snapshot.decode("utf-8"))
-    except (ExperienceDistillerError, UnicodeDecodeError, json.JSONDecodeError) as error:
+    except (
+        ExperienceDistillerError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    ) as error:
         raise KnowledgeRevalidationAssessmentError(
             "knowledge_revalidation_source_observation_invalid"
         ) from error
