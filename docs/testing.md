@@ -691,20 +691,20 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 
 ## R7-B B3.4 — deterministic lifecycle assessment service and Task (PR #64; hosted verification passed)
 
-**Implementation:** PR [#64](https://github.com/abtn/Watch-Architecture-Rev2/pull/64), branch \`r7b-b3-4-lifecycle-assessment-implementation\`. Exact implementation code head: \`e2fa162b6f9d77506d16458c1b24c81a57a21b66\`.
+**Implementation:** PR [#64](https://github.com/abtn/Watch-Architecture-Rev2/pull/64), branch `r7b-b3-4-lifecycle-assessment-implementation`. Exact implementation code head: `e2fa162b6f9d77506d16458c1b24c81a57a21b66`.
 
 **Hosted exact-head CI:** [run 42590404433](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42590404433) passed on the exact implementation code head:
-- Fresh PostgreSQL migration and single Alembic head at \`0017_r7b_assessments\`.
+- Fresh PostgreSQL migration and single Alembic head at `0017_r7b_assessments`.
 - Ruff passed.
 - Mypy passed across 37 source files.
 - Full suite: **881 passed, 113 warnings in 67.99s**.
 - CI disposable PostgreSQL container and network cleanup completed.
 
 **Implementation scope delivered**
-- \`core/knowledge_lifecycle.py\`: deterministic operation-specific \`retire\`/\`supersede\` proposal validation; canonical rationale and proposed-state hash binding; original host-authenticated Operator provenance; read-only canonical evidence reconstruction; exact predecessor and successor snapshot binding; deterministic eligibility findings; immutable assessment serialization/hash; idempotent request/recorded Event verification.
-- \`core/knowledge_lifecycle_tasks.py\`: narrow Task creation/validation/worker adapter; exact worker write scope is \`["KnowledgeLifecycleAssessment"]\`.
-- \`tests/test_knowledge_lifecycle.py\` and lifecycle integration coverage in \`tests/test_experience_distiller.py\`: malformed variant/rationale, cross-Team and stale bindings, explicit NULL successor review date, replay/conflict, Event attribution, no canonical writes, database immutability, and fixture cleanup.
+- `core/knowledge_lifecycle.py`: deterministic operation-specific `retire`/`supersede` proposal validation; canonical rationale and proposed-state hash binding; original host-authenticated Operator provenance; read-only canonical evidence reconstruction; exact predecessor and successor snapshot binding; deterministic eligibility findings; immutable assessment serialization/hash; idempotent request/recorded Event verification.
+- `core/knowledge_lifecycle_tasks.py`: narrow Task creation/validation/worker adapter; exact worker write scope is `["KnowledgeLifecycleAssessment"]`.
+- `tests/test_knowledge_lifecycle.py` and lifecycle integration coverage in `tests/test_experience_distiller.py`: malformed variant/rationale, cross-Team and stale bindings, explicit NULL successor review date, replay/conflict, Event attribution, no canonical writes, database immutability, and fixture cleanup.
 
-**Authority boundary:** no \`TaskRuntime\` changes, Task registry/admission activation, lifecycle recovery/finalization hooks, candidate creation, approval, or \`KnowledgeItem\`/\`LearningChange\` writes. The active approval allowlist remains exactly \`create\`. B3.5 integration and all later stages remain separately gated.
+**Authority boundary:** no `TaskRuntime` changes, Task registry/admission activation, lifecycle recovery/finalization hooks, candidate creation, approval, or `KnowledgeItem`/`LearningChange` writes. The active approval allowlist remains exactly `create`. B3.5 integration and all later stages remain separately gated.
 
 **Operator-local exact-head verification:** pending. Hosted CI success is not represented as local verification, merge, or formal B3.4 acceptance. PR #64 remains the review/acceptance gate.
