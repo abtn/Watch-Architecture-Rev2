@@ -111,8 +111,8 @@ class OperatorRationaleReason(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    category: str = Field(min_length=1, max_length=80)
-    statement: str = Field(min_length=1, max_length=1200)
+    category: str = Field(min_length=1)
+    statement: str = Field(min_length=1)
 
     @field_validator("category", "statement")
     @classmethod
@@ -128,8 +128,8 @@ class OperatorRationale(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     schema_version: int
-    summary: str = Field(min_length=1, max_length=1200)
-    reasons: list[OperatorRationaleReason] = Field(min_length=1, max_length=32)
+    summary: str = Field(min_length=1)
+    reasons: list[OperatorRationaleReason] = Field(min_length=1)
 
     @field_validator("schema_version", mode="before")
     @classmethod
