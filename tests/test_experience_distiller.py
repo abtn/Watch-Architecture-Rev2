@@ -1432,9 +1432,10 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
         fixture,
         committed.knowledge_item_id,
     )
-    task_id = KnowledgeRevalidationAssessmentService(
+    revalidation_service = KnowledgeRevalidationAssessmentService(
         session_factory, snapshot_store
-    ).create_task(revalidation_change_id)
+    )
+    task_id = revalidation_service.create_task(revalidation_change_id)
     provider = _FakeKnowledgeRevalidationProvider(
         fail_first=fail_first_attempt
     )
@@ -1496,6 +1497,7 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
         assert first.status == "done"
         assert first.assessment_id is not None
 
+    assert revalidation_service.create_task(revalidation_change_id) == task_id
     replay = runner.run(task_id)
     assert replay.status == "done"
     assert replay.replayed
