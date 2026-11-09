@@ -2132,8 +2132,51 @@ class TaskRuntime:
         if len(events) != 1 or not isinstance(events[0].payload, dict):
             raise TaskNotFinalizable("knowledge_lifecycle_request_event_invalid")
         payload = events[0].payload
+        base_fields = {
+            "schema_version",
+            "task_type",
+            "task_id",
+            "team_id",
+            "learning_change_id",
+            "operation",
+            "proposed_by_task_id",
+            "knowledge_item_id",
+            "current_learning_change_id",
+            "target_content_version",
+            "target_content_hash",
+            "target_content_hash_scheme",
+            "target_state_hash",
+            "target_status",
+            "proposal_hash",
+            "proposed_state_hash",
+            "evidence_basis_hash",
+            "operator_issuer",
+            "operator_subject",
+            "operator_provenance_recorded_at",
+            "policy_version",
+            "idempotency_key",
+            "request_hash",
+        }
+        successor_fields = {
+            "successor_knowledge_item_id",
+            "successor_team_id",
+            "successor_current_learning_change_id",
+            "successor_content_version",
+            "successor_content_hash",
+            "successor_content_hash_scheme",
+            "successor_status",
+            "successor_review_after",
+            "successor_state_hash",
+        }
+        operation = payload.get("operation")
+        expected_fields = base_fields | (
+            successor_fields if operation == "supersede" else set()
+        )
         if (
-            payload.get("task_type") != _KNOWLEDGE_LIFECYCLE_TASK_TYPE
+            operation not in {"retire", "supersede"}
+            or set(payload) != expected_fields
+            or payload.get("schema_version") != 1
+            or payload.get("task_type") != _KNOWLEDGE_LIFECYCLE_TASK_TYPE
             or payload.get("task_id") != str(task.id)
             or payload.get("team_id") != str(task.team_id)
             or not isinstance(payload.get("learning_change_id"), str)
@@ -3756,12 +3799,19 @@ class TaskRuntime:
             if observation.result_category == "success_signal_created":
                 if not observation.signals:
                     raise TaskNotFinalizable("signal_evidence_required")
-                if observation.evaluation_id is not None:
-                    raise TaskNotFinalizable("evaluation_id_not_allowed")
+                if (
+                    observation.evaluation_id is not None
+                    or observation.knowledge_lifecycle_assessment_id is not None
+                ):
+                    raise TaskNotFinalizable("terminal_evidence_not_allowed")
             elif observation.result_category in _EVALUATION_SUCCESS_CATEGORIES:
                 if observation.evaluation_id is None:
                     raise TaskNotFinalizable("evaluation_id_required")
-                if observation.signals or observation.learning_change_id is not None:
+                if (
+                    observation.signals
+                    or observation.learning_change_id is not None
+                    or observation.knowledge_lifecycle_assessment_id is not None
+                ):
                     raise TaskNotFinalizable("terminal_evidence_not_allowed")
             elif observation.result_category in (
                 _LEARNING_CHANGE_SUCCESS_CATEGORIES
@@ -3769,7 +3819,11 @@ class TaskRuntime:
             ):
                 if observation.learning_change_id is None:
                     raise TaskNotFinalizable("learning_change_id_required")
-                if observation.signals or observation.evaluation_id is not None:
+                if (
+                    observation.signals
+                    or observation.evaluation_id is not None
+                    or observation.knowledge_lifecycle_assessment_id is not None
+                ):
                     raise TaskNotFinalizable("terminal_evidence_not_allowed")
             elif observation.result_category in _STRATEGY_SUCCESS_CATEGORIES:
                 if observation.strategy_event_id is None:
@@ -3780,6 +3834,7 @@ class TaskRuntime:
                     or observation.learning_change_id is not None
                     or observation.plan_id is not None
                     or observation.plan_event_id is not None
+                    or observation.knowledge_lifecycle_assessment_id is not None
                 ):
                     raise TaskNotFinalizable("terminal_evidence_not_allowed")
             elif observation.result_category in _PLAN_SUCCESS_CATEGORIES:
@@ -3790,6 +3845,7 @@ class TaskRuntime:
                     or observation.evaluation_id is not None
                     or observation.learning_change_id is not None
                     or observation.strategy_event_id is not None
+                    or observation.knowledge_lifecycle_assessment_id is not None
                 ):
                     raise TaskNotFinalizable("terminal_evidence_not_allowed")
             elif observation.result_category in _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES:
@@ -3803,6 +3859,7 @@ class TaskRuntime:
                     or observation.plan_id is not None
                     or observation.plan_event_id is not None
                     or observation.knowledge_revalidation_assessment_id is not None
+                    or observation.knowledge_lifecycle_assessment_id is not None
                 ):
                     raise TaskNotFinalizable("terminal_evidence_not_allowed")
             elif (
