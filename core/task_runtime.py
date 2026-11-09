@@ -2095,6 +2095,29 @@ class TaskRuntime:
         )
 
     @staticmethod
+    def _is_knowledge_lifecycle_recording_corruption(reason: str) -> bool:
+        """Distinguish immutable-record/Event corruption from stale proposals."""
+        prefixes = (
+            "knowledge_lifecycle_assessment_",
+            "knowledge_lifecycle_recorded_",
+            "knowledge_lifecycle_request_event_",
+            "knowledge_lifecycle_request_binding_",
+            "knowledge_lifecycle_task_start_event_",
+        )
+        exact = {
+            "knowledge_lifecycle_task_shape_invalid",
+            "knowledge_lifecycle_request_hash_mismatch",
+            "knowledge_lifecycle_retire_variant_shape_invalid",
+            "knowledge_lifecycle_successor_variant_shape_invalid",
+            "knowledge_lifecycle_successor_binding_invalid",
+            "knowledge_lifecycle_successor_content_hash_invalid",
+            "knowledge_lifecycle_successor_state_hash_invalid",
+            "knowledge_lifecycle_successor_review_after_invalid",
+            "knowledge_lifecycle_task_request_mismatch",
+        }
+        return reason.startswith(prefixes) or reason in exact
+
+    @staticmethod
     def _validate_knowledge_lifecycle_task_shell(
         session: Session, task: Task
     ) -> dict[str, Any]:
@@ -2486,25 +2509,10 @@ class TaskRuntime:
                 require_current=task.status == "running",
             )
         except KnowledgeLifecycleAssessmentError as error:
-            corruption_reasons = {
-                "knowledge_lifecycle_assessment_binding_invalid",
-                "knowledge_lifecycle_assessment_payload_hash_mismatch",
-                "knowledge_lifecycle_recorded_event_invalid",
-                "knowledge_lifecycle_recorded_findings_invalid",
-                "knowledge_lifecycle_recorded_result_mismatch",
-                "knowledge_lifecycle_request_event_invalid",
-                "knowledge_lifecycle_request_event_mismatch",
-                "knowledge_lifecycle_request_binding_invalid",
-                "knowledge_lifecycle_task_start_event_invalid",
-                "knowledge_lifecycle_assessment_successor_proposal_mismatch",
-                "knowledge_lifecycle_retire_variant_shape_invalid",
-                "knowledge_lifecycle_successor_variant_shape_invalid",
-                "knowledge_lifecycle_successor_binding_invalid",
-                "knowledge_lifecycle_successor_content_hash_invalid",
-                "knowledge_lifecycle_successor_state_hash_invalid",
-                "knowledge_lifecycle_successor_review_after_invalid",
-            }
-            if task.status == "done" or error.reason in corruption_reasons:
+            if (
+                task.status == "done"
+                or self._is_knowledge_lifecycle_recording_corruption(error.reason)
+            ):
                 raise TaskNotFinalizable(error.reason) from error
             return TerminalObservation(
                 task_id=task.id,
