@@ -3137,11 +3137,13 @@ def test_original_create_approval_replays_after_later_history_transition(
         _cleanup_operator_decision_task(session_factory, task_id)
 
 
+@pytest.mark.parametrize("crash_after_record", [False, True])
 def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     session_factory,
     snapshot_store,
     distillation_fixture,
     request,
+    crash_after_record: bool,
 ):
     from core.knowledge_lifecycle import (
         PROPOSED_STATE_HASH_DOMAIN,
@@ -3518,7 +3520,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     class CrashAfterAssessmentRecordRuntime(TaskRuntime):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            self.crash_next_success = True
+            self.crash_next_success = crash_after_record
 
         def finalize(self, observation):
             if (
@@ -3540,11 +3542,19 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         snapshot_store,
         runtime=crash_runtime,
     )
-    with pytest.raises(
-        RuntimeError,
-        match="simulated_process_loss_after_lifecycle_assessment_commit",
-    ):
-        runner.run(task_id)
+    if crash_after_record:
+        with pytest.raises(
+            RuntimeError,
+            match="simulated_process_loss_after_lifecycle_assessment_commit",
+        ):
+            runner.run(task_id)
+    else:
+        first_run = runner.run(task_id)
+        assert first_run.status == "done"
+        assert first_run.assessment_result == "eligible"
+        assert first_run.assessment_id is not None
+        assert first_run.outcome_id is not None
+        assert not first_run.replayed
 
     with session_factory() as session:
         committed_assessment = session.scalar(
@@ -3552,66 +3562,78 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                 KnowledgeLifecycleAssessment.task_id == task_id
             )
         )
-        running_task = session.get(Task, task_id)
+        recorded_task = session.get(Task, task_id)
         assert committed_assessment is not None
-        assert running_task is not None and running_task.status == "running"
+        assert recorded_task is not None
+        assert recorded_task.status == ("running" if crash_after_record else "done")
         recorded_at = committed_assessment.recorded_at
+        expected_outcomes = 0 if crash_after_record else 1
         assert session.scalar(
             select(func.count(Outcome.id)).where(
                 Outcome.recorded_by_task_id == task_id
             )
-        ) == 0
+        ) == expected_outcomes
 
-    from core.knowledge_lifecycle import (
-        RECORDED_EVENT_TYPE,
-        recorded_assessment_event_payload,
-    )
-
-    recovery_at = recorded_at + timedelta(seconds=61)
-    with session_factory.begin() as session:
-        session.execute(
-            delete(Event).where(
-                Event.id == committed_assessment.recorded_event_id
-            )
+    if crash_after_record:
+        from core.knowledge_lifecycle import (
+            RECORDED_EVENT_TYPE,
+            recorded_assessment_event_payload,
         )
-    with pytest.raises(
-        TaskNotFinalizable,
-        match="knowledge_lifecycle_recorded_event_invalid",
-    ):
-        TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+
+        recovery_at = recorded_at + timedelta(seconds=61)
+        with session_factory.begin() as session:
+            session.execute(
+                delete(Event).where(
+                    Event.id == committed_assessment.recorded_event_id
+                )
+            )
+        with pytest.raises(
+            TaskNotFinalizable,
+            match="knowledge_lifecycle_recorded_event_invalid",
+        ):
+            TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+                now=recovery_at
+            )
+        with session_factory() as session:
+            still_running = session.get(Task, task_id)
+            assert still_running is not None and still_running.status == "running"
+            assert session.scalar(
+                select(func.count(Outcome.id)).where(
+                    Outcome.recorded_by_task_id == task_id
+                )
+            ) == 0
+        with session_factory.begin() as session:
+            session.add(
+                Event(
+                    id=committed_assessment.recorded_event_id,
+                    task_id=task_id,
+                    type=RECORDED_EVENT_TYPE,
+                    payload=recorded_assessment_event_payload(
+                        committed_assessment
+                    ),
+                    created_at=committed_assessment.recorded_at,
+                )
+            )
+
+        first = task_adapter.record(task_id)
+        assert first.assessment_result == "eligible"
+        assert first.replayed
+        assert first.assessment_id == committed_assessment.id
+        assert first.assessment_payload_hash == committed_assessment.payload_hash
+
+        recovery = TaskRuntime(session_factory, snapshot_store).recover_interrupted(
             now=recovery_at
         )
-    with session_factory() as session:
-        still_running = session.get(Task, task_id)
-        assert still_running is not None and still_running.status == "running"
-        assert session.scalar(
-            select(func.count(Outcome.id)).where(
-                Outcome.recorded_by_task_id == task_id
-            )
-        ) == 0
-    with session_factory.begin() as session:
-        session.add(
-            Event(
-                id=committed_assessment.recorded_event_id,
-                task_id=task_id,
-                type=RECORDED_EVENT_TYPE,
-                payload=recorded_assessment_event_payload(committed_assessment),
-                created_at=committed_assessment.recorded_at,
-            )
-        )
-
-    first = task_adapter.record(task_id)
-    assert first.assessment_result == "eligible"
-    assert first.replayed
-    assert first.assessment_id == committed_assessment.id
-    assert first.assessment_payload_hash == committed_assessment.payload_hash
-
-    recovery = TaskRuntime(session_factory, snapshot_store).recover_interrupted(
-        now=recovery_at
-    )
-    assert recovery.completed == (task_id,)
-    assert recovery.retried == ()
-    assert recovery.failed == ()
+        assert recovery.completed == (task_id,)
+        assert recovery.retried == ()
+        assert recovery.failed == ()
+        first_assessment_id = first.assessment_id
+        first_assessment_result = first.assessment_result
+        first_payload_hash = first.assessment_payload_hash
+    else:
+        first_assessment_id = first_run.assessment_id
+        first_assessment_result = first_run.assessment_result
+        first_payload_hash = committed_assessment.payload_hash
 
     with session_factory.begin() as session:
         terminal_event = session.scalar(
@@ -3644,8 +3666,8 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     replay = runner.run(task_id)
     assert replay.status == "done"
     assert replay.replayed
-    assert replay.assessment_id == first.assessment_id
-    assert replay.assessment_result == "eligible"
+    assert replay.assessment_id == first_assessment_id
+    assert replay.assessment_result == first_assessment_result
     assert replay.outcome_id is not None
 
     historical_payload = TaskRuntime._observation_payload(
@@ -3664,7 +3686,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         change = session.get(LearningChange, learning_change_id)
         task = session.get(Task, task_id)
         assessment = session.get(
-            KnowledgeLifecycleAssessment, first.assessment_id
+            KnowledgeLifecycleAssessment, first_assessment_id
         )
         assert item is not None and change is not None and task is not None
         assert assessment is not None
@@ -3678,7 +3700,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         assert assessment.assessment_result == "eligible"
         assert assessment.variant_payload == {}
         assert assessment.successor_knowledge_item_id is None
-        assert assessment.payload_hash == first.assessment_payload_hash
+        assert assessment.payload_hash == first_payload_hash
         verified = require_recorded_assessment(
             session,
             change,
