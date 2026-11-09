@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
 
 from core.knowledge_lifecycle import (
     ALLOWED_WRITES,
     ASSESSMENT_HASH_DOMAIN,
     PROPOSED_STATE_HASH_DOMAIN,
     KnowledgeLifecycleAssessmentError,
-    KnowledgeLifecycleFinding,
     OperatorRationale,
     _domain_hash,
     _normalize_json,
