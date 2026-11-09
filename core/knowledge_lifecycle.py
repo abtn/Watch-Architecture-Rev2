@@ -390,6 +390,7 @@ def _validate_source_task(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
     learning_change: LearningChange,
+    proposed_state_hash: str,
 ) -> Task:
     if learning_change.proposed_by_task_id is None:
         raise KnowledgeLifecycleAssessmentError(
@@ -453,6 +454,7 @@ def _validate_source_task(
         proposal_payload.get("learning_change_id") != str(learning_change.id)
         or proposal_payload.get("operation") != learning_change.operation
         or proposal_payload.get("proposal_hash") != proposal_hash
+        or proposal_payload.get("proposed_state_hash") != proposed_state_hash
         or proposal_payload.get("evidence_basis_hash")
         != learning_change.evidence_basis_hash
         or proposal_payload.get("attempt_count") != source_task.attempt_count
@@ -597,7 +599,11 @@ def _proposal_context(
         successor_id,
     ) = _validate_proposed_state(learning_change)
     source_task = _validate_source_task(
-        session, session_factory, snapshot_store, learning_change
+        session,
+        session_factory,
+        snapshot_store,
+        learning_change,
+        proposed_state_hash,
     )
     provenance = session.get(
         LearningChangeOperatorProvenance, learning_change.id
@@ -612,11 +618,16 @@ def _proposal_context(
             "knowledge_lifecycle_operator_provenance_missing"
         )
     try:
-        _timestamp(provenance.recorded_at)
+        provenance_recorded_at = _timestamp(provenance.recorded_at)
+        proposal_created_at = _timestamp(learning_change.created_at)
     except ValueError as error:
         raise KnowledgeLifecycleAssessmentError(
             "knowledge_lifecycle_operator_provenance_timestamp_invalid"
         ) from error
+    if provenance_recorded_at > proposal_created_at:
+        raise KnowledgeLifecycleAssessmentError(
+            "knowledge_lifecycle_operator_provenance_after_proposal"
+        )
 
     previous = learning_change.previous_state
     if (
