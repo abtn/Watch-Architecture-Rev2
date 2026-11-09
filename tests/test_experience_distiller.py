@@ -3841,6 +3841,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         failed_outcome = session.get(Outcome, failure_finalization.outcome_id)
         assert failed_outcome is not None
         failed_outcome.subject_kind = "signal"
+        failed_outcome.outcome_type = "secondary_task_execution"
     with pytest.raises(
         TaskNotEligible, match="knowledge_lifecycle_terminal_outcome_invalid"
     ):
@@ -3849,6 +3850,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         failed_outcome = session.get(Outcome, failure_finalization.outcome_id)
         assert failed_outcome is not None
         failed_outcome.subject_kind = "task"
+        failed_outcome.outcome_type = "task_execution"
 
     # A missing terminal Event must also fail closed.
     with session_factory.begin() as session:
