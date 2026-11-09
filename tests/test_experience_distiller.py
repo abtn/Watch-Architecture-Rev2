@@ -3902,6 +3902,148 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         )
     assert runner.run(failed_task_id).replayed
 
+    # A retryable interrupted attempt and a later terminal failure are distinct
+    # attempt failures. Failed replay must select the terminal attempt while
+    # validating the earlier retry transition independently.
+    retry_task_id = uuid4()
+    retry_started_at = failure_started_at + timedelta(seconds=10)
+    first_attempt_failed_at = retry_started_at + timedelta(seconds=1)
+    second_attempt_started_at = first_attempt_failed_at + timedelta(seconds=1)
+    retry_payload = {
+        "from_status": "running",
+        "to_status": "pending",
+        "attempt_count": 1,
+        "result_category": "retryable_failure",
+        "failure_reason": "interrupted_attempt_recovered",
+    }
+    with session_factory.begin() as session:
+        original_failed_task = session.get(Task, failed_task_id)
+        original_request = session.scalar(
+            select(Event).where(
+                Event.task_id == failed_task_id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+        assert original_failed_task is not None and original_request is not None
+        retry_request_payload = dict(original_request.payload)
+        retry_request_payload["task_id"] = str(retry_task_id)
+        unsigned_retry_request = {
+            key: value
+            for key, value in retry_request_payload.items()
+            if key != "request_hash"
+        }
+        retry_request_payload["request_hash"] = _sha256_json(
+            unsigned_retry_request
+        )
+        session.add(
+            Task(
+                id=retry_task_id,
+                team_id=original_failed_task.team_id,
+                task_type=original_failed_task.task_type,
+                status="running",
+                attempt_count=2,
+                policy_version=original_failed_task.policy_version,
+                objective_id=None,
+                plan_id=None,
+                plan_action_id=None,
+                allowed_writes=list(original_failed_task.allowed_writes),
+                budget=dict(original_failed_task.budget),
+                created_at=retry_started_at,
+                completed_at=None,
+                max_attempts=original_failed_task.max_attempts,
+            )
+        )
+        session.flush()
+        session.add_all(
+            [
+                Event(
+                    id=uuid4(),
+                    task_id=retry_task_id,
+                    type=REQUEST_EVENT_TYPE,
+                    payload=retry_request_payload,
+                    created_at=retry_started_at - timedelta(seconds=1),
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=retry_task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 1,
+                    },
+                    created_at=retry_started_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=retry_task_id,
+                    type="task_attempt_failed",
+                    payload=retry_payload,
+                    created_at=first_attempt_failed_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=retry_task_id,
+                    type="task_retry_scheduled",
+                    payload=retry_payload,
+                    created_at=first_attempt_failed_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=retry_task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 2,
+                    },
+                    created_at=second_attempt_started_at,
+                ),
+            ]
+        )
+
+    retry_failure = TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=retry_task_id,
+            attempt=2,
+            result_category="terminal_failure",
+            observed_at=second_attempt_started_at,
+            failure_reason="terminal_failure_after_retry",
+        )
+    )
+    first_retry_replay = runner.run(retry_task_id)
+    second_retry_replay = runner.run(retry_task_id)
+    assert first_retry_replay.status == "failed"
+    assert first_retry_replay.replayed
+    assert first_retry_replay.outcome_id == retry_failure.outcome_id
+    assert second_retry_replay.status == "failed"
+    assert second_retry_replay.replayed
+    assert second_retry_replay.outcome_id == retry_failure.outcome_id
+    with session_factory() as session:
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == retry_task_id
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == retry_task_id,
+                Event.type == "task_attempt_failed",
+            )
+        ) == 2
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == retry_task_id,
+                Event.type == "task_retry_scheduled",
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == retry_task_id,
+                Event.type == "task_failed",
+            )
+        ) == 1
+
     historical_payload = TaskRuntime._observation_payload(
         TerminalObservation(
             task_id=task_id,
