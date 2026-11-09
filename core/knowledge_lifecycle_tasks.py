@@ -164,18 +164,18 @@ class KnowledgeLifecycleAssessmentTaskRunner:
                         require_proposed=True,
                     )
                 elif task.status == "running":
-                    assessment = session.scalar(
+                    running_assessment = session.scalar(
                         select(KnowledgeLifecycleAssessment).where(
                             KnowledgeLifecycleAssessment.task_id == task.id,
                             KnowledgeLifecycleAssessment.team_id == task.team_id,
                         )
                     )
-                    if assessment is None:
+                    if running_assessment is None:
                         raise TaskNotEligible(
                             "knowledge_lifecycle_task_already_running"
                         )
                     learning_change = session.get(
-                        LearningChange, assessment.learning_change_id
+                        LearningChange, running_assessment.learning_change_id
                     )
                     if learning_change is None:
                         raise TaskNotEligible(
