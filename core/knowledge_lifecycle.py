@@ -391,7 +391,11 @@ def _validate_proposed_state(
                 "knowledge_lifecycle_successor_cross_team"
             )
         version = state.get("successor_content_version")
-        if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        if (
+            isinstance(version, bool)
+            or not isinstance(version, int)
+            or version < 1
+        ):
             raise KnowledgeLifecycleAssessmentError(
                 "knowledge_lifecycle_successor_version_invalid"
             )
@@ -403,7 +407,10 @@ def _validate_proposed_state(
             state.get("successor_state_hash"),
             "knowledge_lifecycle_successor_state_hash_invalid",
         )
-        if state.get("successor_content_hash_scheme") != KNOWLEDGE_CONTENT_HASH_SCHEME:
+        if (
+            state.get("successor_content_hash_scheme")
+            != KNOWLEDGE_CONTENT_HASH_SCHEME
+        ):
             raise KnowledgeLifecycleAssessmentError(
                 "knowledge_lifecycle_successor_content_hash_scheme_invalid"
             )
