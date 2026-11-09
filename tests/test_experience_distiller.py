@@ -3397,6 +3397,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     task_id = _task_id(fixture.team_id, learning_change_id)
 
     failed_task_id = uuid4()
+    retry_task_id = uuid4()
 
     def cleanup_lifecycle_records():
         with session_factory.begin() as session:
@@ -3437,13 +3438,13 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             )
             session.execute(
                 delete(Event).where(
-                    Event.task_id.in_([source_task_id, task_id, failed_task_id])
+                    Event.task_id.in_([source_task_id, task_id, failed_task_id, retry_task_id])
                 )
             )
             session.execute(
                 delete(Outcome).where(
                     Outcome.recorded_by_task_id.in_(
-                        [source_task_id, task_id, failed_task_id]
+                        [source_task_id, task_id, failed_task_id, retry_task_id]
                     )
                 )
             )
@@ -3454,7 +3455,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             )
             session.execute(
                 delete(Task).where(
-                Task.id.in_([source_task_id, task_id, failed_task_id])
+                Task.id.in_([source_task_id, task_id, failed_task_id, retry_task_id])
             )
             )
 
@@ -3905,7 +3906,6 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     # A retryable interrupted attempt and a later terminal failure are distinct
     # attempt failures. Failed replay must select the terminal attempt while
     # validating the earlier retry transition independently.
-    retry_task_id = uuid4()
     retry_started_at = datetime.now(timezone.utc) - timedelta(seconds=10)
     first_attempt_failed_at = retry_started_at + timedelta(seconds=1)
     second_attempt_started_at = first_attempt_failed_at + timedelta(seconds=1)
