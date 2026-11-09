@@ -1366,15 +1366,22 @@ def _insert_supersede_assessment(
         {"id": lifecycle["knowledge_item_id"]},
     ).mappings().one()
 
+    successor_create_change_id = uuid4()
+    _clone_learning_change(
+        connection,
+        predecessor["current_learning_change_id"],
+        successor_create_change_id,
+        f"b34-null-date-successor-create-{uuid4().hex}",
+        operation="create",
+    )
+
     successor_item_id = uuid4()
     _clone_knowledge_item(
         connection,
         predecessor["id"],
         successor_item_id,
         {
-            "current_learning_change_id": predecessor[
-                "current_learning_change_id"
-            ],
+            "current_learning_change_id": successor_create_change_id,
             "supersedes_item_id": predecessor["id"],
             "title": "B3.4 NULL review-date successor fixture",
             "statement": "A successor fixture for migration constraint tests.",
