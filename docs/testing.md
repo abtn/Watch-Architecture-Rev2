@@ -661,3 +661,26 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 
 
 **Operator decision record (2026-11-08):** The Operator instructed: “If all is alright merge and start next checkpoint.” After PR #61 head/CI and scope verification, this was applied as formal acceptance of Checkpoint 4 and explicit authorization to begin B3.3 only.
+
+## R7-B B3.3 — Revalidation assessment service and Task
+
+**Implementation:** PR [#62](https://github.com/abtn/Watch-Architecture-Rev2/pull/62), branch `r7b-b3-3-revalidation-assessment`. Exact implementation head verified locally and by hosted CI: `24de1ffa33b30060d8de6816cf7b5351f72c7eaf`. PR remains open and unmerged pending explicit Operator approval.
+
+**Hosted exact-head CI:** [run 42579389483](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42579389483) passed fresh PostgreSQL migration/single-head verification, Ruff, Mypy, and the full suite (**848 passed, 95 warnings in 63.09s**). CI cleanup completed.
+
+**Operator-local exact-head verification — PASSED (2026-11-09)**
+
+- Preflight: local worktree was clean on the B3.3 branch; local `main` was fast-forwarded from `31be3a2` to `3d6ba4c` (PR #61 documentation closeout), then the verification runner fetched both `main` and the B3.3 branch.
+- Exact tested PR head: `24de1ffa33b30060d8de6816cf7b5351f72c7eaf`.
+- `uv sync --locked`: passed.
+- Fresh disposable PostgreSQL container created by the runner; database `watch_r7b_b3_3_6013e50c48`, dynamic loopback port `8405`.
+- Migration upgrade, current revision, and sole Alembic head verification passed at `0017_r7b_assessments`.
+- Focused tests: `tests/test_knowledge_revalidation.py` and `tests/test_experience_distiller.py` → **61 passed in 23.73s**.
+- `uv run ruff check core tests migrations`: passed.
+- `uv run mypy core`: passed (35 source files).
+- `uv run pytest -q`: **848 passed, 95 warnings in 128.61s**.
+- Both diff checks passed: `git diff --check origin/main...HEAD` and `git diff --check`.
+- The runner restored `DATABASE_URL` and `TEST_DATABASE_URL`, removed only its own disposable container `watch-r7b-b3-3-6013e50c48`, and confirmed cleanup. Persistent `watch` and host port 5432 were not targeted.
+- All 95 warnings were existing Alembic `path_separator` deprecations: 18 from `tests/test_r7b_assessment_migration.py`, 65 from `tests/test_r7b_history_migration.py`, and 12 from `tests/test_team_experience_projection_migration.py`. They did not fail tests or checks.
+
+**Authority and gate boundary:** B3.3 implements only the revalidation assessment service/Task. No KnowledgeItem or LearningChange writes, approval path changes, lifecycle commit, production evaluator, public API/auth stack, dispatcher/registry activation, or later B3/B4–B6/R7-C authorization is included. The active approval allowlist remains exactly `create`. Local and hosted verification passing does not itself merge or formally close the checkpoint.
