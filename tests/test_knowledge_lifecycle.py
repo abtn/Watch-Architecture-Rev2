@@ -384,3 +384,204 @@ def test_assessment_task_has_only_its_own_typed_write_scope():
     assert ALLOWED_WRITES == ["KnowledgeLifecycleAssessment"]
     assert "KnowledgeItem" not in ALLOWED_WRITES
     assert "LearningChange" not in ALLOWED_WRITES
+
+
+def _successor_binding_fixture(review_after):
+    from core.knowledge_lifecycle import (
+        KNOWLEDGE_CONTENT_HASH_SCHEME,
+        _successor_binding,
+    )
+
+    team_id, predecessor_id, successor_id, current_change_id = (
+        uuid4() for _ in range(4)
+    )
+    content_hash = "sha256:" + "a" * 64
+    state_hash = "sha256:" + "b" * 64
+    successor = SimpleNamespace(
+        id=successor_id,
+        team_id=team_id,
+        supersedes_item_id=predecessor_id,
+        current_learning_change_id=current_change_id,
+        version=3,
+        status="active",
+        review_after=review_after,
+    )
+    state = {
+        "current_learning_change_id": str(current_change_id),
+        "version": successor.version,
+        "status": successor.status,
+        "review_after": review_after,
+    }
+    proposal_state = {
+        "successor_knowledge_item_id": str(successor_id),
+        "successor_team_id": str(team_id),
+        "successor_current_learning_change_id": str(current_change_id),
+        "successor_content_version": successor.version,
+        "successor_content_hash": content_hash,
+        "successor_content_hash_scheme": KNOWLEDGE_CONTENT_HASH_SCHEME,
+        "successor_status": successor.status,
+        "successor_review_after": (
+            review_after.isoformat(timespec="microseconds").replace("+00:00", "Z")
+            if review_after is not None
+            else None
+        ),
+        "successor_state_hash": state_hash,
+    }
+    proposal = SimpleNamespace(
+        learning_change=SimpleNamespace(
+            operation="supersede",
+            team_id=team_id,
+            proposed_state=proposal_state,
+        ),
+        target=SimpleNamespace(id=predecessor_id),
+        successor_id=successor_id,
+    )
+
+    class FakeSession:
+        def scalar(self, statement):
+            return successor
+
+    return (
+        _successor_binding,
+        FakeSession(),
+        proposal,
+        successor,
+        state,
+        content_hash,
+        state_hash,
+    )
+
+
+def test_successor_binding_matches_complete_proposal_snapshot(monkeypatch):
+    from core import knowledge_lifecycle as lifecycle
+
+    review_after = datetime(2026, 11, 10, 12, 0, tzinfo=timezone.utc)
+    (
+        bind,
+        session,
+        proposal,
+        successor,
+        state,
+        content_hash,
+        state_hash,
+    ) = _successor_binding_fixture(review_after)
+    monkeypatch.setattr(lifecycle, "knowledge_item_state", lambda item: state)
+    monkeypatch.setattr(
+        lifecycle,
+        "knowledge_item_content_hash",
+        lambda item: content_hash,
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "encode_state_snapshot",
+        lambda payload: {"snapshot_hash": state_hash},
+    )
+
+    binding = bind(session, proposal, require_current=False)
+
+    assert binding["successor_knowledge_item_id"] == str(successor.id)
+    assert binding["successor_current_learning_change_id"] == str(
+        successor.current_learning_change_id
+    )
+    assert binding["successor_content_version"] == successor.version
+    assert binding["successor_review_after"] == (
+        "2026-11-10T12:00:00.000000Z"
+    )
+
+
+def test_successor_binding_rejects_state_drift_before_assessment(monkeypatch):
+    from core import knowledge_lifecycle as lifecycle
+
+    review_after = datetime(2026, 11, 10, 12, 0, tzinfo=timezone.utc)
+    (
+        bind,
+        session,
+        proposal,
+        successor,
+        _state,
+        content_hash,
+        state_hash,
+    ) = _successor_binding_fixture(review_after)
+    successor.version = 4
+    changed_state = {
+        "current_learning_change_id": str(successor.current_learning_change_id),
+        "version": successor.version,
+        "status": successor.status,
+        "review_after": review_after,
+    }
+    monkeypatch.setattr(
+        lifecycle, "knowledge_item_state", lambda item: changed_state
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "knowledge_item_content_hash",
+        lambda item: content_hash,
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "encode_state_snapshot",
+        lambda payload: {"snapshot_hash": state_hash},
+    )
+
+    with pytest.raises(
+        KnowledgeLifecycleAssessmentError,
+        match="knowledge_lifecycle_successor_stale",
+    ):
+        bind(session, proposal, require_current=False)
+
+
+def test_successor_binding_preserves_null_review_after(monkeypatch):
+    from core import knowledge_lifecycle as lifecycle
+
+    (
+        bind,
+        session,
+        proposal,
+        _successor,
+        state,
+        content_hash,
+        state_hash,
+    ) = _successor_binding_fixture(None)
+    monkeypatch.setattr(lifecycle, "knowledge_item_state", lambda item: state)
+    monkeypatch.setattr(
+        lifecycle,
+        "knowledge_item_content_hash",
+        lambda item: content_hash,
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "encode_state_snapshot",
+        lambda payload: {"snapshot_hash": state_hash},
+    )
+
+    binding = bind(session, proposal, require_current=False)
+
+    assert binding["successor_review_after"] is None
+
+
+def test_successor_binding_rejects_cross_team_and_wrong_predecessor():
+    from core.knowledge_lifecycle import _successor_binding
+
+    (
+        bind,
+        session,
+        proposal,
+        successor,
+        _state,
+        _content_hash,
+        _state_hash,
+    ) = _successor_binding_fixture(None)
+    successor.team_id = uuid4()
+    with pytest.raises(
+        KnowledgeLifecycleAssessmentError,
+        match="knowledge_lifecycle_successor_cross_team",
+    ):
+        bind(session, proposal, require_current=False)
+
+    successor.team_id = proposal.learning_change.team_id
+    successor.supersedes_item_id = uuid4()
+    with pytest.raises(
+        KnowledgeLifecycleAssessmentError,
+        match="knowledge_lifecycle_predecessor_successor_relationship_invalid",
+    ):
+        _successor_binding(session, proposal, require_current=False)
