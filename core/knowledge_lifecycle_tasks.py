@@ -114,14 +114,10 @@ class KnowledgeLifecycleAssessmentTaskRunner:
             task = session.get(Task, task_id)
             if task is None:
                 raise TaskNotEligible("task_not_found")
-            if task.status == "failed":
-                failed_replay = self._replay_failed_task(session, task)
-            else:
-                failed_replay = None
-            if failed_replay is not None:
-                replay_observation = failed_replay
             try:
-                if task.status == "done":
+                if task.status == "failed":
+                    replay_observation = self._replay_failed_task(session, task)
+                elif task.status == "done":
                     learning_change_id = self._request_learning_change_id(
                         session, task
                     )
