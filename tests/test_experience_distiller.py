@@ -1532,10 +1532,10 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
                 Outcome.recorded_by_task_id.in_([source_task_id, task_id])
             )
         )
-        session.execute(delete(Task).where(Task.id.in_([source_task_id, task_id])))
         session.execute(
             delete(LearningChange).where(LearningChange.id == revalidation_change_id)
         )
+        session.execute(delete(Task).where(Task.id.in_([source_task_id, task_id])))
 
 
 def test_quality_assessment_recovery_finalizes_same_record_without_duplicate(
