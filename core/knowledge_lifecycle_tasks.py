@@ -242,6 +242,10 @@ class KnowledgeLifecycleAssessmentTaskRunner:
         try:
             recorded = self._task.record(task_id)
         except KnowledgeLifecycleAssessmentError as error:
+            if self._runtime._is_knowledge_lifecycle_recording_corruption(
+                error.reason
+            ):
+                raise TaskNotEligible(error.reason) from error
             failed = self._finalize_failure(
                 task_id, admission.attempt_count, error.reason
             )
