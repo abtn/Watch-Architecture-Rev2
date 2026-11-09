@@ -3604,6 +3604,34 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     assert recovery.retried == ()
     assert recovery.failed == ()
 
+    with session_factory.begin() as session:
+        terminal_event = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "task_completed",
+            )
+        )
+        assert terminal_event is not None
+        original_terminal_payload = dict(terminal_event.payload)
+        terminal_event.payload = {
+            **original_terminal_payload,
+            "knowledge_lifecycle_assessment_id": str(uuid4()),
+        }
+    with pytest.raises(
+        TaskNotFinalizable,
+        match="knowledge_lifecycle_terminal_event_invalid",
+    ):
+        runner.run(task_id)
+    with session_factory.begin() as session:
+        terminal_event = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "task_completed",
+            )
+        )
+        assert terminal_event is not None
+        terminal_event.payload = original_terminal_payload
+
     replay = runner.run(task_id)
     assert replay.status == "done"
     assert replay.replayed
