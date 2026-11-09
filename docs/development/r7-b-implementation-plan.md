@@ -2,7 +2,7 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (updated 2026-11-08):** **B0 complete; B1 accepted and merged; B2 formally closed with accepted residual verification gaps; B3.2 merged by PR #60; exact-merge Operator-local verification passed; Checkpoint 4 formally accepted on 2026-11-08; B3.3 explicitly authorized.** PR #60 merged to `main` at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; final PR head `0eecefedbc4ef6e4b60cbd8c3eacf31e1256f362` passed hosted CI run [42496681657](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42496681657): fresh PostgreSQL migration/single-head, Ruff, Mypy, and 823 tests (95 warnings). Operator-local verification passed on the exact merge SHA: migration/single-head at `0017_r7b_assessments`, 9 model tests, 8 migration tests, Ruff, Mypy (33 files), 823 full-suite tests (95 warnings, 123.45s), and both diff checks. The disposable container was removed and database environment values restored; detailed evidence is in `docs/testing.md`. B3.3 is the current authorized implementation stage by explicit Operator instruction on 2026-11-08; authorization does not extend to B3.4–B3.9. The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain unauthorized.
+**Status (updated 2026-11-09):** **B0 complete; B1 accepted and merged; B2 formally closed with accepted residual verification gaps; B3.2 merged by PR #60; B3.3 complete and merged by PR #62; B3.4 explicitly authorized and active.** B3.2 merged at `31be3a25cf7f52ca81eab65cc10280a855738c3d`. B3.3 merged at `f7683b3c7812c3250e0fed5e8e689ade6ecaeca5` after hosted CI passed on final PR head `8ffd6ac5a2b178d6d7045a8d765f3e7c33b59b4e`; implementation-head hosted and Operator-local exact-head verification also passed. Full evidence is in `docs/testing.md`. The Operator explicitly authorized B3.4 on 2026-11-09. Its scope is deterministic `retire`/`supersede` lifecycle assessment and immutable assessment recording only; it does not authorize candidate creation, canonical lifecycle mutation, approval, Task registry activation, or B3.5 integration. The active approval allowlist remains exactly `create`; B3.5–B3.9, B4–B6, and R7-C remain separately gated.
 
 
 
@@ -533,11 +533,13 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 
 This is exact-merge local evidence, not a result on the PR head or the earlier pre-final-fix commit.
 
-**Checkpoint 4 acceptance and B3.3 authorization (2026-11-08):** The Operator accepted the B3.2 contract review and exact-merge local verification, then explicitly authorized the next checkpoint. B3.3 — Revalidation assessment service and Task — is authorized. This decision is scoped to B3.3 only; B3.4–B3.9 and all later phases remain gated. The create-only approval allowlist and all other B3 authority boundaries remain unchanged.
+**Checkpoint 4 acceptance and B3.3 authorization (2026-11-08):** The Operator accepted the B3.2 contract review and exact-merge local verification, then explicitly authorized B3.3 only. That stage is complete and merged; see its verification record below.
+
+**B3.4 authorization (2026-11-09):** After B3.3's final hosted CI passed and PR #62 merged, the Operator explicitly authorized B3.4 — Lifecycle assessment service and Task. This authorization is limited to deterministic `retire`/`supersede` assessment and recording. It does not authorize candidate creation, canonical lifecycle commit, approval, Task registry activation, or B3.5–B3.9. The create-only approval allowlist and all other B3 authority boundaries remain unchanged.
 
 #### B3.3 — Revalidation assessment service and Task
 
-**Status:** Implementation and hosted/local exact-head verification passed on 2026-11-09; PR #62 remains open pending explicit merge approval. B3.3 authorization was limited to this stage. Verification does not activate the assessment Tasks in the registry or grant either worker canonical `KnowledgeItem`/`LearningChange` writes. The approval allowlist remains exactly `create`.
+**Status: COMPLETE — merged 2026-11-09.** PR #62 merged at `f7683b3c7812c3250e0fed5e8e689ade6ecaeca5`. Exact implementation head `24de1ffa33b30060d8de6816cf7b5351f72c7eaf` passed hosted and Operator-local verification; final documentation-updated PR head `8ffd6ac5a2b178d6d7045a8d765f3e7c33b59b4e` also passed hosted CI. Detailed evidence is in `docs/testing.md`. B3.3 does not activate the assessment Tasks in the registry or grant either worker canonical `KnowledgeItem`/`LearningChange` writes. The approval allowlist remains exactly `create`.
 
 **Agent / coding side**
 1. Implement a narrow evidence-basis builder that reconstructs the basis from canonical Outcomes, recorded Evaluations, Events, EvidenceLinks, immutable Snapshots, and other explicitly permitted canonical references. Do not treat retrieved chunks, similarity ranks, transcripts, or model assertions as canonical evidence.
@@ -555,6 +557,8 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 **Verification record (2026-11-09):** PR #62 exact head `24de1ffa33b30060d8de6816cf7b5351f72c7eaf` passed hosted CI and Operator-local verification. Local run: `uv sync --locked`; fresh disposable PostgreSQL on dynamic loopback port `8405`; migration and sole Alembic head `0017_r7b_assessments`; 61 focused tests; Ruff; Mypy; 848 full-suite tests (95 warnings, 128.61s); diff checks; environment restoration and disposable-container cleanup. The warnings are the existing Alembic `path_separator` deprecations. Full command-level evidence is in `docs/testing.md`. Merge remains pending explicit Operator approval; B3.4 is not authorized by this verification.
 
 #### B3.4 — Lifecycle assessment service and Task
+
+**Status: AUTHORIZED — 2026-11-09 by explicit Operator instruction.** This stage is now the active implementation scope. It does not authorize lifecycle commit, candidate creation, approval, Task registry activation, or B3.5 integration. The approval allowlist remains exactly `create`.
 
 **Agent / coding side**
 1. Implement deterministic, operation-specific assessment validation for `retire` and `supersede`. Do not use model scoring or a production evaluator.

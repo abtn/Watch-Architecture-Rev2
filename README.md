@@ -27,7 +27,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** work is focused on checking the quality of saved lessons and how saved knowledge should be validated and evolve. B2 is closed with its accepted residual verification gaps recorded. B3.2 assessment persistence is merged through PR #60 at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; Checkpoint 4 was formally accepted on 2026-11-08. B3.3 revalidation assessment service/Task implementation is in PR #62 and passed hosted CI plus Operator-local exact-head verification (848 tests, 95 warnings). PR #62 remains open pending explicit merge approval; later B3 stages remain gated. The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain separately gated.
+- **R7:** work is focused on checking the quality of saved lessons and how saved knowledge should be validated and evolve. B2 is closed with its accepted residual verification gaps recorded. B3.2 assessment persistence is merged through PR #60. B3.3 revalidation assessment service/Task is complete and merged through PR #62 at `f7683b3c7812c3250e0fed5e8e689ade6ecaeca5` after hosted CI and Operator-local exact-head verification (848 full-suite tests, 95 warnings). B3.4 — deterministic `retire`/`supersede` lifecycle assessment service and Task — is the current authorized stage. Lifecycle commit, candidate creation, approval, and Task registry activation are not authorized; the approval allowlist remains exactly `create` and later B3 stages remain gated.
 
 ## Future plan
 

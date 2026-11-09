@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 are complete/closed as recorded in PLAN.md. B3.2 schema/migration PR #60 is merged at `31be3a25cf7f52ca81eab65cc10280a855738c3d`; hosted CI and Operator-local exact-merge verification passed, including 823 full-suite tests (95 warnings), migration/single-head at `0017_r7b_assessments`, Ruff, Mypy, and both diff checks. The Operator formally accepted Checkpoint 4 and separately authorized B3.3 on 2026-11-08. B3.3 — Revalidation assessment service and Task — is the current authorized stage; the active approval allowlist remains exactly `create`. PLAN.md is the sole current status authority.
+R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 are complete/closed as recorded in PLAN.md. B3.2 schema/migration PR #60 is merged at `31be3a25cf7f52ca81eab65cc10280a855738c3d`. B3.3 — Revalidation assessment service and Task — is complete and merged through PR #62 at `f7683b3c7812c3250e0fed5e8e689ade6ecaeca5` after hosted CI and Operator-local exact-head verification (848 full-suite tests, 95 warnings). The Operator explicitly authorized B3.4 on 2026-11-09: deterministic `retire`/`supersede` lifecycle assessment service and Task only. The active approval allowlist remains exactly `create`; PLAN.md is the sole current status authority.
 
 ## Open the smallest relevant set of documents
 
