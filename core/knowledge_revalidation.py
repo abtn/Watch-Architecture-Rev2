@@ -961,10 +961,51 @@ class KnowledgeRevalidationAssessmentService:
             existing = session.get(Task, task_id)
             if existing is not None:
                 try:
-                    validate_revalidation_task_request(
-                        session, existing, self._session_factory, self._snapshot_store,
-                        require_proposed=True, require_current=True,
-                    )
+                    if existing.status == "done":
+                        require_recorded_assessment(
+                            session,
+                            change,
+                            self._snapshot_store,
+                            self._session_factory,
+                            require_task_done=True,
+                            require_current=False,
+                        )
+                    elif existing.status == "running":
+                        assessment = session.scalar(
+                            select(KnowledgeRevalidationAssessment).where(
+                                KnowledgeRevalidationAssessment.task_id
+                                == existing.id,
+                                KnowledgeRevalidationAssessment.team_id
+                                == existing.team_id,
+                            )
+                        )
+                        if assessment is not None:
+                            require_recorded_assessment(
+                                session,
+                                change,
+                                self._snapshot_store,
+                                self._session_factory,
+                                require_task_done=False,
+                                require_current=True,
+                            )
+                        else:
+                            validate_revalidation_task_request(
+                                session,
+                                existing,
+                                self._session_factory,
+                                self._snapshot_store,
+                                require_proposed=True,
+                                require_current=True,
+                            )
+                    else:
+                        validate_revalidation_task_request(
+                            session,
+                            existing,
+                            self._session_factory,
+                            self._snapshot_store,
+                            require_proposed=True,
+                            require_current=True,
+                        )
                 except KnowledgeRevalidationAssessmentError as error:
                     raise KnowledgeRevalidationAssessmentError(
                         "knowledge_revalidation_existing_task_corrupt"
