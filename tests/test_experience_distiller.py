@@ -3479,6 +3479,15 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     with session_factory.begin() as session:
         session.execute(delete(Event).where(Event.id == duplicate_request_id))
 
+    first_admission = admission_runtime.admit(task_id)
+    assert first_admission.attempt_count == 1
+    retry_recovery = admission_runtime.recover_interrupted(
+        now=datetime.now(timezone.utc) + timedelta(seconds=61)
+    )
+    assert retry_recovery.retried == (task_id,)
+    assert retry_recovery.completed == ()
+    assert retry_recovery.failed == ()
+
     with pytest.raises(
         TaskNotFinalizable,
         match="knowledge_lifecycle_assessment_id_required",
