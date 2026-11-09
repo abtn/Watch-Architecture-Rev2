@@ -3411,6 +3411,26 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             )
         ) == 1
 
+    from sqlalchemy.exc import DBAPIError
+
+    with pytest.raises(DBAPIError):
+        with session_factory.begin() as session:
+            session.execute(
+                text(
+                    "UPDATE knowledge_lifecycle_assessments "
+                    "SET assessment_result = 'ineligible' WHERE id = :id"
+                ),
+                {"id": first.assessment_id},
+            )
+    with pytest.raises(DBAPIError):
+        with session_factory.begin() as session:
+            session.execute(
+                text(
+                    "DELETE FROM knowledge_lifecycle_assessments WHERE id = :id"
+                ),
+                {"id": first.assessment_id},
+            )
+
     with session_factory.begin() as session:
         session.execute(
             text(
