@@ -80,6 +80,7 @@ class KnowledgeLifecycleAssessmentTask:
         """
         return self._service.record(task_id)
 
+
 @dataclass(frozen=True)
 class KnowledgeLifecycleTaskRunResult:
     task_id: UUID
