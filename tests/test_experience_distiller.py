@@ -12,7 +12,7 @@ from typing import Any, Callable, Iterator
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.evaluations import (
@@ -44,6 +44,12 @@ from core.knowledge_quality import (
     build_case_lineage_report,
 )
 from core.knowledge_quality_tasks import KnowledgeQualityAssessmentTaskRunner
+from core.knowledge_revalidation import (
+    KnowledgeRevalidationAssessmentDraft,
+    KnowledgeRevalidationAssessmentService,
+    KnowledgeRevalidationFinding,
+)
+from core.knowledge_revalidation_tasks import KnowledgeRevalidationAssessmentTaskRunner
 from core.learning_commit import (
     LearningCommitCorrupt,
     LearningCommitError,
@@ -56,6 +62,7 @@ from core.models import (
     EvidenceLink,
     KnowledgeItem,
     KnowledgeQualityAssessment,
+    KnowledgeRevalidationAssessment,
     LearningChange,
     Outcome,
     Task,
@@ -1200,6 +1207,335 @@ def _create_admitted_approval_task(
 
 
 
+
+
+class _FakeKnowledgeRevalidationProvider:
+    evaluator_identity = "r7b-revalidation-test"
+    evaluator_revision = "1"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def assess(
+        self,
+        *,
+        task_id: UUID,
+        learning_change: LearningChange,
+        target_state: dict[str, object],
+        evidence_document: dict[str, object],
+        allowed_evidence_references: frozenset[str],
+    ) -> KnowledgeRevalidationAssessmentDraft:
+        self.calls += 1
+        return KnowledgeRevalidationAssessmentDraft(
+            freshness_disposition="current",
+            findings=(
+                KnowledgeRevalidationFinding(
+                    code="supports_revalidation",
+                    summary="The rebuilt evidence basis remains relevant.",
+                    evidence_refs=tuple(sorted(allowed_evidence_references)),
+                ),
+            ),
+        )
+
+
+def _create_revalidation_proposal(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    fixture: _Fixture,
+    knowledge_item_id: UUID,
+) -> tuple[UUID, UUID]:
+    source_task_id, learning_change_id = uuid4(), uuid4()
+    started_at = datetime.now(timezone.utc)
+    completed_at = started_at + timedelta(seconds=2)
+    proposal_hash = "sha256:" + ("c" * 64)
+    observation_ref, observation_hash = snapshot_store.put(
+        b'{"result_category":"success_learning_change_proposed"}'
+    )
+
+    with session_factory.begin() as session:
+        team = session.get(Team, fixture.team_id)
+        item = session.get(KnowledgeItem, knowledge_item_id)
+        assert team is not None and item is not None
+        assert item.team_id == fixture.team_id
+        source_task = Task(
+            id=source_task_id,
+            team_id=fixture.team_id,
+            task_type="propose_learning_change",
+            status="done",
+            attempt_count=1,
+            policy_version=1,
+            objective_id=None,
+            plan_id=None,
+            plan_action_id=None,
+            allowed_writes=["LearningChange"],
+            budget={
+                "max_tool_calls": 0,
+                "max_cost_usd": 0.0,
+                "deadline_seconds": 30,
+            },
+            created_at=started_at,
+            completed_at=completed_at,
+            max_attempts=3,
+        )
+        session.add(source_task)
+        session.flush()
+        pack = ExperienceDistiller(
+            session_factory, snapshot_store, provider=None
+        )._build_pack(
+            session,
+            source_task,
+            team,
+            tuple(sorted(case.evaluation_id for case in fixture.cases)),
+            allow_completed_task=True,
+            include_version_marker=True,
+        )
+        previous_state = knowledge_item_state(item)
+        change = LearningChange(
+            id=learning_change_id,
+            team_id=fixture.team_id,
+            target_kind="knowledge_item",
+            target_id=item.id,
+            operation="revalidate",
+            proposed_state={
+                "proposal_hash": proposal_hash,
+                "evidence_basis_hash": pack.basis_hash,
+            },
+            previous_state=encode_state_snapshot(previous_state),
+            committed_state=None,
+            evidence_basis=pack.evidence_basis,
+            evidence_basis_hash=pack.basis_hash,
+            status="proposed",
+            idempotency_key=f"r7b-revalidation-test-{learning_change_id}",
+            proposed_by_task_id=source_task_id,
+            created_at=started_at,
+        )
+        session.add(change)
+        outcome = Outcome(
+            id=uuid4(),
+            team_id=fixture.team_id,
+            subject_kind="task",
+            subject_id=source_task_id,
+            outcome_type="task_execution",
+            expected=None,
+            observation_snapshot_ref=observation_ref,
+            observation_hash=observation_hash,
+            observed_at=completed_at,
+            recorded_by_task_id=source_task_id,
+        )
+        session.add(outcome)
+        session.flush()
+        session.add_all(
+            [
+                Event(
+                    id=uuid4(),
+                    task_id=source_task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 1,
+                    },
+                    created_at=started_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=source_task_id,
+                    type="learning_change_proposed",
+                    payload={
+                        "learning_change_id": str(learning_change_id),
+                        "operation": "revalidate",
+                        "proposal_hash": proposal_hash,
+                        "evidence_basis_hash": pack.basis_hash,
+                        "attempt_count": 1,
+                    },
+                    created_at=completed_at - timedelta(seconds=1),
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=source_task_id,
+                    type="task_completed",
+                    payload={
+                        "from_status": "running",
+                        "to_status": "done",
+                        "attempt_count": 1,
+                        "result_category": "success_learning_change_proposed",
+                        "failure_reason": None,
+                        "outcome_id": str(outcome.id),
+                        "observation_snapshot_ref": observation_ref,
+                        "observation_hash": observation_hash,
+                        "learning_change_id": str(learning_change_id),
+                    },
+                    created_at=completed_at,
+                ),
+            ]
+        )
+    return source_task_id, learning_change_id
+
+
+@pytest.mark.parametrize("crash_after_record", [False, True])
+def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    crash_after_record: bool,
+):
+    fixture = distillation_fixture(2, include_contrary=False)
+    create_proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=create_proposal.learning_change_id,
+        )
+    )
+    approval_task_id, approval_attempt, principal = _create_admitted_approval_task(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        create_proposal.learning_change_id,
+    )
+    committed = LearningCommitService(session_factory, snapshot_store).decide(
+        approval_task_id, approval_attempt, principal
+    )
+    assert committed.knowledge_item_id is not None
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=approval_task_id,
+            attempt=approval_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=committed.committed_at,
+            learning_change_id=committed.learning_change_id,
+        )
+    )
+
+    source_task_id, revalidation_change_id = _create_revalidation_proposal(
+        session_factory,
+        snapshot_store,
+        fixture,
+        committed.knowledge_item_id,
+    )
+    task_id = KnowledgeRevalidationAssessmentService(
+        session_factory, snapshot_store
+    ).create_task(revalidation_change_id)
+    provider = _FakeKnowledgeRevalidationProvider()
+
+    class CrashAfterAssessmentRecordRuntime(TaskRuntime):
+        def finalize(self, observation):
+            if (
+                crash_after_record
+                and observation.result_category
+                == "success_knowledge_revalidation_assessed"
+            ):
+                raise RuntimeError("simulated_process_loss_after_assessment_commit")
+            return super().finalize(observation)
+
+    runner = KnowledgeRevalidationAssessmentTaskRunner(
+        session_factory,
+        snapshot_store,
+        provider,
+        runtime=CrashAfterAssessmentRecordRuntime(
+            session_factory, snapshot_store
+        ),
+    )
+    if crash_after_record:
+        with pytest.raises(
+            RuntimeError,
+            match="simulated_process_loss_after_assessment_commit",
+        ):
+            runner.run(task_id)
+        with session_factory() as session:
+            assessment = session.scalar(
+                select(KnowledgeRevalidationAssessment).where(
+                    KnowledgeRevalidationAssessment.task_id == task_id
+                )
+            )
+            task = session.get(Task, task_id)
+            assert assessment is not None
+            assert task is not None and task.status == "running"
+            recorded_at = assessment.recorded_at
+            assert session.scalar(
+                select(func.count(Outcome.id)).where(
+                    Outcome.recorded_by_task_id == task_id
+                )
+            ) == 0
+        recovery = TaskRuntime(
+            session_factory, snapshot_store
+        ).recover_interrupted(now=recorded_at + timedelta(seconds=120))
+        assert recovery.completed == (task_id,)
+        assert recovery.retried == ()
+        assert recovery.failed == ()
+    else:
+        first = runner.run(task_id)
+        assert first.status == "done"
+        assert first.assessment_id is not None
+
+    replay = runner.run(task_id)
+    assert replay.status == "done"
+    assert replay.replayed
+    assert replay.assessment_id is not None
+    assert provider.calls == 1
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        change = session.get(LearningChange, revalidation_change_id)
+        task = session.get(Task, task_id)
+        assessment = session.get(
+            KnowledgeRevalidationAssessment, replay.assessment_id
+        )
+        assert item is not None and change is not None and task is not None
+        assert assessment is not None
+        assert change.status == "proposed"
+        assert item.current_learning_change_id == committed.learning_change_id
+        assert item.version == 1
+        assert task.status == "done"
+        assert assessment.assessment_result == "supported"
+        assert assessment.task_attempt == 1
+        assert session.scalar(
+            select(func.count(KnowledgeRevalidationAssessment.id)).where(
+                KnowledgeRevalidationAssessment.learning_change_id
+                == revalidation_change_id
+            )
+        ) == 1
+
+    # The assessment table is intentionally immutable. Disable only user
+    # triggers inside this disposable test transaction to remove its fixture.
+    with session_factory.begin() as session:
+        session.execute(
+            text(
+                "ALTER TABLE knowledge_revalidation_assessments "
+                "DISABLE TRIGGER USER"
+            )
+        )
+        session.execute(
+            delete(KnowledgeRevalidationAssessment).where(
+                KnowledgeRevalidationAssessment.task_id == task_id
+            )
+        )
+        session.execute(
+            text(
+                "ALTER TABLE knowledge_revalidation_assessments "
+                "ENABLE TRIGGER USER"
+            )
+        )
+        session.execute(
+            delete(Event).where(Event.task_id.in_([source_task_id, task_id]))
+        )
+        session.execute(
+            delete(Outcome).where(
+                Outcome.recorded_by_task_id.in_([source_task_id, task_id])
+            )
+        )
+        session.execute(delete(Task).where(Task.id.in_([source_task_id, task_id])))
+        session.execute(
+            delete(LearningChange).where(LearningChange.id == revalidation_change_id)
+        )
 
 
 def test_quality_assessment_recovery_finalizes_same_record_without_duplicate(
