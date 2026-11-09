@@ -689,22 +689,33 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 
 **Operator authorization record (2026-11-09):** After confirming B3.3's final hosted CI success, the Operator explicitly instructed: “if the checks are ok and 3.3 is done please merge and move on to 3.4 and update the documents.” This authorizes B3.4 — Lifecycle assessment service and Task — only. The next stage must implement deterministic `retire`/`supersede` assessment validation; it does not authorize candidate creation, canonical lifecycle commit, approval, Task registry activation, or B3.5–B3.9. The approval allowlist remains exactly `create`.
 
-## R7-B B3.4 — deterministic lifecycle assessment service and Task (PR #64; hosted verification passed)
+## R7-B B3.4 — deterministic lifecycle assessment service and Task (ACCEPTED AND MERGED — PR #64)
 
-**Implementation:** PR [#64](https://github.com/abtn/Watch-Architecture-Rev2/pull/64), branch `r7b-b3-4-lifecycle-assessment-implementation`. Exact implementation code head: `e2fa162b6f9d77506d16458c1b24c81a57a21b66`.
+**Disposition (2026-11-09):** The Operator approved merge after exact-head local verification. PR [#64](https://github.com/abtn/Watch-Architecture-Rev2/pull/64) merged to `main` at `9abd949a8e682b4df75a77f03acca638a62e472e`. The final PR head was `e0944645f8756b702367c69f15e2743880364694`; the implementation code head tested by hosted CI was `e2fa162b6f9d77506d16458c1b24c81a57a21b66`.
 
-**Hosted exact-head CI:** [run 42590404433](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42590404433) passed on the exact implementation code head:
-- Fresh PostgreSQL migration and single Alembic head at `0017_r7b_assessments`.
-- Ruff passed.
-- Mypy passed across 37 source files.
-- Full suite: **881 passed, 113 warnings in 67.99s**.
-- CI disposable PostgreSQL container and network cleanup completed.
+**Hosted exact-code-head CI:** [run 42590404433](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42590404433) passed Ruff, Mypy, fresh PostgreSQL migration/single-head verification, and the full suite (**881 passed, 113 warnings in 67.99s**).
+
+**Operator-local exact-PR-head verification — PASSED (2026-11-09)**
+
+- Repository root, branch, exact HEAD, and remote branch matched the expected PR state; only the local verification script was untracked.
+- `uv sync --locked` passed; Python `3.12.12` was confirmed.
+- Fresh disposable PostgreSQL container: `watch-r7b-b34-local-59bf4c6a5425`; database `watch_r7b_b34_59bf4c6a5425`; dynamically assigned loopback port `52598`.
+- Fresh migration upgrade passed; database revision and sole Alembic head: `0018_r7b_lifecycle_review_date`.
+- `uv run ruff check core tests migrations`: passed.
+- `uv run mypy core`: passed (37 source files).
+- Focused tests — `tests/test_knowledge_lifecycle.py`, `tests/test_experience_distiller.py`, `tests/test_r7b_assessment_models.py`, and `tests/test_r7b_assessment_migration.py`: **89 passed, 36 warnings in 34.68s**.
+- Full suite: **881 passed, 113 warnings in 135.71s**.
+- `git diff --check`: passed.
+- Final repository state: exact tested HEAD retained, no tracked changes, and no unexpected untracked files.
+- Original `DATABASE_URL` and `TEST_DATABASE_URL` state was restored. The runner removed its own disposable container; removal was confirmed. Persistent `watch` and host port 5432 were not targeted.
+
+**Warnings:** all 113 local warnings were Alembic `path_separator` deprecation warnings: 36 from `tests/test_r7b_assessment_migration.py`, 65 from `tests/test_r7b_history_migration.py`, and 12 from `tests/test_team_experience_projection_migration.py`. They did not fail tests or checks.
 
 **Implementation scope delivered**
-- `core/knowledge_lifecycle.py`: deterministic operation-specific `retire`/`supersede` proposal validation; canonical rationale and proposed-state hash binding; original host-authenticated Operator provenance; read-only canonical evidence reconstruction; exact predecessor and successor snapshot binding; deterministic eligibility findings; immutable assessment serialization/hash; idempotent request/recorded Event verification.
-- `core/knowledge_lifecycle_tasks.py`: narrow Task creation/validation/worker adapter; exact worker write scope is `["KnowledgeLifecycleAssessment"]`.
-- `tests/test_knowledge_lifecycle.py` and lifecycle integration coverage in `tests/test_experience_distiller.py`: malformed variant/rationale, cross-Team and stale bindings, explicit NULL successor review date, replay/conflict, Event attribution, no canonical writes, database immutability, and fixture cleanup.
+- `core/knowledge_lifecycle.py`: deterministic operation-specific `retire`/`supersede` proposal validation; canonical rationale and proposed-state hash binding; original host-authenticated Operator provenance; read-only canonical evidence reconstruction; exact predecessor and successor snapshot binding; deterministic findings; immutable assessment serialization/hash; idempotent request/recorded Event verification.
+- `core/knowledge_lifecycle_tasks.py`: narrow Task creation/validation/recording adapter; exact worker write scope is `["KnowledgeLifecycleAssessment"]`.
+- Focused and integration tests cover malformed variants/rationale, cross-Team and stale bindings, explicit NULL successor review date, replay/conflict, Event attribution, no canonical writes, database immutability, and fixture cleanup.
 
-**Authority boundary:** no `TaskRuntime` changes, Task registry/admission activation, lifecycle recovery/finalization hooks, candidate creation, approval, or `KnowledgeItem`/`LearningChange` writes. The active approval allowlist remains exactly `create`. B3.5 integration and all later stages remain separately gated.
+**B3.4 acceptance and authority boundary:** B3.4 is accepted and merged. It adds deterministic lifecycle assessment and immutable recording only. It does not add TaskRuntime lifecycle hooks, a TaskRunner, TaskDispatcher activation, candidate creation, approval, or `KnowledgeItem`/`LearningChange` writes. The active approval allowlist remains exactly `create`.
 
-**Operator-local exact-head verification:** pending. Hosted CI success is not represented as local verification, merge, or formal B3.4 acceptance. PR #64 remains the review/acceptance gate.
+**Next gate:** B3.5 plan extraction and documentation-only work were authorized on 2026-11-09. This does not authorize B3.5 runtime/source/test/migration implementation; that requires a separate explicit Operator instruction. B3.6–B3.9 and B4–B6 remain gated.
