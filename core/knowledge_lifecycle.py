@@ -355,7 +355,7 @@ def _validate_proposed_state(
     }
     successor_id: UUID | None = None
     if operation == "supersede":
-        expected_keys.add("successor_knowledge_item_id")
+        expected_keys.update(SUCCESSOR_REQUEST_FIELDS)
     if set(state) != expected_keys:
         raise KnowledgeLifecycleAssessmentError(
             "knowledge_lifecycle_proposed_state_shape_invalid"
@@ -378,6 +378,61 @@ def _validate_proposed_state(
             state.get("successor_knowledge_item_id"),
             "knowledge_lifecycle_successor_id_invalid",
         )
+        successor_team_id = _canonical_uuid(
+            state.get("successor_team_id"),
+            "knowledge_lifecycle_successor_team_invalid",
+        )
+        _canonical_uuid(
+            state.get("successor_current_learning_change_id"),
+            "knowledge_lifecycle_successor_pointer_invalid",
+        )
+        if successor_team_id != learning_change.team_id:
+            raise KnowledgeLifecycleAssessmentError(
+                "knowledge_lifecycle_successor_cross_team"
+            )
+        version = state.get("successor_content_version")
+        if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+            raise KnowledgeLifecycleAssessmentError(
+                "knowledge_lifecycle_successor_version_invalid"
+            )
+        _require_sha256(
+            state.get("successor_content_hash"),
+            "knowledge_lifecycle_successor_content_hash_invalid",
+        )
+        _require_sha256(
+            state.get("successor_state_hash"),
+            "knowledge_lifecycle_successor_state_hash_invalid",
+        )
+        if state.get("successor_content_hash_scheme") != KNOWLEDGE_CONTENT_HASH_SCHEME:
+            raise KnowledgeLifecycleAssessmentError(
+                "knowledge_lifecycle_successor_content_hash_scheme_invalid"
+            )
+        if state.get("successor_status") not in {
+            "active", "needs_review", "retired"
+        }:
+            raise KnowledgeLifecycleAssessmentError(
+                "knowledge_lifecycle_successor_status_invalid"
+            )
+        review_after = state.get("successor_review_after")
+        if review_after is not None:
+            if not isinstance(review_after, str):
+                raise KnowledgeLifecycleAssessmentError(
+                    "knowledge_lifecycle_successor_review_after_invalid"
+                )
+            try:
+                parsed_review_after = datetime.fromisoformat(
+                    review_after.replace("Z", "+00:00")
+                )
+                if (
+                    parsed_review_after.tzinfo is None
+                    or parsed_review_after.utcoffset() is None
+                    or _timestamp(parsed_review_after) != review_after
+                ):
+                    raise ValueError("noncanonical_timestamp")
+            except ValueError as error:
+                raise KnowledgeLifecycleAssessmentError(
+                    "knowledge_lifecycle_successor_review_after_invalid"
+                ) from error
     proposed_state_hash = _domain_hash(
         PROPOSED_STATE_HASH_DOMAIN,
         _normalize_json(state),
@@ -806,7 +861,7 @@ def _successor_binding(
             ) from error
     else:
         normalized_review_after = None
-    return {
+    binding = {
         "successor_knowledge_item_id": str(successor.id),
         "successor_team_id": str(successor.team_id),
         "successor_current_learning_change_id": str(current_pointer),
@@ -817,6 +872,14 @@ def _successor_binding(
         "successor_review_after": normalized_review_after,
         "successor_state_hash": successor_snapshot["snapshot_hash"],
     }
+    proposed_binding = {
+        key: change.proposed_state[key] for key in SUCCESSOR_REQUEST_FIELDS
+    }
+    if proposed_binding != binding:
+        raise KnowledgeLifecycleAssessmentError(
+            "knowledge_lifecycle_successor_stale"
+        )
+    return binding
 
 
 def _common_request_payload(
