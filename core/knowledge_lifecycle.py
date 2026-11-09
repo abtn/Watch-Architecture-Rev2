@@ -1458,6 +1458,15 @@ def require_recorded_assessment(
             "knowledge_lifecycle_request_binding_invalid"
         )
     successor_binding = _stored_successor_binding(assessment)
+    if learning_change.operation == "supersede":
+        proposed_successor_binding = {
+            key: learning_change.proposed_state[key]
+            for key in SUCCESSOR_REQUEST_FIELDS
+        }
+        if successor_binding != proposed_successor_binding:
+            raise KnowledgeLifecycleAssessmentError(
+                "knowledge_lifecycle_assessment_successor_proposal_mismatch"
+            )
     if require_current and learning_change.operation == "supersede":
         live_successor_binding = _successor_binding(
             session, proposal, require_current=True
