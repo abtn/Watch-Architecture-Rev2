@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -516,6 +517,46 @@ def _proposal_context(
     ):
         raise KnowledgeRevalidationAssessmentError(
             "knowledge_revalidation_source_terminal_invalid"
+        )
+    source_outcome = source_outcomes[0]
+    if (
+        source_outcome.team_id != learning_change.team_id
+        or source_outcome.subject_kind != "task"
+        or source_outcome.subject_id != source_task.id
+        or source_outcome.outcome_type != "task_execution"
+        or source_outcome.recorded_by_task_id != source_task.id
+        or source_outcome.observed_at is None
+        or source_outcome.observation_snapshot_ref is None
+        or source_outcome.observation_hash is None
+        or terminal_events[0].payload.get("observation_snapshot_ref")
+        != source_outcome.observation_snapshot_ref
+        or terminal_events[0].payload.get("observation_hash")
+        != source_outcome.observation_hash
+    ):
+        raise KnowledgeRevalidationAssessmentError(
+            "knowledge_revalidation_source_outcome_invalid"
+        )
+    try:
+        source_snapshot = ExperienceDistiller(
+            session_factory, snapshot_store, provider=None
+        )._read_snapshot(
+            source_outcome.observation_snapshot_ref,
+            source_outcome.observation_hash,
+        )
+        source_observation = json.loads(source_snapshot.decode("utf-8"))
+    except (ExperienceDistillerError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise KnowledgeRevalidationAssessmentError(
+            "knowledge_revalidation_source_observation_invalid"
+        ) from error
+    if (
+        not isinstance(source_observation, dict)
+        or source_observation.get("result_category")
+        != "success_learning_change_proposed"
+        or source_observation.get("learning_change_id") != str(learning_change.id)
+        or source_observation.get("attempt") != source_task.attempt_count
+    ):
+        raise KnowledgeRevalidationAssessmentError(
+            "knowledge_revalidation_source_observation_mismatch"
         )
     proposal_event = proposal_events[0].payload
     if (
