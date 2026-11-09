@@ -537,7 +537,7 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 
 #### B3.3 — Revalidation assessment service and Task
 
-**Status (2026-11-08): AUTHORIZED BY EXPLICIT OPERATOR INSTRUCTION.** This is the active implementation stage. Authorization is limited to B3.3; it does not activate the assessment Tasks in the registry or grant either worker canonical `KnowledgeItem`/`LearningChange` writes. The approval allowlist remains exactly `create`.
+**Status:** Implementation and hosted/local exact-head verification passed on 2026-11-09; PR #62 remains open pending explicit merge approval. B3.3 authorization was limited to this stage. Verification does not activate the assessment Tasks in the registry or grant either worker canonical `KnowledgeItem`/`LearningChange` writes. The approval allowlist remains exactly `create`.
 
 **Agent / coding side**
 1. Implement a narrow evidence-basis builder that reconstructs the basis from canonical Outcomes, recorded Evaluations, Events, EvidenceLinks, immutable Snapshots, and other explicitly permitted canonical references. Do not treat retrieved chunks, similarity ranks, transcripts, or model assertions as canonical evidence.
@@ -551,6 +551,8 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 **Operator review point:** inspect the evidence freshness truth table and the allowed canonical evidence sources before accepting the implementation.
 
 **Expected output:** deterministic tests for fresh/adequate evidence, stale or changed sources, new-observation-required cases, cross-Team references, pointer races, malformed evaluator drafts, retry and replay.
+
+**Verification record (2026-11-09):** PR #62 exact head `24de1ffa33b30060d8de6816cf7b5351f72c7eaf` passed hosted CI and Operator-local verification. Local run: `uv sync --locked`; fresh disposable PostgreSQL on dynamic loopback port `8405`; migration and sole Alembic head `0017_r7b_assessments`; 61 focused tests; Ruff; Mypy; 848 full-suite tests (95 warnings, 128.61s); diff checks; environment restoration and disposable-container cleanup. The warnings are the existing Alembic `path_separator` deprecations. Full command-level evidence is in `docs/testing.md`. Merge remains pending explicit Operator approval; B3.4 is not authorized by this verification.
 
 #### B3.4 — Lifecycle assessment service and Task
 
