@@ -164,6 +164,34 @@ def test_supersede_proposal_requires_same_team_successor_identity():
     assert rationale == _rationale()
     assert parsed_successor_id == successor_id
 
+    cross_team = {
+        **proposal,
+        "successor_team_id": str(uuid4()),
+    }
+    with pytest.raises(
+        KnowledgeLifecycleAssessmentError,
+        match="knowledge_lifecycle_successor_cross_team",
+    ):
+        _validate_proposed_state(
+            SimpleNamespace(
+                operation="supersede",
+                team_id=team_id,
+                evidence_basis_hash="sha256:" + "b" * 64,
+                proposed_state=cross_team,
+            )
+        )
+
+    null_review_date = {**proposal, "successor_review_after": None}
+    _, _, _, _, null_date_successor_id = _validate_proposed_state(
+        SimpleNamespace(
+            operation="supersede",
+            team_id=team_id,
+            evidence_basis_hash="sha256:" + "b" * 64,
+            proposed_state=null_review_date,
+        )
+    )
+    assert null_date_successor_id == successor_id
+
     missing_successor = {
         key: value
         for key, value in proposal.items()
