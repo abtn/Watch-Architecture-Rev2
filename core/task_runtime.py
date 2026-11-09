@@ -2173,7 +2173,8 @@ class TaskRuntime:
             successor_fields if operation == "supersede" else set()
         )
         if (
-            operation not in {"retire", "supersede"}
+            not isinstance(operation, str)
+            or operation not in {"retire", "supersede"}
             or set(payload) != expected_fields
             or payload.get("schema_version") != 1
             or payload.get("task_type") != _KNOWLEDGE_LIFECYCLE_TASK_TYPE
@@ -2494,6 +2495,12 @@ class TaskRuntime:
                 "knowledge_lifecycle_request_binding_invalid",
                 "knowledge_lifecycle_task_start_event_invalid",
                 "knowledge_lifecycle_assessment_successor_proposal_mismatch",
+                "knowledge_lifecycle_retire_variant_shape_invalid",
+                "knowledge_lifecycle_successor_variant_shape_invalid",
+                "knowledge_lifecycle_successor_binding_invalid",
+                "knowledge_lifecycle_successor_content_hash_invalid",
+                "knowledge_lifecycle_successor_state_hash_invalid",
+                "knowledge_lifecycle_successor_review_after_invalid",
             }
             if task.status == "done" or error.reason in corruption_reasons:
                 raise TaskNotFinalizable(error.reason) from error
