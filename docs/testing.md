@@ -719,3 +719,38 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 **B3.4 acceptance and authority boundary:** B3.4 is accepted and merged. It adds deterministic lifecycle assessment and immutable recording only. It does not add TaskRuntime lifecycle hooks, a TaskRunner, TaskDispatcher activation, candidate creation, approval, or `KnowledgeItem`/`LearningChange` writes. The active approval allowlist remains exactly `create`.
 
 **Next gate:** B3.5 plan extraction and documentation-only work were authorized on 2026-11-09. This does not authorize B3.5 runtime/source/test/migration implementation; that requires a separate explicit Operator instruction. B3.6–B3.9 and B4–B6 remain gated.
+
+
+## R7-B B3.5 — TaskRuntime, recovery, and lifecycle Events (MERGED — PR #66)
+
+**Disposition (2026-11-10):** PR [#66](https://github.com/abtn/Watch-Architecture-Rev2/pull/66) was squash-merged to `main` at `a6cc81c2aef47d659252b89421e27b08735d944b`. The exact implementation/verification PR head was `65edf206eb6cd68859147ee8c2f68a4717c6fa87`. Hosted and Operator-local checks both ran against the same exact PR-head code SHA; this record does not imply that CI separately ran on the merge commit.
+
+**Hosted exact-head CI:** [run 42655193654](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42655193654) passed on `65edf206eb6cd68859147ee8c2f68a4717c6fa87`: fresh PostgreSQL migration/single Alembic head at `0018_r7b_lifecycle_review_date`, Ruff, Mypy, and the full suite (**884 passed, 113 warnings**).
+
+**Operator-local exact-PR-head verification — PASSED (2026-11-10)**
+
+- Repository root and branch were correct; worktree was clean before synchronization.
+- The branch was fetched and fast-forwarded only to exact PR head `65edf206eb6cd68859147ee8c2f68a4717c6fa87`.
+- `uv sync --locked` passed; Python 3.12 was used.
+- Fresh disposable PostgreSQL database `watch_r7b_b35_disposable`, dynamically assigned loopback port `38860`.
+- Fresh `alembic upgrade head` passed; exactly one Alembic head and current database revision: `0018_r7b_lifecycle_review_date`.
+- Focused lifecycle integration tests: `tests/test_experience_distiller.py` → **43 passed in 37.67s**.
+- `uv run ruff check core tests migrations`: passed.
+- `uv run mypy core`: passed (37 source files).
+- Full suite: **884 passed, 113 warnings in 141.48s**.
+- Base-to-HEAD and worktree `git diff --check` passed; final HEAD remained `65edf206eb6cd68859147ee8c2f68a4717c6fa87`; worktree was clean.
+- Original `DATABASE_URL` and `TEST_DATABASE_URL` values were restored. The disposable container was removed successfully. Persistent `watch` and host port 5432 were not targeted.
+
+**Warnings:** all 113 warnings were existing Alembic `path_separator` deprecations: 36 from `tests/test_r7b_assessment_migration.py`, 65 from `tests/test_r7b_history_migration.py`, and 12 from `tests/test_team_experience_projection_migration.py`. They did not fail tests or checks.
+
+**Correction and regression history:** review found that failed-task replay initially treated all `task_attempt_failed` Events as terminal duplicates. The correction indexes attempt Events by `attempt_count`, validates each earlier retry failure against its matching `task_retry_scheduled` Event and chronology, and binds the final attempt failure to the single terminal `task_failed` Event and Outcome. A regression test covers interrupted attempt → retry → terminal failure → repeated replay and verifies no duplicate terminal records. The first CI run exposed missing fixture cleanup for the additional retry Task; cleanup was corrected, and both final hosted and local full-suite runs passed.
+
+**Implementation scope delivered**
+- Explicit lifecycle Task recognition in the existing TaskRuntime admission/finalization/recovery path; no generic Task registry.
+- Exact lifecycle worker write scope `["KnowledgeLifecycleAssessment"]`, three attempts, zero tool calls/cost, and a 30-second deadline.
+- Typed lifecycle success observation and optional assessment ID, conditionally serialized to preserve historical observation payloads when absent.
+- Narrow `KnowledgeLifecycleAssessmentTaskRunner` composing the B3.4 adapter with TaskRuntime admission, post-admission validation, assessment recording, terminal finalization, replay, and recovery. TaskRuntime remains the sole owner of Task lifecycle transitions, attempt fencing, terminal Outcomes, and lifecycle Events.
+- Recovery from a committed immutable assessment and its exact recorded Event; existing retry disposition for interrupted attempts without a committed assessment; deterministic failure for stale proposals; fail-closed behavior for corrupted/mismatched immutable records or Events.
+- Failed replay validates the full attempt history and unique Outcome/terminal Events. Existing revalidation behavior remains covered.
+
+**Authority and scope boundary:** no migration, TaskDispatcher activation, generic registry/scheduler, public API/auth, canonical `KnowledgeItem`/`LearningChange` writes, lifecycle commit, approval expansion, or B3.6–B3.9/B4–B6/R7-C work was included. The approval allowlist remains exactly `create`. B3.5 is merged; B3.6 approval-time assessment binding remains separately gated and unauthorized.
