@@ -1249,7 +1249,11 @@ def _create_revalidation_proposal(
     completed_at = started_at + timedelta(seconds=2)
     proposal_hash = "sha256:" + ("c" * 64)
     observation_ref, observation_hash = snapshot_store.put(
-        b'{"result_category":"success_learning_change_proposed"}'
+        (
+            '{"attempt":1,"learning_change_id":"'
+            + str(learning_change_id)
+            + '","result_category":"success_learning_change_proposed"}'
+        ).encode("utf-8")
     )
 
     with session_factory.begin() as session:
