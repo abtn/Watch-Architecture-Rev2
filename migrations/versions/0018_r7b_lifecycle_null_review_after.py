@@ -1,6 +1,6 @@
 """Allow ineligible supersede assessments to preserve a NULL successor review date.
 
-Revision ID: 0018_r7b_lifecycle_null_review_after
+Revision ID: 0018_r7b_lifecycle_review_date
 Revises: 0017_r7b_assessments
 """
 
@@ -9,7 +9,7 @@ from typing import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0018_r7b_lifecycle_null_review_after"
+revision: str = "0018_r7b_lifecycle_review_date"
 down_revision: str | None = "0017_r7b_assessments"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
