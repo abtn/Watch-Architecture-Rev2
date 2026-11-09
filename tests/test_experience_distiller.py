@@ -3263,6 +3263,14 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             include_version_marker=True,
         )
         previous_state = knowledge_item_state(item)
+        proposed_state = {
+            "proposal_hash": proposal_hash,
+            "evidence_basis_hash": pack.basis_hash,
+            "operator_rationale": rationale,
+        }
+        proposed_state_hash = _domain_hash(
+            PROPOSED_STATE_HASH_DOMAIN, _normalize_json(proposed_state)
+        )
         change = LearningChange(
             id=learning_change_id,
             team_id=fixture.team_id,
@@ -3328,6 +3336,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                         "learning_change_id": str(learning_change_id),
                         "operation": "retire",
                         "proposal_hash": proposal_hash,
+                        "proposed_state_hash": proposed_state_hash,
                         "evidence_basis_hash": pack.basis_hash,
                         "attempt_count": 1,
                     },
