@@ -3606,18 +3606,17 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         ) == expected_outcomes
 
     if crash_after_record:
-        from core.knowledge_lifecycle import (
-            RECORDED_EVENT_TYPE,
-            recorded_assessment_event_payload,
-        )
-
         recovery_at = recorded_at + timedelta(seconds=61)
         with session_factory.begin() as session:
-            session.execute(
-                delete(Event).where(
-                    Event.id == committed_assessment.recorded_event_id
-                )
+            recorded_event = session.get(
+                Event, committed_assessment.recorded_event_id
             )
+            assert recorded_event is not None
+            original_recorded_payload = dict(recorded_event.payload)
+            recorded_event.payload = {
+                **original_recorded_payload,
+                "assessment_payload_hash": "sha256:" + ("0" * 64),
+            }
         with pytest.raises(
             TaskNotFinalizable,
             match="knowledge_lifecycle_recorded_event_invalid",
@@ -3634,17 +3633,11 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                 )
             ) == 0
         with session_factory.begin() as session:
-            session.add(
-                Event(
-                    id=committed_assessment.recorded_event_id,
-                    task_id=task_id,
-                    type=RECORDED_EVENT_TYPE,
-                    payload=recorded_assessment_event_payload(
-                        committed_assessment
-                    ),
-                    created_at=committed_assessment.recorded_at,
-                )
+            recorded_event = session.get(
+                Event, committed_assessment.recorded_event_id
             )
+            assert recorded_event is not None
+            recorded_event.payload = original_recorded_payload
 
         first = task_adapter.record(task_id)
         assert first.assessment_result == assessment_result
@@ -3729,7 +3722,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         assert item.current_learning_change_id == committed.learning_change_id
         assert item.version == 1
         assert assessment.operation == "retire"
-        assert assessment.assessment_result == "eligible"
+        assert assessment.assessment_result == assessment_result
         assert assessment.variant_payload == {}
         assert assessment.successor_knowledge_item_id is None
         assert assessment.payload_hash == first_payload_hash
@@ -3782,7 +3775,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                     "UPDATE knowledge_lifecycle_assessments "
                     "SET assessment_result = 'ineligible' WHERE id = :id"
                 ),
-                {"id": first.assessment_id},
+                {"id": first_assessment_id},
             )
     with pytest.raises(DBAPIError):
         with session_factory.begin() as session:
@@ -3790,5 +3783,5 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                 text(
                     "DELETE FROM knowledge_lifecycle_assessments WHERE id = :id"
                 ),
-                {"id": first.assessment_id},
+                {"id": first_assessment_id},
             )
