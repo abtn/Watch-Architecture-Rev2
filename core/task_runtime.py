@@ -2289,10 +2289,80 @@ class TaskRuntime:
                 raise TaskNotFinalizable(
                     "knowledge_lifecycle_terminal_timestamp_mismatch"
                 )
-        elif verified.recorded_at != observation.observed_at:
-            raise TaskNotFinalizable(
-                "knowledge_lifecycle_terminal_timestamp_mismatch"
+            outcomes = list(
+                session.scalars(
+                    select(Outcome).where(
+                        Outcome.recorded_by_task_id == task.id,
+                        Outcome.outcome_type == "task_execution",
+                    )
+                )
             )
+            terminal_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == "task_completed",
+                    )
+                )
+            )
+            if (
+                len(outcomes) != 1
+                or len(terminal_events) != 1
+                or outcomes[0].team_id != task.team_id
+                or outcomes[0].subject_kind != "task"
+                or outcomes[0].subject_id != task.id
+                or outcomes[0].observed_at != observation.observed_at
+                or outcomes[0].observation_snapshot_ref is None
+                or outcomes[0].observation_hash is None
+            ):
+                raise TaskNotFinalizable(
+                    "knowledge_lifecycle_terminal_state_corrupt"
+                )
+            expected_terminal_payload = {
+                "from_status": "running",
+                "to_status": "done",
+                "attempt_count": observation.attempt,
+                "result_category": "success_knowledge_lifecycle_assessed",
+                "failure_reason": None,
+                "outcome_id": str(outcomes[0].id),
+                "observation_snapshot_ref": outcomes[0].observation_snapshot_ref,
+                "observation_hash": outcomes[0].observation_hash,
+                "knowledge_lifecycle_assessment_id": str(verified.id),
+            }
+            if (
+                terminal_events[0].payload != expected_terminal_payload
+                or terminal_events[0].created_at != task.completed_at
+            ):
+                raise TaskNotFinalizable(
+                    "knowledge_lifecycle_terminal_event_invalid"
+                )
+        else:
+            if verified.recorded_at != observation.observed_at:
+                raise TaskNotFinalizable(
+                    "knowledge_lifecycle_terminal_timestamp_mismatch"
+                )
+            prior_outcomes = list(
+                session.scalars(
+                    select(Outcome).where(
+                        Outcome.recorded_by_task_id == task.id,
+                        Outcome.outcome_type == "task_execution",
+                    )
+                )
+            )
+            terminal_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type.in_(_TERMINAL_EVENTS),
+                        Event.payload["attempt_count"].as_integer()
+                        == observation.attempt,
+                    )
+                )
+            )
+            if prior_outcomes or terminal_events:
+                raise TaskNotFinalizable(
+                    "knowledge_lifecycle_terminal_state_corrupt"
+                )
 
     def _committed_knowledge_lifecycle_assessment_observation(
         self, session: Session, task: Task
@@ -2342,6 +2412,28 @@ class TaskRuntime:
         if started_at is None:
             raise TaskNotFinalizable(
                 "knowledge_lifecycle_task_start_event_invalid"
+            )
+        prior_outcomes = list(
+            session.scalars(
+                select(Outcome).where(
+                    Outcome.recorded_by_task_id == task.id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+        )
+        terminal_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type.in_(_TERMINAL_EVENTS),
+                    Event.payload["attempt_count"].as_integer()
+                    == task.attempt_count,
+                )
+            )
+        )
+        if prior_outcomes or terminal_events:
+            raise TaskNotFinalizable(
+                "knowledge_lifecycle_terminal_state_corrupt"
             )
         if not assessments:
             if recorded_events:
