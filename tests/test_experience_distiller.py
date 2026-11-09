@@ -3742,6 +3742,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             max_attempts=original_task.max_attempts,
         )
         session.add(failed_task)
+        session.flush()
         session.add_all(
             [
                 Event(
