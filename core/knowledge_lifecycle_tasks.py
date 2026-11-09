@@ -115,20 +115,11 @@ class KnowledgeLifecycleAssessmentTaskRunner:
             if task is None:
                 raise TaskNotEligible("task_not_found")
             if task.status == "failed":
-                outcome = session.scalar(
-                    select(Outcome).where(
-                        Outcome.recorded_by_task_id == task.id,
-                        Outcome.outcome_type == "task_execution",
-                    )
-                )
-                return KnowledgeLifecycleTaskRunResult(
-                    task_id=task_id,
-                    status="failed",
-                    assessment_id=None,
-                    assessment_result=None,
-                    outcome_id=outcome.id if outcome is not None else None,
-                    replayed=True,
-                )
+                failed_replay = self._replay_failed_task(session, task)
+            else:
+                failed_replay = None
+            if failed_replay is not None:
+                replay_observation = failed_replay
             try:
                 if task.status == "done":
                     learning_change_id = self._request_learning_change_id(
@@ -273,6 +264,90 @@ class KnowledgeLifecycleAssessmentTaskRunner:
             assessment_result=recorded.assessment_result,
             outcome_id=finalized.outcome_id,
             replayed=recorded.replayed,
+        )
+
+    def _replay_failed_task(
+        self, session: Session, task: Task
+    ) -> TerminalObservation:
+        """Rebuild a failed terminal observation only from a complete record."""
+        if task.task_type != "assess_knowledge_lifecycle":
+            raise TaskNotEligible("knowledge_lifecycle_task_wrong_type")
+
+        outcomes = list(
+            session.scalars(
+                select(Outcome).where(
+                    Outcome.recorded_by_task_id == task.id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+        )
+        if len(outcomes) != 1:
+            raise TaskNotEligible("knowledge_lifecycle_terminal_outcome_invalid")
+        outcome = outcomes[0]
+        if (
+            outcome.team_id != task.team_id
+            or outcome.subject_kind != "task"
+            or outcome.subject_id != task.id
+            or outcome.recorded_by_task_id != task.id
+            or outcome.outcome_type != "task_execution"
+            or outcome.observed_at is None
+            or outcome.observation_snapshot_ref is None
+            or outcome.observation_hash is None
+        ):
+            raise TaskNotEligible("knowledge_lifecycle_terminal_outcome_invalid")
+
+        terminal_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type.in_(("task_attempt_failed", "task_failed")),
+                )
+            )
+        )
+        by_type: dict[str, Event] = {}
+        for event in terminal_events:
+            if event.type in by_type:
+                raise TaskNotEligible("knowledge_lifecycle_terminal_events_invalid")
+            by_type[event.type] = event
+        if set(by_type) != {"task_attempt_failed", "task_failed"}:
+            raise TaskNotEligible("knowledge_lifecycle_terminal_events_invalid")
+
+        payload = by_type["task_failed"].payload
+        expected_fields = {
+            "from_status",
+            "to_status",
+            "attempt_count",
+            "result_category",
+            "failure_reason",
+            "outcome_id",
+            "observation_snapshot_ref",
+            "observation_hash",
+        }
+        if (
+            not isinstance(payload, dict)
+            or set(payload) != expected_fields
+            or payload.get("from_status") != "running"
+            or payload.get("to_status") != "failed"
+            or payload.get("result_category") != "terminal_failure"
+            or payload.get("attempt_count") != task.attempt_count
+            or isinstance(payload.get("attempt_count"), bool)
+            or not isinstance(payload.get("failure_reason"), str)
+            or not payload["failure_reason"].strip()
+            or payload.get("outcome_id") != str(outcome.id)
+            or payload.get("observation_snapshot_ref")
+            != outcome.observation_snapshot_ref
+            or payload.get("observation_hash") != outcome.observation_hash
+            or by_type["task_attempt_failed"].payload != payload
+            or any(event.created_at < outcome.observed_at for event in by_type.values())
+        ):
+            raise TaskNotEligible("knowledge_lifecycle_terminal_events_invalid")
+
+        return TerminalObservation(
+            task_id=task.id,
+            attempt=task.attempt_count,
+            result_category="terminal_failure",
+            observed_at=outcome.observed_at,
+            failure_reason=payload["failure_reason"],
         )
 
     @staticmethod
