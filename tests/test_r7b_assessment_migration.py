@@ -1335,3 +1335,284 @@ def test_0017_empty_downgrade_removes_assessment_schema_objects(
         "trg_lifecycle_assessment_immutable_row",
         "trg_lifecycle_assessment_immutable_truncate",
     } & remaining_triggers
+
+
+def _upgrade_lifecycle_null_review_schema(
+    sandbox: AssessmentMigrationSandbox,
+) -> None:
+    _upgrade_assessment_schema(sandbox)
+    _run_revision(
+        sandbox.engine,
+        sandbox.schema,
+        "0018_r7b_lifecycle_null_review_after",
+    )
+
+
+def _insert_supersede_assessment(
+    connection,
+    source_assessment_id: UUID,
+    *,
+    assessment_result: str,
+    successor_review_after: datetime | None,
+) -> UUID:
+    lifecycle = connection.execute(
+        text(
+            "SELECT * FROM knowledge_lifecycle_assessments WHERE id = :id"
+        ),
+        {"id": source_assessment_id},
+    ).mappings().one()
+    predecessor = connection.execute(
+        text("SELECT * FROM knowledge_items WHERE id = :id"),
+        {"id": lifecycle["knowledge_item_id"]},
+    ).mappings().one()
+
+    successor_item_id = uuid4()
+    _clone_knowledge_item(
+        connection,
+        predecessor["id"],
+        successor_item_id,
+        {
+            "current_learning_change_id": predecessor[
+                "current_learning_change_id"
+            ],
+            "supersedes_item_id": predecessor["id"],
+            "title": "B3.4 NULL review-date successor fixture",
+            "statement": "A successor fixture for migration constraint tests.",
+            "body": "The fixture isolates successor review-date persistence.",
+            "review_after": successor_review_after,
+        },
+    )
+    successor = connection.execute(
+        text("SELECT * FROM knowledge_items WHERE id = :id"),
+        {"id": successor_item_id},
+    ).mappings().one()
+
+    supersede_change_id = uuid4()
+    _clone_learning_change(
+        connection,
+        lifecycle["learning_change_id"],
+        supersede_change_id,
+        f"b34-supersede-{uuid4().hex}",
+        operation="supersede",
+    )
+    _insert_operator_provenance(
+        connection, supersede_change_id, lifecycle["team_id"]
+    )
+    task_id, request_event_id, recorded_event_id = _insert_task_events(
+        connection, lifecycle["team_id"], "assess_knowledge_lifecycle"
+    )
+    assessment_id = uuid4()
+    digest = "sha256:" + ("c" * 64)
+    _clone_assessment_row(
+        connection,
+        "knowledge_lifecycle_assessments",
+        source_assessment_id,
+        {
+            "id": assessment_id,
+            "task_id": task_id,
+            "learning_change_id": supersede_change_id,
+            "operation": "supersede",
+            "assessment_result": assessment_result,
+            "variant_payload": json.dumps(
+                {"successor_team_id": str(lifecycle["team_id"])}
+            ),
+            "successor_knowledge_item_id": successor_item_id,
+            "successor_current_learning_change_id": (
+                successor["current_learning_change_id"]
+            ),
+            "successor_content_version": successor["version"],
+            "successor_content_hash": digest,
+            "successor_content_hash_scheme": (
+                "watch.r7b.knowledge-content.v2"
+            ),
+            "successor_status": successor["status"],
+            "successor_review_after": successor_review_after,
+            "successor_state_hash": digest,
+            "request_event_id": request_event_id,
+            "recorded_event_id": recorded_event_id,
+            "idempotency_key": f"b34-lifecycle-{uuid4().hex}",
+        },
+    )
+    return assessment_id
+
+
+def test_0018_constraint_and_immutability_contract_are_preserved(
+    assessment_migration_schema: AssessmentMigrationSandbox,
+) -> None:
+    sandbox = assessment_migration_schema
+    _upgrade_lifecycle_null_review_schema(sandbox)
+
+    with sandbox.engine.connect() as connection:
+        revision = connection.scalar(
+            text(
+                f'SELECT version_num FROM "{sandbox.schema}".alembic_version'
+            )
+        )
+        definition = connection.scalar(
+            text(
+                """
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conname = 'ck_knowledge_lifecycle_assessments_variant_shape'
+                  AND conrelid = 'knowledge_lifecycle_assessments'::regclass
+                """
+            )
+        )
+        triggers = set(
+            connection.scalars(
+                text(
+                    """
+                    SELECT tgname
+                    FROM pg_trigger
+                    WHERE tgrelid = 'knowledge_lifecycle_assessments'::regclass
+                      AND NOT tgisinternal
+                    """
+                )
+            )
+        )
+
+    assert revision == "0018_r7b_lifecycle_null_review_after"
+    assert "successor_review_after" in definition
+    assert "ineligible" in definition
+    assert "trg_lifecycle_assessment_immutable_row" in triggers
+    assert "trg_lifecycle_assessment_immutable_truncate" in triggers
+
+
+def test_0018_only_ineligible_supersede_can_preserve_null_review_date(
+    assessment_migration_schema: AssessmentMigrationSandbox,
+) -> None:
+    sandbox = assessment_migration_schema
+    _upgrade_lifecycle_null_review_schema(sandbox)
+    rows = _seed_assessment_rows(sandbox)
+    future_review = datetime.now(timezone.utc) + timedelta(days=30)
+
+    with sandbox.engine.begin() as connection:
+        null_date_id = _insert_supersede_assessment(
+            connection,
+            rows.lifecycle_id,
+            assessment_result="ineligible",
+            successor_review_after=None,
+        )
+        future_date_id = _insert_supersede_assessment(
+            connection,
+            rows.lifecycle_id,
+            assessment_result="eligible",
+            successor_review_after=future_review,
+        )
+        with pytest.raises(DBAPIError):
+            with connection.begin_nested():
+                _insert_supersede_assessment(
+                    connection,
+                    rows.lifecycle_id,
+                    assessment_result="eligible",
+                    successor_review_after=None,
+                )
+
+        persisted = set(
+            connection.scalars(
+                text(
+                    """
+                    SELECT id
+                    FROM knowledge_lifecycle_assessments
+                    WHERE id IN (:null_date_id, :future_date_id)
+                    """
+                ),
+                {
+                    "null_date_id": null_date_id,
+                    "future_date_id": future_date_id,
+                },
+            )
+        )
+
+    assert persisted == {null_date_id, future_date_id}
+
+
+def test_0018_downgrade_refuses_to_invalidate_null_date_history(
+    assessment_migration_schema: AssessmentMigrationSandbox,
+) -> None:
+    sandbox = assessment_migration_schema
+    _upgrade_lifecycle_null_review_schema(sandbox)
+    rows = _seed_assessment_rows(sandbox)
+
+    with sandbox.engine.begin() as connection:
+        _insert_supersede_assessment(
+            connection,
+            rows.lifecycle_id,
+            assessment_result="ineligible",
+            successor_review_after=None,
+        )
+
+    with pytest.raises(RuntimeError, match="ineligible supersede assessments"):
+        _run_revision(
+            sandbox.engine,
+            sandbox.schema,
+            "0017_r7b_assessments",
+            downgrade=True,
+        )
+
+    with sandbox.engine.connect() as connection:
+        revision = connection.scalar(
+            text(
+                f'SELECT version_num FROM "{sandbox.schema}".alembic_version'
+            )
+        )
+        definition = connection.scalar(
+            text(
+                """
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conname = 'ck_knowledge_lifecycle_assessments_variant_shape'
+                  AND conrelid = 'knowledge_lifecycle_assessments'::regclass
+                """
+            )
+        )
+
+    assert revision == "0018_r7b_lifecycle_null_review_after"
+    assert "ineligible" in definition
+
+
+def test_0018_empty_downgrade_and_reupgrade_preserve_single_head(
+    assessment_migration_schema: AssessmentMigrationSandbox,
+) -> None:
+    sandbox = assessment_migration_schema
+    _upgrade_lifecycle_null_review_schema(sandbox)
+
+    _run_revision(
+        sandbox.engine,
+        sandbox.schema,
+        "0017_r7b_assessments",
+        downgrade=True,
+    )
+    with sandbox.engine.connect() as connection:
+        downgraded_revision = connection.scalar(
+            text(
+                f'SELECT version_num FROM "{sandbox.schema}".alembic_version'
+            )
+        )
+        original_definition = connection.scalar(
+            text(
+                """
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conname = 'ck_knowledge_lifecycle_assessments_variant_shape'
+                  AND conrelid = 'knowledge_lifecycle_assessments'::regclass
+                """
+            )
+        )
+
+    assert downgraded_revision == "0017_r7b_assessments"
+    assert "successor_review_after IS NOT NULL" in original_definition
+    assert "ineligible" not in original_definition
+
+    _run_revision(
+        sandbox.engine,
+        sandbox.schema,
+        "0018_r7b_lifecycle_null_review_after",
+    )
+    with sandbox.engine.connect() as connection:
+        upgraded_revision = connection.scalar(
+            text(
+                f'SELECT version_num FROM "{sandbox.schema}".alembic_version'
+            )
+        )
+    assert upgraded_revision == "0018_r7b_lifecycle_null_review_after"
