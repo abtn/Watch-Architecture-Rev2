@@ -3150,7 +3150,10 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         _task_id,
         require_recorded_assessment,
     )
-    from core.knowledge_lifecycle_tasks import KnowledgeLifecycleAssessmentTask
+    from core.knowledge_lifecycle_tasks import (
+        KnowledgeLifecycleAssessmentTask,
+        KnowledgeLifecycleAssessmentTaskRunner,
+    )
     from core.models import (
         KnowledgeLifecycleAssessment,
         LearningChangeOperatorProvenance,
@@ -3419,16 +3422,84 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     assert task_adapter.create(learning_change_id) == task_id
     assert task_adapter.create(learning_change_id) == task_id
     task_adapter.validate(task_id)
-    admission = TaskRuntime(session_factory, snapshot_store).admit(task_id)
-    assert admission.attempt_count == 1
+
+    class CrashAfterAssessmentRecordRuntime(TaskRuntime):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.crash_next_success = True
+
+        def finalize(self, observation):
+            if (
+                self.crash_next_success
+                and observation.result_category
+                == "success_knowledge_lifecycle_assessed"
+            ):
+                self.crash_next_success = False
+                raise RuntimeError(
+                    "simulated_process_loss_after_lifecycle_assessment_commit"
+                )
+            return super().finalize(observation)
+
+    crash_runtime = CrashAfterAssessmentRecordRuntime(
+        session_factory, snapshot_store
+    )
+    runner = KnowledgeLifecycleAssessmentTaskRunner(
+        session_factory,
+        snapshot_store,
+        runtime=crash_runtime,
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="simulated_process_loss_after_lifecycle_assessment_commit",
+    ):
+        runner.run(task_id)
+
+    with session_factory() as session:
+        committed_assessment = session.scalar(
+            select(KnowledgeLifecycleAssessment).where(
+                KnowledgeLifecycleAssessment.task_id == task_id
+            )
+        )
+        running_task = session.get(Task, task_id)
+        assert committed_assessment is not None
+        assert running_task is not None and running_task.status == "running"
+        recorded_at = committed_assessment.recorded_at
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == task_id
+            )
+        ) == 0
 
     first = task_adapter.record(task_id)
     assert first.assessment_result == "eligible"
-    assert not first.replayed
-    replay = task_adapter.record(task_id)
+    assert first.replayed
+    assert first.assessment_id == committed_assessment.id
+    assert first.assessment_payload_hash == committed_assessment.payload_hash
+
+    recovery = TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+        now=recorded_at + timedelta(seconds=61)
+    )
+    assert recovery.completed == (task_id,)
+    assert recovery.retried == ()
+    assert recovery.failed == ()
+
+    replay = runner.run(task_id)
+    assert replay.status == "done"
     assert replay.replayed
     assert replay.assessment_id == first.assessment_id
-    assert replay.assessment_payload_hash == first.assessment_payload_hash
+    assert replay.assessment_result == "eligible"
+    assert replay.outcome_id is not None
+
+    historical_payload = TaskRuntime._observation_payload(
+        TerminalObservation(
+            task_id=task_id,
+            attempt=1,
+            result_category="terminal_failure",
+            observed_at=datetime.now(timezone.utc),
+            failure_reason="historical_failure",
+        )
+    )
+    assert "knowledge_lifecycle_assessment_id" not in historical_payload
 
     with session_factory() as session:
         item = session.get(KnowledgeItem, committed.knowledge_item_id)
@@ -3439,7 +3510,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         )
         assert item is not None and change is not None and task is not None
         assert assessment is not None
-        assert task.status == "running"
+        assert task.status == "done"
         assert task.allowed_writes == ["KnowledgeLifecycleAssessment"]
         assert change.status == "proposed"
         assert change.committed_by_task_id is None
@@ -3455,8 +3526,8 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             change,
             snapshot_store,
             session_factory,
-            require_task_done=False,
-            require_current=True,
+            require_task_done=True,
+            require_current=False,
         )
         assert verified.id == assessment.id
         assert session.scalar(
@@ -3471,6 +3542,24 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                 Event.type == "knowledge_lifecycle_assessment_recorded",
             )
         ) == 1
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) == 1
+        terminal_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task_id,
+                    Event.type == "task_completed",
+                )
+            )
+        )
+        assert len(terminal_events) == 1
+        assert terminal_events[0].payload["knowledge_lifecycle_assessment_id"] == str(
+            assessment.id
+        )
 
     from sqlalchemy.exc import DBAPIError
 
