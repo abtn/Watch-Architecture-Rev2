@@ -272,8 +272,11 @@ class KnowledgeLifecycleAssessmentTaskRunner:
         outcomes = list(
             session.scalars(
                 select(Outcome).where(
-                    Outcome.recorded_by_task_id == task.id,
-                    Outcome.outcome_type == "task_execution",
+                    (Outcome.recorded_by_task_id == task.id)
+                    | (
+                        (Outcome.subject_kind == "task")
+                        & (Outcome.subject_id == task.id)
+                    )
                 )
             )
         )
