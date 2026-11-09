@@ -2393,8 +2393,8 @@ class TaskRuntime:
         self, session: Session, task: Task
     ) -> TerminalObservation | None:
         from core.knowledge_lifecycle import (
-            KnowledgeLifecycleAssessmentError,
             RECORDED_EVENT_TYPE,
+            KnowledgeLifecycleAssessmentError,
             require_recorded_assessment,
         )
 
