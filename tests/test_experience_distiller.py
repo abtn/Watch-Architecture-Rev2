@@ -3553,6 +3553,44 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             )
         ) == 0
 
+    from core.knowledge_lifecycle import (
+        RECORDED_EVENT_TYPE,
+        recorded_assessment_event_payload,
+    )
+
+    recovery_at = recorded_at + timedelta(seconds=61)
+    with session_factory.begin() as session:
+        session.execute(
+            delete(Event).where(
+                Event.id == committed_assessment.recorded_event_id
+            )
+        )
+    with pytest.raises(
+        TaskNotFinalizable,
+        match="knowledge_lifecycle_recorded_event_invalid",
+    ):
+        TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+            now=recovery_at
+        )
+    with session_factory() as session:
+        still_running = session.get(Task, task_id)
+        assert still_running is not None and still_running.status == "running"
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == task_id
+            )
+        ) == 0
+    with session_factory.begin() as session:
+        session.add(
+            Event(
+                id=committed_assessment.recorded_event_id,
+                task_id=task_id,
+                type=RECORDED_EVENT_TYPE,
+                payload=recorded_assessment_event_payload(committed_assessment),
+                created_at=committed_assessment.recorded_at,
+            )
+        )
+
     first = task_adapter.record(task_id)
     assert first.assessment_result == "eligible"
     assert first.replayed
@@ -3560,7 +3598,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     assert first.assessment_payload_hash == committed_assessment.payload_hash
 
     recovery = TaskRuntime(session_factory, snapshot_store).recover_interrupted(
-        now=recorded_at + timedelta(seconds=61)
+        now=recovery_at
     )
     assert recovery.completed == (task_id,)
     assert recovery.retried == ()
