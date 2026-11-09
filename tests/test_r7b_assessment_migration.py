@@ -1344,7 +1344,7 @@ def _upgrade_lifecycle_null_review_schema(
     _run_revision(
         sandbox.engine,
         sandbox.schema,
-        "0018_r7b_lifecycle_null_review_after",
+        "0018_r7b_lifecycle_review_date",
     )
 
 
@@ -1471,7 +1471,7 @@ def test_0018_constraint_and_immutability_contract_are_preserved(
             )
         )
 
-    assert revision == "0018_r7b_lifecycle_null_review_after"
+    assert revision == "0018_r7b_lifecycle_review_date"
     assert "successor_review_after" in definition
     assert "ineligible" in definition
     assert "trg_lifecycle_assessment_immutable_row" in triggers
@@ -1567,7 +1567,7 @@ def test_0018_downgrade_refuses_to_invalidate_null_date_history(
             )
         )
 
-    assert revision == "0018_r7b_lifecycle_null_review_after"
+    assert revision == "0018_r7b_lifecycle_review_date"
     assert "ineligible" in definition
 
 
@@ -1607,7 +1607,7 @@ def test_0018_empty_downgrade_and_reupgrade_preserve_single_head(
     _run_revision(
         sandbox.engine,
         sandbox.schema,
-        "0018_r7b_lifecycle_null_review_after",
+        "0018_r7b_lifecycle_review_date",
     )
     with sandbox.engine.connect() as connection:
         upgraded_revision = connection.scalar(
@@ -1615,4 +1615,4 @@ def test_0018_empty_downgrade_and_reupgrade_preserve_single_head(
                 f'SELECT version_num FROM "{sandbox.schema}".alembic_version'
             )
         )
-    assert upgraded_revision == "0018_r7b_lifecycle_null_review_after"
+    assert upgraded_revision == "0018_r7b_lifecycle_review_date"
