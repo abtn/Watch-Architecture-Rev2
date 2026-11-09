@@ -718,7 +718,7 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 
 **B3.4 acceptance and authority boundary:** B3.4 is accepted and merged. It adds deterministic lifecycle assessment and immutable recording only. It does not add TaskRuntime lifecycle hooks, a TaskRunner, TaskDispatcher activation, candidate creation, approval, or `KnowledgeItem`/`LearningChange` writes. The active approval allowlist remains exactly `create`.
 
-**Next gate:** B3.5 plan extraction and documentation-only work were authorized on 2026-11-09. This does not authorize B3.5 runtime/source/test/migration implementation; that requires a separate explicit Operator instruction. B3.6–B3.9 and B4–B6 remain gated.
+**Next gate at B3.4 closeout (2026-11-09):** B3.5 plan extraction and documentation-only work were authorized at that time. B3.5 implementation was subsequently authorized, verified, and merged as recorded in the following section. B3.6–B3.9 and B4–B6 remain gated.
 
 
 ## R7-B B3.5 — TaskRuntime, recovery, and lifecycle Events (MERGED — PR #66)
