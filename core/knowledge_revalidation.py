@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Any, Literal, Mapping
-from uuid import UUID, NAMESPACE_URL, uuid4, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
