@@ -295,23 +295,116 @@ class KnowledgeLifecycleAssessmentTaskRunner:
         ):
             raise TaskNotEligible("knowledge_lifecycle_terminal_outcome_invalid")
 
-        terminal_events = list(
+        history_events = list(
             session.scalars(
-                select(Event).where(
+                select(Event)
+                .where(
                     Event.task_id == task.id,
-                    Event.type.in_(("task_attempt_failed", "task_failed")),
+                    Event.type.in_(
+                        (
+                            "task_started",
+                            "task_attempt_failed",
+                            "task_retry_scheduled",
+                            "task_failed",
+                        )
+                    ),
                 )
+                .order_by(Event.created_at, Event.id)
             )
         )
-        by_type: dict[str, Event] = {}
-        for event in terminal_events:
-            if event.type in by_type:
-                raise TaskNotEligible("knowledge_lifecycle_terminal_events_invalid")
-            by_type[event.type] = event
-        if set(by_type) != {"task_attempt_failed", "task_failed"}:
+        started_by_attempt: dict[int, Event] = {}
+        failed_by_attempt: dict[int, Event] = {}
+        retry_by_attempt: dict[int, Event] = {}
+        terminal_events: list[Event] = []
+        for event in history_events:
+            event_payload = event.payload
+            if not isinstance(event_payload, dict):
+                raise TaskNotEligible(
+                    "knowledge_lifecycle_terminal_events_invalid"
+                )
+            if event.type == "task_failed":
+                terminal_events.append(event)
+                continue
+            attempt = event_payload.get("attempt_count")
+            if (
+                isinstance(attempt, bool)
+                or not isinstance(attempt, int)
+                or attempt < 1
+            ):
+                raise TaskNotEligible(
+                    "knowledge_lifecycle_terminal_events_invalid"
+                )
+            destination = {
+                "task_started": started_by_attempt,
+                "task_attempt_failed": failed_by_attempt,
+                "task_retry_scheduled": retry_by_attempt,
+            }[event.type]
+            if attempt in destination:
+                raise TaskNotEligible(
+                    "knowledge_lifecycle_terminal_events_invalid"
+                )
+            destination[attempt] = event
+
+        if (
+            len(terminal_events) != 1
+            or set(started_by_attempt) != set(range(1, task.attempt_count + 1))
+            or set(failed_by_attempt)
+            != set(range(1, task.attempt_count + 1))
+            or set(retry_by_attempt) != set(range(1, task.attempt_count))
+        ):
             raise TaskNotEligible("knowledge_lifecycle_terminal_events_invalid")
 
-        payload = by_type["task_failed"].payload
+        start_fields = {"from_status", "to_status", "attempt_count"}
+        retry_fields = {
+            "from_status",
+            "to_status",
+            "attempt_count",
+            "result_category",
+            "failure_reason",
+        }
+        for attempt in range(1, task.attempt_count + 1):
+            started = started_by_attempt[attempt]
+            started_payload = started.payload
+            if (
+                set(started_payload) != start_fields
+                or started_payload.get("from_status") != "pending"
+                or started_payload.get("to_status") != "running"
+                or started_payload.get("attempt_count") != attempt
+            ):
+                raise TaskNotEligible(
+                    "knowledge_lifecycle_terminal_events_invalid"
+                )
+            failed = failed_by_attempt[attempt]
+            if attempt < task.attempt_count:
+                retry = retry_by_attempt[attempt]
+                retry_payload = retry.payload
+                if (
+                    set(failed.payload) != retry_fields
+                    or failed.payload.get("from_status") != "running"
+                    or failed.payload.get("to_status") != "pending"
+                    or failed.payload.get("result_category")
+                    != "retryable_failure"
+                    or not isinstance(failed.payload.get("failure_reason"), str)
+                    or not failed.payload["failure_reason"].strip()
+                    or retry_payload != failed.payload
+                    or not (
+                        started.created_at
+                        <= failed.created_at
+                        <= retry.created_at
+                        <= started_by_attempt[attempt + 1].created_at
+                    )
+                ):
+                    raise TaskNotEligible(
+                        "knowledge_lifecycle_terminal_events_invalid"
+                    )
+            elif failed.payload.get("attempt_count") != task.attempt_count:
+                raise TaskNotEligible(
+                    "knowledge_lifecycle_terminal_events_invalid"
+                )
+
+        terminal_attempt_failed = failed_by_attempt[task.attempt_count]
+        terminal_event = terminal_events[0]
+        payload = terminal_event.payload
         expected_fields = {
             "from_status",
             "to_status",
@@ -336,8 +429,14 @@ class KnowledgeLifecycleAssessmentTaskRunner:
             or payload.get("observation_snapshot_ref")
             != outcome.observation_snapshot_ref
             or payload.get("observation_hash") != outcome.observation_hash
-            or by_type["task_attempt_failed"].payload != payload
-            or any(event.created_at < outcome.observed_at for event in by_type.values())
+            or terminal_attempt_failed.payload != payload
+            or not (
+                started_by_attempt[task.attempt_count].created_at
+                <= terminal_attempt_failed.created_at
+                <= terminal_event.created_at
+            )
+            or terminal_attempt_failed.created_at < outcome.observed_at
+            or terminal_event.created_at < outcome.observed_at
         ):
             raise TaskNotEligible("knowledge_lifecycle_terminal_events_invalid")
 
