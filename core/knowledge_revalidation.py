@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Any, Literal, Mapping
-from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
+from uuid import UUID, NAMESPACE_URL, uuid4, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
@@ -129,7 +129,9 @@ class KnowledgeRevalidationFinding(BaseModel):
     @field_validator("evidence_refs")
     @classmethod
     def unique_references(cls, values: tuple[str, ...]) -> tuple[str, ...]:
-        normalized = tuple(value.strip() if isinstance(value, str) else value for value in values)
+        normalized = tuple(
+            value.strip() if isinstance(value, str) else value for value in values
+        )
         if any(not isinstance(value, str) or not value for value in normalized):
             raise ValueError("knowledge_revalidation_evidence_reference_required")
         if len(set(normalized)) != len(normalized):
@@ -145,7 +147,9 @@ class KnowledgeRevalidationAssessmentDraft(BaseModel):
     freshness_disposition: Literal[
         "current", "stale", "insufficient", "conflicting", "unassessable"
     ]
-    findings: tuple[KnowledgeRevalidationFinding, ...] = Field(min_length=1, max_length=256)
+    findings: tuple[KnowledgeRevalidationFinding, ...] = Field(
+        min_length=1, max_length=256
+    )
 
 
 @dataclass(frozen=True)
@@ -607,7 +611,9 @@ def build_revalidation_task_request(
         "current_learning_change_id": str(
             learning_change.previous_state["state"]["current_learning_change_id"]
         ),
-        "target_content_version": int(learning_change.previous_state["state"]["version"]),
+        "target_content_version": int(
+            learning_change.previous_state["state"]["version"]
+        ),
         "target_content_hash": target_content_hash,
         "target_content_hash_scheme": KNOWLEDGE_CONTENT_HASH_SCHEME,
         "target_state_hash": target_state_hash,
@@ -820,7 +826,9 @@ def validate_revalidation_draft(
     return findings, derived_freshness, result
 
 
-def assessment_record_payload(assessment: KnowledgeRevalidationAssessment) -> dict[str, Any]:
+def assessment_record_payload(
+    assessment: KnowledgeRevalidationAssessment,
+) -> dict[str, Any]:
     return {
         "assessment_version": assessment.assessment_version,
         "id": str(assessment.id),
@@ -962,8 +970,12 @@ class KnowledgeRevalidationAssessmentService:
         evaluator_identity: str,
         evaluator_revision: str,
     ) -> KnowledgeRevalidationAssessmentResult:
-        identity = evaluator_identity.strip() if isinstance(evaluator_identity, str) else ""
-        revision = evaluator_revision.strip() if isinstance(evaluator_revision, str) else ""
+        identity = (
+            evaluator_identity.strip() if isinstance(evaluator_identity, str) else ""
+        )
+        revision = (
+            evaluator_revision.strip() if isinstance(evaluator_revision, str) else ""
+        )
         if not identity or not revision or len(identity) > 255 or len(revision) > 255:
             raise KnowledgeRevalidationAssessmentError(
                 "knowledge_revalidation_evaluator_identity_invalid"
@@ -1120,7 +1132,8 @@ def require_recorded_assessment(
             select(KnowledgeRevalidationAssessment)
             .where(
                 KnowledgeRevalidationAssessment.team_id == learning_change.team_id,
-                KnowledgeRevalidationAssessment.learning_change_id == learning_change.id,
+                KnowledgeRevalidationAssessment.learning_change_id
+                == learning_change.id,
             )
             .with_for_update()
         )
