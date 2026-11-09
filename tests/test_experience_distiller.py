@@ -3423,6 +3423,89 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     assert task_adapter.create(learning_change_id) == task_id
     task_adapter.validate(task_id)
 
+    from core.knowledge_lifecycle import REQUEST_EVENT_TYPE
+    from core.task_runtime import TaskNotEligible
+
+    admission_runtime = TaskRuntime(session_factory, snapshot_store)
+    invalid_shapes = [
+        ("task_type", "unrecognized_assessment_task"),
+        ("allowed_writes", ["KnowledgeItem"]),
+        (
+            "budget",
+            {
+                "max_tool_calls": 1,
+                "max_cost_usd": 0.0,
+                "deadline_seconds": 30,
+            },
+        ),
+        ("max_attempts", 4),
+    ]
+    for attribute, invalid_value in invalid_shapes:
+        with session_factory.begin() as session:
+            task = session.get(Task, task_id)
+            assert task is not None
+            original_value = getattr(task, attribute)
+            setattr(task, attribute, invalid_value)
+        with pytest.raises(TaskNotEligible):
+            admission_runtime.admit(task_id)
+        with session_factory.begin() as session:
+            task = session.get(Task, task_id)
+            assert task is not None
+            setattr(task, attribute, original_value)
+
+    with session_factory.begin() as session:
+        request_event = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+        assert request_event is not None
+        duplicate_request_id = uuid4()
+        session.add(
+            Event(
+                id=duplicate_request_id,
+                task_id=task_id,
+                type=REQUEST_EVENT_TYPE,
+                payload=dict(request_event.payload),
+                created_at=request_event.created_at,
+            )
+        )
+    with pytest.raises(
+        TaskNotEligible,
+        match="knowledge_lifecycle_request_event_invalid",
+    ):
+        admission_runtime.admit(task_id)
+    with session_factory.begin() as session:
+        session.execute(delete(Event).where(Event.id == duplicate_request_id))
+
+    with pytest.raises(
+        TaskNotFinalizable,
+        match="knowledge_lifecycle_assessment_id_required",
+    ):
+        TaskRuntime._validate_observation(
+            TerminalObservation(
+                task_id=task_id,
+                attempt=1,
+                result_category="success_knowledge_lifecycle_assessed",
+                observed_at=datetime.now(timezone.utc),
+            )
+        )
+    with pytest.raises(
+        TaskNotFinalizable,
+        match="terminal_evidence_not_allowed",
+    ):
+        TaskRuntime._validate_observation(
+            TerminalObservation(
+                task_id=task_id,
+                attempt=1,
+                result_category="terminal_failure",
+                observed_at=datetime.now(timezone.utc),
+                failure_reason="invalid foreign assessment identity",
+                knowledge_lifecycle_assessment_id=uuid4(),
+            )
+        )
+
     class CrashAfterAssessmentRecordRuntime(TaskRuntime):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
