@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Literal, Mapping
+from typing import Any, Literal, Mapping, Sequence, cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -583,7 +583,7 @@ def build_revalidation_task_request(
     (
         target,
         source_task,
-        _,
+        target_state,
         target_state_hash,
         target_content_hash,
         proposal_hash,
@@ -608,12 +608,8 @@ def build_revalidation_task_request(
         "learning_change_id": str(learning_change.id),
         "proposed_by_task_id": str(source_task.id),
         "knowledge_item_id": str(target.id),
-        "current_learning_change_id": str(
-            learning_change.previous_state["state"]["current_learning_change_id"]
-        ),
-        "target_content_version": int(
-            learning_change.previous_state["state"]["version"]
-        ),
+        "current_learning_change_id": target_state["current_learning_change_id"],
+        "target_content_version": target_state["version"],
         "target_content_hash": target_content_hash,
         "target_content_hash_scheme": KNOWLEDGE_CONTENT_HASH_SCHEME,
         "target_state_hash": target_state_hash,
@@ -760,7 +756,7 @@ def validate_revalidation_task_request(
 
 
 def derive_freshness_disposition(
-    findings: list[KnowledgeRevalidationFinding],
+    findings: Sequence[KnowledgeRevalidationFinding],
 ) -> str:
     codes = {finding.code for finding in findings}
     has_support = "supports_revalidation" in codes
@@ -778,7 +774,7 @@ def derive_freshness_disposition(
 
 def derive_assessment_result(
     freshness_disposition: str,
-    findings: list[KnowledgeRevalidationFinding],
+    findings: Sequence[KnowledgeRevalidationFinding],
 ) -> str:
     if freshness_disposition != "current":
         return "indeterminate"
@@ -1211,9 +1207,18 @@ def require_recorded_assessment(
         )
     # Re-run reference completeness and contrary-evidence checks against the
     # independently rebuilt canonical basis.
+    if assessment.freshness_disposition not in FRESHNESS_DISPOSITIONS:
+        raise KnowledgeRevalidationAssessmentError(
+            "knowledge_revalidation_recorded_freshness_invalid"
+        )
     findings_draft = KnowledgeRevalidationAssessmentDraft(
-        freshness_disposition=assessment.freshness_disposition,
-        findings=stored_findings,
+        freshness_disposition=cast(
+            Literal[
+                "current", "stale", "insufficient", "conflicting", "unassessable"
+            ],
+            assessment.freshness_disposition,
+        ),
+        findings=tuple(stored_findings),
     )
     validate_revalidation_draft(findings_draft, context.pack)
     recorded_events = list(
