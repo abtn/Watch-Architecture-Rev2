@@ -3135,3 +3135,274 @@ def test_original_create_approval_replays_after_later_history_transition(
                 session.execute(delete(Event).where(Event.task_id == later_task_id))
                 session.execute(delete(Task).where(Task.id == later_task_id))
         _cleanup_operator_decision_task(session_factory, task_id)
+
+
+def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    from core.knowledge_lifecycle import (
+        KnowledgeLifecycleAssessmentService,
+        require_recorded_assessment,
+    )
+    from core.knowledge_lifecycle_tasks import KnowledgeLifecycleAssessmentTask
+    from core.models import (
+        KnowledgeLifecycleAssessment,
+        LearningChangeOperatorProvenance,
+    )
+
+    fixture = distillation_fixture(2, include_contrary=False)
+    create_proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=create_proposal.learning_change_id,
+        )
+    )
+    approval_task_id, approval_attempt, principal = _create_admitted_approval_task(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        create_proposal.learning_change_id,
+    )
+    committed = LearningCommitService(session_factory, snapshot_store).decide(
+        approval_task_id, approval_attempt, principal
+    )
+    assert committed.knowledge_item_id is not None
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=approval_task_id,
+            attempt=approval_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=committed.committed_at,
+            learning_change_id=committed.learning_change_id,
+        )
+    )
+
+    source_task_id, learning_change_id = uuid4(), uuid4()
+    started_at = datetime.now(timezone.utc)
+    completed_at = started_at + timedelta(seconds=2)
+    proposal_hash = "sha256:" + ("d" * 64)
+    rationale = {
+        "schema_version": 1,
+        "summary": "The existing procedure is no longer appropriate for this context.",
+        "reasons": [
+            {
+                "category": "evidence_no_longer_reliable",
+                "statement": "The primary supporting source has been superseded.",
+            },
+            {
+                "category": "applicability_changed",
+                "statement": "The original applicability conditions no longer hold.",
+            },
+        ],
+    }
+    observation_ref, observation_hash = snapshot_store.put(
+        (
+            '{"attempt":1,"learning_change_id":"'
+            + str(learning_change_id)
+            + '","result_category":"success_learning_change_proposed"}'
+        ).encode("utf-8")
+    )
+
+    with session_factory.begin() as session:
+        team = session.get(Team, fixture.team_id)
+        item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        assert team is not None and item is not None
+        source_task = Task(
+            id=source_task_id,
+            team_id=fixture.team_id,
+            task_type="propose_learning_change",
+            status="done",
+            attempt_count=1,
+            policy_version=1,
+            objective_id=None,
+            plan_id=None,
+            plan_action_id=None,
+            allowed_writes=["LearningChange"],
+            budget={
+                "max_tool_calls": 0,
+                "max_cost_usd": 0.0,
+                "deadline_seconds": 30,
+            },
+            created_at=started_at,
+            completed_at=completed_at,
+            max_attempts=3,
+        )
+        session.add(source_task)
+        session.flush()
+        pack = ExperienceDistiller(
+            session_factory, snapshot_store, provider=None
+        )._build_pack(
+            session,
+            source_task,
+            team,
+            tuple(sorted(case.evaluation_id for case in fixture.cases)),
+            allow_completed_task=True,
+            include_version_marker=True,
+        )
+        previous_state = knowledge_item_state(item)
+        change = LearningChange(
+            id=learning_change_id,
+            team_id=fixture.team_id,
+            target_kind="knowledge_item",
+            target_id=item.id,
+            operation="retire",
+            proposed_state={
+                "proposal_hash": proposal_hash,
+                "evidence_basis_hash": pack.basis_hash,
+                "operator_rationale": rationale,
+            },
+            previous_state=encode_state_snapshot(previous_state),
+            committed_state=None,
+            evidence_basis=pack.evidence_basis,
+            evidence_basis_hash=pack.basis_hash,
+            status="proposed",
+            idempotency_key=f"r7b-lifecycle-test-{learning_change_id}",
+            proposed_by_task_id=source_task_id,
+            committed_by_task_id=None,
+            operator_id=None,
+            decision_reason=None,
+            created_at=started_at,
+        )
+        session.add(change)
+        session.flush()
+        session.add(
+            LearningChangeOperatorProvenance(
+                learning_change_id=learning_change_id,
+                team_id=fixture.team_id,
+                issuer="https://operator.example.test",
+                subject="operator-lifecycle-test",
+                recorded_at=started_at,
+            )
+        )
+        outcome = Outcome(
+            id=uuid4(),
+            team_id=fixture.team_id,
+            subject_kind="task",
+            subject_id=source_task_id,
+            outcome_type="task_execution",
+            expected=None,
+            observation_snapshot_ref=observation_ref,
+            observation_hash=observation_hash,
+            observed_at=completed_at,
+            recorded_by_task_id=source_task_id,
+        )
+        session.add(outcome)
+        session.flush()
+        session.add_all(
+            [
+                Event(
+                    id=uuid4(),
+                    task_id=source_task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 1,
+                    },
+                    created_at=started_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=source_task_id,
+                    type="learning_change_proposed",
+                    payload={
+                        "learning_change_id": str(learning_change_id),
+                        "operation": "retire",
+                        "proposal_hash": proposal_hash,
+                        "evidence_basis_hash": pack.basis_hash,
+                        "attempt_count": 1,
+                    },
+                    created_at=completed_at - timedelta(seconds=1),
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=source_task_id,
+                    type="task_completed",
+                    payload={
+                        "from_status": "running",
+                        "to_status": "done",
+                        "attempt_count": 1,
+                        "result_category": "success_learning_change_proposed",
+                        "failure_reason": None,
+                        "outcome_id": str(outcome.id),
+                        "observation_snapshot_ref": observation_ref,
+                        "observation_hash": observation_hash,
+                        "learning_change_id": str(learning_change_id),
+                    },
+                    created_at=completed_at,
+                ),
+            ]
+        )
+
+    service = KnowledgeLifecycleAssessmentService(
+        session_factory, snapshot_store
+    )
+    task_adapter = KnowledgeLifecycleAssessmentTask(
+        session_factory, snapshot_store
+    )
+    task_id = task_adapter.create(learning_change_id)
+    assert task_adapter.create(learning_change_id) == task_id
+    task_adapter.validate(task_id)
+    admission = TaskRuntime(session_factory, snapshot_store).admit(task_id)
+    assert admission.attempt_count == 1
+
+    first = task_adapter.record(task_id)
+    assert first.assessment_result == "eligible"
+    assert not first.replayed
+    replay = task_adapter.record(task_id)
+    assert replay.replayed
+    assert replay.assessment_id == first.assessment_id
+    assert replay.assessment_payload_hash == first.assessment_payload_hash
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        change = session.get(LearningChange, learning_change_id)
+        task = session.get(Task, task_id)
+        assessment = session.get(
+            KnowledgeLifecycleAssessment, first.assessment_id
+        )
+        assert item is not None and change is not None and task is not None
+        assert assessment is not None
+        assert task.status == "running"
+        assert task.allowed_writes == ["KnowledgeLifecycleAssessment"]
+        assert change.status == "proposed"
+        assert change.committed_by_task_id is None
+        assert item.current_learning_change_id == committed.learning_change_id
+        assert item.version == 1
+        assert assessment.operation == "retire"
+        assert assessment.assessment_result == "eligible"
+        assert assessment.variant_payload == {}
+        assert assessment.successor_knowledge_item_id is None
+        assert assessment.payload_hash == first.assessment_payload_hash
+        verified = require_recorded_assessment(
+            session,
+            change,
+            snapshot_store,
+            session_factory,
+            require_task_done=False,
+            require_current=True,
+        )
+        assert verified.id == assessment.id
+        assert session.scalar(
+            select(func.count(KnowledgeLifecycleAssessment.id)).where(
+                KnowledgeLifecycleAssessment.learning_change_id
+                == learning_change_id
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == task_id,
+                Event.type == "knowledge_lifecycle_assessment_recorded",
+            )
+        ) == 1
