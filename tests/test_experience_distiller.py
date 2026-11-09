@@ -3153,6 +3153,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         _domain_hash,
         _normalize_json,
         _task_id,
+        _sha256_json,
         derive_lifecycle_findings,
         require_recorded_assessment,
     )
@@ -3161,8 +3162,11 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         KnowledgeLifecycleAssessmentTaskRunner,
     )
     from core.models import (
+        Event,
         KnowledgeLifecycleAssessment,
         LearningChangeOperatorProvenance,
+        Outcome,
+        Task,
     )
 
     if assessment_result == "ineligible":
@@ -3392,6 +3396,8 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
 
     task_id = _task_id(fixture.team_id, learning_change_id)
 
+    failed_task_id = uuid4()
+
     def cleanup_lifecycle_records():
         with session_factory.begin() as session:
             session.execute(
@@ -3431,12 +3437,14 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             )
             session.execute(
                 delete(Event).where(
-                    Event.task_id.in_([source_task_id, task_id])
+                    Event.task_id.in_([source_task_id, task_id, failed_task_id])
                 )
             )
             session.execute(
                 delete(Outcome).where(
-                    Outcome.recorded_by_task_id.in_([source_task_id, task_id])
+                    Outcome.recorded_by_task_id.in_(
+                        [source_task_id, task_id, failed_task_id]
+                    )
                 )
             )
             session.execute(
@@ -3445,7 +3453,9 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                 )
             )
             session.execute(
-                delete(Task).where(Task.id.in_([source_task_id, task_id]))
+                delete(Task).where(
+                Task.id.in_([source_task_id, task_id, failed_task_id])
+            )
             )
 
     request.addfinalizer(cleanup_lifecycle_records)
@@ -3694,6 +3704,188 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     assert replay.assessment_result == assessment_result
     assert first_assessment_result == assessment_result
     assert replay.outcome_id is not None
+
+    # Build a second, valid lifecycle Task whose execution terminates in failure.
+    # Its request Event is copied from the valid task and rebound to a new Task ID.
+    failure_started_at = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        original_task = session.get(Task, task_id)
+        original_request = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+        assert original_task is not None and original_request is not None
+        failed_request_payload = dict(original_request.payload)
+        failed_request_payload["task_id"] = str(failed_task_id)
+        unsigned_request = {
+            key: value
+            for key, value in failed_request_payload.items()
+            if key != "request_hash"
+        }
+        failed_request_payload["request_hash"] = _sha256_json(unsigned_request)
+        failed_task = Task(
+            id=failed_task_id,
+            team_id=original_task.team_id,
+            task_type=original_task.task_type,
+            status="running",
+            attempt_count=1,
+            policy_version=original_task.policy_version,
+            objective_id=None,
+            plan_id=None,
+            plan_action_id=None,
+            allowed_writes=list(original_task.allowed_writes),
+            budget=dict(original_task.budget),
+            created_at=failure_started_at,
+            completed_at=None,
+            max_attempts=original_task.max_attempts,
+        )
+        session.add(failed_task)
+        session.add_all(
+            [
+                Event(
+                    id=uuid4(),
+                    task_id=failed_task_id,
+                    type=REQUEST_EVENT_TYPE,
+                    payload=failed_request_payload,
+                    created_at=failure_started_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=failed_task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 1,
+                    },
+                    created_at=failure_started_at,
+                ),
+            ]
+        )
+
+    failure_finalization = TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=failed_task_id,
+            attempt=1,
+            result_category="terminal_failure",
+            observed_at=failure_started_at,
+            failure_reason="injected_lifecycle_assessment_failure",
+        )
+    )
+    with session_factory() as session:
+        failed_outcome = session.get(Outcome, failure_finalization.outcome_id)
+        assert failed_outcome is not None
+        failed_outcome_values = {
+            "id": failed_outcome.id,
+            "team_id": failed_outcome.team_id,
+            "subject_kind": failed_outcome.subject_kind,
+            "subject_id": failed_outcome.subject_id,
+            "outcome_type": failed_outcome.outcome_type,
+            "expected": failed_outcome.expected,
+            "observation_snapshot_ref": failed_outcome.observation_snapshot_ref,
+            "observation_hash": failed_outcome.observation_hash,
+            "observed_at": failed_outcome.observed_at,
+            "recorded_by_task_id": failed_outcome.recorded_by_task_id,
+        }
+
+    failed_replay = runner.run(failed_task_id)
+    assert failed_replay.status == "failed"
+    assert failed_replay.replayed
+    assert failed_replay.outcome_id == failure_finalization.outcome_id
+
+    # Failed replay must reject an unrelated Task type.
+    with session_factory.begin() as session:
+        failed_task = session.get(Task, failed_task_id)
+        assert failed_task is not None
+        failed_task.task_type = "unrelated_task"
+    with pytest.raises(TaskNotEligible, match="knowledge_lifecycle_task_wrong_type"):
+        runner.run(failed_task_id)
+    with session_factory.begin() as session:
+        failed_task = session.get(Task, failed_task_id)
+        assert failed_task is not None
+        failed_task.task_type = "assess_knowledge_lifecycle"
+
+    # A missing or duplicated terminal Outcome is corruption, not a replay.
+    with session_factory.begin() as session:
+        session.execute(
+            delete(Outcome).where(Outcome.id == failure_finalization.outcome_id)
+        )
+    with pytest.raises(
+        TaskNotEligible, match="knowledge_lifecycle_terminal_outcome_invalid"
+    ):
+        runner.run(failed_task_id)
+    with session_factory.begin() as session:
+        session.add(Outcome(**failed_outcome_values))
+        session.add(
+            Outcome(
+                **{
+                    **failed_outcome_values,
+                    "id": uuid4(),
+                }
+            )
+        )
+    with pytest.raises(
+        TaskNotEligible, match="knowledge_lifecycle_terminal_outcome_invalid"
+    ):
+        runner.run(failed_task_id)
+    with session_factory.begin() as session:
+        session.execute(
+            delete(Outcome).where(
+                Outcome.recorded_by_task_id == failed_task_id,
+                Outcome.id != failure_finalization.outcome_id,
+            )
+        )
+
+    # A missing terminal Event must also fail closed.
+    with session_factory.begin() as session:
+        attempt_failed_event = session.scalar(
+            select(Event).where(
+                Event.task_id == failed_task_id,
+                Event.type == "task_attempt_failed",
+            )
+        )
+        assert attempt_failed_event is not None
+        original_attempt_failed_payload = dict(attempt_failed_event.payload)
+        attempt_failed_event.payload = {
+            **original_attempt_failed_payload,
+            "failure_reason": "tampered",
+        }
+    with pytest.raises(
+        TaskNotEligible, match="knowledge_lifecycle_terminal_events_invalid"
+    ):
+        runner.run(failed_task_id)
+    with session_factory.begin() as session:
+        attempt_failed_event = session.scalar(
+            select(Event).where(
+                Event.task_id == failed_task_id,
+                Event.type == "task_attempt_failed",
+            )
+        )
+        assert attempt_failed_event is not None
+        attempt_failed_event.payload = original_attempt_failed_payload
+        session.execute(
+            delete(Event).where(
+                Event.task_id == failed_task_id,
+                Event.type == "task_attempt_failed",
+            )
+        )
+    with pytest.raises(
+        TaskNotEligible, match="knowledge_lifecycle_terminal_events_invalid"
+    ):
+        runner.run(failed_task_id)
+    with session_factory.begin() as session:
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=failed_task_id,
+                type="task_attempt_failed",
+                payload=original_attempt_failed_payload,
+                created_at=failure_started_at,
+            )
+        )
+    assert runner.run(failed_task_id).replayed
 
     historical_payload = TaskRuntime._observation_payload(
         TerminalObservation(
