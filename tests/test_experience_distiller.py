@@ -3403,7 +3403,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             )
             session.execute(
                 delete(Outcome).where(
-                    Outcome.recorded_by_task_id == source_task_id
+                    Outcome.recorded_by_task_id.in_([source_task_id, task_id])
                 )
             )
             session.execute(
