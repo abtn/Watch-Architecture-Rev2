@@ -1441,12 +1441,17 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
     )
 
     class CrashAfterAssessmentRecordRuntime(TaskRuntime):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.crash_next_success = crash_after_record
+
         def finalize(self, observation):
             if (
-                crash_after_record
+                self.crash_next_success
                 and observation.result_category
                 == "success_knowledge_revalidation_assessed"
             ):
+                self.crash_next_success = False
                 raise RuntimeError("simulated_process_loss_after_assessment_commit")
             return super().finalize(observation)
 
