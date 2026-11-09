@@ -48,6 +48,7 @@ from core.knowledge_revalidation import (
     KnowledgeRevalidationAssessmentDraft,
     KnowledgeRevalidationAssessmentService,
     KnowledgeRevalidationFinding,
+    validate_revalidation_task_request,
 )
 from core.knowledge_revalidation_tasks import KnowledgeRevalidationAssessmentTaskRunner
 from core.learning_commit import (
@@ -1484,6 +1485,31 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
                     Outcome.recorded_by_task_id == task_id
                 )
             ) == 0
+            context = validate_revalidation_task_request(
+                session,
+                task,
+                session_factory,
+                snapshot_store,
+                require_proposed=True,
+                require_current=True,
+            )
+        replayed_record = revalidation_service.record(
+            task_id,
+            KnowledgeRevalidationAssessmentDraft(
+                freshness_disposition="current",
+                findings=(
+                    KnowledgeRevalidationFinding(
+                        code="supports_revalidation",
+                        summary="The rebuilt evidence basis remains relevant.",
+                        evidence_refs=tuple(sorted(context.pack.reference_ids)),
+                    ),
+                ),
+            ),
+            evaluator_identity=provider.evaluator_identity,
+            evaluator_revision=provider.evaluator_revision,
+        )
+        assert replayed_record.replayed
+        assert replayed_record.assessment_id == assessment.id
         recovery = TaskRuntime(
             session_factory, snapshot_store
         ).recover_interrupted(now=recorded_at + timedelta(seconds=120))
