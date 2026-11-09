@@ -1491,21 +1491,11 @@ def test_0018_only_ineligible_supersede_can_preserve_null_review_date(
     sandbox = assessment_migration_schema
     _upgrade_lifecycle_null_review_schema(sandbox)
     rows = _seed_assessment_rows(sandbox)
-    future_review = datetime.now(timezone.utc) + timedelta(days=30)
 
     with sandbox.engine.begin() as connection:
-        null_date_id = _insert_supersede_assessment(
-            connection,
-            rows.lifecycle_id,
-            assessment_result="ineligible",
-            successor_review_after=None,
-        )
-        future_date_id = _insert_supersede_assessment(
-            connection,
-            rows.lifecycle_id,
-            assessment_result="eligible",
-            successor_review_after=future_review,
-        )
+        # Exercise the check constraint before creating the one permitted
+        # pending successor for this predecessor. The nested transaction
+        # rolls back the rejected fixture and all of its dependent rows.
         with pytest.raises(DBAPIError):
             with connection.begin_nested():
                 _insert_supersede_assessment(
@@ -1515,24 +1505,53 @@ def test_0018_only_ineligible_supersede_can_preserve_null_review_date(
                     successor_review_after=None,
                 )
 
-        persisted = set(
-            connection.scalars(
-                text(
-                    """
-                    SELECT id
-                    FROM knowledge_lifecycle_assessments
-                    WHERE id IN (:null_date_id, :future_date_id)
-                    """
-                ),
-                {
-                    "null_date_id": null_date_id,
-                    "future_date_id": future_date_id,
-                },
-            )
+        null_date_id = _insert_supersede_assessment(
+            connection,
+            rows.lifecycle_id,
+            assessment_result="ineligible",
+            successor_review_after=None,
+        )
+        persisted = connection.scalar(
+            text(
+                """
+                SELECT successor_review_after IS NULL
+                FROM knowledge_lifecycle_assessments
+                WHERE id = :assessment_id
+                """
+            ),
+            {"assessment_id": null_date_id},
         )
 
-    assert persisted == {null_date_id, future_date_id}
+    assert persisted is True
 
+
+def test_0018_eligible_supersede_accepts_non_null_review_date(
+    assessment_migration_schema: AssessmentMigrationSandbox,
+) -> None:
+    sandbox = assessment_migration_schema
+    _upgrade_lifecycle_null_review_schema(sandbox)
+    rows = _seed_assessment_rows(sandbox)
+    future_review = datetime.now(timezone.utc) + timedelta(days=30)
+
+    with sandbox.engine.begin() as connection:
+        assessment_id = _insert_supersede_assessment(
+            connection,
+            rows.lifecycle_id,
+            assessment_result="eligible",
+            successor_review_after=future_review,
+        )
+        persisted = connection.scalar(
+            text(
+                """
+                SELECT successor_review_after
+                FROM knowledge_lifecycle_assessments
+                WHERE id = :assessment_id
+                """
+            ),
+            {"assessment_id": assessment_id},
+        )
+
+    assert persisted == future_review
 
 def test_0018_downgrade_refuses_to_invalidate_null_date_history(
     assessment_migration_schema: AssessmentMigrationSandbox,
