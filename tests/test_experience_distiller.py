@@ -3137,24 +3137,64 @@ def test_original_create_approval_replays_after_later_history_transition(
         _cleanup_operator_decision_task(session_factory, task_id)
 
 
+@pytest.mark.parametrize("assessment_result", ["eligible", "ineligible"])
+@pytest.mark.parametrize("crash_after_record", [False, True])
 def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     session_factory,
     snapshot_store,
     distillation_fixture,
     request,
+    monkeypatch,
+    assessment_result: str,
+    crash_after_record: bool,
 ):
     from core.knowledge_lifecycle import (
         PROPOSED_STATE_HASH_DOMAIN,
         _domain_hash,
         _normalize_json,
+        _sha256_json,
         _task_id,
+        derive_lifecycle_findings,
         require_recorded_assessment,
     )
-    from core.knowledge_lifecycle_tasks import KnowledgeLifecycleAssessmentTask
+    from core.knowledge_lifecycle_tasks import (
+        KnowledgeLifecycleAssessmentTask,
+        KnowledgeLifecycleAssessmentTaskRunner,
+    )
     from core.models import (
+        Event,
         KnowledgeLifecycleAssessment,
         LearningChangeOperatorProvenance,
+        Outcome,
+        Task,
     )
+
+    if assessment_result == "ineligible":
+        original_derive = derive_lifecycle_findings
+
+        def derive_ineligible(
+            operation,
+            target_state,
+            successor_binding,
+            recorded_at,
+        ):
+            findings, _ = original_derive(
+                operation,
+                target_state,
+                successor_binding,
+                recorded_at,
+            )
+            findings[2] = {
+                **findings[2],
+                "outcome": "failed",
+                "summary": "The test injects an ineligible assessment finding.",
+            }
+            return findings, "ineligible"
+
+        monkeypatch.setattr(
+            "core.knowledge_lifecycle.derive_lifecycle_findings",
+            derive_ineligible,
+        )
 
     fixture = distillation_fixture(2, include_contrary=False)
     create_proposal = _distiller(
@@ -3356,7 +3396,16 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
 
     task_id = _task_id(fixture.team_id, learning_change_id)
 
+    failed_task_id = uuid4()
+    retry_task_id = uuid4()
+
     def cleanup_lifecycle_records():
+        task_ids = [
+            source_task_id,
+            task_id,
+            failed_task_id,
+            retry_task_id,
+        ]
         with session_factory.begin() as session:
             session.execute(
                 text(
@@ -3394,13 +3443,11 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                 )
             )
             session.execute(
-                delete(Event).where(
-                    Event.task_id.in_([source_task_id, task_id])
-                )
+                delete(Event).where(Event.task_id.in_(task_ids))
             )
             session.execute(
                 delete(Outcome).where(
-                    Outcome.recorded_by_task_id == source_task_id
+                    Outcome.recorded_by_task_id.in_(task_ids)
                 )
             )
             session.execute(
@@ -3409,7 +3456,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                 )
             )
             session.execute(
-                delete(Task).where(Task.id.in_([source_task_id, task_id]))
+                delete(Task).where(Task.id.in_(task_ids))
             )
 
     request.addfinalizer(cleanup_lifecycle_records)
@@ -3419,44 +3466,622 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     assert task_adapter.create(learning_change_id) == task_id
     assert task_adapter.create(learning_change_id) == task_id
     task_adapter.validate(task_id)
-    admission = TaskRuntime(session_factory, snapshot_store).admit(task_id)
-    assert admission.attempt_count == 1
 
-    first = task_adapter.record(task_id)
-    assert first.assessment_result == "eligible"
-    assert not first.replayed
-    replay = task_adapter.record(task_id)
+    from core.knowledge_lifecycle import REQUEST_EVENT_TYPE
+    from core.task_runtime import TaskNotEligible
+
+    admission_runtime = TaskRuntime(session_factory, snapshot_store)
+    invalid_shapes = [
+        ("task_type", "unrecognized_assessment_task"),
+        ("allowed_writes", ["KnowledgeItem"]),
+        (
+            "budget",
+            {
+                "max_tool_calls": 1,
+                "max_cost_usd": 0.0,
+                "deadline_seconds": 30,
+            },
+        ),
+        ("max_attempts", 4),
+    ]
+    for attribute, invalid_value in invalid_shapes:
+        with session_factory.begin() as session:
+            task = session.get(Task, task_id)
+            assert task is not None
+            original_value = getattr(task, attribute)
+            setattr(task, attribute, invalid_value)
+        with pytest.raises(TaskNotEligible):
+            admission_runtime.admit(task_id)
+        with session_factory.begin() as session:
+            task = session.get(Task, task_id)
+            assert task is not None
+            setattr(task, attribute, original_value)
+
+    with session_factory.begin() as session:
+        request_event = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+        assert request_event is not None
+        duplicate_request_id = uuid4()
+        session.add(
+            Event(
+                id=duplicate_request_id,
+                task_id=task_id,
+                type=REQUEST_EVENT_TYPE,
+                payload=dict(request_event.payload),
+                created_at=request_event.created_at,
+            )
+        )
+    with pytest.raises(
+        TaskNotEligible,
+        match="knowledge_lifecycle_request_event_invalid",
+    ):
+        admission_runtime.admit(task_id)
+    with session_factory.begin() as session:
+        session.execute(delete(Event).where(Event.id == duplicate_request_id))
+
+    first_admission = admission_runtime.admit(task_id)
+    assert first_admission.attempt_count == 1
+    retry_recovery = admission_runtime.recover_interrupted(
+        now=datetime.now(timezone.utc) + timedelta(seconds=61)
+    )
+    assert retry_recovery.retried == (task_id,)
+    assert retry_recovery.completed == ()
+    assert retry_recovery.failed == ()
+
+    with pytest.raises(
+        TaskNotFinalizable,
+        match="knowledge_lifecycle_assessment_id_required",
+    ):
+        TaskRuntime._validate_observation(
+            TerminalObservation(
+                task_id=task_id,
+                attempt=1,
+                result_category="success_knowledge_lifecycle_assessed",
+                observed_at=datetime.now(timezone.utc),
+            )
+        )
+    with pytest.raises(
+        TaskNotFinalizable,
+        match="terminal_evidence_not_allowed",
+    ):
+        TaskRuntime._validate_observation(
+            TerminalObservation(
+                task_id=task_id,
+                attempt=1,
+                result_category="terminal_failure",
+                observed_at=datetime.now(timezone.utc),
+                failure_reason="invalid foreign assessment identity",
+                knowledge_lifecycle_assessment_id=uuid4(),
+            )
+        )
+
+    class CrashAfterAssessmentRecordRuntime(TaskRuntime):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.crash_next_success = crash_after_record
+
+        def finalize(self, observation):
+            if (
+                self.crash_next_success
+                and observation.result_category
+                == "success_knowledge_lifecycle_assessed"
+            ):
+                self.crash_next_success = False
+                raise RuntimeError(
+                    "simulated_process_loss_after_lifecycle_assessment_commit"
+                )
+            return super().finalize(observation)
+
+    crash_runtime = CrashAfterAssessmentRecordRuntime(
+        session_factory, snapshot_store
+    )
+    runner = KnowledgeLifecycleAssessmentTaskRunner(
+        session_factory,
+        snapshot_store,
+        runtime=crash_runtime,
+    )
+    if crash_after_record:
+        with pytest.raises(
+            RuntimeError,
+            match="simulated_process_loss_after_lifecycle_assessment_commit",
+        ):
+            runner.run(task_id)
+    else:
+        first_run = runner.run(task_id)
+        assert first_run.status == "done"
+        assert first_run.assessment_result == assessment_result
+        assert first_run.assessment_id is not None
+        assert first_run.outcome_id is not None
+        assert not first_run.replayed
+
+    with session_factory() as session:
+        committed_assessment = session.scalar(
+            select(KnowledgeLifecycleAssessment).where(
+                KnowledgeLifecycleAssessment.task_id == task_id
+            )
+        )
+        recorded_task = session.get(Task, task_id)
+        assert committed_assessment is not None
+        assert recorded_task is not None
+        assert recorded_task.status == ("running" if crash_after_record else "done")
+        recorded_at = committed_assessment.recorded_at
+        expected_outcomes = 0 if crash_after_record else 1
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == task_id
+            )
+        ) == expected_outcomes
+
+    if crash_after_record:
+        recovery_at = recorded_at + timedelta(seconds=61)
+        with session_factory.begin() as session:
+            recorded_event = session.get(
+                Event, committed_assessment.recorded_event_id
+            )
+            assert recorded_event is not None
+            original_recorded_payload = dict(recorded_event.payload)
+            recorded_event.payload = {
+                **original_recorded_payload,
+                "assessment_payload_hash": "sha256:" + ("0" * 64),
+            }
+        with pytest.raises(
+            TaskNotFinalizable,
+            match="knowledge_lifecycle_recorded_event_invalid",
+        ):
+            TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+                now=recovery_at
+            )
+        with session_factory() as session:
+            still_running = session.get(Task, task_id)
+            assert still_running is not None and still_running.status == "running"
+            assert session.scalar(
+                select(func.count(Outcome.id)).where(
+                    Outcome.recorded_by_task_id == task_id
+                )
+            ) == 0
+        with session_factory.begin() as session:
+            recorded_event = session.get(
+                Event, committed_assessment.recorded_event_id
+            )
+            assert recorded_event is not None
+            recorded_event.payload = original_recorded_payload
+
+        first = task_adapter.record(task_id)
+        assert first.assessment_result == assessment_result
+        assert first.replayed
+        assert first.assessment_id == committed_assessment.id
+        assert first.assessment_payload_hash == committed_assessment.payload_hash
+
+        recovery = TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+            now=recovery_at
+        )
+        assert recovery.completed == (task_id,)
+        assert recovery.retried == ()
+        assert recovery.failed == ()
+        first_assessment_id = first.assessment_id
+        first_assessment_result = first.assessment_result
+        first_payload_hash = first.assessment_payload_hash
+    else:
+        first_assessment_id = first_run.assessment_id
+        first_assessment_result = first_run.assessment_result
+        first_payload_hash = committed_assessment.payload_hash
+
+    with session_factory.begin() as session:
+        terminal_event = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "task_completed",
+            )
+        )
+        assert terminal_event is not None
+        original_terminal_payload = dict(terminal_event.payload)
+        terminal_event.payload = {
+            **original_terminal_payload,
+            "knowledge_lifecycle_assessment_id": str(uuid4()),
+        }
+    with pytest.raises(
+        TaskNotFinalizable,
+        match="knowledge_lifecycle_terminal_event_invalid",
+    ):
+        runner.run(task_id)
+    with session_factory.begin() as session:
+        terminal_event = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "task_completed",
+            )
+        )
+        assert terminal_event is not None
+        terminal_event.payload = original_terminal_payload
+
+    replay = runner.run(task_id)
+    assert replay.status == "done"
     assert replay.replayed
-    assert replay.assessment_id == first.assessment_id
-    assert replay.assessment_payload_hash == first.assessment_payload_hash
+    assert replay.assessment_id == first_assessment_id
+    assert replay.assessment_result == assessment_result
+    assert first_assessment_result == assessment_result
+    assert replay.outcome_id is not None
+
+    # Build a second, valid lifecycle Task whose execution terminates in failure.
+    # Its request Event is copied from the valid task and rebound to a new Task ID.
+    failure_started_at = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        original_task = session.get(Task, task_id)
+        original_request = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+        assert original_task is not None and original_request is not None
+        failed_request_payload = dict(original_request.payload)
+        failed_request_payload["task_id"] = str(failed_task_id)
+        unsigned_request = {
+            key: value
+            for key, value in failed_request_payload.items()
+            if key != "request_hash"
+        }
+        failed_request_payload["request_hash"] = _sha256_json(unsigned_request)
+        failed_task = Task(
+            id=failed_task_id,
+            team_id=original_task.team_id,
+            task_type=original_task.task_type,
+            status="running",
+            attempt_count=1,
+            policy_version=original_task.policy_version,
+            objective_id=None,
+            plan_id=None,
+            plan_action_id=None,
+            allowed_writes=list(original_task.allowed_writes),
+            budget=dict(original_task.budget),
+            created_at=failure_started_at,
+            completed_at=None,
+            max_attempts=original_task.max_attempts,
+        )
+        session.add(failed_task)
+        session.flush()
+        session.add_all(
+            [
+                Event(
+                    id=uuid4(),
+                    task_id=failed_task_id,
+                    type=REQUEST_EVENT_TYPE,
+                    payload=failed_request_payload,
+                    created_at=failure_started_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=failed_task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 1,
+                    },
+                    created_at=failure_started_at,
+                ),
+            ]
+        )
+
+    failure_finalization = TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=failed_task_id,
+            attempt=1,
+            result_category="terminal_failure",
+            observed_at=failure_started_at,
+            failure_reason="injected_lifecycle_assessment_failure",
+        )
+    )
+    with session_factory() as session:
+        failed_outcome = session.get(Outcome, failure_finalization.outcome_id)
+        assert failed_outcome is not None
+        failed_outcome_values = {
+            "id": failed_outcome.id,
+            "team_id": failed_outcome.team_id,
+            "subject_kind": failed_outcome.subject_kind,
+            "subject_id": failed_outcome.subject_id,
+            "outcome_type": failed_outcome.outcome_type,
+            "expected": failed_outcome.expected,
+            "observation_snapshot_ref": failed_outcome.observation_snapshot_ref,
+            "observation_hash": failed_outcome.observation_hash,
+            "observed_at": failed_outcome.observed_at,
+            "recorded_by_task_id": failed_outcome.recorded_by_task_id,
+        }
+
+    failed_replay = runner.run(failed_task_id)
+    assert failed_replay.status == "failed"
+    assert failed_replay.replayed
+    assert failed_replay.outcome_id == failure_finalization.outcome_id
+
+    # Failed replay must reject an unrelated Task type.
+    with session_factory.begin() as session:
+        failed_task = session.get(Task, failed_task_id)
+        assert failed_task is not None
+        failed_task.task_type = "unrelated_task"
+    with pytest.raises(TaskNotEligible, match="knowledge_lifecycle_task_wrong_type"):
+        runner.run(failed_task_id)
+    with session_factory.begin() as session:
+        failed_task = session.get(Task, failed_task_id)
+        assert failed_task is not None
+        failed_task.task_type = "assess_knowledge_lifecycle"
+
+    # A missing or duplicated terminal Outcome is corruption, not a replay.
+    with session_factory.begin() as session:
+        session.execute(
+            delete(Outcome).where(Outcome.id == failure_finalization.outcome_id)
+        )
+    with pytest.raises(
+        TaskNotEligible, match="knowledge_lifecycle_terminal_outcome_invalid"
+    ):
+        runner.run(failed_task_id)
+    with session_factory.begin() as session:
+        session.add(Outcome(**failed_outcome_values))
+        session.add(
+            Outcome(
+                **{
+                    **failed_outcome_values,
+                    "id": uuid4(),
+                    "outcome_type": "secondary_task_execution",
+                }
+            )
+        )
+    with pytest.raises(
+        TaskNotEligible, match="knowledge_lifecycle_terminal_outcome_invalid"
+    ):
+        runner.run(failed_task_id)
+    with session_factory.begin() as session:
+        session.execute(
+            delete(Outcome).where(
+                Outcome.recorded_by_task_id == failed_task_id,
+                Outcome.id != failure_finalization.outcome_id,
+            )
+        )
+        failed_outcome = session.get(Outcome, failure_finalization.outcome_id)
+        assert failed_outcome is not None
+        failed_outcome.subject_kind = "signal"
+        failed_outcome.outcome_type = "secondary_task_execution"
+    with pytest.raises(
+        TaskNotEligible, match="knowledge_lifecycle_terminal_outcome_invalid"
+    ):
+        runner.run(failed_task_id)
+    with session_factory.begin() as session:
+        failed_outcome = session.get(Outcome, failure_finalization.outcome_id)
+        assert failed_outcome is not None
+        failed_outcome.subject_kind = "task"
+        failed_outcome.outcome_type = "task_execution"
+
+    # A missing terminal Event must also fail closed.
+    with session_factory.begin() as session:
+        attempt_failed_event = session.scalar(
+            select(Event).where(
+                Event.task_id == failed_task_id,
+                Event.type == "task_attempt_failed",
+            )
+        )
+        assert attempt_failed_event is not None
+        original_attempt_failed_payload = dict(attempt_failed_event.payload)
+        attempt_failed_event.payload = {
+            **original_attempt_failed_payload,
+            "failure_reason": "tampered",
+        }
+    with pytest.raises(
+        TaskNotEligible, match="knowledge_lifecycle_terminal_events_invalid"
+    ):
+        runner.run(failed_task_id)
+    with session_factory.begin() as session:
+        attempt_failed_event = session.scalar(
+            select(Event).where(
+                Event.task_id == failed_task_id,
+                Event.type == "task_attempt_failed",
+            )
+        )
+        assert attempt_failed_event is not None
+        attempt_failed_event.payload = original_attempt_failed_payload
+        session.execute(
+            delete(Event).where(
+                Event.task_id == failed_task_id,
+                Event.type == "task_attempt_failed",
+            )
+        )
+    with pytest.raises(
+        TaskNotEligible, match="knowledge_lifecycle_terminal_events_invalid"
+    ):
+        runner.run(failed_task_id)
+    with session_factory.begin() as session:
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=failed_task_id,
+                type="task_attempt_failed",
+                payload=original_attempt_failed_payload,
+                created_at=failure_started_at,
+            )
+        )
+    assert runner.run(failed_task_id).replayed
+
+    # A retryable interrupted attempt and a later terminal failure are distinct
+    # attempt failures. Failed replay must select the terminal attempt while
+    # validating the earlier retry transition independently.
+    retry_started_at = datetime.now(timezone.utc) - timedelta(seconds=10)
+    first_attempt_failed_at = retry_started_at + timedelta(seconds=1)
+    second_attempt_started_at = first_attempt_failed_at + timedelta(seconds=1)
+    retry_payload = {
+        "from_status": "running",
+        "to_status": "pending",
+        "attempt_count": 1,
+        "result_category": "retryable_failure",
+        "failure_reason": "interrupted_attempt_recovered",
+    }
+    with session_factory.begin() as session:
+        original_failed_task = session.get(Task, failed_task_id)
+        original_request = session.scalar(
+            select(Event).where(
+                Event.task_id == failed_task_id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+        assert original_failed_task is not None and original_request is not None
+        retry_request_payload = dict(original_request.payload)
+        retry_request_payload["task_id"] = str(retry_task_id)
+        unsigned_retry_request = {
+            key: value
+            for key, value in retry_request_payload.items()
+            if key != "request_hash"
+        }
+        retry_request_payload["request_hash"] = _sha256_json(
+            unsigned_retry_request
+        )
+        session.add(
+            Task(
+                id=retry_task_id,
+                team_id=original_failed_task.team_id,
+                task_type=original_failed_task.task_type,
+                status="running",
+                attempt_count=2,
+                policy_version=original_failed_task.policy_version,
+                objective_id=None,
+                plan_id=None,
+                plan_action_id=None,
+                allowed_writes=list(original_failed_task.allowed_writes),
+                budget=dict(original_failed_task.budget),
+                created_at=retry_started_at,
+                completed_at=None,
+                max_attempts=original_failed_task.max_attempts,
+            )
+        )
+        session.flush()
+        session.add_all(
+            [
+                Event(
+                    id=uuid4(),
+                    task_id=retry_task_id,
+                    type=REQUEST_EVENT_TYPE,
+                    payload=retry_request_payload,
+                    created_at=retry_started_at - timedelta(seconds=1),
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=retry_task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 1,
+                    },
+                    created_at=retry_started_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=retry_task_id,
+                    type="task_attempt_failed",
+                    payload=retry_payload,
+                    created_at=first_attempt_failed_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=retry_task_id,
+                    type="task_retry_scheduled",
+                    payload=retry_payload,
+                    created_at=first_attempt_failed_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=retry_task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 2,
+                    },
+                    created_at=second_attempt_started_at,
+                ),
+            ]
+        )
+
+    retry_failure = TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=retry_task_id,
+            attempt=2,
+            result_category="terminal_failure",
+            observed_at=second_attempt_started_at,
+            failure_reason="terminal_failure_after_retry",
+        )
+    )
+    first_retry_replay = runner.run(retry_task_id)
+    second_retry_replay = runner.run(retry_task_id)
+    assert first_retry_replay.status == "failed"
+    assert first_retry_replay.replayed
+    assert first_retry_replay.outcome_id == retry_failure.outcome_id
+    assert second_retry_replay.status == "failed"
+    assert second_retry_replay.replayed
+    assert second_retry_replay.outcome_id == retry_failure.outcome_id
+    with session_factory() as session:
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == retry_task_id
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == retry_task_id,
+                Event.type == "task_attempt_failed",
+            )
+        ) == 2
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == retry_task_id,
+                Event.type == "task_retry_scheduled",
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == retry_task_id,
+                Event.type == "task_failed",
+            )
+        ) == 1
+
+    historical_payload = TaskRuntime._observation_payload(
+        TerminalObservation(
+            task_id=task_id,
+            attempt=1,
+            result_category="terminal_failure",
+            observed_at=datetime.now(timezone.utc),
+            failure_reason="historical_failure",
+        )
+    )
+    assert "knowledge_lifecycle_assessment_id" not in historical_payload
 
     with session_factory() as session:
         item = session.get(KnowledgeItem, committed.knowledge_item_id)
         change = session.get(LearningChange, learning_change_id)
         task = session.get(Task, task_id)
         assessment = session.get(
-            KnowledgeLifecycleAssessment, first.assessment_id
+            KnowledgeLifecycleAssessment, first_assessment_id
         )
         assert item is not None and change is not None and task is not None
         assert assessment is not None
-        assert task.status == "running"
+        assert task.status == "done"
         assert task.allowed_writes == ["KnowledgeLifecycleAssessment"]
         assert change.status == "proposed"
         assert change.committed_by_task_id is None
         assert item.current_learning_change_id == committed.learning_change_id
         assert item.version == 1
         assert assessment.operation == "retire"
-        assert assessment.assessment_result == "eligible"
+        assert assessment.assessment_result == assessment_result
         assert assessment.variant_payload == {}
         assert assessment.successor_knowledge_item_id is None
-        assert assessment.payload_hash == first.assessment_payload_hash
+        assert assessment.payload_hash == first_payload_hash
         verified = require_recorded_assessment(
             session,
             change,
             snapshot_store,
             session_factory,
-            require_task_done=False,
-            require_current=True,
+            require_task_done=True,
+            require_current=False,
         )
         assert verified.id == assessment.id
         assert session.scalar(
@@ -3471,6 +4096,24 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                 Event.type == "knowledge_lifecycle_assessment_recorded",
             )
         ) == 1
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) == 1
+        terminal_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task_id,
+                    Event.type == "task_completed",
+                )
+            )
+        )
+        assert len(terminal_events) == 1
+        assert terminal_events[0].payload["knowledge_lifecycle_assessment_id"] == str(
+            assessment.id
+        )
 
     from sqlalchemy.exc import DBAPIError
 
@@ -3481,7 +4124,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                     "UPDATE knowledge_lifecycle_assessments "
                     "SET assessment_result = 'ineligible' WHERE id = :id"
                 ),
-                {"id": first.assessment_id},
+                {"id": first_assessment_id},
             )
     with pytest.raises(DBAPIError):
         with session_factory.begin() as session:
@@ -3489,5 +4132,5 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                 text(
                     "DELETE FROM knowledge_lifecycle_assessments WHERE id = :id"
                 ),
-                {"id": first.assessment_id},
+                {"id": first_assessment_id},
             )
