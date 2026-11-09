@@ -17,13 +17,18 @@ from core.knowledge_revalidation import (
     require_recorded_assessment,
     validate_revalidation_task_request,
 )
-from core.models import Event, KnowledgeRevalidationAssessment, LearningChange, Outcome, Task
+from core.models import (
+    Event,
+    KnowledgeRevalidationAssessment,
+    LearningChange,
+    Outcome,
+    Task,
+)
 from core.snapshot_store import SnapshotStore
 from core.task_runtime import (
     FailureObservation,
     FinalizationResult,
     TaskNotEligible,
-    TaskNotFinalizable,
     TaskRuntime,
     TerminalObservation,
 )
