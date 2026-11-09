@@ -1,8 +1,8 @@
-"""B3.4 Task-side adapter for deterministic lifecycle assessment.
+"""B3.4 lifecycle assessment adapter and B3.5 TaskRuntime execution path.
 
-TaskRuntime admission/finalization/recovery activation is deliberately deferred
-to B3.5. This adapter owns only the lifecycle request contract and assessment
-recording boundary; it never writes KnowledgeItem or LearningChange.
+The adapter records only the immutable lifecycle assessment. The TaskRunner
+composes it with the existing TaskRuntime; neither component writes
+KnowledgeItem or LearningChange.
 """
 
 from __future__ import annotations
@@ -75,8 +75,8 @@ class KnowledgeLifecycleAssessmentTask:
     def record(self, task_id: UUID) -> KnowledgeLifecycleAssessmentResult:
         """Record the deterministic assessment for an already-running Task.
 
-        The existing runtime remains the sole owner of Task admission and
-        terminal state. B3.5 adds the lifecycle-specific runtime hooks.
+        TaskRuntime remains the sole owner of admission, attempt fencing,
+        terminal state, Outcomes, and lifecycle Events.
         """
         return self._service.record(task_id)
 
