@@ -2,7 +2,7 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (updated 2026-11-09):** **B0 complete; B1 accepted and merged; B2 formally closed with accepted residual verification gaps; B3.2 merged by PR #60; B3.3 complete and merged by PR #62; B3.4 explicitly authorized and active.** B3.2 merged at `31be3a25cf7f52ca81eab65cc10280a855738c3d`. B3.3 merged at `f7683b3c7812c3250e0fed5e8e689ade6ecaeca5` after hosted CI passed on final PR head `8ffd6ac5a2b178d6d7045a8d765f3e7c33b59b4e`; implementation-head hosted and Operator-local exact-head verification also passed. Full evidence is in `docs/testing.md`. The Operator explicitly authorized B3.4 on 2026-11-09. Its scope is deterministic `retire`/`supersede` lifecycle assessment and immutable assessment recording only; it does not authorize candidate creation, canonical lifecycle mutation, approval, Task registry activation, or B3.5 integration. The active approval allowlist remains exactly `create`; B3.5–B3.9, B4–B6, and R7-C remain separately gated.
+**Status (updated 2026-11-09):** **B0 complete; B1 accepted and merged; B2 formally closed with accepted residual verification gaps; B3.2 merged by PR #60; B3.3 complete and merged by PR #62; B3.4 implementation delivered in PR #64, hosted CI passed, Operator-local exact-head verification/acceptance pending.** B3.2 merged at `31be3a25cf7f52ca81eab65cc10280a855738c3d`. B3.3 merged at `f7683b3c7812c3250e0fed5e8e689ade6ecaeca5` after hosted CI passed on final PR head `8ffd6ac5a2b178d6d7045a8d765f3e7c33b59b4e`; implementation-head hosted and Operator-local exact-head verification also passed. B3.4 PR [#64](https://github.com/abtn/Watch-Architecture-Rev2/pull/64) exact code head `e2fa162b6f9d77506d16458c1b24c81a57a21b66` passed hosted CI run [42590404433](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42590404433): fresh PostgreSQL migration/single-head, Ruff, Mypy, and 881 tests (113 warnings). Operator-local exact-head verification, explicit acceptance, and merge remain pending. Its scope is deterministic `retire`/`supersede` lifecycle assessment and immutable assessment recording only; it does not authorize candidate creation, canonical lifecycle mutation, approval, TaskRuntime registry activation, or B3.5 integration. The active approval allowlist remains exactly `create`; B3.5–B3.9, B4–B6, and R7-C remain separately gated.
 
 
 
@@ -558,7 +558,7 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 
 #### B3.4 — Lifecycle assessment service and Task
 
-**Status: AUTHORIZED — 2026-11-09 by explicit Operator instruction.** This stage is now the active implementation scope. It does not authorize lifecycle commit, candidate creation, approval, Task registry activation, or B3.5 integration. The approval allowlist remains exactly `create`.
+**Status: IMPLEMENTED IN PR #64; HOSTED CI PASSED; OPERATOR EXACT-HEAD VERIFICATION / ACCEPTANCE PENDING.** The exact code head `e2fa162b6f9d77506d16458c1b24c81a57a21b66` passed hosted CI run [42590404433](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42590404433): fresh PostgreSQL migration/single-head, Ruff, Mypy, and 881 tests (113 warnings). PR [#64](https://github.com/abtn/Watch-Architecture-Rev2/pull/64) awaits Operator-local exact-head verification and acceptance. This stage does not authorize lifecycle commit, candidate creation, approval, TaskRuntime registry activation, or B3.5 integration. The approval allowlist remains exactly `create`.
 
 **Agent / coding side**
 1. Implement deterministic, operation-specific assessment validation for `retire` and `supersede`. Do not use model scoring or a production evaluator.
@@ -566,10 +566,10 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 3. For retire, bind the exact target ID, Team, current pointer, version, status, content hash, and full-state snapshot expected by the proposal.
 4. For supersede, additionally bind the exact successor's ID, Team, current pointer, version, content hash, status, and `review_after`; bind the predecessor's actual current state and the explicit replacement rationale/evidence.
 5. Enforce strict discriminated payload validation. Wrong-operation fields, missing successor fields, stale target/successor bindings, and cross-Team relationships fail closed.
-6. Implement `assess_knowledge_lifecycle` as an ordinary Task on the existing TaskRuntime. Its exact write scope is only `KnowledgeLifecycleAssessment` plus Task-attributed Events through the established runtime mechanism.
+6. Implement the narrow `assess_knowledge_lifecycle` Task adapter and worker contract, with exact write scope `KnowledgeLifecycleAssessment` only. B3.4 must not modify TaskRuntime, activate registry/admission, or add recovery/finalization hooks; those integration responsibilities are B3.5.
 7. Ensure replay returns the same immutable assessment and never silently reassesses a completed Task against newer state.
 
-**Operator review point:** review the retire/supersede payload examples and confirm they match the frozen B0.1 candidate and graph rules. B3 assessment does not create candidates or commit supersession.
+**Operator review point:** review the retire/supersede payload examples in PR #64 and confirm they match the frozen B0.1 candidate and graph rules. B3 assessment does not create candidates or commit supersession.
 
 **Expected output:** deterministic retire/supersede contract tests, stale-binding tests, cross-Team rejection, Task scope, replay and immutability coverage.
 
