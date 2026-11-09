@@ -135,7 +135,6 @@ def test_supersede_proposal_requires_same_team_successor_identity():
         "evidence_basis_hash": "sha256:" + "b" * 64,
         "operator_rationale": _rationale(),
         "successor_knowledge_item_id": str(successor_id),
-        "successor_team_id": str(team_id),
     }
     change = SimpleNamespace(
         operation="supersede",
@@ -149,20 +148,21 @@ def test_supersede_proposal_requires_same_team_successor_identity():
     assert rationale == _rationale()
     assert parsed_successor_id == successor_id
 
-    cross_team = {
-        **proposal,
-        "successor_team_id": str(uuid4()),
+    missing_successor = {
+        key: value
+        for key, value in proposal.items()
+        if key != "successor_knowledge_item_id"
     }
     with pytest.raises(
         KnowledgeLifecycleAssessmentError,
-        match="knowledge_lifecycle_successor_cross_team",
+        match="knowledge_lifecycle_proposed_state_shape_invalid",
     ):
         _validate_proposed_state(
             SimpleNamespace(
                 operation="supersede",
                 team_id=team_id,
                 evidence_basis_hash="sha256:" + "b" * 64,
-                proposed_state=cross_team,
+                proposed_state=missing_successor,
             )
         )
 
