@@ -950,31 +950,7 @@ class KnowledgeRevalidationAssessmentService:
                 raise KnowledgeRevalidationAssessmentError(
                     "knowledge_revalidation_learning_change_missing"
                 )
-            if change.status != "proposed":
-                task_id = _task_id(change.team_id, change.id)
-                existing = session.get(Task, task_id)
-                if existing is None or existing.status != "done":
-                    raise KnowledgeRevalidationAssessmentError(
-                        "knowledge_revalidation_learning_change_not_proposed"
-                    )
-                try:
-                    require_recorded_assessment(
-                        session,
-                        change,
-                        self._snapshot_store,
-                        self._session_factory,
-                        require_task_done=True,
-                        require_current=False,
-                    )
-                except KnowledgeRevalidationAssessmentError as error:
-                    raise KnowledgeRevalidationAssessmentError(
-                        "knowledge_revalidation_existing_task_corrupt"
-                    ) from error
-                return existing.id
-            task_id, payload = build_revalidation_task_request(
-                session, self._session_factory, self._snapshot_store, change,
-                require_current=True
-            )
+            task_id = _task_id(change.team_id, change.id)
             existing = session.get(Task, task_id)
             if existing is not None:
                 try:
@@ -1028,6 +1004,18 @@ class KnowledgeRevalidationAssessmentService:
                         "knowledge_revalidation_existing_task_corrupt"
                     ) from error
                 return existing.id
+
+            if change.status != "proposed":
+                raise KnowledgeRevalidationAssessmentError(
+                    "knowledge_revalidation_learning_change_not_proposed"
+                )
+            task_id, payload = build_revalidation_task_request(
+                session,
+                self._session_factory,
+                self._snapshot_store,
+                change,
+                require_current=True,
+            )
             task = Task(
                 id=task_id,
                 team_id=change.team_id,
