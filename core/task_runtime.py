@@ -693,7 +693,10 @@ class TaskRuntime:
                 )
             if self._is_knowledge_revalidation_task(session, task):
                 self._validate_knowledge_revalidation_task_shell(session, task)
-                if observation.result_category in _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES:
+                if (
+                    observation.result_category
+                    in _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES
+                ):
                     if self._snapshot_store is None:
                         raise TaskNotFinalizable(
                             "knowledge_revalidation_snapshot_store_required"
@@ -722,7 +725,10 @@ class TaskRuntime:
             elif observation.knowledge_quality_assessment_id is not None:
                 raise TaskNotFinalizable("knowledge_quality_assessment_id_not_allowed")
 
-            if observation.result_category in _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES:
+            if (
+                observation.result_category
+                in _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES
+            ):
                 self._validate_knowledge_revalidation_result(
                     session,
                     task,
@@ -934,7 +940,10 @@ class TaskRuntime:
                                     observation.knowledge_revalidation_assessment_id
                                 )
                             }
-                            if observation.knowledge_revalidation_assessment_id is not None
+                            if (
+                                observation.knowledge_revalidation_assessment_id
+                                is not None
+                            )
                             else {}
                         ),
                     },
@@ -1756,7 +1765,9 @@ class TaskRuntime:
             raise TaskNotFinalizable(
                 "knowledge_revalidation_request_event_invalid"
             )
-        unsigned = {key: value for key, value in payload.items() if key != "request_hash"}
+        unsigned = {
+            key: value for key, value in payload.items() if key != "request_hash"
+        }
         if payload.get("request_hash") != _sha256_json(unsigned):
             raise TaskNotFinalizable(
                 "knowledge_revalidation_request_hash_mismatch"
@@ -3397,7 +3408,10 @@ class TaskRuntime:
                     or observation.knowledge_revalidation_assessment_id is not None
                 ):
                     raise TaskNotFinalizable("terminal_evidence_not_allowed")
-            elif observation.result_category in _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES:
+            elif (
+                observation.result_category
+                in _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES
+            ):
                 if observation.knowledge_revalidation_assessment_id is None:
                     raise TaskNotFinalizable(
                         "knowledge_revalidation_assessment_id_required"
