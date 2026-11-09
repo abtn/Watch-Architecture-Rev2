@@ -370,7 +370,7 @@ B0 closes when:
 - Database-enforced cross-Team projection integrity is asserted separately because the composite constraint rejects the mutation before retrieval.
 - Existing D5 focused matrix and Step 7 create-only approval matrix remain intact; no redundant D5 test expansion or approval-authority change was introduced.
 
-**Step 8 boundary:** the integrated regression implementation is complete and merged. The create-only allowlist remains exactly `{create}`. Step 8 completion does not constitute B2 exit; Step 9 exit review and explicit Operator acceptance remain required. B3 planning/preflight is documented only; B3 implementation remains unauthorized. B4–B6 and R7-C remain unauthorized.
+**Step 8 boundary (historical status at B2 Step 8 closeout):** the integrated regression implementation was complete and merged. The create-only allowlist remained exactly `{create}`. Step 8 completion did not constitute B2 exit; Step 9 exit review and explicit Operator acceptance were still required. At that checkpoint B3 planning/preflight was documented only and B3 implementation was unauthorized. B4–B6 and R7-C remained unauthorized.
 
 **Step 9 — Exact-head verification and formal B2 exit gate (Operator-closed 2026-11-08 with accepted residuals)**
 
@@ -418,7 +418,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 **B2 closeout reference:** B2 is formally closed by explicit Operator instruction on 2026-11-08. The three retained residual verification gaps are recorded in `PLAN.md` and `docs/testing.md`; none is represented as passed. This does not expand B2's create-only authority.
 
 
-**Status:** B3.2–B3.4 are accepted and merged. B3.4 PR #64 merged at `9abd949a8e682b4df75a77f03acca638a62e472e`; its exact PR head passed Operator-local verification (89 focused tests, 881 full-suite tests, migration head `0018_r7b_lifecycle_review_date`, Ruff, Mypy, and diff check). B3.5 plan extraction/documentation is authorized; runtime implementation remains unauthorized pending a separate explicit Operator instruction.
+**Status:** B3.2–B3.5 are implemented and merged. B3.4 merged at `9abd949a8e682b4df75a77f03acca638a62e472e`; B3.5 merged by PR #66 at `a6cc81c2aef47d659252b89421e27b08735d944b`. B3.5 exact PR head `65edf206eb6cd68859147ee8c2f68a4717c6fa87` passed hosted and Operator-local verification (43 focused, 884 full-suite tests, migration head `0018_r7b_lifecycle_review_date`, Ruff, Mypy, and diff checks). B3.6–B3.9 remain gated; see `PLAN.md` for the current authorization state.
 
 **Goal:** add immutable, operation-specific assessment records and narrow recording Tasks. These assessments supply validated evidence to the existing trusted Operator approval path; they do not authorize or commit lifecycle transitions.
 
