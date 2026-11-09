@@ -3400,6 +3400,12 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     retry_task_id = uuid4()
 
     def cleanup_lifecycle_records():
+        task_ids = [
+            source_task_id,
+            task_id,
+            failed_task_id,
+            retry_task_id,
+        ]
         with session_factory.begin() as session:
             session.execute(
                 text(
@@ -3437,15 +3443,11 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                 )
             )
             session.execute(
-                delete(Event).where(
-                    Event.task_id.in_([source_task_id, task_id, failed_task_id, retry_task_id])
-                )
+                delete(Event).where(Event.task_id.in_(task_ids))
             )
             session.execute(
                 delete(Outcome).where(
-                    Outcome.recorded_by_task_id.in_(
-                        [source_task_id, task_id, failed_task_id, retry_task_id]
-                    )
+                    Outcome.recorded_by_task_id.in_(task_ids)
                 )
             )
             session.execute(
@@ -3454,9 +3456,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                 )
             )
             session.execute(
-                delete(Task).where(
-                Task.id.in_([source_task_id, task_id, failed_task_id, retry_task_id])
-            )
+                delete(Task).where(Task.id.in_(task_ids))
             )
 
     request.addfinalizer(cleanup_lifecycle_records)
