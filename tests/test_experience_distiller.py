@@ -3151,9 +3151,9 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     from core.knowledge_lifecycle import (
         PROPOSED_STATE_HASH_DOMAIN,
         _domain_hash,
-        derive_lifecycle_findings,
         _normalize_json,
         _task_id,
+        derive_lifecycle_findings,
         require_recorded_assessment,
     )
     from core.knowledge_lifecycle_tasks import (
