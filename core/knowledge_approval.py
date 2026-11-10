@@ -174,8 +174,8 @@ def build_approval_binding(
                 "knowledge_approval_assessment_type_mismatch"
             )
         if require_assessment:
+            from core.knowledge_quality import KnowledgeQualityAssessmentError
             from core.knowledge_quality import (
-                KnowledgeQualityAssessmentError,
                 require_recorded_assessment as require_quality_assessment,
             )
 
@@ -231,8 +231,8 @@ def build_approval_binding(
             raise KnowledgeApprovalBindingError(
                 "knowledge_approval_assessment_type_mismatch"
             )
+        from core.knowledge_revalidation import KnowledgeRevalidationAssessmentError
         from core.knowledge_revalidation import (
-            KnowledgeRevalidationAssessmentError,
             require_recorded_assessment as require_revalidation_assessment,
         )
 
@@ -280,8 +280,8 @@ def build_approval_binding(
             raise KnowledgeApprovalBindingError(
                 "knowledge_approval_assessment_type_mismatch"
             )
+        from core.knowledge_lifecycle import KnowledgeLifecycleAssessmentError
         from core.knowledge_lifecycle import (
-            KnowledgeLifecycleAssessmentError,
             require_recorded_assessment as require_lifecycle_assessment,
         )
 
