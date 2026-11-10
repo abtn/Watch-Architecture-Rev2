@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7 B3 is formally closed on 2026-11-10. The Operator has authorized R7-B B4 only; B4.1 proposal/assessment contract work is the next gate. B5, B6, and R7-C remain unauthorized. See PLAN.md for current status and the B4.0 architecture decision for the accepted design.
+R6 is complete through R6-G. R7 B3 is formally closed on 2026-11-10. B4 is authorized and the B4.1 implementation workflow has started on `r7b-b4-1-proposal-contract-implementation` from exact `main` baseline `de6990a0f1e3c74e06a366975af1bdb10547f43d`. Current B4 verification uses hosted exact-PR-head CI plus source/diff review; no local-test result is claimed. B5, B6, and R7-C remain unauthorized. PLAN.md owns the current status.
 
 ## Open the smallest relevant set of documents
 
