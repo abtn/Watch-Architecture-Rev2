@@ -1717,6 +1717,58 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
     from core.knowledge_revalidation import REQUEST_EVENT_TYPE
     from core.task_runtime import TaskNotEligible
 
+    invalid_shapes = [
+        ("task_type", "unrecognized_assessment_task"),
+        ("allowed_writes", ["KnowledgeItem"]),
+        (
+            "budget",
+            {
+                "max_tool_calls": 1,
+                "max_cost_usd": 0.0,
+                "deadline_seconds": 30,
+            },
+        ),
+        ("max_attempts", 4),
+    ]
+    for attribute, invalid_value in invalid_shapes:
+        with session_factory.begin() as session:
+            task = session.get(Task, task_id)
+            assert task is not None
+            original_value = getattr(task, attribute)
+            setattr(task, attribute, invalid_value)
+        with pytest.raises(TaskNotEligible) as envelope_error:
+            runner.run(task_id)
+        assert str(envelope_error.value) == (
+            "knowledge_revalidation_task_shape_invalid"
+        )
+        with session_factory.begin() as session:
+            task = session.get(Task, task_id)
+            assert task is not None
+            setattr(task, attribute, original_value)
+
+    with session_factory() as session:
+        task = session.get(Task, task_id)
+        assert task is not None
+        assert task.status == "pending"
+        assert task.attempt_count == 0
+        assert provider.calls == 0
+        assert session.scalar(
+            select(func.count(KnowledgeRevalidationAssessment.id)).where(
+                KnowledgeRevalidationAssessment.task_id == task_id
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == task_id
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == task_id,
+                Event.type == "task_started",
+            )
+        ) == 0
+
     with session_factory() as session:
         request_events = list(
             session.scalars(
@@ -1867,6 +1919,7 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
         assert item.current_learning_change_id == committed.learning_change_id
         assert item.version == 1
         assert task.status == "done"
+        assert task.allowed_writes == ["KnowledgeRevalidationAssessment"]
         assert assessment.assessment_result == (
             "supported" if freshness_disposition == "current" else "indeterminate"
         )
