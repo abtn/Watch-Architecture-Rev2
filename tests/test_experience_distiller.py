@@ -1713,6 +1713,85 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
             session_factory, snapshot_store
         ),
     )
+
+    from core.knowledge_revalidation import REQUEST_EVENT_TYPE
+    from core.task_runtime import TaskNotEligible
+
+    with session_factory() as session:
+        request_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task_id,
+                    Event.type == REQUEST_EVENT_TYPE,
+                )
+            )
+        )
+        assert len(request_events) == 1
+        request_event_id = request_events[0].id
+        original_request_payload = dict(request_events[0].payload)
+        request_event_created_at = request_events[0].created_at
+
+    duplicate_request_event_id = uuid4()
+    with session_factory.begin() as session:
+        session.add(
+            Event(
+                id=duplicate_request_event_id,
+                task_id=task_id,
+                type=REQUEST_EVENT_TYPE,
+                payload=original_request_payload,
+                created_at=request_event_created_at + timedelta(seconds=1),
+            )
+        )
+    with pytest.raises(TaskNotEligible) as duplicate_error:
+        runner.run(task_id)
+    assert str(duplicate_error.value) == (
+        "knowledge_revalidation_request_event_invalid"
+    )
+
+    with session_factory.begin() as session:
+        session.execute(
+            delete(Event).where(Event.id == duplicate_request_event_id)
+        )
+        request_event = session.get(Event, request_event_id)
+        assert request_event is not None
+        request_event.payload = {
+            **original_request_payload,
+            "request_hash": "sha256:" + ("0" * 64),
+        }
+    with pytest.raises(TaskNotEligible) as request_error:
+        runner.run(task_id)
+    assert str(request_error.value) == (
+        "knowledge_revalidation_task_request_mismatch"
+    )
+
+    with session_factory.begin() as session:
+        request_event = session.get(Event, request_event_id)
+        assert request_event is not None
+        request_event.payload = original_request_payload
+
+    with session_factory() as session:
+        task = session.get(Task, task_id)
+        assert task is not None
+        assert task.status == "pending"
+        assert task.attempt_count == 0
+        assert provider.calls == 0
+        assert session.scalar(
+            select(func.count(KnowledgeRevalidationAssessment.id)).where(
+                KnowledgeRevalidationAssessment.task_id == task_id
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == task_id
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == task_id,
+                Event.type == "task_started",
+            )
+        ) == 0
+
     if crash_after_record:
         with pytest.raises(
             RuntimeError,
@@ -1808,6 +1887,7 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
         reviewer = canonical_operator_identity(
             "https://host.example/identity", "b37-revalidation-reviewer"
         )
+        recorded_event_id = assessment.recorded_event_id
         if freshness_disposition == "current":
             binding = build_approval_binding(
                 session,
@@ -1842,6 +1922,43 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
                     snapshot_store=snapshot_store,
                     session_factory=session_factory,
                 )
+
+    with session_factory() as session:
+        recorded_event = session.get(Event, recorded_event_id)
+        assert recorded_event is not None
+        original_recorded_event_payload = dict(recorded_event.payload)
+    with session_factory.begin() as session:
+        recorded_event = session.get(Event, recorded_event_id)
+        assert recorded_event is not None
+        recorded_event.payload = {
+            **original_recorded_event_payload,
+            "assessment_payload_hash": "sha256:" + ("0" * 64),
+        }
+    with pytest.raises(TaskNotEligible) as tampered_replay_error:
+        runner.run(task_id)
+    assert str(tampered_replay_error.value) == (
+        "knowledge_revalidation_recorded_event_invalid"
+    )
+    with session_factory() as session:
+        change = session.get(LearningChange, revalidation_change_id)
+        assert change is not None
+        with pytest.raises(
+            KnowledgeApprovalBindingError,
+            match="knowledge_revalidation_recorded_event_invalid",
+        ):
+            build_approval_binding(
+                session,
+                change,
+                operator_id=reviewer,
+                approval_policy_version=1,
+                require_assessment=True,
+                snapshot_store=snapshot_store,
+                session_factory=session_factory,
+            )
+    with session_factory.begin() as session:
+        recorded_event = session.get(Event, recorded_event_id)
+        assert recorded_event is not None
+        recorded_event.payload = original_recorded_event_payload
 
     # The assessment table is intentionally immutable. Disable only user
     # triggers inside this disposable test transaction to remove its fixture.
