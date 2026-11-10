@@ -1256,7 +1256,8 @@ class _FakeKnowledgeRevalidationProvider:
                 KnowledgeRevalidationFinding(
                     code="new_observation_required",
                     summary=(
-                        "The claim is time-sensitive and needs a new source observation."
+                        "The claim is time-sensitive and needs a new "
+                        "source observation."
                     ),
                     evidence_refs=references,
                 )
