@@ -231,7 +231,9 @@ def _validate_approval_binding(
         or binding.get("approval_policy_version") != policy_version
         or isinstance(binding.get("approval_policy_version"), bool)
         or binding.get("target_kind") != SUPPORTED_LEARNING_CHANGE_TARGET_KIND
-        or binding.get("operation") not in {"create", "revalidate", "retire", "supersede"}
+        or binding.get("operation") not in {
+            "create", "revalidate", "retire", "supersede"
+        }
     ):
         raise OperatorApprovalValidationError(
             "operator_approval_binding_invalid"
