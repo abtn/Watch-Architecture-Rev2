@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 are complete/closed as recorded in PLAN.md. B3.2 schema/migration PR #60 is merged at `31be3a25cf7f52ca81eab65cc10280a855738c3d`. B3.3 — Revalidation assessment service and Task — is complete and merged through PR #62 at `f7683b3c7812c3250e0fed5e8e689ade6ecaeca5` after hosted CI and Operator-local exact-head verification (848 full-suite tests, 95 warnings). The Operator explicitly authorized B3.4 on 2026-11-09: deterministic `retire`/`supersede` lifecycle assessment service and Task only. The active approval allowlist remains exactly `create`; PLAN.md is the sole current status authority.
+R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 are complete/closed as recorded in PLAN.md. B3.2 assessment persistence (PR #60), B3.3 revalidation assessment (PR #62), B3.4 deterministic lifecycle assessment (PR #64), and B3.5 TaskRuntime/recovery/Event integration (PR #66) are implemented and merged. B3.5 hosted and Operator-local exact-PR-head verification passed on `65edf206eb6cd68859147ee8c2f68a4717c6fa87` (884 full-suite tests, 113 existing Alembic warnings). B3.6 approval-time assessment binding is the next gated checkpoint and has not been authorized. The B3.7 integrated regression matrix is documented for planning only in `docs/development/r7-b-b3-7-integrated-regression-matrix.md`; B3.7 execution remains blocked on B3.6 and separate authorization. The active approval allowlist remains exactly `create`; PLAN.md is the sole current status authority.
 
 ## Open the smallest relevant set of documents
 

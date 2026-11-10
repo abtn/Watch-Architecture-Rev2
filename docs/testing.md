@@ -754,3 +754,20 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 - Failed replay validates the full attempt history and unique Outcome/terminal Events. Existing revalidation behavior remains covered.
 
 **Authority and scope boundary:** no migration, TaskDispatcher activation, generic registry/scheduler, public API/auth, canonical `KnowledgeItem`/`LearningChange` writes, lifecycle commit, approval expansion, or B3.6–B3.9/B4–B6/R7-C work was included. The approval allowlist remains exactly `create`. B3.5 is merged; B3.6 approval-time assessment binding remains separately gated and unauthorized.
+
+## R7-B B3.7 — integrated regression matrix planning (2026-11-10; planning only)
+
+The B3.7 matrix has been extracted into [docs/development/r7-b-b3-7-integrated-regression-matrix.md](docs/development/r7-b-b3-7-integrated-regression-matrix.md). This is not a test result or implementation authorization. B3.6 remains the next gated checkpoint; B3.7 follows B3.6 and requires separate explicit Operator authorization.
+
+**Existing B3.2–B3.5 test baseline mapped by the plan:**
+
+- tests/test_knowledge_revalidation.py: freshness/result derivation, evaluator draft/evidence-reference validation, canonical normalization/hash behavior, target/current-pointer binding, and typed TaskRuntime observation constraints.
+- tests/test_knowledge_lifecycle.py: original Operator rationale, strict retire/supersede payload variants, deterministic findings, D7 successor eligibility, complete successor snapshot binding/drift, and lifecycle Task write scope.
+- tests/test_r7b_assessment_models.py and tests/test_r7b_assessment_migration.py: model/relational constraints, assessment uniqueness, Team ownership, Event separation, PostgreSQL immutability, successor reference protection, and migration downgrade safeguards.
+- tests/test_experience_distiller.py: assessment persistence, TaskRuntime integration, Event recording, no-canonical-write assertions, retry/recovery/replay, and the existing create-only Operator/KnowledgeQualityAssessment flow.
+- tests/test_task_runtime.py: shared TaskRuntime lifecycle behavior.
+
+**Known planning gap:** the current approval path binds the R7-A KnowledgeQualityAssessment for create-only approval. The B3.6 approval-time binding for KnowledgeRevalidationAssessment and KnowledgeLifecycleAssessment is not implemented in the current baseline. The matrix reserves its fingerprint, principal, tampering, and non-create rejection tests for after B3.6.
+
+No B3.7 tests were added or run for this planning update. No source, migration, Task scope, runtime, or approval allowlist change was made. The approval allowlist remains exactly {"create"}.
+

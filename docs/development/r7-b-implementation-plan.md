@@ -434,7 +434,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 - The active lifecycle approval allowlist remains exactly `create` throughout B3. B3 does not enable revise, revalidate, supersede, or retire commits.
 - Reuse the existing TaskRuntime, Task admission/finalization/recovery, Event, and immutable-record patterns. No second runtime, dispatcher, scheduler, auth stack, or autonomous approval.
 
-### B3 sequence — B3.2–B3.5 implemented and merged; B3.6–B3.9 separately gated
+### B3 sequence — B3.2–B3.5 implemented and merged; B3.6 is next gated; B3.7 plan extracted only; B3.6–B3.9 execution remains gated
 
 #### B3.0 — Entry gate and exact-head preflight
 
@@ -651,6 +651,8 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 **Expected output:** approval-gate tests for missing, duplicate, stale, tampered, wrong-operation, cross-Team, wrong-principal, and successor-mismatch assessments, while all non-create commits remain rejected.
 
 #### B3.7 — Integrated regression matrix
+
+**Planning artifact:** the extracted matrix and existing-test/gap inventory are in [`r7-b-b3-7-integrated-regression-matrix.md`](r7-b-b3-7-integrated-regression-matrix.md). This document is planning-only. B3.7 is ordered after B3.6, which remains the next gated checkpoint; B3.7 test implementation requires separate explicit Operator authorization after B3.6 is accepted and merged. No B3.7 tests have been added or run.
 
 Add end-to-end tests that traverse the real persistence, TaskRuntime, Event, assessment, and approval-validation boundaries. At minimum cover:
 
