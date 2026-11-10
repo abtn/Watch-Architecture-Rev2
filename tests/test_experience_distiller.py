@@ -4566,8 +4566,8 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         session_factory, snapshot_store
     )
     from core.knowledge_lifecycle import (
-        KnowledgeLifecycleAssessmentError,
         REQUEST_EVENT_TYPE,
+        KnowledgeLifecycleAssessmentError,
     )
 
     with session_factory() as session:
