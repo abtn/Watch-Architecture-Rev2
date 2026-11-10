@@ -229,6 +229,7 @@ def test_assessment_type_mismatch_and_duplicate_records_fail_closed(
         )
 
     change.operation = "create"
+    change.target_id = None
     monkeypatch.setattr(
         knowledge_approval,
         "_assessment_counts",
@@ -300,9 +301,37 @@ def test_assessment_hash_principal_and_policy_are_fingerprint_inputs(
         approval_binding=changed,
     )
     assert first_fingerprint != changed_fingerprint
-    assert first["operator_id"] != canonical_operator_identity(
+
+    other_operator = canonical_operator_identity(
         "https://host.example/identity", "reviewer-2"
     )
+    changed_principal = dict(first)
+    changed_principal["operator_id"] = other_operator
+    principal_fingerprint = build_request_fingerprint(
+        team_id=change.team_id,
+        learning_change_id=change.id,
+        decision="accept",
+        rejection_reason=None,
+        operator_id=other_operator,
+        quality_assessment_id=None,
+        quality_assessment_hash=None,
+        approval_binding=changed_principal,
+    )
+    assert principal_fingerprint != first_fingerprint
+
+    changed_policy = dict(first)
+    changed_policy["approval_policy_version"] = 5
+    policy_fingerprint = build_request_fingerprint(
+        team_id=change.team_id,
+        learning_change_id=change.id,
+        decision="accept",
+        rejection_reason=None,
+        operator_id=first_operator,
+        quality_assessment_id=None,
+        quality_assessment_hash=None,
+        approval_binding=changed_policy,
+    )
+    assert policy_fingerprint != first_fingerprint
 
 def test_missing_revalidation_assessment_fails_at_approval_binding(
     monkeypatch: pytest.MonkeyPatch,
