@@ -659,6 +659,28 @@ class LearningCommitService:
             raise LearningCommitCorrupt(
                 "operator_quality_assessment_not_allowed_for_rejection"
             )
+        if approval_request.schema_version == 3:
+            from core.knowledge_approval import (
+                KnowledgeApprovalBindingError,
+                build_approval_binding,
+            )
+
+            try:
+                expected_binding = build_approval_binding(
+                    session,
+                    learning_change,
+                    operator_id=operator_id,
+                    approval_policy_version=task.policy_version,
+                    require_assessment=recorded_decision == "accept",
+                    snapshot_store=self._snapshot_store,
+                    session_factory=self._session_factory,
+                )
+            except KnowledgeApprovalBindingError as error:
+                raise LearningCommitCorrupt(str(error)) from error
+            if expected_binding != approval_request.approval_binding:
+                raise LearningCommitCorrupt(
+                    "operator_approval_binding_invalid"
+                )
         if (
             recorded_decision != requested_decision
             or learning_change.decision_reason != rejection_reason
@@ -738,6 +760,14 @@ class LearningCommitService:
             "proposal_hash": learning_change.proposed_state.get("proposal_hash"),
             "committed_at": committed_at.isoformat(),
         }
+        if approval_request.schema_version == 3:
+            expected_payload["request_fingerprint"] = (
+                approval_request.request_fingerprint
+            )
+            if approval_request.approval_binding is not None:
+                expected_payload["approval_binding"] = (
+                    approval_request.approval_binding
+                )
         item_id: uuid.UUID | None = None
         if recorded_decision == "accept":
             items = list(
