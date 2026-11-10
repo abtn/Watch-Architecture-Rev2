@@ -1761,7 +1761,7 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
 
     with pytest.raises(TaskNotEligible) as drift_error:
         runner.run(task_id)
-    assert str(drift_error.value) == "knowledge_revalidation_evidence_stale"
+    assert str(drift_error.value) == "evaluation_proposal_hash_mismatch"
 
     with session_factory.begin() as session:
         link = session.get(EvidenceLink, link_id)
