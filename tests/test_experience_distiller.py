@@ -4181,6 +4181,10 @@ def test_b37_supersede_assessment_round_trips_successor_and_rechecks_approval_bi
         KNOWLEDGE_CONTENT_HASH_SCHEME,
         knowledge_item_content_hash,
     )
+    from core.models import (
+        KnowledgeLifecycleAssessment,
+        LearningChangeOperatorProvenance,
+    )
     from core.operator_approval import canonical_operator_identity
     from core.state_assessment import _timestamp
 
