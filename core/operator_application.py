@@ -197,7 +197,9 @@ class OperatorApplicationAdapter:
                         session_factory=self._session_factory,
                     )
                 except KnowledgeApprovalBindingError as error:
-                    raise LearningChangeNotApprovable(str(error)) from error
+                    raise OperatorTaskRequestConflict(
+                        "idempotency_key_reused_with_different_request"
+                    ) from error
                 quality_assessment_id = (
                     UUID(approval_binding["assessment_id"])
                     if approval_binding["assessment_type"] == "knowledge_quality"
