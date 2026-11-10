@@ -403,3 +403,134 @@ def test_request_fingerprint_changes_with_assessment_hash_or_host_principal() ->
     assert fingerprint(changed_hash) != first
     assert fingerprint(changed_principal) != first
 
+def _r7_bound_payload(operation: str) -> dict[str, object]:
+    team_id = uuid4()
+    learning_change_id = uuid4()
+    target_id = uuid4()
+    operator_id = canonical_operator_identity(
+        "https://host.example/identity", "operator-42"
+    )
+    assessment_type = (
+        "knowledge_revalidation"
+        if operation == "revalidate"
+        else "knowledge_lifecycle"
+    )
+    assessment_id = uuid4()
+    binding: dict[str, object] = {
+        "schema_version": 1,
+        "team_id": str(team_id),
+        "learning_change_id": str(learning_change_id),
+        "operation": operation,
+        "target_kind": "knowledge_item",
+        "target_id": str(target_id),
+        "current_learning_change_id": str(uuid4()),
+        "target_content_version": 4,
+        "target_content_hash": "sha256:" + "1" * 64,
+        "target_content_hash_scheme": "watch.r7b.knowledge-content.v2",
+        "target_status": "active",
+        "target_state_hash": "sha256:" + "2" * 64,
+        "proposal_hash": "sha256:" + "3" * 64,
+        "proposed_state_hash": "sha256:" + "4" * 64,
+        "evidence_refs": [{"outcome_id": str(uuid4())}],
+        "evidence_basis_hash": "sha256:" + "5" * 64,
+        "approval_policy_version": 8,
+        "assessment_task_policy_version": 6,
+        "assessment_type": assessment_type,
+        "assessment_id": str(assessment_id),
+        "assessment_payload_hash": "sha256:" + "6" * 64,
+        "evaluator_identity": (
+            "watch.r7b.revalidation" if operation == "revalidate" else None
+        ),
+        "evaluator_revision": "1" if operation == "revalidate" else None,
+        "operator_provenance": (
+            {
+                "issuer": "https://host.example/identity",
+                "subject": "proposal-author",
+            }
+            if operation in {"retire", "supersede"}
+            else None
+        ),
+        "successor_binding": None,
+        "operator_id": operator_id,
+    }
+    if operation == "supersede":
+        binding["successor_binding"] = {
+            "successor_knowledge_item_id": str(uuid4()),
+            "successor_team_id": str(team_id),
+            "successor_current_learning_change_id": str(uuid4()),
+            "successor_content_version": 2,
+            "successor_content_hash": "sha256:" + "7" * 64,
+            "successor_content_hash_scheme": "watch.r7b.knowledge-content.v2",
+            "successor_status": "active",
+            "successor_review_after": "2027-01-02T03:04:05.123456Z",
+            "successor_state_hash": "sha256:" + "8" * 64,
+        }
+    fingerprint = build_request_fingerprint(
+        team_id=team_id,
+        learning_change_id=learning_change_id,
+        decision="accept",
+        rejection_reason=None,
+        operator_id=operator_id,
+        quality_assessment_id=None,
+        quality_assessment_hash=None,
+        approval_binding=binding,
+    )
+    return {
+        "schema_version": 3,
+        "operation": "approve_learning_change",
+        "learning_change_id": str(learning_change_id),
+        "decision": "accept",
+        "rejection_reason": None,
+        "operator_id": operator_id,
+        "idempotency_key_hash": "sha256:" + "9" * 64,
+        "request_fingerprint": fingerprint,
+        "policy_version": 8,
+        "knowledge_quality_assessment_id": None,
+        "knowledge_quality_assessment_hash": None,
+        "approval_binding": binding,
+        "_team_id": team_id,
+    }
+
+
+@pytest.mark.parametrize("operation", ["revalidate", "retire", "supersede"])
+def test_schema_v3_accepts_operation_specific_r7_assessment_bindings(
+    operation: str,
+) -> None:
+    payload = _r7_bound_payload(operation)
+    team_id = payload.pop("_team_id")
+    parsed = parse_request_event_payload(
+        payload, team_id=team_id, policy_version=8
+    )
+
+    assert parsed.schema_version == 3
+    assert parsed.quality_assessment_id is None
+    assert parsed.quality_assessment_hash is None
+    assert parsed.approval_binding is not None
+    assert parsed.approval_binding["operation"] == operation
+    assert parsed.approval_binding["assessment_type"] == (
+        "knowledge_revalidation"
+        if operation == "revalidate"
+        else "knowledge_lifecycle"
+    )
+
+
+def test_schema_v3_supersede_successor_is_part_of_request_fingerprint() -> None:
+    payload = _r7_bound_payload("supersede")
+    team_id = payload.pop("_team_id")
+    binding = payload["approval_binding"]
+    successor = dict(binding["successor_binding"])
+    successor["successor_review_after"] = "2027-02-02T03:04:05.123456Z"
+    changed_binding = dict(binding)
+    changed_binding["successor_binding"] = successor
+    changed_fingerprint = build_request_fingerprint(
+        team_id=team_id,
+        learning_change_id=UUID(payload["learning_change_id"]),
+        decision="accept",
+        rejection_reason=None,
+        operator_id=payload["operator_id"],
+        quality_assessment_id=None,
+        quality_assessment_hash=None,
+        approval_binding=changed_binding,
+    )
+    assert changed_fingerprint != payload["request_fingerprint"]
+
