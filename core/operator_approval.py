@@ -435,8 +435,8 @@ def parse_request_event_payload(
 ) -> OperatorApprovalRequestPayload:
     """Validate schema, identity, decision, idempotency and fingerprint pins.
 
-    Schema v1 is retained only for historical rejection requests. Schema v2
-    binds the completed KnowledgeQualityAssessment for accepted requests.
+    Schema v1 is retained for historical rejection requests. Schema v2 binds
+    the KnowledgeQualityAssessment; schema v3 adds the complete approval binding.
     """
     if not isinstance(payload, dict):
         raise OperatorApprovalValidationError("operator_task_request_event_invalid")
