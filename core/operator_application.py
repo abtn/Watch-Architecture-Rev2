@@ -17,9 +17,9 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
-from core.knowledge_quality import (
-    KnowledgeQualityAssessmentError,
-    require_recorded_assessment,
+from core.knowledge_approval import (
+    KnowledgeApprovalBindingError,
+    build_approval_binding,
 )
 from core.models import Event, LearningChange, Task, Team, TeamPolicy
 from core.operator_approval import (
@@ -152,13 +152,7 @@ class OperatorApplicationAdapter:
         principal: TrustedOperatorPrincipal,
         request: LearningChangeDecisionRequest,
     ) -> OperatorTaskRequestResult:
-        """Create one pending approval Task or replay the identical request.
-
-        The LearningChange determines the Team; the caller cannot supply a
-        conflicting Team ID. A host-issued idempotency UUID maps to a stable
-        Task primary key. PostgreSQL INSERT .. ON CONFLICT serializes concurrent
-        attempts to create that same request without a new schema field.
-        """
+        """Create one immutable, assessment-bound approval request or replay it."""
         canonical_operator_id = _canonical_operator_identity(principal)
         rejection_reason = _validate_request(request)
 
@@ -171,6 +165,9 @@ class OperatorApplicationAdapter:
             if learning_change is None:
                 raise LearningChangeNotApprovable("learning_change_not_found")
 
+            # B3 remains create-only. The broader binding resolver is shared
+            # with the later R7-B operation gates, but this adapter does not
+            # create approval Tasks for lifecycle operations.
             if not is_supported_learning_change(
                 target_kind=learning_change.target_kind,
                 operation=learning_change.operation,
@@ -182,35 +179,37 @@ class OperatorApplicationAdapter:
 
             team_id = learning_change.team_id
             _require_team_grant(principal, team_id)
-
             task_id = _approval_task_id(team_id, request.idempotency_key)
             idempotency_key_hash = _sha256(str(request.idempotency_key))
-            quality_assessment_id: UUID | None = None
-            quality_assessment_hash: str | None = None
-            if request.decision == "accept":
-                try:
-                    assessment = require_recorded_assessment(
-                        session, learning_change, require_task_done=True
-                    )
-                except KnowledgeQualityAssessmentError as error:
-                    raise LearningChangeNotApprovable(str(error)) from error
-                quality_assessment_id = assessment.id
-                quality_assessment_hash = assessment.assessment_payload_hash
-
-            request_fingerprint = _request_fingerprint(
-                team_id=team_id,
-                learning_change_id=learning_change.id,
-                decision=request.decision,
-                rejection_reason=rejection_reason,
-                operator_id=canonical_operator_id,
-                quality_assessment_id=quality_assessment_id,
-                quality_assessment_hash=quality_assessment_hash,
-            )
 
             existing_task = session.scalar(
                 select(Task).where(Task.id == task_id)
             )
             if existing_task is not None:
+                try:
+                    approval_binding = build_approval_binding(
+                        session,
+                        learning_change,
+                        operator_id=canonical_operator_id,
+                        approval_policy_version=existing_task.policy_version,
+                        require_assessment=request.decision == "accept",
+                        snapshot_store=self._snapshot_store,
+                        session_factory=self._session_factory,
+                    )
+                except KnowledgeApprovalBindingError as error:
+                    raise OperatorTaskRequestConflict(
+                        "idempotency_key_reused_with_different_request"
+                    ) from error
+                quality_assessment_id = (
+                    UUID(approval_binding["assessment_id"])
+                    if approval_binding["assessment_type"] == "knowledge_quality"
+                    else None
+                )
+                quality_assessment_hash = (
+                    approval_binding["assessment_payload_hash"]
+                    if approval_binding["assessment_type"] == "knowledge_quality"
+                    else None
+                )
                 return _verify_existing_request(
                     session=session,
                     task=existing_task,
@@ -219,7 +218,7 @@ class OperatorApplicationAdapter:
                     rejection_reason=rejection_reason,
                     operator_id=canonical_operator_id,
                     idempotency_key_hash=idempotency_key_hash,
-                    request_fingerprint=request_fingerprint,
+                    approval_binding=approval_binding,
                     quality_assessment_id=quality_assessment_id,
                     quality_assessment_hash=quality_assessment_hash,
                 )
@@ -240,8 +239,7 @@ class OperatorApplicationAdapter:
                 raise OperatorApplicationError("team_not_active")
 
             # TeamPolicy has immutable versioned rows and no active-version
-            # pointer; the latest version is the current policy pin throughout
-            # the existing retrieval and application code.
+            # pointer; the latest version is the current policy pin.
             policy = session.scalar(
                 select(TeamPolicy)
                 .where(TeamPolicy.team_id == team_id)
@@ -251,6 +249,40 @@ class OperatorApplicationAdapter:
             )
             if policy is None:
                 raise OperatorApplicationError("team_policy_missing")
+
+            try:
+                approval_binding = build_approval_binding(
+                    session,
+                    learning_change,
+                    operator_id=canonical_operator_id,
+                    approval_policy_version=policy.version,
+                    require_assessment=request.decision == "accept",
+                    snapshot_store=self._snapshot_store,
+                    session_factory=self._session_factory,
+                )
+            except KnowledgeApprovalBindingError as error:
+                raise LearningChangeNotApprovable(str(error)) from error
+
+            quality_assessment_id = (
+                UUID(approval_binding["assessment_id"])
+                if approval_binding["assessment_type"] == "knowledge_quality"
+                else None
+            )
+            quality_assessment_hash = (
+                approval_binding["assessment_payload_hash"]
+                if approval_binding["assessment_type"] == "knowledge_quality"
+                else None
+            )
+            request_fingerprint = _request_fingerprint(
+                team_id=team_id,
+                learning_change_id=learning_change.id,
+                decision=request.decision,
+                rejection_reason=rejection_reason,
+                operator_id=canonical_operator_id,
+                quality_assessment_id=quality_assessment_id,
+                quality_assessment_hash=quality_assessment_hash,
+                approval_binding=approval_binding,
+            )
 
             event_payload = _request_event_payload(
                 learning_change_id=learning_change.id,
@@ -262,6 +294,7 @@ class OperatorApplicationAdapter:
                 policy_version=policy.version,
                 quality_assessment_id=quality_assessment_id,
                 quality_assessment_hash=quality_assessment_hash,
+                approval_binding=approval_binding,
             )
 
             inserted_task_id = session.scalar(
@@ -286,10 +319,6 @@ class OperatorApplicationAdapter:
             )
 
             if inserted_task_id is None:
-                # Another transaction may have inserted the same deterministic
-                # Task while this transaction waited on the primary-key conflict.
-                # Under PostgreSQL READ COMMITTED, this new statement sees the
-                # winning transaction's committed Task and request Event.
                 concurrent_task = session.scalar(
                     select(Task).where(Task.id == task_id)
                 )
@@ -297,6 +326,28 @@ class OperatorApplicationAdapter:
                     raise OperatorTaskRequestCorrupt(
                         "task_missing_after_idempotency_conflict"
                     )
+                try:
+                    concurrent_binding = build_approval_binding(
+                        session,
+                        learning_change,
+                        operator_id=canonical_operator_id,
+                        approval_policy_version=concurrent_task.policy_version,
+                        require_assessment=request.decision == "accept",
+                        snapshot_store=self._snapshot_store,
+                        session_factory=self._session_factory,
+                    )
+                except KnowledgeApprovalBindingError as error:
+                    raise LearningChangeNotApprovable(str(error)) from error
+                concurrent_quality_id = (
+                    UUID(concurrent_binding["assessment_id"])
+                    if concurrent_binding["assessment_type"] == "knowledge_quality"
+                    else None
+                )
+                concurrent_quality_hash = (
+                    concurrent_binding["assessment_payload_hash"]
+                    if concurrent_binding["assessment_type"] == "knowledge_quality"
+                    else None
+                )
                 return _verify_existing_request(
                     session=session,
                     task=concurrent_task,
@@ -305,9 +356,9 @@ class OperatorApplicationAdapter:
                     rejection_reason=rejection_reason,
                     operator_id=canonical_operator_id,
                     idempotency_key_hash=idempotency_key_hash,
-                    request_fingerprint=request_fingerprint,
-                    quality_assessment_id=quality_assessment_id,
-                    quality_assessment_hash=quality_assessment_hash,
+                    approval_binding=concurrent_binding,
+                    quality_assessment_id=concurrent_quality_id,
+                    quality_assessment_hash=concurrent_quality_hash,
                 )
 
             session.add(
@@ -556,6 +607,7 @@ def _request_fingerprint(
     operator_id: str,
     quality_assessment_id: UUID | None,
     quality_assessment_hash: str | None,
+    approval_binding: dict[str, object] | None = None,
 ) -> str:
     return build_request_fingerprint(
         team_id=team_id,
@@ -565,6 +617,7 @@ def _request_fingerprint(
         operator_id=operator_id,
         quality_assessment_id=quality_assessment_id,
         quality_assessment_hash=quality_assessment_hash,
+        approval_binding=approval_binding,
     )
 
 
@@ -579,9 +632,11 @@ def _request_event_payload(
     policy_version: int,
     quality_assessment_id: UUID | None,
     quality_assessment_hash: str | None,
+    approval_binding: dict[str, object] | None = None,
+    schema_version: int = 3,
 ) -> dict[str, object]:
-    return {
-        "schema_version": 2,
+    payload: dict[str, object] = {
+        "schema_version": schema_version,
         "operation": _APPROVAL_ACTION,
         "learning_change_id": str(learning_change_id),
         "decision": decision,
@@ -595,6 +650,11 @@ def _request_event_payload(
         ),
         "knowledge_quality_assessment_hash": quality_assessment_hash,
     }
+    if schema_version == 3:
+        if approval_binding is None:
+            raise OperatorTaskRequestCorrupt("approval_binding_missing")
+        payload["approval_binding"] = approval_binding
+    return payload
 
 
 def _verify_existing_request(
@@ -606,7 +666,7 @@ def _verify_existing_request(
     rejection_reason: str | None,
     operator_id: str,
     idempotency_key_hash: str,
-    request_fingerprint: str,
+    approval_binding: dict[str, object],
     quality_assessment_id: UUID | None,
     quality_assessment_hash: str | None,
 ) -> OperatorTaskRequestResult:
@@ -640,13 +700,6 @@ def _verify_existing_request(
     payload = events[0].payload
     if payload.get("idempotency_key_hash") != idempotency_key_hash:
         raise OperatorTaskRequestCorrupt("approval_request_key_hash_mismatch")
-    if (
-        payload.get("schema_version") != 1
-        and payload.get("request_fingerprint") != request_fingerprint
-    ):
-        raise OperatorTaskRequestConflict(
-            "idempotency_key_reused_with_different_request"
-        )
 
     policy_version = payload.get("policy_version")
     if (
@@ -657,13 +710,13 @@ def _verify_existing_request(
         raise OperatorTaskRequestCorrupt("approval_request_policy_pin_mismatch")
 
     try:
-        parse_request_event_payload(
+        parsed = parse_request_event_payload(
             payload, team_id=team_id, policy_version=task.policy_version
         )
     except OperatorApprovalValidationError as error:
         raise OperatorTaskRequestCorrupt(error.reason) from error
 
-    if payload.get("schema_version") == 1:
+    if parsed.schema_version == 1:
         if request.decision != "reject" or (
             quality_assessment_id is not None
             or quality_assessment_hash is not None
@@ -701,19 +754,40 @@ def _verify_existing_request(
                 "legacy_approval_request_event_payload_mismatch"
             )
     else:
+        stored_binding = (
+            approval_binding if parsed.schema_version == 3 else None
+        )
+        expected_fingerprint = _request_fingerprint(
+            team_id=team_id,
+            learning_change_id=request.learning_change_id,
+            decision=request.decision,
+            rejection_reason=rejection_reason,
+            operator_id=operator_id,
+            quality_assessment_id=quality_assessment_id,
+            quality_assessment_hash=quality_assessment_hash,
+            approval_binding=stored_binding,
+        )
+        if parsed.request_fingerprint != expected_fingerprint:
+            raise OperatorTaskRequestConflict(
+                "idempotency_key_reused_with_different_request"
+            )
         expected_payload = _request_event_payload(
             learning_change_id=request.learning_change_id,
             decision=request.decision,
             rejection_reason=rejection_reason,
             operator_id=operator_id,
             idempotency_key_hash=idempotency_key_hash,
-            request_fingerprint=request_fingerprint,
+            request_fingerprint=expected_fingerprint,
             policy_version=policy_version,
             quality_assessment_id=quality_assessment_id,
             quality_assessment_hash=quality_assessment_hash,
+            approval_binding=stored_binding,
+            schema_version=parsed.schema_version,
         )
         if payload != expected_payload:
-            raise OperatorTaskRequestCorrupt("approval_request_event_payload_mismatch")
+            raise OperatorTaskRequestCorrupt(
+                "approval_request_event_payload_mismatch"
+            )
 
     return OperatorTaskRequestResult(
         task_id=task.id,

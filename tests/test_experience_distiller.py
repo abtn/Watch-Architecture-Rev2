@@ -1956,6 +1956,24 @@ def test_learning_commit_accepts_real_create_proposal_atomically(
         )
         assert len(decision_events) == 1
         assert decision_events[0].payload["knowledge_item_id"] == str(item.id)
+        request_event = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "operator_task_requested",
+            )
+        )
+        assert request_event is not None
+        assert request_event.payload["schema_version"] == 3
+        assert decision_events[0].payload["schema_version"] == 2
+        assert decision_events[0].payload["request_fingerprint"] == (
+            request_event.payload["request_fingerprint"]
+        )
+        assert decision_events[0].payload["approval_binding"] == (
+            request_event.payload["approval_binding"]
+        )
+        assert decision_events[0].payload["approval_binding"][
+            "assessment_payload_hash"
+        ] == request_event.payload["knowledge_quality_assessment_hash"]
         assert session.scalar(
             select(Task).where(Task.id == task_id)
         ).status == "running"

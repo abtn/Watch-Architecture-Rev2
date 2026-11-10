@@ -136,13 +136,6 @@ class LearningCommitService:
             ):
                 raise LearningCommitError("approval_task_not_eligible")
 
-            try:
-                TaskRuntime._validate_operator_admission(
-                    session, task, allow_completed=task.status == "done"
-                )
-            except TaskNotEligible as error:
-                raise LearningCommitCorrupt(str(error)) from error
-
             request_events = list(
                 session.scalars(
                     select(Event).where(
@@ -187,6 +180,45 @@ class LearningCommitService:
             )
             if learning_change is None:
                 raise LearningCommitCorrupt("learning_change_not_found_for_task_team")
+
+            if approval_request.schema_version == 3:
+                from core.knowledge_approval import (
+                    KnowledgeApprovalBindingError,
+                    build_approval_binding,
+                )
+
+                try:
+                    expected_binding = build_approval_binding(
+                        session,
+                        learning_change,
+                        operator_id=operator_id,
+                        approval_policy_version=task.policy_version,
+                        require_assessment=decision == "accept",
+                        snapshot_store=self._snapshot_store,
+                        session_factory=self._session_factory,
+                    )
+                except KnowledgeApprovalBindingError as error:
+                    if is_supported_learning_change(
+                        target_kind=learning_change.target_kind,
+                        operation=learning_change.operation,
+                        target_id=learning_change.target_id,
+                    ):
+                        raise LearningCommitCorrupt(str(error)) from error
+                    # Non-create operations remain outside the approval
+                    # allowlist. Let the existing admission guard reject them
+                    # even when their assessment is missing or malformed.
+                else:
+                    if expected_binding != approval_request.approval_binding:
+                        raise LearningCommitCorrupt(
+                            "operator_approval_binding_invalid"
+                        )
+
+            try:
+                TaskRuntime._validate_operator_admission(
+                    session, task, allow_completed=task.status == "done"
+                )
+            except TaskNotEligible as error:
+                raise LearningCommitCorrupt(str(error)) from error
 
             # A committed decision by this exact Task is the only replay path.
             # A second approval Task may not overwrite or reinterpret it.
@@ -428,6 +460,15 @@ class LearningCommitService:
                 "proposal_hash": str(learning_change.proposed_state["proposal_hash"]),
                 "committed_at": committed_at.isoformat(),
             }
+            if approval_request.schema_version == 3:
+                event_payload["schema_version"] = 2
+                event_payload["request_fingerprint"] = (
+                    approval_request.request_fingerprint
+                )
+                if approval_request.approval_binding is not None:
+                    event_payload["approval_binding"] = (
+                        approval_request.approval_binding
+                    )
             if knowledge_item_id is not None:
                 event_payload["knowledge_item_id"] = str(knowledge_item_id)
                 event_payload["knowledge_item_version"] = 1
@@ -628,6 +669,28 @@ class LearningCommitService:
             raise LearningCommitCorrupt(
                 "operator_quality_assessment_not_allowed_for_rejection"
             )
+        if approval_request.schema_version == 3:
+            from core.knowledge_approval import (
+                KnowledgeApprovalBindingError,
+                build_approval_binding,
+            )
+
+            try:
+                expected_binding = build_approval_binding(
+                    session,
+                    learning_change,
+                    operator_id=operator_id,
+                    approval_policy_version=task.policy_version,
+                    require_assessment=recorded_decision == "accept",
+                    snapshot_store=self._snapshot_store,
+                    session_factory=self._session_factory,
+                )
+            except KnowledgeApprovalBindingError as error:
+                raise LearningCommitCorrupt(str(error)) from error
+            if expected_binding != approval_request.approval_binding:
+                raise LearningCommitCorrupt(
+                    "operator_approval_binding_invalid"
+                )
         if (
             recorded_decision != requested_decision
             or learning_change.decision_reason != rejection_reason
@@ -707,6 +770,15 @@ class LearningCommitService:
             "proposal_hash": learning_change.proposed_state.get("proposal_hash"),
             "committed_at": committed_at.isoformat(),
         }
+        if approval_request.schema_version == 3:
+            expected_payload["schema_version"] = 2
+            expected_payload["request_fingerprint"] = (
+                approval_request.request_fingerprint
+            )
+            if approval_request.approval_binding is not None:
+                expected_payload["approval_binding"] = (
+                    approval_request.approval_binding
+                )
         item_id: uuid.UUID | None = None
         if recorded_decision == "accept":
             items = list(

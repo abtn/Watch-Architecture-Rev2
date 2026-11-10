@@ -54,6 +54,7 @@ from core.operator_application import (
     OperatorTaskRequestCorrupt,
     TrustedOperatorPrincipal,
 )
+from core.operator_approval import build_request_fingerprint
 from core.task_runtime import (
     TaskNotEligible,
     TaskNotFinalizable,
@@ -455,9 +456,25 @@ def test_request_creates_one_pending_task_and_one_attributed_event(
         assert events[0].payload["operator_id"] == (
             '{"iss":"https://host.example/identity","sub":"operator-42"}'
         )
+        assert events[0].payload["schema_version"] == 3
         assert events[0].payload["policy_version"] == 2
         assert events[0].payload["request_fingerprint"].startswith("sha256:")
         assert events[0].payload["idempotency_key_hash"].startswith("sha256:")
+        binding = events[0].payload["approval_binding"]
+        assert binding["operation"] == "create"
+        assert binding["team_id"] == str(approval_context.team_id)
+        assert binding["learning_change_id"] == str(
+            approval_context.learning_change_id
+        )
+        assert binding["assessment_type"] == "knowledge_quality"
+        assert binding["assessment_id"] == events[0].payload[
+            "knowledge_quality_assessment_id"
+        ]
+        assert binding["assessment_payload_hash"] == events[0].payload[
+            "knowledge_quality_assessment_hash"
+        ]
+        assert binding["approval_policy_version"] == 2
+        assert binding["operator_id"] == events[0].payload["operator_id"]
         assert not hasattr(request, "operator_id")
         assert session.scalar(
             select(func.count(Task.id)).where(
@@ -530,6 +547,34 @@ def test_same_idempotency_key_with_changed_decision_conflicts(
                 rejection_reason="The evidence is insufficient.",
             ),
         )
+
+
+def test_same_idempotency_key_with_changed_proposal_conflicts(
+    session_factory: sessionmaker[Session],
+    approval_context: ApprovalContext,
+) -> None:
+    key = uuid4()
+    principal = _principal(approval_context.team_id)
+    adapter = OperatorApplicationAdapter(session_factory)
+    request = _request(
+        approval_context.learning_change_id, idempotency_key=key
+    )
+    adapter.request_learning_change_decision(principal, request)
+
+    with session_factory.begin() as session:
+        change = session.get(
+            LearningChange, approval_context.learning_change_id
+        )
+        assert change is not None
+        proposed_state = dict(change.proposed_state)
+        proposed_state["proposal_hash"] = "sha256:" + "f" * 64
+        change.proposed_state = proposed_state
+
+    with pytest.raises(
+        OperatorTaskRequestConflict,
+        match="idempotency_key_reused_with_different_request",
+    ):
+        adapter.request_learning_change_decision(principal, request)
 
 
 def test_same_idempotency_key_with_different_operator_conflicts(
@@ -878,7 +923,7 @@ def test_task_runtime_rejects_operator_request_event_identity_tampering(
         event.payload = payload
 
     with pytest.raises(
-        TaskNotEligible, match="operator_task_request_fingerprint_invalid"
+        TaskNotEligible, match="operator_approval_binding_invalid"
     ):
         TaskRuntime(session_factory).admit(request_result.task_id)
 
@@ -1094,3 +1139,60 @@ def test_interrupted_recovery_rejects_every_unauthorized_lifecycle_operation(
         assert task is not None
         assert task.status == "running"
         assert task.attempt_count == 1
+
+
+def test_task_runtime_rejects_rehashed_but_stale_approval_binding(
+    session_factory: sessionmaker[Session],
+    approval_context: ApprovalContext,
+) -> None:
+    principal = _principal(approval_context.team_id)
+    created = OperatorApplicationAdapter(
+        session_factory
+    ).request_learning_change_decision(
+        principal, _request(approval_context.learning_change_id)
+    )
+
+    with session_factory.begin() as session:
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "operator_task_requested",
+            )
+        )
+        assert event is not None and isinstance(event.payload, dict)
+        payload = dict(event.payload)
+        binding = dict(payload["approval_binding"])
+        binding["proposal_hash"] = "sha256:" + "0" * 64
+        payload["approval_binding"] = binding
+        payload["request_fingerprint"] = build_request_fingerprint(
+            team_id=approval_context.team_id,
+            learning_change_id=approval_context.learning_change_id,
+            decision="accept",
+            rejection_reason=None,
+            operator_id=payload["operator_id"],
+            quality_assessment_id=UUID(
+                payload["knowledge_quality_assessment_id"]
+            ),
+            quality_assessment_hash=payload[
+                "knowledge_quality_assessment_hash"
+            ],
+            approval_binding=binding,
+        )
+        event.payload = payload
+
+    with pytest.raises(
+        TaskNotEligible, match="operator_approval_binding_invalid"
+    ):
+        TaskRuntime(session_factory).admit(created.task_id)
+
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None and task.status == "pending"
+        assert task.attempt_count == 0
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_started",
+            )
+        ) == 0
+
