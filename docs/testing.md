@@ -826,3 +826,16 @@ Focused tests, run independently:
 The closeout traceability matrix and formal exit record are in [r7-b-b3-9-closeout.md](development/r7-b-b3-9-closeout.md). The current status is authoritative in `PLAN.md`. The documentation reconciliation updates PLAN, CHANGE_MAP, CONTEXT, README, testing records, Task documentation, the B3.7 matrix, the R7-B implementation plan, the R7 entry gate, ADR-0032, and the ADR index. No implementation, migration, Task registration, approval expansion, or next-phase work is part of B3.9.
 
 **Formal disposition:** B3 is COMPLETE and formally closed on 2026-11-10 following the Operator's explicit instruction to proceed to B3.9 and establish the formal exit status. B4, B5, B6, and R7-C remain NOT AUTHORIZED and require separate written Operator decisions. The approval allowlist remains exactly `{"create"}`.
+
+## R7-B B4 — current hosted-only verification route (2026-11-11)
+
+For the current B4 execution, Operator-local synchronization and test execution are skipped because the local machine is unavailable. This is an execution constraint, not a reduction of the B4 acceptance criteria.
+
+- Run checks through GitHub Actions on the exact pull-request head. Record the full tested commit SHA and workflow run URL; a green workflow from another SHA is not exact-head evidence.
+- The hosted workflow must prove a fresh disposable PostgreSQL migration from an empty database, exactly one Alembic head, Ruff, Mypy, the full pytest suite, and cleanup of the disposable database resources.
+- Review the complete source and test patch against the same exact PR head. Record the changed-file inventory, scope review, and any remaining gaps.
+- Do not claim local pytest, local migrations, local Ruff/Mypy, local `git diff --check`, local worktree cleanliness, or local environment restoration. Historical B3 local evidence remains valid for B3 only and is not B4 evidence.
+- Hosted CI does not replace the B4.1 Operator review of the revise/revalidate payloads, exact target snapshot matrix, evidence requirements, assessment routing, idempotency, Events, Outcomes, and replay. B4.2/B4.3 canonical commit work remains gated on that review.
+- If hosted CI does not cover any required check, report the missing proof and keep the relevant B4 gate open. Do not infer success from a workflow name or a partial green job.
+
+**Current disposition:** verification route documented; no B4 code, test, migration, or hosted workflow result is claimed by this section. See [PLAN.md](../PLAN.md) for the current implementation checkpoint and authority.
