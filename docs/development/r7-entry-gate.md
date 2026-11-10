@@ -2,9 +2,9 @@
 
 ## Status and authority
 
-**R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 complete; B1 merged; B2 formally closed with accepted residual verification gaps; B3.2–B3.5 implemented and merged. B3.6 approval-time assessment binding is the next gated checkpoint and has not been authorized. The B3.7 integrated regression matrix is documented for planning only and follows B3.6; B3.6–B3.9 execution, B4–B6 and R7-C remain gated.
+**R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 complete; B1 merged; B2 formally closed with accepted residual verification gaps; B3.2–B3.6 implemented and merged. B3.7 integrated regression implementation is authorized and underway in PR #69. B3.8–B3.9 execution, B4–B6 and R7-C remain gated.
 
-- This document records the accepted R7 architecture and separate phase gates. R7-A is complete. R7-B B0 is complete; B1 is merged; B2 is formally closed with residual verification gaps recorded in `docs/testing.md`. B3.2–B3.5 are implemented and merged as recorded in `PLAN.md` and `docs/testing.md`. B3.6 approval-time assessment binding remains the next gated checkpoint and has not been authorized. The B3.7 integrated regression matrix is a planning-only document at `r7-b-b3-7-integrated-regression-matrix.md`; it follows B3.6 and does not authorize test implementation. The active approval allowlist remains exactly `create`; B3.6–B3.9 execution, B4–B6 and R7-C remain gated.
+- This document records the accepted R7 architecture and separate phase gates. R7-A is complete. R7-B B0 is complete; B1 is merged; B2 is formally closed with residual verification gaps recorded in `docs/testing.md`. B3.2–B3.6 are implemented and merged as recorded in `PLAN.md` and `docs/testing.md`. B3.7 integrated regression implementation is authorized and underway in PR #69. The active approval allowlist remains exactly `create`; B3.8–B3.9 execution, B4–B6 and R7-C remain gated.
 - ADR-0032 remains **Accepted — 2026-11-04 for the original R7 architecture and R7-A scope**. Its R7-B D1/D5 design extension and B0.3 integrity contracts are separately accepted for design on 2026-11-05; this does not authorize implementation.
 - PLAN.md remains the sole authority for milestone status and next action.
 - R6 is formally complete through R6-G. R6-G approval and merge do not authorize R7.
@@ -33,7 +33,7 @@ The baseline commit does not prove the Operator's local branch, HEAD, worktree o
 
 ## 3. Scope and authorized delivery sequence
 
-R7-0 documentation is complete and merged. ADR-0032's original architecture acceptance is scoped to R7-A; its R7-B design extension was separately accepted on 2026-11-05. R7-A is complete and merged through PR #39. R7-B B0 is complete, B1 is merged, and B2 is formally closed with its accepted residual verification gaps recorded in `docs/testing.md`. B3.2–B3.5 are implemented and merged. B3.6 is the next gated checkpoint; B3.7 has a planning-only integrated regression matrix and remains ordered after B3.6. B3.6–B3.9 require their respective separate written Operator authorizations. B4–B6 and R7-C remain separately gated.
+R7-0 documentation is complete and merged. ADR-0032's original architecture acceptance is scoped to R7-A; its R7-B design extension was separately accepted on 2026-11-05. R7-A is complete and merged through PR #39. R7-B B0 is complete, B1 is merged, and B2 is formally closed with its accepted residual verification gaps recorded in `docs/testing.md`. B3.2–B3.6 are implemented and merged. B3.7 integrated regression implementation is authorized and underway in PR #69. B3.8–B3.9 require their respective separate written Operator authorizations. B4–B6 and R7-C remain separately gated.
 
 ### R7-A — Evidence relationships and knowledge-quality assessment
 
@@ -65,7 +65,7 @@ Exit requirements:
 
 ### R7-B — Canonical KnowledgeItem lifecycle
 
-**Status (updated 2026-11-10):** B0 is complete. B1 is merged; B2 is formally closed with accepted residual verification gaps recorded in `docs/testing.md`. B3.2–B3.5 are implemented and merged. B3.6 approval-time assessment binding is the next gated checkpoint and has not been authorized. The B3.7 integrated regression matrix is documented for planning only; it follows B3.6 and requires separate B3.7 authorization before tests are implemented. The active approval allowlist remains exactly `create`. B3.6–B3.9 execution, B4–B6 and R7-C remain gated.
+**Status (updated 2026-11-10):** B0 is complete. B1 is merged; B2 is formally closed with accepted residual verification gaps recorded in `docs/testing.md`. B3.2–B3.6 are implemented and merged. B3.7 integrated regression implementation is authorized and underway in PR #69. The active approval allowlist remains exactly `create`. B3.8–B3.9 execution, B4–B6 and R7-C remain gated.
 
 R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path to revise, revalidate, supersede and retire KnowledgeItems. It preserves stable item identity, immutable origin provenance, current-pointer history, Team isolation, D7 review rules, and fail-closed retrieval. It adds no runtime, dispatcher, scheduler, public API/auth stack or production evaluator provider.
 
@@ -81,7 +81,7 @@ R7-B extends the existing LearningChange, trusted Operator and TaskRuntime path 
 6. **B5 — Supersede/retire/candidate creation:** create-with-successor, reciprocal publication gate, D7-aware commit, abandoned-candidate rules, consistent-snapshot Context validation, and Team-scoped graph lock.
 7. **B6 — Legacy compatibility and hardening:** legacy Events/snapshots, repeated review/revalidation, replay after later transitions, mutation rejection and full regression verification.
 
-**Implementation gate:** B1 and B2 were separately authorized; B2 is formally closed with the residuals recorded in `docs/testing.md`. B3.2–B3.5 are implemented and merged. B3.6 approval-time assessment binding is the next gated checkpoint and requires separate written Operator authorization. B3.7 follows B3.6; its integrated regression matrix is documented for planning only, and test implementation requires separate B3.7 authorization after B3.6 is accepted and merged. B3.8–B3.9 and later phases remain gated. The active approval allowlist remains exactly `create`. B4–B6 require their own later phase authorizations. No R7-C work is authorized.
+**Implementation gate:** B1 and B2 were separately authorized; B2 is formally closed with the residuals recorded in `docs/testing.md`. B3.2–B3.6 are implemented and merged. B3.7 implementation is separately authorized after B3.6 acceptance/merge and is underway in PR #69. B3.8–B3.9 and later phases remain gated. The active approval allowlist remains exactly `create`. B4–B6 require their own later phase authorizations. No R7-C work is authorized.
 
 ### R7-C — Retrieval quality and downstream-use evaluation
 
@@ -200,4 +200,4 @@ No source code, tests, migrations, schema, runtime configuration, provider confi
 
 **R7-A closeout:** PR #39 merged to main at 75122a7b34c15e2445b81a2a719020667b55bf06. Tested head 47ffa532dacbc10b146ac7b0768302761a2a0b1b has identical Git tree. Hosted CI [41844600681](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41844600681) passed; Operator-local disposable-PostgreSQL verification passed 631 tests in 79.22s, fresh single-head 0014_knowledge_quality migration, Ruff, Mypy and cleanup.
 
-**Current gate (updated 2026-11-10):** R7-0, R7-A, R7-B B0 and B1 are complete. B2 is formally closed with three accepted residual verification gaps retained in `docs/testing.md`. B3.2–B3.5 are implemented and merged. B3.6 approval-time assessment binding is next and remains gated pending separate written Operator authorization. B3.7 has a planning-only integrated regression matrix and remains dependent on B3.6 plus separate B3.7 authorization. B3.6–B3.9 execution and B4–B6/R7-C remain gated. The approval allowlist remains exactly `create`.
+**Current gate (updated 2026-11-10):** R7-0, R7-A, R7-B B0 and B1 are complete. B2 is formally closed with three accepted residual verification gaps retained in `docs/testing.md`. B3.2–B3.6 are implemented and merged. B3.7 integrated regression implementation is authorized and underway in PR #69. B3.8–B3.9 execution and B4–B6/R7-C remain gated. The approval allowlist remains exactly `create`.
