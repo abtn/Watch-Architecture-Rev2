@@ -673,7 +673,7 @@ def build_quality_task_request(
     task_id = quality_task_id(source_task.team_id, learning_change.id)
     payload = quality_request_payload(
         task_id=task_id,
-        team_id=team_id,
+        team_id=source_task.team_id,
         learning_change=learning_change,
         lineage_report=lineage,
         policy_version=source_task.policy_version,
@@ -1082,7 +1082,7 @@ def assessment_record_payload(
     idempotency_key: str,
     target_binding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "creating_task_id": str(task_id),
         "team_id": str(team_id),
         "learning_change_id": str(learning_change_id),
