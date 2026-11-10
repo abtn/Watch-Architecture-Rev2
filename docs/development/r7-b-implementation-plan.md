@@ -695,7 +695,7 @@ Tests must assert both the intended assessment record and the absence of unautho
 - Both assessment Tasks use the existing TaskRuntime, exact narrow write scopes, attributable Events, idempotency, recovery, and stable replay.
 - Approval-time validation independently verifies the exact assessment payload and all B0.3 fingerprint bindings.
 - The active approval allowlist remains exactly `create`; B3 introduces no lifecycle commit capability.
-- Focused and full tests, fresh migration/single-head, Ruff, Mypy, source/test diff check, complete scope review, and hosted/local exact-head verification pass; any broader diff-check qualification is explicitly recorded and accepted in the formal closeout.
+- Focused and full tests, fresh migration/single-head, Ruff, Mypy, `git diff --check`, complete scope review, and hosted/local exact-head verification pass.
 - No production evaluator/provider, new runtime/dispatcher/scheduler/auth stack, direct canonical writes, or R7-C work is introduced.
 
 **B3 stop conditions:** stop and return to the Operator if the frozen contracts cannot be represented without changing B0.3, if canonical evidence freshness cannot be verified, if assessment immutability or exact Task scope cannot be enforced, if the approval fingerprint cannot bind all required data, or if implementation would require widening the create-only allowlist. Do not proceed into B4 to work around a B3 blocker.
