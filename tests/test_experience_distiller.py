@@ -1556,6 +1556,32 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
                 == revalidation_change_id
             )
         ) == 1
+        from core.knowledge_approval import build_approval_binding
+        from core.operator_approval import canonical_operator_identity
+
+        reviewer = canonical_operator_identity(
+            "https://host.example/identity", "b37-revalidation-reviewer"
+        )
+        binding = build_approval_binding(
+            session,
+            change,
+            operator_id=reviewer,
+            approval_policy_version=1,
+            require_assessment=True,
+            snapshot_store=snapshot_store,
+            session_factory=session_factory,
+        )
+        assert binding["assessment_type"] == "knowledge_revalidation"
+        assert binding["assessment_id"] == str(assessment.id)
+        assert binding["assessment_payload_hash"] == assessment.payload_hash
+        assert binding["assessment_result"] is None
+        assert binding["target_content_version"] == item.version
+        assert binding["target_content_hash"] == assessment.target_content_hash
+        assert binding["current_learning_change_id"] == str(
+            item.current_learning_change_id
+        )
+        assert binding["operator_id"] == reviewer
+        assert binding["assessment_task_policy_version"] == task.policy_version
 
     # The assessment table is intentionally immutable. Disable only user
     # triggers inside this disposable test transaction to remove its fixture.
