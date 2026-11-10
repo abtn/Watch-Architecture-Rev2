@@ -690,6 +690,25 @@ class TaskRuntime:
             ):
                 raise TaskNotEligible("operator_quality_assessment_binding_invalid")
 
+        if request_payload.schema_version == 3:
+            from core.knowledge_approval import (
+                KnowledgeApprovalBindingError,
+                build_approval_binding,
+            )
+
+            try:
+                expected_binding = build_approval_binding(
+                    session,
+                    learning_change,
+                    operator_id=request_payload.operator_id,
+                    approval_policy_version=task.policy_version,
+                    require_assessment=decision == "accept",
+                )
+            except KnowledgeApprovalBindingError as error:
+                raise TaskNotEligible(str(error)) from error
+            if expected_binding != request_payload.approval_binding:
+                raise TaskNotEligible("operator_approval_binding_invalid")
+
     def finalize(self, observation: TerminalObservation) -> FinalizationResult:
         """Commit one terminal `task_execution` Outcome for a running Task.
 
