@@ -233,6 +233,29 @@ class LearningCommitService:
             if current_policy is None or current_policy.version != task.policy_version:
                 raise LearningCommitError("approval_task_policy_is_stale")
 
+            if approval_request.schema_version == 3:
+                from core.knowledge_approval import (
+                    KnowledgeApprovalBindingError,
+                    build_approval_binding,
+                )
+
+                try:
+                    expected_binding = build_approval_binding(
+                        session,
+                        learning_change,
+                        operator_id=operator_id,
+                        approval_policy_version=task.policy_version,
+                        require_assessment=decision == "accept",
+                        snapshot_store=self._snapshot_store,
+                        session_factory=self._session_factory,
+                    )
+                except KnowledgeApprovalBindingError as error:
+                    raise LearningCommitError(str(error)) from error
+                if expected_binding != approval_request.approval_binding:
+                    raise LearningCommitError(
+                        "operator_approval_binding_invalid"
+                    )
+
             current_start_events = list(
                 session.scalars(
                     select(Event).where(
@@ -428,6 +451,14 @@ class LearningCommitService:
                 "proposal_hash": str(learning_change.proposed_state["proposal_hash"]),
                 "committed_at": committed_at.isoformat(),
             }
+            if approval_request.schema_version == 3:
+                event_payload["request_fingerprint"] = (
+                    approval_request.request_fingerprint
+                )
+                if approval_request.approval_binding is not None:
+                    event_payload["approval_binding"] = (
+                        approval_request.approval_binding
+                    )
             if knowledge_item_id is not None:
                 event_payload["knowledge_item_id"] = str(knowledge_item_id)
                 event_payload["knowledge_item_version"] = 1
