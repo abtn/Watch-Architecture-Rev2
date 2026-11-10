@@ -4,7 +4,7 @@
 **Predecessor:** B3.6 — Approval-time assessment binding (next gated checkpoint; not yet authorized)  
 **Implementation gate:** Separate explicit Operator authorization after B3.6 is accepted and merged  
 **Normative contracts:** ADR-0032 and the frozen B3.1 assessment contracts  
-**Current status authority:** \`PLAN.md\`
+**Current status authority:** `PLAN.md`
 
 ## 1. Purpose
 
@@ -19,7 +19,7 @@ This document is a test plan. It does not claim that the B3.7 tests have been im
 
 ## 2. Entry dependencies and current blocker
 
-The ten-stage B3 sequence orders B3.7 after B3.6. The current repository gate records B3.6 as the next gated checkpoint. The code currently present in \`core/operator_application.py\`, \`core/operator_approval.py\`, and \`core/learning_commit.py\` binds \`KnowledgeQualityAssessment\` for the create-only approval path; it does not yet implement the B3.6 binding of \`KnowledgeRevalidationAssessment\` and \`KnowledgeLifecycleAssessment\` into approval validation and fingerprints.
+The ten-stage B3 sequence orders B3.7 after B3.6. The current repository gate records B3.6 as the next gated checkpoint. The code currently present in `core/operator_application.py`, `core/operator_approval.py`, and `core/learning_commit.py` binds `KnowledgeQualityAssessment` for the create-only approval path; it does not yet implement the B3.6 binding of `KnowledgeRevalidationAssessment` and `KnowledgeLifecycleAssessment` into approval validation and fingerprints.
 
 Therefore:
 
@@ -34,21 +34,21 @@ B3.2–B3.5 are the implemented foundation: immutable assessment persistence, re
 
 ### 3.1 Assessment authority
 
-- \`KnowledgeRevalidationAssessment\` and \`KnowledgeLifecycleAssessment\` are immutable evidence/validation records, not canonical KnowledgeItem mutations and not approval decisions.
+- `KnowledgeRevalidationAssessment` and `KnowledgeLifecycleAssessment` are immutable evidence/validation records, not canonical KnowledgeItem mutations and not approval decisions.
 - Assessment workers may record only their own typed assessment:
-  - \`assess_knowledge_revalidation\`: \`["KnowledgeRevalidationAssessment"]\`
-  - \`assess_knowledge_lifecycle\`: \`["KnowledgeLifecycleAssessment"]\`
-- Neither assessment Task may write \`KnowledgeItem\`, \`LearningChange\`, Task lifecycle records, terminal Outcomes, or Kernel-managed lifecycle Events.
+  - `assess_knowledge_revalidation`: `["KnowledgeRevalidationAssessment"]`
+  - `assess_knowledge_lifecycle`: `["KnowledgeLifecycleAssessment"]`
+- Neither assessment Task may write `KnowledgeItem`, `LearningChange`, Task lifecycle records, terminal Outcomes, or Kernel-managed lifecycle Events.
 - TaskRuntime remains the sole owner of Task admission, attempt fencing, retry/recovery, finalization, lifecycle Events, and terminal Outcomes.
 - Assessment Events must be attributable to their creating Task and bind the exact assessment identity and payload hash.
 - The assessment Task paths remain explicit application-invoked paths; B3.7 must not add automatic TaskDispatcher registration or a generic Task registry.
 
 ### 3.2 Approval authority
 
-- The approval allowlist remains exactly \`{"create"}\`.
-- B3.6 may add assessment validation and fingerprint binding; it does not authorize \`revalidate\`, \`retire\`, or \`supersede\` commits.
+- The approval allowlist remains exactly `{"create"}`.
+- B3.6 may add assessment validation and fingerprint binding; it does not authorize `revalidate`, `retire`, or `supersede` commits.
 - B3.7 must prove that non-create lifecycle attempts remain rejected at every applicable approval boundary, including request/admission, finalization/recovery, and commit-service validation.
-- No test may treat an assessment result of \`supported\` or \`eligible\` as approval or commit authority.
+- No test may treat an assessment result of `supported` or `eligible` as approval or commit authority.
 
 ### 3.3 Scope exclusions
 
@@ -60,16 +60,16 @@ This is an inventory of existing coverage at the current B3.5 merged baseline. I
 
 | Existing test location | Existing coverage relevant to B3.7 | Remaining integrated question |
 |---|---|---|
-| \`tests/test_knowledge_revalidation.py\` | Freshness/result derivation; evaluator finding and evidence-reference validation; normalization and hash domains; historical target/current-pointer binding; typed TaskRuntime terminal-observation constraints. | Does the complete service/Task path preserve those rules through retries, immutable recording, Event verification, and later approval-time revalidation? |
-| \`tests/test_knowledge_lifecycle.py\` | Original Operator rationale shape/provenance; retire/supersede proposal variants; deterministic findings; D7 successor status/review-date eligibility; complete successor snapshot and drift checks; exact lifecycle worker write scope. | Are all operation-specific rules preserved through persistence, TaskRuntime recovery/replay, and approval-time validation? |
-| \`tests/test_r7b_assessment_models.py\` | Frozen model fields, required bindings, composite ownership references, assessment uniqueness, Event separation, and closed payload/vocabulary constraints. | Do database behavior and end-to-end services enforce the same constraints under real transactions? |
-| \`tests/test_r7b_assessment_migration.py\` | PostgreSQL migration constraints, cross-Team/wrong-operation/event-task rejection, uniqueness, assessment immutability, truncate protection, successor reference protection, and downgrade safety. | Are the database guarantees exercised alongside successful and rejected service/Task flows in the integrated fixture? |
-| \`tests/test_experience_distiller.py\` | B3.3/B3.4 assessment persistence and B3.5 TaskRuntime integration, including no-canonical-write assertions, recorded Events, replay/recovery and failure/retry history. It also contains the existing create-only Operator/quality-assessment path. | Does one integrated regression set cover both assessment types and the B3.6 approval pins without confusing the existing QualityAssessment binding with the new B3 assessment records? |
-| \`tests/test_task_runtime.py\` | Shared TaskRuntime lifecycle and execution invariants. | Are the exact B3 assessment write scopes, request bindings, recovery observations, and terminal records enforced by the B3-specific runners? |
+| `tests/test_knowledge_revalidation.py` | Freshness/result derivation; evaluator finding and evidence-reference validation; normalization and hash domains; historical target/current-pointer binding; typed TaskRuntime terminal-observation constraints. | Does the complete service/Task path preserve those rules through retries, immutable recording, Event verification, and later approval-time revalidation? |
+| `tests/test_knowledge_lifecycle.py` | Original Operator rationale shape/provenance; retire/supersede proposal variants; deterministic findings; D7 successor status/review-date eligibility; complete successor snapshot and drift checks; exact lifecycle worker write scope. | Are all operation-specific rules preserved through persistence, TaskRuntime recovery/replay, and approval-time validation? |
+| `tests/test_r7b_assessment_models.py` | Frozen model fields, required bindings, composite ownership references, assessment uniqueness, Event separation, and closed payload/vocabulary constraints. | Do database behavior and end-to-end services enforce the same constraints under real transactions? |
+| `tests/test_r7b_assessment_migration.py` | PostgreSQL migration constraints, cross-Team/wrong-operation/event-task rejection, uniqueness, assessment immutability, truncate protection, successor reference protection, and downgrade safety. | Are the database guarantees exercised alongside successful and rejected service/Task flows in the integrated fixture? |
+| `tests/test_experience_distiller.py` | B3.3/B3.4 assessment persistence and B3.5 TaskRuntime integration, including no-canonical-write assertions, recorded Events, replay/recovery and failure/retry history. It also contains the existing create-only Operator/quality-assessment path. | Does one integrated regression set cover both assessment types and the B3.6 approval pins without confusing the existing QualityAssessment binding with the new B3 assessment records? |
+| `tests/test_task_runtime.py` | Shared TaskRuntime lifecycle and execution invariants. | Are the exact B3 assessment write scopes, request bindings, recovery observations, and terminal records enforced by the B3-specific runners? |
 
 ### 4.1 Approval-path baseline limitation
 
-The current approval implementation is not evidence of B3.6 completion. The present approval request/fingerprint and commit checks include the R7-A \`KnowledgeQualityAssessment\` ID/hash for the create path. B3.7 must add tests for the B3.6 lifecycle/revalidation assessment pins only after B3.6 implements them. Do not relabel existing create/quality-assessment tests as coverage of \`KnowledgeRevalidationAssessment\` or \`KnowledgeLifecycleAssessment\` approval binding.
+The current approval implementation is not evidence of B3.6 completion. The present approval request/fingerprint and commit checks include the R7-A `KnowledgeQualityAssessment` ID/hash for the create path. B3.7 must add tests for the B3.6 lifecycle/revalidation assessment pins only after B3.6 implements them. Do not relabel existing create/quality-assessment tests as coverage of `KnowledgeRevalidationAssessment` or `KnowledgeLifecycleAssessment` approval binding.
 
 ## 5. Integrated regression matrix
 
@@ -80,7 +80,7 @@ The following IDs are the planned B3.7 test inventory. The implementation may sp
 | ID | Scenario | Required assertion | Existing base / planned gap |
 |---|---|---|---|
 | RV-01 | Valid current evidence basis | Application rebuilds canonical evidence references and hashes; a valid current evaluator draft records one immutable assessment with exact Team, proposal, target, evaluator identity/revision, Task, and attempt bindings. | Revalidation domain rules and service recording exist; add/confirm an end-to-end TaskRuntime + Event assertion. |
-| RV-02 | Temporal freshness dispositions | \`current\` may support only when all required findings support it. \`stale\`, \`insufficient\`, \`conflicting\`, and \`unassessable\` cannot produce \`supported\`. | Domain tests exist; ensure the integrated Task result and absence of unauthorized writes are asserted. |
+| RV-02 | Temporal freshness dispositions | `current` may support only when all required findings support it. `stale`, `insufficient`, `conflicting`, and `unassessable` cannot produce `supported`. | Domain tests exist; ensure the integrated Task result and absence of unauthorized writes are asserted. |
 | RV-03 | Time-sensitive or changed evidence | Expired/changed sources, a time-sensitive claim without new observations, and material newer/contradictory evidence cannot be silently reused as current support. | Some source/freshness checks exist; cover the frozen negative cases through the canonical rebuild and recording boundary. |
 | RV-04 | Evidence-reference integrity | Missing, duplicate, malformed, invented, cross-Team, or hash-mismatched references are rejected. Every canonical evidence link required by the rebuilt basis is accounted for; contrary evidence is not dropped. | Finding/draft unit coverage exists; add integrated persistence and no-record/no-write assertions where absent. |
 | RV-05 | Evaluator provenance and draft trust | Missing or mismatched evaluator identity/revision and malformed, extra-field, or otherwise untrusted evaluator drafts are rejected; evaluator-supplied identities and hashes are never authoritative. | Domain validation exists; verify service-level rejection has no assessment/Event side effects. |
@@ -91,7 +91,7 @@ The following IDs are the planned B3.7 test inventory. The implementation may sp
 | ID | Scenario | Required assertion | Existing base / planned gap |
 |---|---|---|---|
 | LC-01 | Retire variant | Retire binds the exact predecessor snapshot, proposal operation, structured original Operator rationale, and evidence. Every successor field is forbidden, including a field explicitly set to null. | Proposal/variant validation exists; exercise the immutable record and Task/Event path. |
-| LC-02 | Supersede complete successor | Supersede requires the exact successor ID, same Team, current pointer, content version/hash/scheme, status, non-null future \`review_after\`, full-state hash, and exact reciprocal predecessor relationship. | Deterministic binding exists; test the full path and approval-time recheck after B3.6. |
+| LC-02 | Supersede complete successor | Supersede requires the exact successor ID, same Team, current pointer, content version/hash/scheme, status, non-null future `review_after`, full-state hash, and exact reciprocal predecessor relationship. | Deterministic binding exists; test the full path and approval-time recheck after B3.6. |
 | LC-03 | Successor mismatch and drift | Missing/extra fields, cross-Team successor, wrong predecessor, changed successor pointer/version/hash/status/review date/full-state hash, or invalid D7 eligibility fail closed. A successor ID alone is never sufficient. | Several unit/integration cases exist; ensure each required binding is asserted at assessment and approval boundaries. |
 | LC-04 | Lifecycle rationale and operation integrity | Wrong operation, malformed rationale, missing provenance, substituted/model-generated rationale, evidence mismatch, or changed proposed-state hash is rejected. | Existing lifecycle domain tests cover core shapes; confirm persistence/Event side effects remain absent on rejection. |
 | LC-05 | Assessment payload integrity | Recomputed canonical payload hash covers the complete typed variant and all required bindings; changing any semantic field changes/rejects the binding. | Hash-domain and normalization tests exist; add cross-boundary mutation cases where missing. |
@@ -102,14 +102,14 @@ The following IDs are the planned B3.7 test inventory. The implementation may sp
 |---|---|---|---|
 | DB-01 | Required relational ownership | Assessment, Task, Team, LearningChange, target KnowledgeItem, evidence references, and successor references cannot be combined across Teams or rebound to an unrelated object. | Model and migration constraints exist; test representative cross-Team failures in real service transactions. |
 | DB-02 | Assessment immutability | Database rejects row UPDATE, DELETE, and prohibited TRUNCATE operations independently of ORM/application checks. | Migration tests exist; retain a direct PostgreSQL assertion in the integrated verification set. |
-| DB-03 | Idempotency uniqueness and references | One logical assessment identity per \`(team_id, learning_change_id, assessment_type)\`; request/recorded Event identities remain distinct and valid; required references cannot disappear through cascading deletion. | Model/migration tests exist; test duplicate and delete/restriction behavior in service-level transactions. |
+| DB-03 | Idempotency uniqueness and references | One logical assessment identity per `(team_id, learning_change_id, assessment_type)`; request/recorded Event identities remain distinct and valid; required references cannot disappear through cascading deletion. | Model/migration tests exist; test duplicate and delete/restriction behavior in service-level transactions. |
 | DB-04 | Migration compatibility | Fresh disposable PostgreSQL reaches one Alembic head and preserves the assessment constraints and immutability triggers. | B3.8 performs exact-head fresh migration verification; B3.7 must keep migration regression coverage and report schema drift if found. |
 
 ### 5.4 TaskRuntime, write scopes, Events, retry, and recovery
 
 | ID | Scenario | Required assertion | Existing base / planned gap |
 |---|---|---|---|
-| TK-01 | Exact worker write scope | Revalidation Task has only \`["KnowledgeRevalidationAssessment"]\`; lifecycle Task has only \`["KnowledgeLifecycleAssessment"]\`. Attempts to write \`KnowledgeItem\` or \`LearningChange\` are rejected; Task lifecycle, Outcome, and Kernel-managed Event writes remain TaskRuntime-owned. | Exact scopes are implemented; ensure both paths are asserted together at admission/finalization boundaries. |
+| TK-01 | Exact worker write scope | Revalidation Task has only `["KnowledgeRevalidationAssessment"]`; lifecycle Task has only `["KnowledgeLifecycleAssessment"]`. Attempts to write `KnowledgeItem` or `LearningChange` are rejected; Task lifecycle, Outcome, and Kernel-managed Event writes remain TaskRuntime-owned. | Exact scopes are implemented; ensure both paths are asserted together at admission/finalization boundaries. |
 | TK-02 | Task envelope | Existing TaskRuntime path enforces the expected same-Team request, three-attempt limit, zero tool/cost budget, and 30-second deadline; no generic registry or automatic dispatch is assumed. | B3.5 lifecycle envelope and existing revalidation path exist; cover parity and fail-closed malformed envelopes. |
 | EV-01 | Request Event binding | Request Event binds the Task, assessment type, exact proposal/target, idempotency identity, canonical request digest, and its own Event identity/payload digest. | Existing request validation exists; assert the event is the admitted request and cannot be substituted. |
 | EV-02 | Recorded Event integrity | Recorded Event belongs to the creating Task and binds the exact assessment ID and payload hash; missing, duplicate, wrong-Task, wrong-hash, or mismatched Event fails finalization/replay. | Existing recording integrity checks exist; cover deliberate tampering and no fabricated repair. |
@@ -127,7 +127,7 @@ These cases depend on B3.6 being implemented and accepted first.
 | AP-02 | Assessment tampering | Missing, duplicate, stale, wrong-operation, cross-Team, wrong-target, changed evidence, changed successor, altered payload hash, or mismatched assessment ID/hash is rejected at approval validation. | B3.6 implementation prerequisite; derive tests from the frozen contract's negative-case matrix. |
 | AP-03 | Trusted Operator identity | Host-authenticated canonical Operator issuer/subject is included in the request fingerprint and decision binding; a different principal cannot reuse the idempotency identity. | B3.6 implementation prerequisite; request-body/model asserted identity is not proof. |
 | AP-04 | Idempotency conflict | Reusing a key with a changed principal, assessment payload, proposal, target state, or successor state conflicts; exact replay returns the original decision result. | B3.6 implementation prerequisite; assert no duplicate decision records. |
-| AP-05 | Create-only allowlist | \`revalidate\`, \`retire\`, and \`supersede\` remain rejected at request/admission, finalization/recovery, and commit-service boundaries. No B3 assessment result authorizes a lifecycle commit. | B3.6 implementation prerequisite; active allowlist must remain exactly \`{"create"}\`. |
+| AP-05 | Create-only allowlist | `revalidate`, `retire`, and `supersede` remain rejected at request/admission, finalization/recovery, and commit-service boundaries. No B3 assessment result authorizes a lifecycle commit. | B3.6 implementation prerequisite; active allowlist must remain exactly `{"create"}`. |
 
 ### 5.6 End-to-end combinations
 
@@ -157,25 +157,25 @@ B3.7 may be recommended complete only when:
 2. Valid revalidation, retire, and supersede assessment paths are exercised through their real persistence, TaskRuntime, and Event boundaries.
 3. All frozen negative cases relevant to assessment binding, evidence freshness, Team ownership, payload variants, immutable persistence, write scope, Event integrity, replay, and recovery are covered.
 4. B3.6 approval fingerprints bind the required assessment payload hashes and host principal, and tampering/mismatch tests reject them.
-5. All non-create lifecycle approval attempts remain rejected; the allowlist is still exactly \`{"create"}\`.
-6. Tests prove the absence of unauthorized canonical \`KnowledgeItem\` and \`LearningChange\` writes, including failure and replay paths.
+5. All non-create lifecycle approval attempts remain rejected; the allowlist is still exactly `{"create"}`.
+6. Tests prove the absence of unauthorized canonical `KnowledgeItem` and `LearningChange` writes, including failure and replay paths.
 7. The test report maps each matrix ID to exact test names/files and identifies remaining gaps without describing unrun checks as passed.
 
 B3.7 test completion is not B3.8 exact-head verification and is not B3 phase closure. B3.8 owns exact-head verification; B3.9 owns documentation closeout and explicit Operator B3 exit acceptance. B3 completion does not authorize B4–B6 or R7-C.
 
 ## 8. Verification hand-off to B3.8
 
-After B3.7 implementation is separately authorized and its test changes are complete, B3.8 must independently run the focused groups, Ruff, Mypy, \`git diff --check\`, the full suite, fresh disposable PostgreSQL migration/single-head verification, full diff/scope review, and hosted/local exact-head comparison.
+After B3.7 implementation is separately authorized and its test changes are complete, B3.8 must independently run the focused groups, Ruff, Mypy, `git diff --check`, the full suite, fresh disposable PostgreSQL migration/single-head verification, full diff/scope review, and hosted/local exact-head comparison.
 
 The local verification workflow must follow the repository's PowerShell script guide:
 
 - exact repository/branch/HEAD/worktree preflight;
 - refuse dirty worktrees and never discard/stash local work;
 - verify exact SHAs, not only branch names;
-- use a fresh disposable PostgreSQL container with a dynamically assigned loopback port, never persistent \`watch\` or host port 5432;
-- save and restore \`DATABASE_URL\` and \`TEST_DATABASE_URL\`;
+- use a fresh disposable PostgreSQL container with a dynamically assigned loopback port, never persistent `watch` or host port 5432;
+- save and restore `DATABASE_URL` and `TEST_DATABASE_URL`;
 - clean only resources created by the script;
-- check \`$LASTEXITCODE\` after each consequential native command;
-- parse the generated \`.ps1\` before execution and finish with an unambiguous \`PASSED:\` line.
+- check `$LASTEXITCODE` after each consequential native command;
+- parse the generated `.ps1` before execution and finish with an unambiguous `PASSED:` line.
 
 No B3.8 verification result is implied by this planning document.
