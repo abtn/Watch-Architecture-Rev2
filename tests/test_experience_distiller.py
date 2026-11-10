@@ -1508,7 +1508,7 @@ def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recove
             self.calls += 1
             references = tuple(sorted(allowed_evidence_references))
             freshness_disposition = "current"
-            valid_payload = {
+            valid_payload: dict[str, Any] = {
                 "freshness_disposition": freshness_disposition,
                 "findings": [
                     {
@@ -1537,7 +1537,10 @@ def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recove
                     "freshness_disposition": "current",
                     "findings": {"code": "supports_revalidation"},
                 }
-            elif self.calls == 1 and invalid_draft_case == "missing_required_field":
+            elif (
+                self.calls == 1
+                and invalid_draft_case == "missing_required_field"
+            ):
                 return {"freshness_disposition": "current"}
             elif (
                 self.calls == 1
