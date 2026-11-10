@@ -1218,7 +1218,9 @@ class _FakeKnowledgeRevalidationProvider:
         self,
         *,
         fail_first: bool = False,
-        freshness_disposition: Literal["current", "stale"] = "current",
+        freshness_disposition: Literal[
+            "current", "stale", "insufficient", "conflicting", "unassessable"
+        ] = "current",
     ) -> None:
         self.calls = 0
         self.fail_first = fail_first
@@ -1227,19 +1229,26 @@ class _FakeKnowledgeRevalidationProvider:
     def draft_for_references(
         self, allowed_evidence_references: frozenset[str]
     ) -> KnowledgeRevalidationAssessmentDraft:
-        is_current = self.freshness_disposition == "current"
+        code_by_disposition = {
+            "current": "supports_revalidation",
+            "stale": "temporally_stale",
+            "insufficient": "insufficient_coverage",
+            "conflicting": "unresolved_conflict",
+            "unassessable": "freshness_unassessable",
+        }
+        summary_by_disposition = {
+            "current": "The rebuilt evidence basis remains relevant.",
+            "stale": "The evidence basis is temporally stale.",
+            "insufficient": "The evidence basis does not cover the required claims.",
+            "conflicting": "The evidence basis contains unresolved conflicts.",
+            "unassessable": "The evidence freshness cannot be assessed.",
+        }
         return KnowledgeRevalidationAssessmentDraft(
             freshness_disposition=self.freshness_disposition,
             findings=(
                 KnowledgeRevalidationFinding(
-                    code=(
-                        "supports_revalidation" if is_current else "temporally_stale"
-                    ),
-                    summary=(
-                        "The rebuilt evidence basis remains relevant."
-                        if is_current
-                        else "The evidence basis is temporally stale."
-                    ),
+                    code=code_by_disposition[self.freshness_disposition],
+                    summary=summary_by_disposition[self.freshness_disposition],
                     evidence_refs=tuple(sorted(allowed_evidence_references)),
                 ),
             ),
@@ -1840,7 +1849,10 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
 
 
 
-@pytest.mark.parametrize("freshness_disposition", ["current", "stale"])
+@pytest.mark.parametrize(
+    "freshness_disposition",
+    ["current", "stale", "insufficient", "conflicting", "unassessable"],
+)
 @pytest.mark.parametrize(
     ("crash_after_record", "fail_first_attempt"),
     [(False, False), (True, False), (False, True)],
@@ -1849,7 +1861,9 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
     session_factory,
     snapshot_store,
     distillation_fixture,
-    freshness_disposition: Literal["current", "stale"],
+    freshness_disposition: Literal[
+        "current", "stale", "insufficient", "conflicting", "unassessable"
+    ],
     crash_after_record: bool,
     fail_first_attempt: bool,
 ):
