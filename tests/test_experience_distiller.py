@@ -2355,27 +2355,24 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
             session_factory, snapshot_store
         ),
     )
+    from sqlalchemy import event
+    from sqlalchemy.exc import IntegrityError
+    from core.knowledge_revalidation import RECORDED_EVENT_TYPE, REQUEST_EVENT_TYPE
+
     if fail_record_first:
-        from core.knowledge_revalidation import (
-            RECORDED_EVENT_TYPE,
-            KnowledgeRevalidationAssessmentError,
-        )
-
-        original_record = runner._service.record
-        record_calls = 0
-
-        def fail_first_record(*args, **kwargs):
-            nonlocal record_calls
-            record_calls += 1
-            if record_calls == 1:
-                raise KnowledgeRevalidationAssessmentError(
-                    "simulated_assessment_persistence_failure"
+        def fail_assessment_insert(mapper, connection, assessment) -> None:
+            if assessment.task_id == task_id:
+                raise IntegrityError(
+                    "INSERT INTO knowledge_revalidation_assessments",
+                    {},
+                    RuntimeError("simulated_assessment_insert_failure"),
                 )
-            return original_record(*args, **kwargs)
 
-        runner._service.record = fail_first_record
-
-    from core.knowledge_revalidation import REQUEST_EVENT_TYPE
+        event.listen(
+            KnowledgeRevalidationAssessment,
+            "before_insert",
+            fail_assessment_insert,
+        )
     from core.task_runtime import TaskNotEligible
 
     invalid_shapes = [
@@ -2556,14 +2553,19 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
         assert second.status == "done"
         assert second.assessment_id is not None
     elif fail_record_first:
-        first = runner.run(task_id)
-        assert first.status == "pending"
-        assert first.assessment_id is None
-        assert first.outcome_id is None
+        try:
+            with pytest.raises(IntegrityError):
+                runner.run(task_id)
+        finally:
+            event.remove(
+                KnowledgeRevalidationAssessment,
+                "before_insert",
+                fail_assessment_insert,
+            )
         with session_factory() as session:
             task = session.get(Task, task_id)
             assert task is not None
-            assert task.status == "pending"
+            assert task.status == "running"
             assert task.attempt_count == 1
             assert session.scalar(
                 select(func.count(KnowledgeRevalidationAssessment.id)).where(
@@ -2581,17 +2583,14 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
                     Outcome.recorded_by_task_id == task_id
                 )
             ) == 0
-            failed_event = session.scalar(
-                select(Event).where(
-                    Event.task_id == task_id,
-                    Event.type == "task_attempt_failed",
-                )
-            )
-            assert failed_event is not None
-            assert (
-                failed_event.payload["failure_reason"]
-                == "simulated_assessment_persistence_failure"
-            )
+        recovery = TaskRuntime(
+            session_factory, snapshot_store
+        ).recover_interrupted(
+            now=datetime.now(timezone.utc) + timedelta(seconds=120)
+        )
+        assert recovery.retried == (task_id,)
+        assert recovery.completed == ()
+        assert recovery.failed == ()
         second = runner.run(task_id)
         assert second.status == "done"
         assert second.assessment_id is not None
