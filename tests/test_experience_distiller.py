@@ -1730,7 +1730,7 @@ def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recove
     ("drift_case", "expected_failure_reason"),
     [
         ("evidence_link_stance", "evaluation_proposal_hash_mismatch"),
-        ("source_outcome_hash", "knowledge_revalidation_source_outcome_invalid"),
+        ("source_outcome_hash", "source_task_outcome_event_mismatch"),
     ],
 )
 def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admission(
