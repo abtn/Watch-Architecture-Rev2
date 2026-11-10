@@ -854,7 +854,9 @@ def _successor_binding(
         ) from error
     except KnowledgeLifecycleAssessmentError:
         raise
-    review_after = state.get("review_after")
+    # knowledge_item_state() returns canonical timestamp strings. Use the
+    # persisted ORM datetime for the type-checked timestamp normalization below.
+    review_after = successor.review_after
     if review_after is not None:
         if not isinstance(review_after, datetime):
             raise KnowledgeLifecycleAssessmentError(
