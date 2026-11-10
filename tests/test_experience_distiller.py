@@ -12,7 +12,8 @@ from typing import Any, Callable, Iterator, Literal
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, event, func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.evaluations import (
@@ -48,6 +49,8 @@ from core.knowledge_revalidation import (
     KnowledgeRevalidationAssessmentDraft,
     KnowledgeRevalidationAssessmentService,
     KnowledgeRevalidationFinding,
+    RECORDED_EVENT_TYPE,
+    REQUEST_EVENT_TYPE,
     validate_revalidation_task_request,
 )
 from core.knowledge_revalidation_tasks import KnowledgeRevalidationAssessmentTaskRunner
@@ -2355,10 +2358,6 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
             session_factory, snapshot_store
         ),
     )
-    from sqlalchemy import event
-    from sqlalchemy.exc import IntegrityError
-    from core.knowledge_revalidation import RECORDED_EVENT_TYPE, REQUEST_EVENT_TYPE
-
     if fail_record_first:
         def fail_assessment_insert(mapper, connection, assessment) -> None:
             if assessment.task_id == task_id:
