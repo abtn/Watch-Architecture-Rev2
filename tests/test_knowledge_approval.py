@@ -62,6 +62,7 @@ def test_revalidation_binding_pins_current_target_evidence_and_assessment(
         evidence_basis_hash="sha256:" + "1" * 64,
         id=uuid4(),
         payload_hash="sha256:" + "2" * 64,
+        assessment_result="supported",
         evaluator_identity="watch.r7b.revalidation",
         evaluator_revision="1",
     )
@@ -137,6 +138,7 @@ def test_lifecycle_supersede_binding_includes_full_successor_snapshot_and_proven
         evidence_basis_hash="sha256:" + "7" * 64,
         id=uuid4(),
         payload_hash="sha256:" + "8" * 64,
+        assessment_result="eligible",
         successor_knowledge_item_id=uuid4(),
         successor_current_learning_change_id=uuid4(),
         successor_content_version=2,
