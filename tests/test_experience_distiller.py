@@ -114,13 +114,14 @@ class _Fixture:
 def distillation_fixture(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
-) -> Iterator[Callable[[int, bool], _Fixture]]:
+) -> Iterator[Callable[..., _Fixture]]:
     created: list[_Fixture] = []
 
     def build(
         case_count: int = 1,
         include_contrary: bool = False,
         include_mention: bool = False,
+        review_interval_days: int | None = None,
     ) -> _Fixture:
         team_id, policy_id, distillation_task_id = (uuid4() for _ in range(3))
         with session_factory.begin() as session:
@@ -131,11 +132,17 @@ def distillation_fixture(
                     id=policy_id,
                     team_id=team_id,
                     version=1,
-                    schema_version=2,
-                    rules={
-                        "sources": [],
-                        "review": {"knowledge_item_interval_days": 1},
-                    },
+                    schema_version=2 if review_interval_days is not None else 1,
+                    rules=(
+                        {
+                            "sources": [],
+                            "review": {
+                                "knowledge_item_interval_days": review_interval_days
+                            },
+                        }
+                        if review_interval_days is not None
+                        else {"unchanged": True}
+                    ),
                 )
             )
             session.flush()
@@ -606,8 +613,8 @@ def test_single_case_proposes_only_narrow_practice_and_replays(
         ) is None
         team_policy = session.get(TeamPolicy, fixture.policy_id)
         assert team_policy is not None
-        assert team_policy.schema_version == 2
-        assert team_policy.rules["review"]["knowledge_item_interval_days"] == 1
+        assert team_policy.schema_version == 1
+        assert team_policy.rules == {"unchanged": True}
         charge = session.get(TaskGenerationCharge, result.generation_charge_id)
         assert charge is not None
         assert charge.operation == EXPERIENCE_DISTILLATION_OPERATION
@@ -1329,6 +1336,7 @@ def _create_revalidation_proposal(
                 max_attempts=3,
             )
         )
+        session.flush()
         session.add(
             Event(
                 id=uuid4(),
@@ -1376,6 +1384,7 @@ def _create_revalidation_proposal(
                 max_attempts=3,
             )
         )
+        session.flush()
         session.add(
             Event(
                 id=uuid4(),
@@ -1457,7 +1466,9 @@ def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recove
         assessment_payload_hash,
     )
 
-    fixture = distillation_fixture(2, include_contrary=False)
+    fixture = distillation_fixture(
+        2, include_contrary=False, review_interval_days=1
+    )
     foreign_fixture = distillation_fixture(1, include_contrary=False)
     with session_factory() as session:
         foreign_link = session.scalar(
@@ -1767,7 +1778,9 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
     drift_case: str,
     expected_failure_reason: str,
 ):
-    fixture = distillation_fixture(2, include_contrary=False)
+    fixture = distillation_fixture(
+        2, include_contrary=False, review_interval_days=1
+    )
     create_proposal = _distiller(
         session_factory, snapshot_store, _provider()
     ).propose(
@@ -2050,7 +2063,9 @@ def test_revalidation_target_and_proposal_drift_fail_before_admission_and_approv
     from core.operator_approval import canonical_operator_identity
     from core.task_runtime import TaskNotEligible
 
-    fixture = distillation_fixture(2, include_contrary=False)
+    fixture = distillation_fixture(
+        2, include_contrary=False, review_interval_days=1
+    )
     create_proposal = _distiller(
         session_factory, snapshot_store, _provider()
     ).propose(
@@ -2359,7 +2374,9 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
     fail_first_attempt: bool,
     fail_record_first: bool,
 ):
-    fixture = distillation_fixture(2, include_contrary=False)
+    fixture = distillation_fixture(
+        2, include_contrary=False, review_interval_days=1
+    )
     create_proposal = _distiller(
         session_factory, snapshot_store, _provider()
     ).propose(
@@ -3156,6 +3173,7 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
                 max_attempts=template.max_attempts,
             )
         )
+        session.flush()
         session.add(
             Event(
                 id=uuid4(),
