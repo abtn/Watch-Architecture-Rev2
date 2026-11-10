@@ -17,7 +17,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.evaluations import _sha256_json as _proposal_sha256_json
-
 from core.experience_distiller import ExperienceDistiller, ExperienceDistillerError
 from core.learning_history import (
     KNOWLEDGE_CONTENT_HASH_SCHEME,

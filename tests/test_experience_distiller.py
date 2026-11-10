@@ -1399,7 +1399,7 @@ def _create_revalidation_proposal(
         source_task_id,
         [case.evaluation_id for case in fixture.cases],
         knowledge_item_id,
-        rationale="Reassess the existing item against its current evidence.",
+        rationale="بازبینی دوباره بر پایه شواهد فعلی.",
     )
     runtime.finalize(
         TerminalObservation(
@@ -3085,6 +3085,179 @@ def test_accepted_create_requires_recorded_quality_assessment(
         assert accepted_event is not None
         assert accepted_event.payload["knowledge_quality_assessment_id"]
         assert accepted_event.payload["knowledge_quality_assessment_hash"]
+
+
+def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(2, include_contrary=False)
+    runtime = TaskRuntime(session_factory, snapshot_store)
+
+    create_proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=create_proposal.learning_change_id,
+        )
+    )
+    approval_task_id, approval_attempt, principal = _create_admitted_approval_task(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        create_proposal.learning_change_id,
+    )
+    committed = LearningCommitService(session_factory, snapshot_store).decide(
+        approval_task_id, approval_attempt, principal
+    )
+    assert committed.knowledge_item_id is not None
+    runtime.finalize(
+        TerminalObservation(
+            task_id=approval_task_id,
+            attempt=approval_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=committed.committed_at,
+            learning_change_id=committed.learning_change_id,
+        )
+    )
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        template = session.get(Task, fixture.distillation_task_id)
+        assert item is not None and template is not None
+        before_state = knowledge_item_state(item)
+        before_pointer = item.current_learning_change_id
+
+    revision_task_id = uuid4()
+    started_at = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        session.add(
+            Task(
+                id=revision_task_id,
+                team_id=fixture.team_id,
+                task_type="propose_learning_change",
+                status="running",
+                attempt_count=1,
+                policy_version=template.policy_version,
+                objective_id=None,
+                plan_id=None,
+                plan_action_id=None,
+                allowed_writes=["LearningChange"],
+                budget=dict(template.budget),
+                created_at=started_at,
+                completed_at=None,
+                max_attempts=template.max_attempts,
+            )
+        )
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=revision_task_id,
+                type="task_started",
+                payload={
+                    "from_status": "pending",
+                    "to_status": "running",
+                    "attempt_count": 1,
+                },
+                created_at=started_at,
+            )
+        )
+
+    def revised_content(prompt: str) -> dict[str, Any]:
+        content = _content_from_prompt(prompt)
+        content["body"] = (
+            "The revised practice preserves source evidence and records a distinct "
+            "observation before drawing a conclusion."
+        )
+        return content
+
+    provider = _FakeDistillationProvider(revised_content)
+    revised = _distiller(session_factory, snapshot_store, provider).propose_revision(
+        revision_task_id,
+        [case.evaluation_id for case in fixture.cases],
+        committed.knowledge_item_id,
+    )
+    assert revised.status == "proposed"
+    assert revised.generation_charge_id is not None
+    assert provider.calls == 1
+
+    runtime.finalize(
+        TerminalObservation(
+            task_id=revision_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=revised.learning_change_id,
+        )
+    )
+
+    with session_factory() as session:
+        change = session.get(LearningChange, revised.learning_change_id)
+        assert change is not None
+        assert change.operation == "revise"
+        assert change.target_id == committed.knowledge_item_id
+        assert change.previous_state["state"] == before_state
+        assert change.previous_state["snapshot_hash"].startswith("sha256:")
+
+        proposal_event = session.scalar(
+            select(Event).where(
+                Event.task_id == revision_task_id,
+                Event.type == "learning_change_proposed",
+            )
+        )
+        assert proposal_event is not None
+        target_binding = proposal_event.payload["target_binding"]
+        assert target_binding == {
+            "target_knowledge_item_id": str(committed.knowledge_item_id),
+            "target_current_learning_change_id": str(before_pointer),
+            "target_content_version": 1,
+            "target_content_hash": target_binding["target_content_hash"],
+            "target_content_hash_scheme": "watch.r7b.knowledge-content.v2",
+            "target_state_hash": change.previous_state["snapshot_hash"],
+        }
+        quality_request = session.scalar(
+            select(Event).where(
+                Event.type == "knowledge_quality_assessment_task_requested",
+                Event.payload["learning_change_id"].as_string()
+                == str(revised.learning_change_id),
+            )
+        )
+        assert quality_request is not None
+        quality_task = session.get(Task, quality_request.task_id)
+        assert quality_task is not None and quality_task.status == "pending"
+        assert quality_request.payload["target_binding"] == target_binding
+
+        unchanged_item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        assert unchanged_item is not None
+        assert knowledge_item_state(unchanged_item) == before_state
+        assert unchanged_item.current_learning_change_id == before_pointer
+
+    assessment_id = _run_quality_assessment(
+        session_factory, snapshot_store, revised.learning_change_id
+    )
+    with session_factory() as session:
+        assessment = session.get(KnowledgeQualityAssessment, assessment_id)
+        assert assessment is not None
+        assert assessment.learning_change_id == revised.learning_change_id
+        assert assessment.target_knowledge_item_id == committed.knowledge_item_id
+        assert assessment.target_current_learning_change_id == before_pointer
+        assert assessment.target_content_version == 1
+        assert assessment.target_content_hash == target_binding["target_content_hash"]
+        assert (
+            assessment.target_content_hash_scheme
+            == "watch.r7b.knowledge-content.v2"
+        )
+        assert assessment.target_state_hash == change.previous_state["snapshot_hash"]
+        unchanged_item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        assert unchanged_item is not None
+        assert knowledge_item_state(unchanged_item) == before_state
 
 
 
