@@ -1683,6 +1683,56 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
     runner = KnowledgeRevalidationAssessmentTaskRunner(
         session_factory, snapshot_store, provider
     )
+    from core.task_runtime import TaskNotEligible
+
+    link_id: UUID | None = None
+    original_stance: str | None = None
+    original_reference_key: str | None = None
+
+    def cleanup_revalidation_source_drift() -> None:
+        with session_factory.begin() as session:
+            if link_id is not None:
+                link = session.get(EvidenceLink, link_id)
+                if link is not None and original_stance is not None:
+                    link.stance = original_stance
+                    link.reference_key = original_reference_key
+            session.execute(
+                text(
+                    "ALTER TABLE knowledge_revalidation_assessments "
+                    "DISABLE TRIGGER USER"
+                )
+            )
+            session.execute(
+                delete(KnowledgeRevalidationAssessment).where(
+                    KnowledgeRevalidationAssessment.task_id == task_id
+                )
+            )
+            session.execute(
+                text(
+                    "ALTER TABLE knowledge_revalidation_assessments "
+                    "ENABLE TRIGGER USER"
+                )
+            )
+            session.execute(
+                delete(Event).where(
+                    Event.task_id.in_([source_task_id, task_id])
+                )
+            )
+            session.execute(
+                delete(Outcome).where(
+                    Outcome.recorded_by_task_id.in_([source_task_id, task_id])
+                )
+            )
+            session.execute(
+                delete(LearningChange).where(
+                    LearningChange.id == learning_change_id
+                )
+            )
+            session.execute(
+                delete(Task).where(Task.id.in_([source_task_id, task_id]))
+            )
+
+    request.addfinalizer(cleanup_revalidation_source_drift)
 
     with session_factory() as session:
         link = session.scalar(
@@ -1788,45 +1838,6 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
             )
         ) == 1
 
-    def cleanup_revalidation_source_drift() -> None:
-        with session_factory.begin() as session:
-            session.execute(
-                text(
-                    "ALTER TABLE knowledge_revalidation_assessments "
-                    "DISABLE TRIGGER USER"
-                )
-            )
-            session.execute(
-                delete(KnowledgeRevalidationAssessment).where(
-                    KnowledgeRevalidationAssessment.task_id == task_id
-                )
-            )
-            session.execute(
-                text(
-                    "ALTER TABLE knowledge_revalidation_assessments "
-                    "ENABLE TRIGGER USER"
-                )
-            )
-            session.execute(
-                delete(Event).where(
-                    Event.task_id.in_([source_task_id, task_id])
-                )
-            )
-            session.execute(
-                delete(Outcome).where(
-                    Outcome.recorded_by_task_id.in_([source_task_id, task_id])
-                )
-            )
-            session.execute(
-                delete(LearningChange).where(
-                    LearningChange.id == learning_change_id
-                )
-            )
-            session.execute(
-                delete(Task).where(Task.id.in_([source_task_id, task_id]))
-            )
-
-    request.addfinalizer(cleanup_revalidation_source_drift)
 
 
 @pytest.mark.parametrize("freshness_disposition", ["current", "stale"])
