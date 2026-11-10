@@ -787,6 +787,42 @@ PRs #83 and #88 were superseded and closed after their changes were carried forw
 
 **Latest hosted verification:** PR #92 merged at `0a76c27b8d455509f90a864bc2695d01db04805d` from exact tested head `6b624310d4d3ae53153dba1b9f47e949564de079`. CI run [42831066494](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42831066494) passed fresh PostgreSQL migration/single-head, Ruff, Mypy, and **946 passed, 113 warnings**. The 113 warnings are existing Alembic `path_separator` deprecations. Hosted CI is green for the cumulative merged B3.7 test checkpoints.
 
-**Verification qualification:** Operator-local exact-head verification has not been run for PRs #80–#92. B3.8 owns focused local groups, Ruff, Mypy, `git diff --check`, the full suite, fresh disposable PostgreSQL/single-head verification, full diff review, and hosted/local exact-SHA comparison. No local result is claimed.
+**Verification qualification:** The Operator-local B3.8 exact-head run is recorded below. Its cumulative diff-check qualification is explicit: three Markdown hard-break trailing-space findings were reported in the B3.7 matrix metadata; the cumulative check scoped to the changed Python source/test files passed, and the clean-checkout diff check passed. The whole cumulative diff-check is not represented as clean.
 
-**Status:** B3.7 test implementation and matrix mapping are complete. This is not B3 phase closure. B3.8 exact-head verification and B3.9 documentation closeout/formal B3 exit acceptance remain separately gated. The approval allowlist remains exactly `{"create"}`; no lifecycle commit authority is enabled.
+**Status:** B3.7 test implementation and matrix mapping are complete. B3.8 exact-head verification passed with the documented Markdown-only qualification. B3.9 documentation closeout and formal B3 exit are recorded in [the B3 closeout record](development/r7-b-b3-9-closeout.md). B3 is formally closed on 2026-11-10; the approval allowlist remains exactly `{"create"}`, and no lifecycle commit authority is enabled.
+
+## R7-B B3.8 — Operator-local exact-head verification (2026-11-10)
+
+**Hosted implementation evidence:** PR #92 merged at `0a76c27b8d455509f90a864bc2695d01db04805d` from exact tested head `6b624310d4d3ae53153dba1b9f47e949564de079`. CI run [42831066494](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42831066494) passed fresh PostgreSQL migration/single-head, Ruff, Mypy, and **946 passed, 113 warnings**. The warnings are existing Alembic `path_separator` deprecations. PR #93 documentation reconciliation then advanced `main` to `0a588bc43ee6bfab8c6fccd86dbb28c5c2c803dc`. Because PR #92 was squash-merged, its original head is not a literal ancestor of `main`; B3.8 verified the known merge base `7dadc2e715acbfb21881d61432b63ced377f7e8e` and confirmed the only difference to the synchronized `main` snapshot was the reviewed 11-file PR #93 documentation delta.
+
+**Operator-local exact-head result:** the Operator ran the generated PowerShell verification script and supplied the full terminal transcript. It checked out exact hosted-tested SHA `6b624310d4d3ae53153dba1b9f47e949564de079`, used Python 3.12.12 and a disposable PostgreSQL container on dynamically assigned loopback port 41914, and verified the single Alembic head `0018_r7b_lifecycle_review_date` on separate focused/full-suite databases.
+
+Focused tests, run independently:
+
+| Test file | Result |
+|---|---:|
+| `tests/test_experience_distiller.py` | 81 passed |
+| `tests/test_knowledge_revalidation.py` | 22 passed |
+| `tests/test_knowledge_lifecycle.py` | 27 passed |
+| `tests/test_knowledge_approval.py` | 10 passed |
+| `tests/test_operator_application.py` | 43 passed |
+| `tests/test_r7b_assessment_models.py` | 9 passed |
+| `tests/test_r7b_assessment_migration.py` | 13 passed |
+| `tests/test_task_runtime.py` | 33 passed |
+| **Total** | **238 passed** |
+
+- `uv run ruff check core tests migrations` — passed.
+- `uv run mypy core` — passed; 38 source files.
+- Fresh focused and full-suite PostgreSQL databases each migrated to the sole head `0018_r7b_lifecycle_review_date`.
+- `uv run pytest -q` — **946 passed, 113 warnings in 192.71s**.
+- Warnings are existing Alembic `path_separator` deprecations: 36 assessment-migration, 65 history-migration, and 12 Team Experience projection-migration warnings.
+- The disposable container `watch-b38-exact-ae71b1581782` was removed. `DATABASE_URL` and `TEST_DATABASE_URL` were restored. The checkout returned to clean `main` at `0a588bc43ee6bfab8c6fccd86dbb28c5c2c803dc`.
+- The cumulative diff inventory remained the reviewed 12-file B3.7 set. The scoped cumulative `git diff --check` over `core/knowledge_lifecycle.py` and `tests/test_experience_distiller.py` passed; the clean-checkout `git diff --check` passed.
+
+**Diff-check qualification:** the initial whole cumulative diff-check reported trailing spaces on three Markdown metadata lines (lines 3–5) in `docs/development/r7-b-b3-7-integrated-regression-matrix.md`. Those spaces were Markdown hard-break syntax, not Python source/test whitespace. The full cumulative diff-check is therefore recorded as qualified, not passed. B3.9 normalizes the current matrix metadata formatting; this does not retroactively alter the tested SHA.
+
+## R7-B B3.9 — Documentation closeout and formal B3 exit (2026-11-10)
+
+The closeout traceability matrix and formal exit record are in [r7-b-b3-9-closeout.md](development/r7-b-b3-9-closeout.md). The current status is authoritative in `PLAN.md`. The documentation reconciliation updates PLAN, CHANGE_MAP, CONTEXT, README, testing records, Task documentation, the B3.7 matrix, the R7-B implementation plan, the R7 entry gate, ADR-0032, and the ADR index. No implementation, migration, Task registration, approval expansion, or next-phase work is part of B3.9.
+
+**Formal disposition:** B3 is COMPLETE and formally closed on 2026-11-10 following the Operator's explicit instruction to proceed to B3.9 and establish the formal exit status. B4, B5, B6, and R7-C remain NOT AUTHORIZED and require separate written Operator decisions. The approval allowlist remains exactly `{"create"}`.
