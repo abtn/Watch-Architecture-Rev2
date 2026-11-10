@@ -328,11 +328,6 @@ def distillation_fixture(
                     proposal_owner | approval_commit
                 )
                 session.execute(
-                    delete(KnowledgeItem).where(
-                        KnowledgeItem.origin_learning_change_id.in_(learning_change_ids)
-                    )
-                )
-                session.execute(
                     delete(KnowledgeQualityAssessment).where(
                         KnowledgeQualityAssessment.learning_change_id.in_(
                             learning_change_ids
@@ -354,6 +349,17 @@ def distillation_fixture(
                     text(
                         "ALTER TABLE knowledge_revalidation_assessments "
                         "ENABLE TRIGGER USER"
+                    )
+                )
+                session.execute(
+                    delete(LearningChange).where(
+                        (proposal_owner | approval_commit)
+                        & LearningChange.target_id.is_not(None)
+                    )
+                )
+                session.execute(
+                    delete(KnowledgeItem).where(
+                        KnowledgeItem.origin_learning_change_id.in_(learning_change_ids)
                     )
                 )
                 session.execute(
