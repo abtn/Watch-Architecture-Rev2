@@ -1232,7 +1232,9 @@ class _FakeKnowledgeRevalidationProvider:
             freshness_disposition=self.freshness_disposition,
             findings=(
                 KnowledgeRevalidationFinding(
-                    code=("supports_revalidation" if is_current else "temporally_stale"),
+                    code=(
+                        "supports_revalidation" if is_current else "temporally_stale"
+                    ),
                     summary=(
                         "The rebuilt evidence basis remains relevant."
                         if is_current
