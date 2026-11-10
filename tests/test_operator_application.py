@@ -549,6 +549,34 @@ def test_same_idempotency_key_with_changed_decision_conflicts(
         )
 
 
+def test_same_idempotency_key_with_changed_proposal_conflicts(
+    session_factory: sessionmaker[Session],
+    approval_context: ApprovalContext,
+) -> None:
+    key = uuid4()
+    principal = _principal(approval_context.team_id)
+    adapter = OperatorApplicationAdapter(session_factory)
+    request = _request(
+        approval_context.learning_change_id, idempotency_key=key
+    )
+    adapter.request_learning_change_decision(principal, request)
+
+    with session_factory.begin() as session:
+        change = session.get(
+            LearningChange, approval_context.learning_change_id
+        )
+        assert change is not None
+        proposed_state = dict(change.proposed_state)
+        proposed_state["proposal_hash"] = "sha256:" + "f" * 64
+        change.proposed_state = proposed_state
+
+    with pytest.raises(
+        OperatorTaskRequestConflict,
+        match="idempotency_key_reused_with_different_request",
+    ):
+        adapter.request_learning_change_decision(principal, request)
+
+
 def test_same_idempotency_key_with_different_operator_conflicts(
     session_factory: sessionmaker[Session],
     approval_context: ApprovalContext,
