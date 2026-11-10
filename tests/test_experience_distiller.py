@@ -1799,6 +1799,7 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
     original_reference_key: str | None = None
     outcome_id: UUID | None = None
     original_outcome_hash: str | None = None
+    original_outcome_snapshot_ref: str | None = None
 
     def cleanup_revalidation_source_drift() -> None:
         with session_factory.begin() as session:
@@ -1807,10 +1808,16 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
                 if link is not None and original_stance is not None:
                     link.stance = original_stance
                     link.reference_key = original_reference_key
-            if outcome_id is not None and original_outcome_hash is not None:
+            if (
+                outcome_id is not None
+                and original_outcome_hash is not None
+                and original_outcome_snapshot_ref is not None
+            ):
                 source_outcome = session.get(Outcome, outcome_id)
                 if source_outcome is not None:
                     source_outcome.observation_hash = original_outcome_hash
+            source_outcome.snapshot_ref = original_outcome_snapshot_ref
+                    source_outcome.snapshot_ref = original_outcome_snapshot_ref
             session.execute(
                 text(
                     "ALTER TABLE knowledge_revalidation_assessments "
@@ -1871,6 +1878,7 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
             assert source_outcome is not None
             outcome_id = source_outcome.id
             original_outcome_hash = source_outcome.observation_hash
+            original_outcome_snapshot_ref = source_outcome.snapshot_ref
 
     with session_factory.begin() as session:
         if drift_case == "evidence_link_stance":
@@ -1884,7 +1892,11 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
         else:
             source_outcome = session.get(Outcome, outcome_id)
             assert source_outcome is not None
-            source_outcome.observation_hash = "sha256:" + "0" * 64
+            tampered_hash = "sha256:" + "0" * 64
+            source_outcome.observation_hash = tampered_hash
+            source_outcome.snapshot_ref = "snap://sha256/" + tampered_hash.removeprefix(
+                "sha256:"
+            )
 
     with pytest.raises(TaskNotEligible) as drift_error:
         runner.run(task_id)
