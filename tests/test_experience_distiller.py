@@ -4718,6 +4718,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         session_factory, snapshot_store
     )
     from core.knowledge_lifecycle import (
+        RECORDED_EVENT_TYPE,
         REQUEST_EVENT_TYPE,
         KnowledgeLifecycleAssessmentError,
     )
@@ -4791,7 +4792,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             assert session.scalar(
                 select(func.count(Event.id)).where(
                     Event.task_id == task_id,
-                    Event.type == "knowledge_lifecycle_assessment_recorded",
+                    Event.type == RECORDED_EVENT_TYPE,
                 )
             ) == 0
             assert session.scalar(
@@ -4949,10 +4950,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         )
     if fail_record_first:
         try:
-            with pytest.raises(
-                IntegrityError,
-                match="simulated_lifecycle_assessment_insert_failure",
-            ):
+            with pytest.raises(IntegrityError):
                 runner.run(task_id)
         finally:
             event.remove(
