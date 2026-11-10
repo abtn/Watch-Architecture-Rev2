@@ -195,7 +195,9 @@ def build_approval_binding(
                     "assessment_task_policy_version": task.policy_version,
                     "assessment_type": "knowledge_quality",
                     "assessment_id": str(quality_assessment.id),
-                    "assessment_payload_hash": quality_assessment.assessment_payload_hash,
+                    "assessment_payload_hash": (
+                        quality_assessment.assessment_payload_hash
+                    ),
                     "evaluator_identity": quality_assessment.evaluator_identity,
                     "evaluator_revision": quality_assessment.evaluator_revision,
                 }
@@ -257,9 +259,13 @@ def build_approval_binding(
                 "current_learning_change_id": str(
                     revalidation_assessment.current_learning_change_id
                 ),
-                "target_content_version": revalidation_assessment.target_content_version,
+                "target_content_version": (
+                    revalidation_assessment.target_content_version
+                ),
                 "target_content_hash": revalidation_assessment.target_content_hash,
-                "target_content_hash_scheme": revalidation_assessment.target_content_hash_scheme,
+                "target_content_hash_scheme": (
+                    revalidation_assessment.target_content_hash_scheme
+                ),
                 "target_state_hash": revalidation_assessment.target_state_hash,
                 "proposal_hash": revalidation_assessment.proposal_hash,
                 "proposed_state_hash": revalidation_assessment.proposed_state_hash,
@@ -311,7 +317,9 @@ def build_approval_binding(
                 ),
                 "target_content_version": lifecycle_assessment.target_content_version,
                 "target_content_hash": lifecycle_assessment.target_content_hash,
-                "target_content_hash_scheme": lifecycle_assessment.target_content_hash_scheme,
+                "target_content_hash_scheme": (
+                    lifecycle_assessment.target_content_hash_scheme
+                ),
                 "target_state_hash": lifecycle_assessment.target_state_hash,
                 "proposal_hash": lifecycle_assessment.proposal_hash,
                 "proposed_state_hash": lifecycle_assessment.proposed_state_hash,
@@ -337,10 +345,15 @@ def build_approval_binding(
                 "successor_team_id": str(learning_change.team_id),
                 "successor_current_learning_change_id": (
                     str(lifecycle_assessment.successor_current_learning_change_id)
-                    if lifecycle_assessment.successor_current_learning_change_id is not None
+                    if (
+                        lifecycle_assessment.successor_current_learning_change_id
+                        is not None
+                    )
                     else None
                 ),
-                "successor_content_version": lifecycle_assessment.successor_content_version,
+                "successor_content_version": (
+                    lifecycle_assessment.successor_content_version
+                ),
                 "successor_content_hash": lifecycle_assessment.successor_content_hash,
                 "successor_content_hash_scheme": (
                     lifecycle_assessment.successor_content_hash_scheme
