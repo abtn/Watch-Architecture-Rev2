@@ -1,8 +1,8 @@
 # R7-B B3.7 — Integrated Regression Matrix Plan
 
-**Status:** Planning-only; implementation tests are not authorized  
-**Predecessor:** B3.6 — Approval-time assessment binding (next gated checkpoint; not yet authorized)  
-**Implementation gate:** Separate explicit Operator authorization after B3.6 is accepted and merged  
+**Status:** B3.7 implementation in progress (2026-11-10); matrix remains the acceptance inventory  
+**Predecessor:** B3.6 — approval-time assessment binding (implemented and merged in PR #68)  
+**Implementation gate:** Explicit Operator authorization granted after B3.6 merge  
 **Normative contracts:** ADR-0032 and the frozen B3.1 assessment contracts  
 **Current status authority:** `PLAN.md`
 
@@ -17,16 +17,13 @@ The matrix must prove both sides of the contract:
 
 This document is a test plan. It does not claim that the B3.7 tests have been implemented or run.
 
-## 2. Entry dependencies and current blocker
+## 2. Entry dependencies and current implementation status
 
-The ten-stage B3 sequence orders B3.7 after B3.6. The current repository gate records B3.6 as the next gated checkpoint. The code currently present in `core/operator_application.py`, `core/operator_approval.py`, and `core/learning_commit.py` binds `KnowledgeQualityAssessment` for the create-only approval path; it does not yet implement the B3.6 binding of `KnowledgeRevalidationAssessment` and `KnowledgeLifecycleAssessment` into approval validation and fingerprints.
+The ten-stage B3 sequence orders B3.7 after B3.6. PR #68 is merged at `4735b93c74025ddee3bd099ef6d5e64cbac34719`; exact PR head `86f3bcf91ca024486f3a3b918a2c7490ec0ea9da` passed hosted and Operator-local verification. The implementation in `core/knowledge_approval.py`, `core/operator_application.py`, `core/operator_approval.py`, `core/task_runtime.py`, and `core/learning_commit.py` binds and revalidates operation-specific B3 assessment data and fingerprints. The host request path and approval allowlist remain create-only (`{"create"}`).
 
-Therefore:
-
-- B3.7 implementation must not begin before B3.6 has been separately authorized, implemented, verified, accepted, and merged.
-- B3.7 implementation itself requires its own explicit Operator authorization.
-- This document may be reviewed and refined while B3.6 is gated; it does not authorize B3.6, B3.7 tests, source changes, migrations, or Task/runtime changes.
-- If B3.6 does not expose the assessment bindings required by the frozen contract, record the discrepancy and stop. Do not compensate by weakening the contract or by testing an invented approval interface.
+- B3.7 implementation was explicitly authorized after B3.6 merge.
+- No lifecycle commit authority, new runtime, dispatcher, scheduler, migration, public auth stack, production evaluator, or R7-C work is authorized by B3.7.
+- If an integrated test reveals a conflict with ADR-0032 or frozen B3.1 contracts, record the discrepancy and stop. Do not weaken the contract or test an invented interface.
 
 B3.2–B3.5 are the implemented foundation: immutable assessment persistence, revalidation assessment, deterministic lifecycle assessment, and the two assessment TaskRuntime paths. Their current code and test inventory is listed below.
 
@@ -67,9 +64,22 @@ This is an inventory of existing coverage at the current B3.5 merged baseline. I
 | `tests/test_experience_distiller.py` | B3.3/B3.4 assessment persistence and B3.5 TaskRuntime integration, including no-canonical-write assertions, recorded Events, replay/recovery and failure/retry history. It also contains the existing create-only Operator/quality-assessment path. | Does one integrated regression set cover both assessment types and the B3.6 approval pins without confusing the existing QualityAssessment binding with the new B3 assessment records? |
 | `tests/test_task_runtime.py` | Shared TaskRuntime lifecycle and execution invariants. | Are the exact B3 assessment write scopes, request bindings, recovery observations, and terminal records enforced by the B3-specific runners? |
 
-### 4.1 Approval-path baseline limitation
+### 4.1 B3.6 approval-path baseline
 
-The current approval implementation is not evidence of B3.6 completion. The present approval request/fingerprint and commit checks include the R7-A `KnowledgeQualityAssessment` ID/hash for the create path. B3.7 must add tests for the B3.6 lifecycle/revalidation assessment pins only after B3.6 implements them. Do not relabel existing create/quality-assessment tests as coverage of `KnowledgeRevalidationAssessment` or `KnowledgeLifecycleAssessment` approval binding.
+B3.6 is now implemented and merged. Its exact PR head passed hosted and Operator-local verification. The B3.6 implementation adds operation-specific approval binding for `KnowledgeRevalidationAssessment` and `KnowledgeLifecycleAssessment`, including payload hashes, canonical host Operator identity, policy/evaluator/proposal/target/evidence pins, and the full supersede successor snapshot. Existing R7-A `KnowledgeQualityAssessment` coverage remains specific to create approval; it is not a substitute for integrated B3 assessment coverage. B3.7 must exercise the new binding through real assessment/Task/Event persistence and test its fail-closed drift behavior. The request path and approval allowlist remain create-only.
+
+
+
+### 4.2 B3.7 implementation trace
+
+| Matrix coverage | Implementation status | Evidence |
+|---|---|---|
+| RV-01 / RP-01 / RP-02 / AP-01 / AP-02 / E2E-01 (revalidation assessment and B3.6 approval binding) | Integrated binding assertions added to the existing real TaskRuntime/recovery test; hosted CI passed; Operator-local verification not run. | PR [#69](https://github.com/abtn/Watch-Architecture-Rev2/pull/69), `test_revalidation_task_records_once_and_recovers_without_canonical_writes` in `tests/test_experience_distiller.py`, parameterized across normal completion, first-attempt retry, and committed-assessment recovery. The test rebuilds the B3.6 binding from the persisted assessment and checks payload hash, current target, assessment Task policy pin, and canonical host principal. |
+| LC-02 / LC-03 / AP-01 / AP-02 / E2E-03 (supersede assessment and successor approval recheck) | Initial integrated test added. Initial hosted run exposed a successor review-date type mismatch; narrow correction committed. Latest hosted CI passed; Operator-local verification not run. | PR [#69](https://github.com/abtn/Watch-Architecture-Rev2/pull/69), `test_b37_supersede_assessment_round_trips_successor_and_rechecks_approval_binding` in `tests/test_experience_distiller.py`, exact code head `b4ac92567ffcd9e324938932342c4dc1afeb8283`. The new case forced a persisted-successor path through lifecycle TaskRuntime and approval-binding revalidation. It also tampers with the recorded lifecycle Event payload and asserts `knowledge_lifecycle_recorded_event_invalid`. |
+
+Hosted CI on exact code head `b4ac92567ffcd9e324938932342c4dc1afeb8283` passed run [42796818181](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42796818181): fresh PostgreSQL migration/single-head, Ruff, Mypy, **909 passed, 113 warnings**. The 113 warnings are the existing Alembic `path_separator` deprecations. The initial run [42795156884](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42795156884) had 908 passed and one failure; that failure exposed the successor review-date normalization issue corrected in the exact head above.
+
+This is a partial implementation trace only. It does not mark all linked matrix rows complete until every assertion and remaining row is mapped during B3.7 closeout.
 
 ## 5. Integrated regression matrix
 
