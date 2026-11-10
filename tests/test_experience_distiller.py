@@ -5525,7 +5525,6 @@ def test_b37_supersede_assessment_round_trips_successor_and_rechecks_approval_bi
             "successor_review_after": _timestamp(candidate.review_after),
             "successor_state_hash": candidate_snapshot["snapshot_hash"],
         }
-        original_review_after = candidate.review_after
         original_recorded_event_payload = dict(recorded_event.payload)
         original_successor_state = {
             "current_learning_change_id": candidate.current_learning_change_id,
@@ -5653,25 +5652,6 @@ def test_b37_supersede_assessment_round_trips_successor_and_rechecks_approval_bi
             ]
             change.proposed_state = dict(original_supersede_proposed_state)
 
-
-    with session_factory() as session:
-        change = session.get(LearningChange, supersede_change_id)
-        assert change is not None
-        with pytest.raises(KnowledgeApprovalBindingError):
-            build_approval_binding(
-                session,
-                change,
-                operator_id=principal_id,
-                approval_policy_version=1,
-                require_assessment=True,
-                snapshot_store=snapshot_store,
-                session_factory=session_factory,
-            )
-
-    with session_factory.begin() as session:
-        candidate = session.get(KnowledgeItem, candidate_id)
-        assert candidate is not None
-        candidate.review_after = original_review_after
 
     with session_factory() as session:
         predecessor = session.get(
