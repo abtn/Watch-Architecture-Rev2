@@ -42,7 +42,6 @@ from core.models import (
     Team,
     TeamPolicy,
 )
-from core.operator_approval import build_request_fingerprint
 from core.operator_application import (
     InvalidOperatorPrincipal,
     LearningChangeDecisionRequest,
@@ -55,6 +54,7 @@ from core.operator_application import (
     OperatorTaskRequestCorrupt,
     TrustedOperatorPrincipal,
 )
+from core.operator_approval import build_request_fingerprint
 from core.task_runtime import (
     TaskNotEligible,
     TaskNotFinalizable,
