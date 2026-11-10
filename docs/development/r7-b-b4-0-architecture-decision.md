@@ -70,7 +70,7 @@ Both operations target one existing same-Team KnowledgeItem and bind the exact c
 
 ### Current B4 verification route
 
-For the current B4 execution, local synchronization and local test execution are unavailable and are intentionally skipped. This does not reduce the technical acceptance bar. GitHub-hosted Actions must run against the exact PR head and prove fresh disposable PostgreSQL migration/single-head checks, Ruff, Mypy, the full pytest suite, and cleanup. The exact tested SHA and workflow run must be recorded. The Operator must still review the complete source/test diff and the B4.1 contract matrices. Do not describe hosted CI as an Operator-local run, and do not close B4 if hosted automation misses any required check.
+For the current B4 execution, local synchronization and local test execution are unavailable and are intentionally skipped. This does not reduce the technical acceptance bar. GitHub-hosted Actions must run against the exact PR head and prove fresh disposable PostgreSQL migration/single-head checks, Ruff, Mypy, `git diff --check origin/${GITHUB_BASE_REF}...HEAD`, and the full pytest suite. The PostgreSQL service is isolated to the hosted job and is disposed of with the ephemeral runner. The exact tested SHA and workflow run must be recorded. The Operator must still review the complete source/test diff and the B4.1 contract matrices. Do not describe hosted CI as an Operator-local run, and do not close B4 if hosted automation misses any required check.
 B4 authorization does not authorize B5, B6, or R7-C. Any need to change frozen B0/B1/B2 semantics, introduce a schema migration, or widen the authority model beyond this decision is a stop-and-return decision.
 
 ## 7. Evidence at decision time
