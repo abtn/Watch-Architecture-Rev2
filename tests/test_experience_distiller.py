@@ -1491,7 +1491,9 @@ def test_revalidation_rejects_invented_provider_reference_without_record_and_rec
                     "ENABLE TRIGGER USER"
                 )
             )
-            session.execute(delete(Event).where(Event.task_id.in_([source_task_id, task_id])))
+            session.execute(
+                delete(Event).where(Event.task_id.in_([source_task_id, task_id]))
+            )
             session.execute(
                 delete(Outcome).where(
                     Outcome.recorded_by_task_id.in_([source_task_id, task_id])
