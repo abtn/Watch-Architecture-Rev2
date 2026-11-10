@@ -66,8 +66,11 @@ Both operations target one existing same-Team KnowledgeItem and bind the exact c
 1. **B4.1 — Proposal and assessment contracts:** extend the existing proposal path; define strict operation-specific payloads, target bindings, assessment routing, idempotency, Events, Outcome, replay, and focused tests. No canonical lifecycle writes or approval expansion.
 2. **B4.2 — Revise commit:** implement same-item version advancement and atomic compare-and-set, using the existing quality assessment.
 3. **B4.3 — Revalidate commit:** implement the state-preserving reactivation transition and projection republish gate, using the existing revalidation assessment.
-4. **B4.4 — Integrated regression and closeout:** verify all B4 invariants, concurrency, stale assessments, retries/recovery, projection visibility, hosted CI, and Operator-local exact-head verification.
+4. **B4.4 — Integrated regression and closeout:** verify all B4 invariants, concurrency, stale assessments, retries/recovery, projection visibility, and hosted CI on the exact PR head, then complete the Operator's source/diff review. Operator-local exact-head verification is not part of the current B4 evidence route.
 
+### Current B4 verification route
+
+For the current B4 execution, local synchronization and local test execution are unavailable and are intentionally skipped. This does not reduce the technical acceptance bar. GitHub-hosted Actions must run against the exact PR head and prove fresh disposable PostgreSQL migration/single-head checks, Ruff, Mypy, the full pytest suite, and cleanup. The exact tested SHA and workflow run must be recorded. The Operator must still review the complete source/test diff and the B4.1 contract matrices. Do not describe hosted CI as an Operator-local run, and do not close B4 if hosted automation misses any required check.
 B4 authorization does not authorize B5, B6, or R7-C. Any need to change frozen B0/B1/B2 semantics, introduce a schema migration, or widen the authority model beyond this decision is a stop-and-return decision.
 
 ## 7. Evidence at decision time
