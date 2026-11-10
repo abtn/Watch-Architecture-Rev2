@@ -77,5 +77,9 @@ jobs:
       - name: Type-check
         run: uv run mypy core
 
+      - name: Check pull-request patch whitespace
+        if: github.event_name == 'pull_request'
+        run: git diff --check "origin/${GITHUB_BASE_REF}...HEAD"
+
       - name: Test
         run: uv run pytest -q
