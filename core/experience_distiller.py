@@ -772,7 +772,9 @@ class ExperienceDistiller:
                 str(target_state["confidence"])
             )
         except (InvalidOperation, ValueError) as error:
-            raise ExperienceDistillerError("revision_candidate_confidence_invalid") from error
+            raise ExperienceDistillerError(
+                "revision_candidate_confidence_invalid"
+            ) from error
 
     def validate_learning_change(
         self, session: Session, learning_change: LearningChange

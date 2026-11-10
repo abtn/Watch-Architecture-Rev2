@@ -3932,6 +3932,7 @@ class TaskRuntime:
         )
         if (
             learning_change is None
+            or not isinstance(learning_change.proposed_state, dict)
             or learning_change.proposed_by_task_id != task.id
             or learning_change.status != "proposed"
             or learning_change.target_kind != "knowledge_item"
@@ -4046,9 +4047,9 @@ class TaskRuntime:
                 draft_payload = {
                     key: proposal_state[key] for key in expected_draft_fields
                 }
-                if hashlib.sha256(
-                    _canonical_json(draft_payload).encode("utf-8")
-                ).hexdigest() != proposal_hash.removeprefix("sha256:"):
+                from core.evaluations import _sha256_json as _proposal_sha256_json
+
+                if _proposal_sha256_json(draft_payload) != proposal_hash:
                     raise KnowledgeHistoryError("revision_proposal_hash_mismatch")
                 content_fields = expected_draft_fields - {
                     "confidence_band",
@@ -4104,9 +4105,9 @@ class TaskRuntime:
                 for key, value in proposal_state.items()
                 if key != "proposal_hash"
             }
-            expected_proposal_hash = "sha256:" + hashlib.sha256(
-                _canonical_json(unsigned_state).encode("utf-8")
-            ).hexdigest()
+            from core.evaluations import _sha256_json as _proposal_sha256_json
+
+            expected_proposal_hash = _proposal_sha256_json(unsigned_state)
             if proposal_hash != expected_proposal_hash:
                 raise TaskNotFinalizable(
                     "learning_change_revalidation_proposal_hash_mismatch"
@@ -4165,15 +4166,13 @@ class TaskRuntime:
                     != learning_change.evidence_basis_hash
                     or learning_change.idempotency_key
                     != "r7b-revalidate-proposal-v1:"
-                    + hashlib.sha256(
-                        _canonical_json(
-                            {
-                                "team_id": str(learning_change.team_id),
-                                "task_id": str(task.id),
-                                **unsigned_state,
-                            }
-                        ).encode("utf-8")
-                    ).hexdigest()
+                    + _proposal_sha256_json(
+                        {
+                            "team_id": str(learning_change.team_id),
+                            "task_id": str(task.id),
+                            **unsigned_state,
+                        }
+                    ).removeprefix("sha256:")
                 ):
                     raise KnowledgeHistoryError(
                         "revalidation_target_binding_or_idempotency_mismatch"

@@ -14,6 +14,8 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
+
+from core.evaluations import _sha256_json as _proposal_sha256_json
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.experience_distiller import ExperienceDistiller, ExperienceDistillerError
@@ -483,7 +485,7 @@ def _proposal_context(
     unsigned_proposed_state = {
         key: value for key, value in proposed_state.items() if key != "proposal_hash"
     }
-    if _sha256_json(unsigned_proposed_state) != proposal_hash:
+    if _proposal_sha256_json(unsigned_proposed_state) != proposal_hash:
         raise KnowledgeRevalidationAssessmentError(
             "knowledge_revalidation_proposal_hash_mismatch"
         )
@@ -651,7 +653,7 @@ def _proposal_context(
         raise KnowledgeRevalidationAssessmentError(
             "knowledge_revalidation_proposal_target_binding_mismatch"
         )
-    expected_idempotency = "r7b-revalidate-proposal-v1:" + _sha256_json(
+    expected_idempotency = "r7b-revalidate-proposal-v1:" + _proposal_sha256_json(
         {
             "team_id": str(learning_change.team_id),
             "task_id": str(source_task.id),
