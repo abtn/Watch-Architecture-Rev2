@@ -793,11 +793,3 @@ def _verify_existing_request(
         status=task.status,
         replayed=True,
     )
-
-
-    return OperatorTaskRequestResult(
-        task_id=task.id,
-        team_id=team_id,
-        status=task.status,
-        replayed=True,
-    )
