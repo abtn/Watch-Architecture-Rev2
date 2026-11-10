@@ -341,7 +341,7 @@ def test_schema_v3_request_payload_round_trips_complete_approval_binding(
             lambda p: p["approval_binding"].update(
                 assessment_payload_hash="sha256:" + "f" * 64
             ),
-            "operator_task_request_fingerprint_invalid",
+            "operator_approval_binding_invalid",
         ),
         (
             lambda p: p["approval_binding"].update(
