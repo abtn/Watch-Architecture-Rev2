@@ -1816,7 +1816,9 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
                 source_outcome = session.get(Outcome, outcome_id)
                 if source_outcome is not None:
                     source_outcome.observation_hash = original_outcome_hash
-                    source_outcome.observation_snapshot_ref = original_outcome_snapshot_ref
+                    source_outcome.observation_snapshot_ref = (
+                        original_outcome_snapshot_ref
+                    )
             session.execute(
                 text(
                     "ALTER TABLE knowledge_revalidation_assessments "
@@ -1893,8 +1895,8 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
             assert source_outcome is not None
             tampered_hash = "sha256:" + "0" * 64
             source_outcome.observation_hash = tampered_hash
-            source_outcome.observation_snapshot_ref = "snap://sha256/" + tampered_hash.removeprefix(
-                "sha256:"
+            source_outcome.observation_snapshot_ref = (
+                "snap://sha256/" + tampered_hash.removeprefix("sha256:")
             )
 
     with pytest.raises(TaskNotEligible) as drift_error:
