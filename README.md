@@ -27,7 +27,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** work is focused on checking the quality of saved lessons and how saved knowledge should be validated and evolve. B2 is closed with its accepted residual verification gaps recorded. R7-B B3.2–B3.6 assessment persistence/services, TaskRuntime integration, and approval-time binding are implemented and merged; B3.7's complete regression matrix is mapped to merged tests. B3.8 exact-head verification passed on hosted-tested implementation SHA `6b624310d4d3ae53153dba1b9f47e949564de079`: 238 focused tests, Ruff, Mypy, fresh single-head PostgreSQL migrations, and 946 full-suite tests passed locally; hosted CI run [42831066494](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42831066494) also passed. B3 was formally closed on 2026-11-10; see [the B3 closeout record](docs/development/r7-b-b3-9-closeout.md) and `PLAN.md`. The approval allowlist remains exactly `create`; B3 exit does not authorize B4–B6 or R7-C, which remain separately gated.
+- **R7:** B3 was formally closed on 2026-11-10 after hosted and Operator-local exact-head verification; evidence and the documented diff-check qualification are recorded in [the B3 closeout](docs/development/r7-b-b3-9-closeout.md). The Operator has authorized B4 only. B4.1 now begins by extending the existing `propose_learning_change` Task with operation-specific revise/revalidate proposal contracts and routing to the existing assessment types. The approval allowlist remains exactly `create` during B4.1. B5, B6, and R7-C remain separately gated and unauthorized. See [PLAN.md](PLAN.md) and the [B4.0 architecture decision](docs/development/r7-b-b4-0-architecture-decision.md).
 
 ## Future plan
 
