@@ -1964,6 +1964,7 @@ def test_learning_commit_accepts_real_create_proposal_atomically(
         )
         assert request_event is not None
         assert request_event.payload["schema_version"] == 3
+        assert decision_events[0].payload["schema_version"] == 2
         assert decision_events[0].payload["request_fingerprint"] == (
             request_event.payload["request_fingerprint"]
         )
