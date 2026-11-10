@@ -42,6 +42,7 @@ from core.models import (
     Team,
     TeamPolicy,
 )
+from core.operator_approval import build_request_fingerprint
 from core.operator_application import (
     InvalidOperatorPrincipal,
     LearningChangeDecisionRequest,
@@ -1110,3 +1111,60 @@ def test_interrupted_recovery_rejects_every_unauthorized_lifecycle_operation(
         assert task is not None
         assert task.status == "running"
         assert task.attempt_count == 1
+
+
+def test_task_runtime_rejects_rehashed_but_stale_approval_binding(
+    session_factory: sessionmaker[Session],
+    approval_context: ApprovalContext,
+) -> None:
+    principal = _principal(approval_context.team_id)
+    created = OperatorApplicationAdapter(
+        session_factory
+    ).request_learning_change_decision(
+        principal, _request(approval_context.learning_change_id)
+    )
+
+    with session_factory.begin() as session:
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "operator_task_requested",
+            )
+        )
+        assert event is not None and isinstance(event.payload, dict)
+        payload = dict(event.payload)
+        binding = dict(payload["approval_binding"])
+        binding["proposal_hash"] = "sha256:" + "0" * 64
+        payload["approval_binding"] = binding
+        payload["request_fingerprint"] = build_request_fingerprint(
+            team_id=approval_context.team_id,
+            learning_change_id=approval_context.learning_change_id,
+            decision="accept",
+            rejection_reason=None,
+            operator_id=payload["operator_id"],
+            quality_assessment_id=UUID(
+                payload["knowledge_quality_assessment_id"]
+            ),
+            quality_assessment_hash=payload[
+                "knowledge_quality_assessment_hash"
+            ],
+            approval_binding=binding,
+        )
+        event.payload = payload
+
+    with pytest.raises(
+        TaskNotEligible, match="operator_approval_binding_invalid"
+    ):
+        TaskRuntime(session_factory).admit(created.task_id)
+
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None and task.status == "pending"
+        assert task.attempt_count == 0
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_started",
+            )
+        ) == 0
+
