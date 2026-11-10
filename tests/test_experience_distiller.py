@@ -2799,6 +2799,43 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
         recorded_event = session.get(Event, recorded_event_id)
         assert recorded_event is not None
         recorded_event.payload = original_recorded_event_payload
+        original_recorded_event_type = recorded_event.type
+        recorded_event.type = "tampered_revalidation_recorded_event_type"
+    with pytest.raises(TaskNotEligible) as missing_event_error:
+        runner.run(task_id)
+    assert str(missing_event_error.value) == (
+        "knowledge_revalidation_recorded_event_invalid"
+    )
+    with session_factory.begin() as session:
+        recorded_event = session.get(Event, recorded_event_id)
+        assert recorded_event is not None
+        recorded_event.type = original_recorded_event_type
+
+    duplicate_recorded_event_id = uuid4()
+    with session_factory.begin() as session:
+        recorded_event = session.get(Event, recorded_event_id)
+        assert recorded_event is not None
+        session.add(
+            Event(
+                id=duplicate_recorded_event_id,
+                task_id=task_id,
+                type=original_recorded_event_type,
+                payload=original_recorded_event_payload,
+                created_at=recorded_event.created_at + timedelta(seconds=1),
+            )
+        )
+    with pytest.raises(TaskNotEligible) as duplicate_event_error:
+        runner.run(task_id)
+    assert str(duplicate_event_error.value) == (
+        "knowledge_revalidation_recorded_event_invalid"
+    )
+    with session_factory.begin() as session:
+        session.execute(
+            delete(Event).where(Event.id == duplicate_recorded_event_id)
+        )
+    replay_after_event_repair = runner.run(task_id)
+    assert replay_after_event_repair.status == "done"
+    assert replay_after_event_repair.replayed
 
     # The assessment table is intentionally immutable. Disable only user
     # triggers inside this disposable test transaction to remove its fixture.
@@ -5204,6 +5241,66 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             )
             assert recorded_event is not None
             recorded_event.payload = original_recorded_payload
+            original_recorded_type = recorded_event.type
+            recorded_event.type = "tampered_lifecycle_recorded_event_type"
+        with pytest.raises(
+            TaskNotFinalizable,
+            match="knowledge_lifecycle_recorded_event_invalid",
+        ):
+            TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+                now=recovery_at
+            )
+        with session_factory() as session:
+            still_running = session.get(Task, task_id)
+            assert still_running is not None
+            assert still_running.status == "running"
+            assert session.scalar(
+                select(func.count(Outcome.id)).where(
+                    Outcome.recorded_by_task_id == task_id
+                )
+            ) == 0
+        with session_factory.begin() as session:
+            recorded_event = session.get(
+                Event, committed_assessment.recorded_event_id
+            )
+            assert recorded_event is not None
+            recorded_event.type = original_recorded_type
+
+        duplicate_recorded_event_id = uuid4()
+        with session_factory.begin() as session:
+            recorded_event = session.get(
+                Event, committed_assessment.recorded_event_id
+            )
+            assert recorded_event is not None
+            session.add(
+                Event(
+                    id=duplicate_recorded_event_id,
+                    task_id=task_id,
+                    type=original_recorded_type,
+                    payload=original_recorded_payload,
+                    created_at=recorded_event.created_at + timedelta(seconds=1),
+                )
+            )
+        with pytest.raises(
+            TaskNotFinalizable,
+            match="knowledge_lifecycle_recorded_event_invalid",
+        ):
+            TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+                now=recovery_at
+            )
+        with session_factory() as session:
+            still_running = session.get(Task, task_id)
+            assert still_running is not None
+            assert still_running.status == "running"
+            assert session.scalar(
+                select(func.count(Outcome.id)).where(
+                    Outcome.recorded_by_task_id == task_id
+                )
+            ) == 0
+        with session_factory.begin() as session:
+            session.execute(
+                delete(Event).where(Event.id == duplicate_recorded_event_id)
+            )
 
         first = task_adapter.record(task_id)
         assert first.assessment_result == assessment_result
