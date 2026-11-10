@@ -2836,6 +2836,23 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
     replay_after_event_repair = runner.run(task_id)
     assert replay_after_event_repair.status == "done"
     assert replay_after_event_repair.replayed
+    with session_factory() as session:
+        assert session.scalar(
+            select(func.count(KnowledgeRevalidationAssessment.id)).where(
+                KnowledgeRevalidationAssessment.task_id == task_id
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == task_id,
+                Event.type == original_recorded_event_type,
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == task_id
+            )
+        ) == 1
 
     # The assessment table is intentionally immutable. Disable only user
     # triggers inside this disposable test transaction to remove its fixture.
