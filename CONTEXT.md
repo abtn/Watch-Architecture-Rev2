@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 are complete/closed as recorded in PLAN.md. B3.2–B3.6 are implemented and merged. B3.7 test implementation is complete: every frozen matrix ID is mapped to merged tests in PRs #69–#82, #84–#87, and #89–#92 (PRs #83 and #88 were superseded and closed after their changes were carried forward). The latest checkpoint, PR #92, merged at `0a76c27b8d455509f90a864bc2695d01db04805d`; hosted CI on exact head `6b624310d4d3ae53153dba1b9f47e949564de079` passed fresh PostgreSQL migration/single-head, Ruff, Mypy, 946 tests, and 113 existing Alembic deprecation warnings. The B3.7 matrix includes target/proposal and successor drift, malformed retire/evaluator drafts, cross-Team evidence, assessment/Event integrity, idempotency, persistence/finalization/recovery failure atomicity, and approval/create-only boundaries. Operator-local exact-head verification for PRs #80–#92 has not been run; that is B3.8 work. B3.8 exact-head verification, B3.9 closeout/formal B3 exit, B4–B6, and R7-C remain gated. The active approval allowlist remains exactly `create`; PLAN.md is the sole current status authority.
+R6 is complete through R6-G. R7 B3 is formally closed on 2026-11-10 following hosted and Operator-local exact-head verification; B4–B6 and R7-C remain not authorized. See PLAN.md for the current status authority and docs/testing.md for evidence.
 
 ## Open the smallest relevant set of documents
 
