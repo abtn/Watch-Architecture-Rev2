@@ -12,6 +12,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any, Literal, Protocol, Sequence
 from uuid import UUID, uuid4
 
@@ -34,6 +35,7 @@ from core.models import (
     Evaluation,
     Event,
     EvidenceLink,
+    KnowledgeItem,
     LearningChange,
     Objective,
     Outcome,
@@ -42,6 +44,13 @@ from core.models import (
     Signal,
     Task,
     Team,
+)
+from core.learning_history import (
+    KnowledgeHistoryError,
+    encode_state_snapshot,
+    knowledge_item_content_hash,
+    knowledge_item_state,
+    reconstruct_knowledge_item_history,
 )
 from core.objectives import ObjectiveService
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
@@ -235,6 +244,33 @@ class ExperienceDistiller:
     def propose(
         self, task_id: UUID, evaluation_ids: Sequence[UUID]
     ) -> LearningChangeProposalResult:
+        return self._propose_candidate(
+            task_id, evaluation_ids, operation="create", target_knowledge_item_id=None
+        )
+
+    def propose_revision(
+        self,
+        task_id: UUID,
+        evaluation_ids: Sequence[UUID],
+        target_knowledge_item_id: UUID,
+    ) -> LearningChangeProposalResult:
+        if not isinstance(target_knowledge_item_id, UUID):
+            raise ExperienceDistillerError("revision_target_id_invalid")
+        return self._propose_candidate(
+            task_id,
+            evaluation_ids,
+            operation="revise",
+            target_knowledge_item_id=target_knowledge_item_id,
+        )
+
+    def _propose_candidate(
+        self,
+        task_id: UUID,
+        evaluation_ids: Sequence[UUID],
+        *,
+        operation: Literal["create", "revise"],
+        target_knowledge_item_id: UUID | None,
+    ) -> LearningChangeProposalResult:
         normalized_ids = self._normalize_evaluation_ids(evaluation_ids)
         provider = self._provider
         if provider is None:
@@ -268,7 +304,11 @@ class ExperienceDistiller:
                         and isinstance(item.get("evaluation_id"), str)
                     )
                 )
-                if prior_evaluations != normalized_ids:
+                if (
+                    prior.operation != operation
+                    or prior.target_id != target_knowledge_item_id
+                    or prior_evaluations != normalized_ids
+                ):
                     raise ExperienceDistillerConflict(
                         "learning_change_task_basis_conflict"
                     )
@@ -283,9 +323,22 @@ class ExperienceDistiller:
             team = session.get(Team, task.team_id)
             team = self._require_task_scope(task, team)
             pack = self._build_pack(session, task, team, normalized_ids)
+            target_state = None
+            previous_state = None
+            target_binding = None
+            if operation == "revise":
+                target, target_state, previous_state, target_binding = (
+                    self._capture_target_state(
+                        session,
+                        team.id,
+                        target_knowledge_item_id,
+                        allowed_statuses={"active", "needs_review"},
+                        lock=False,
+                    )
+                )
             task_attempt = task.attempt_count
 
-        user_prompt = self._user_prompt(pack)
+        user_prompt = self._user_prompt(pack, target_state=target_state)
         try:
             quote = provider.maximum_request_cost(
                 system_prompt=_SYSTEM_PROMPT,
@@ -352,15 +405,26 @@ class ExperienceDistiller:
             "evidence_case_count": pack.case_count,
             "proposal_hash": proposal_hash,
         }
-        idempotency_key = (
-            (
-                "r6g-distill-v2:"
-                if pack.document["schema_version"]
-                == "r6g-experience-evidence-pack-v2"
-                else "r6f-distill-v1:"
+        if operation == "create":
+            idempotency_key = (
+                (
+                    "r6g-distill-v2:"
+                    if pack.document["schema_version"]
+                    == "r6g-experience-evidence-pack-v2"
+                    else "r6f-distill-v1:"
+                )
+                + pack.basis_hash.removeprefix("sha256:")
             )
-            + pack.basis_hash.removeprefix("sha256:")
-        )
+        else:
+            idempotency_key = "r7b-revise-v1:" + _sha256_json(
+                {
+                    "team_id": str(pack.team_id),
+                    "task_id": str(task_id),
+                    "target_binding": target_binding,
+                    "evidence_basis_hash": pack.basis_hash,
+                    "proposal_hash": proposal_hash,
+                }
+            ).removeprefix("sha256:")
 
         with self._session_factory.begin() as session:
             task = ObjectiveService._lock_task(session, task_id)
@@ -373,6 +437,24 @@ class ExperienceDistiller:
             current_pack = self._build_pack(session, task, team, normalized_ids)
             if current_pack.basis_hash != pack.basis_hash:
                 raise ExperienceDistillerError("distillation_evidence_basis_stale")
+            if operation == "revise":
+                _, current_state, current_snapshot, current_binding = (
+                    self._capture_target_state(
+                        session,
+                        team.id,
+                        target_knowledge_item_id,
+                        allowed_statuses={"active", "needs_review"},
+                        lock=True,
+                    )
+                )
+                if (
+                    current_snapshot != previous_state
+                    or current_binding != target_binding
+                    or current_state != target_state
+                ):
+                    raise ExperienceDistillerError("revision_target_stale")
+                if not self._draft_changes_target(draft, current_state):
+                    raise ExperienceDistillerError("revision_candidate_no_content_change")
 
             concurrent_prior = session.scalar(
                 select(LearningChange).where(
@@ -380,7 +462,15 @@ class ExperienceDistiller:
                 )
             )
             if concurrent_prior is not None:
-                if concurrent_prior.evidence_basis_hash != pack.basis_hash:
+                if (
+                    concurrent_prior.operation != operation
+                    or concurrent_prior.target_id != target_knowledge_item_id
+                    or concurrent_prior.evidence_basis_hash != pack.basis_hash
+                    or (
+                        operation == "revise"
+                        and concurrent_prior.previous_state != previous_state
+                    )
+                ):
                     raise ExperienceDistillerConflict(
                         "learning_change_task_basis_conflict"
                     )
@@ -399,10 +489,10 @@ class ExperienceDistiller:
                 id=uuid4(),
                 team_id=team.id,
                 target_kind="knowledge_item",
-                target_id=None,
-                operation="create",
+                target_id=target_knowledge_item_id,
+                operation=operation,
                 proposed_state=proposed_state,
-                previous_state=None,
+                previous_state=previous_state,
                 committed_state=None,
                 evidence_basis=pack.evidence_basis,
                 evidence_basis_hash=pack.basis_hash,
@@ -429,6 +519,7 @@ class ExperienceDistiller:
                     "proposal_hash": proposal_hash,
                     "evaluation_ids": [str(item) for item in normalized_ids],
                     "generation_charge_id": str(reservation.charge_id),
+                    "target_binding": target_binding,
                     "attempt_count": task.attempt_count,
                 },
             )
@@ -474,6 +565,79 @@ class ExperienceDistiller:
         if team is None or team.status != "active":
             raise ExperienceDistillerError("team_not_active")
         return team
+
+    def _capture_target_state(
+        self,
+        session: Session,
+        team_id: UUID,
+        target_id: UUID | None,
+        *,
+        allowed_statuses: set[str],
+        lock: bool,
+    ) -> tuple[KnowledgeItem, dict[str, Any], dict[str, Any], dict[str, Any]]:
+        if target_id is None:
+            raise ExperienceDistillerError("learning_change_target_missing")
+        query = select(KnowledgeItem).where(
+            KnowledgeItem.id == target_id,
+            KnowledgeItem.team_id == team_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        target = session.scalar(query)
+        if target is None:
+            raise ExperienceDistillerError("revision_target_not_found")
+        if target.status not in allowed_statuses:
+            raise ExperienceDistillerError("revision_target_status_invalid")
+        try:
+            reconstruct_knowledge_item_history(session, target)
+            state = knowledge_item_state(target)
+            snapshot = encode_state_snapshot(state)
+            content_hash = knowledge_item_content_hash(target)
+        except KnowledgeHistoryError as error:
+            raise ExperienceDistillerError(
+                f"revision_target_history_{error.reason}"
+            ) from error
+        binding = {
+            "target_knowledge_item_id": str(target.id),
+            "target_current_learning_change_id": state[
+                "current_learning_change_id"
+            ],
+            "target_content_version": state["version"],
+            "target_content_hash": content_hash,
+            "target_content_hash_scheme": "watch.r7b.knowledge-content.v2",
+            "target_state_hash": snapshot["snapshot_hash"],
+        }
+        return target, state, snapshot, binding
+
+    @staticmethod
+    def _draft_changes_target(
+        draft: DistilledExperienceDraft,
+        target_state: dict[str, Any],
+    ) -> bool:
+        proposed = draft.model_dump(mode="json")
+        content_fields = (
+            "kind",
+            "title",
+            "statement",
+            "body",
+            "applicability",
+            "preconditions",
+            "assumptions",
+            "limitations",
+            "non_applicability",
+            "failure_modes",
+            "known_counterexamples",
+            "missing_information",
+            "uncertainty",
+        )
+        if any(proposed[field] != target_state[field] for field in content_fields):
+            return True
+        try:
+            return Decimal(str(proposed["confidence"])) != Decimal(
+                str(target_state["confidence"])
+            )
+        except (InvalidOperation, ValueError) as error:
+            raise ExperienceDistillerError("revision_candidate_confidence_invalid") from error
 
     def validate_learning_change(
         self, session: Session, learning_change: LearningChange
@@ -1445,14 +1609,26 @@ class ExperienceDistiller:
         return content
 
     @staticmethod
-    def _user_prompt(pack: ExperienceEvidencePack) -> str:
+    def _user_prompt(
+        pack: ExperienceEvidencePack,
+        *,
+        target_state: dict[str, Any] | None = None,
+    ) -> str:
         instructions = {
-            "task": "Distill only the durable evidence in this pack.",
+            "task": (
+                "Revise the supplied current KnowledgeItem. Preserve its identity, "
+                "origin, status, and successor relations. Return only a materially "
+                "changed candidate content state grounded in this evidence pack."
+                if target_state is not None
+                else "Distill only the durable evidence in this pack."
+            ),
             "required_schema": DistilledExperienceDraft.model_json_schema(),
             "allowed_reference_ids": sorted(pack.reference_ids),
             "required_contrary_reference_ids": sorted(pack.contrary_reference_ids),
             "evidence_pack": pack.document,
         }
+        if target_state is not None:
+            instructions["current_target_state"] = target_state
         return _canonical_json(instructions)
 
     @staticmethod
