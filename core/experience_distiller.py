@@ -263,6 +263,137 @@ class ExperienceDistiller:
             target_knowledge_item_id=target_knowledge_item_id,
         )
 
+    def propose_revalidation(
+        self,
+        task_id: UUID,
+        evaluation_ids: Sequence[UUID],
+        target_knowledge_item_id: UUID,
+        rationale: str,
+    ) -> LearningChangeProposalResult:
+        if not isinstance(target_knowledge_item_id, UUID):
+            raise ExperienceDistillerError("revalidation_target_id_invalid")
+        if not isinstance(rationale, str) or not rationale.strip():
+            raise ExperienceDistillerError("revalidation_rationale_required")
+        rationale = rationale.strip()
+        if len(rationale) > 2_000:
+            raise ExperienceDistillerError("revalidation_rationale_too_long")
+        normalized_ids = self._normalize_evaluation_ids(evaluation_ids)
+
+        with self._session_factory.begin() as session:
+            task = ObjectiveService._lock_task(session, task_id)
+            if task is None:
+                raise ExperienceDistillerError("task_not_found")
+            team = session.get(Team, task.team_id)
+            team = self._require_task_scope(task, team)
+            prior_changes = list(
+                session.scalars(
+                    select(LearningChange).where(
+                        LearningChange.proposed_by_task_id == task.id
+                    )
+                )
+            )
+            if prior_changes:
+                if len(prior_changes) != 1:
+                    raise ExperienceDistillerConflict(
+                        "learning_change_task_history_conflict"
+                    )
+                prior = prior_changes[0]
+                prior_ids = tuple(
+                    sorted(
+                        UUID(item["evaluation_id"])
+                        for item in prior.evidence_basis
+                        if isinstance(item, dict)
+                        and isinstance(item.get("evaluation_id"), str)
+                    )
+                )
+                if (
+                    prior.operation != "revalidate"
+                    or prior.target_id != target_knowledge_item_id
+                    or prior_ids != normalized_ids
+                    or prior.proposed_state.get("rationale") != rationale
+                ):
+                    raise ExperienceDistillerConflict(
+                        "learning_change_task_basis_conflict"
+                    )
+                return LearningChangeProposalResult(
+                    learning_change_id=prior.id,
+                    status=prior.status,
+                    evidence_basis_hash=prior.evidence_basis_hash,
+                    proposal_hash=str(prior.proposed_state.get("proposal_hash", "")),
+                    generation_charge_id=None,
+                    replayed=True,
+                )
+
+            pack = self._build_pack(session, task, team, normalized_ids)
+            _, _, previous_state, target_binding = self._capture_target_state(
+                session,
+                team.id,
+                target_knowledge_item_id,
+                allowed_statuses={"needs_review"},
+                lock=True,
+            )
+            unsigned_state = {
+                "schema_version": "r7b-revalidation-proposal-v1",
+                "rationale": rationale,
+                "target_binding": target_binding,
+                "evidence_basis_hash": pack.basis_hash,
+                "evidence_case_count": pack.case_count,
+            }
+            proposal_hash = _sha256_json(unsigned_state)
+            proposed_state = {**unsigned_state, "proposal_hash": proposal_hash}
+            idempotency_key = "r7b-revalidate-proposal-v1:" + _sha256_json(
+                {
+                    "team_id": str(team.id),
+                    "task_id": str(task.id),
+                    **unsigned_state,
+                }
+            ).removeprefix("sha256:")
+            change = LearningChange(
+                id=uuid4(),
+                team_id=team.id,
+                target_kind="knowledge_item",
+                target_id=target_knowledge_item_id,
+                operation="revalidate",
+                proposed_state=proposed_state,
+                previous_state=previous_state,
+                committed_state=None,
+                evidence_basis=pack.evidence_basis,
+                evidence_basis_hash=pack.basis_hash,
+                status="proposed",
+                idempotency_key=idempotency_key,
+                proposed_by_task_id=task.id,
+                committed_by_task_id=None,
+                operator_id=None,
+                decision_reason=None,
+                created_at=datetime.now(timezone.utc),
+                committed_at=None,
+            )
+            session.add(change)
+            session.flush()
+            ObjectiveService._add_event(
+                session,
+                task.id,
+                "learning_change_proposed",
+                {
+                    "learning_change_id": str(change.id),
+                    "operation": "revalidate",
+                    "evidence_basis_hash": pack.basis_hash,
+                    "proposal_hash": proposal_hash,
+                    "evaluation_ids": [str(item) for item in normalized_ids],
+                    "generation_charge_id": None,
+                    "target_binding": target_binding,
+                    "attempt_count": task.attempt_count,
+                },
+            )
+            session.flush()
+            return LearningChangeProposalResult(
+                learning_change_id=change.id,
+                status=change.status,
+                evidence_basis_hash=change.evidence_basis_hash,
+                proposal_hash=proposal_hash,
+                generation_charge_id=None,
+            )
+
     def _propose_candidate(
         self,
         task_id: UUID,
@@ -519,7 +650,11 @@ class ExperienceDistiller:
                     "proposal_hash": proposal_hash,
                     "evaluation_ids": [str(item) for item in normalized_ids],
                     "generation_charge_id": str(reservation.charge_id),
-                    "target_binding": target_binding,
+                    **(
+                        {"target_binding": target_binding}
+                        if target_binding is not None
+                        else {}
+                    ),
                     "attempt_count": task.attempt_count,
                 },
             )
@@ -655,8 +790,21 @@ class ExperienceDistiller:
         state = learning_change.proposed_state
         if (
             learning_change.target_kind != "knowledge_item"
-            or learning_change.operation != "create"
-            or learning_change.target_id is not None
+            or learning_change.operation not in {"create", "revise"}
+            or (
+                learning_change.operation == "create"
+                and (
+                    learning_change.target_id is not None
+                    or learning_change.previous_state is not None
+                )
+            )
+            or (
+                learning_change.operation == "revise"
+                and (
+                    learning_change.target_id is None
+                    or not isinstance(learning_change.previous_state, dict)
+                )
+            )
             or learning_change.status != "proposed"
             or not isinstance(state, dict)
             or set(state) != expected_state_keys
@@ -765,6 +913,33 @@ class ExperienceDistiller:
         if state.get("proposal_hash") != proposal_hash:
             raise ExperienceDistillerError("learning_change_proposal_hash_mismatch")
         self._validate_references(draft, pack)
+        if learning_change.operation == "revise":
+            _, target_state, target_snapshot, target_binding = (
+                self._capture_target_state(
+                    session,
+                    learning_change.team_id,
+                    learning_change.target_id,
+                    allowed_statuses={"active", "needs_review"},
+                    lock=True,
+                )
+            )
+            if target_snapshot != learning_change.previous_state:
+                raise ExperienceDistillerError("revision_target_stale")
+            if not self._draft_changes_target(draft, target_state):
+                raise ExperienceDistillerError("revision_candidate_no_content_change")
+            expected_key = "r7b-revise-v1:" + _sha256_json(
+                {
+                    "team_id": str(learning_change.team_id),
+                    "task_id": str(proposer.id),
+                    "target_binding": target_binding,
+                    "evidence_basis_hash": pack.basis_hash,
+                    "proposal_hash": proposal_hash,
+                }
+            ).removeprefix("sha256:")
+            if learning_change.idempotency_key != expected_key:
+                raise ExperienceDistillerError(
+                    "revision_proposal_idempotency_mismatch"
+                )
         return draft, pack
 
     def _build_pack(
