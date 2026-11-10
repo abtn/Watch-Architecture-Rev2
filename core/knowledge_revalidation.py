@@ -328,6 +328,10 @@ def _target_state_from_proposal(
     target_content_hash = _domain_hash(
         KNOWLEDGE_CONTENT_HASH_SCHEME, content_state
     )
+    if state["status"] != "needs_review":
+        raise KnowledgeRevalidationAssessmentError(
+            "knowledge_revalidation_target_not_needs_review"
+        )
     if require_current:
         try:
             live_state = knowledge_item_state(target)
@@ -440,7 +444,31 @@ def _proposal_context(
         raise KnowledgeRevalidationAssessmentError(
             "knowledge_revalidation_proposal_invalid"
         )
-    proposal_hash = learning_change.proposed_state.get("proposal_hash")
+    proposed_state = learning_change.proposed_state
+    expected_state_fields = {
+        "schema_version",
+        "rationale",
+        "target_binding",
+        "evidence_basis_hash",
+        "evidence_case_count",
+        "proposal_hash",
+    }
+    if (
+        not isinstance(proposed_state, dict)
+        or set(proposed_state) != expected_state_fields
+        or proposed_state.get("schema_version") != "r7b-revalidation-proposal-v1"
+        or not isinstance(proposed_state.get("rationale"), str)
+        or not proposed_state["rationale"].strip()
+        or len(proposed_state["rationale"]) > 2_000
+        or isinstance(proposed_state.get("evidence_case_count"), bool)
+        or not isinstance(proposed_state.get("evidence_case_count"), int)
+        or not 1 <= proposed_state["evidence_case_count"] <= 8
+        or not isinstance(proposed_state.get("target_binding"), dict)
+    ):
+        raise KnowledgeRevalidationAssessmentError(
+            "knowledge_revalidation_proposal_shape_invalid"
+        )
+    proposal_hash = proposed_state.get("proposal_hash")
     if not isinstance(proposal_hash, str):
         raise KnowledgeRevalidationAssessmentError(
             "knowledge_revalidation_proposal_hash_invalid"
@@ -452,7 +480,14 @@ def _proposal_context(
         learning_change.evidence_basis_hash,
         "knowledge_revalidation_evidence_hash_invalid",
     )
-    if learning_change.proposed_state.get("evidence_basis_hash") != evidence_basis_hash:
+    unsigned_proposed_state = {
+        key: value for key, value in proposed_state.items() if key != "proposal_hash"
+    }
+    if _sha256_json(unsigned_proposed_state) != proposal_hash:
+        raise KnowledgeRevalidationAssessmentError(
+            "knowledge_revalidation_proposal_hash_mismatch"
+        )
+    if proposed_state.get("evidence_basis_hash") != evidence_basis_hash:
         raise KnowledgeRevalidationAssessmentError(
             "knowledge_revalidation_proposed_evidence_hash_mismatch"
         )
@@ -569,6 +604,13 @@ def _proposal_context(
         or proposal_event.get("proposal_hash") != proposal_hash
         or proposal_event.get("evidence_basis_hash") != evidence_basis_hash
         or proposal_event.get("attempt_count") != source_task.attempt_count
+        or proposal_event.get("target_binding") != proposed_state["target_binding"]
+        or proposal_event.get("generation_charge_id") is not None
+        or proposal_event.get("evaluation_ids")
+        != [
+            item.get("evaluation_id")
+            for item in learning_change.evidence_basis
+        ]
     ):
         raise KnowledgeRevalidationAssessmentError(
             "knowledge_revalidation_proposal_event_mismatch"
@@ -595,6 +637,31 @@ def _proposal_context(
             learning_change, target, require_current=require_current
         )
     )
+    expected_target_binding = {
+        "target_knowledge_item_id": str(target.id),
+        "target_current_learning_change_id": target_state[
+            "current_learning_change_id"
+        ],
+        "target_content_version": target_state["version"],
+        "target_content_hash": target_content_hash,
+        "target_content_hash_scheme": KNOWLEDGE_CONTENT_HASH_SCHEME,
+        "target_state_hash": target_state_hash,
+    }
+    if proposed_state["target_binding"] != expected_target_binding:
+        raise KnowledgeRevalidationAssessmentError(
+            "knowledge_revalidation_proposal_target_binding_mismatch"
+        )
+    expected_idempotency = "r7b-revalidate-proposal-v1:" + _sha256_json(
+        {
+            "team_id": str(learning_change.team_id),
+            "task_id": str(source_task.id),
+            **unsigned_proposed_state,
+        }
+    ).removeprefix("sha256:")
+    if learning_change.idempotency_key != expected_idempotency:
+        raise KnowledgeRevalidationAssessmentError(
+            "knowledge_revalidation_proposal_idempotency_mismatch"
+        )
     if require_current:
         try:
             reconstruct_knowledge_item_history(session, target)
@@ -605,6 +672,10 @@ def _proposal_context(
     pack = _build_canonical_pack(
         session, session_factory, snapshot_store, learning_change, source_task
     )
+    if proposed_state["evidence_case_count"] != pack.case_count:
+        raise KnowledgeRevalidationAssessmentError(
+            "knowledge_revalidation_evidence_case_count_mismatch"
+        )
     return (
         target,
         source_task,
