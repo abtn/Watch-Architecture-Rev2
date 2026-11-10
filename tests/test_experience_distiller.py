@@ -1537,6 +1537,16 @@ def test_revalidation_rejects_invented_provider_reference_without_record_and_rec
                 Event.type == RECORDED_EVENT_TYPE,
             )
         ) == 0
+        failed_event = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "task_attempt_failed",
+            )
+        )
+        assert failed_event is not None
+        assert failed_event.payload["failure_reason"] == (
+            "knowledge_revalidation_finding_reference_not_in_basis"
+        )
         assert session.scalar(
             select(func.count(Event.id)).where(
                 Event.task_id == task_id,
