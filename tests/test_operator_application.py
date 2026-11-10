@@ -455,9 +455,25 @@ def test_request_creates_one_pending_task_and_one_attributed_event(
         assert events[0].payload["operator_id"] == (
             '{"iss":"https://host.example/identity","sub":"operator-42"}'
         )
+        assert events[0].payload["schema_version"] == 3
         assert events[0].payload["policy_version"] == 2
         assert events[0].payload["request_fingerprint"].startswith("sha256:")
         assert events[0].payload["idempotency_key_hash"].startswith("sha256:")
+        binding = events[0].payload["approval_binding"]
+        assert binding["operation"] == "create"
+        assert binding["team_id"] == str(approval_context.team_id)
+        assert binding["learning_change_id"] == str(
+            approval_context.learning_change_id
+        )
+        assert binding["assessment_type"] == "knowledge_quality"
+        assert binding["assessment_id"] == events[0].payload[
+            "knowledge_quality_assessment_id"
+        ]
+        assert binding["assessment_payload_hash"] == events[0].payload[
+            "knowledge_quality_assessment_hash"
+        ]
+        assert binding["approval_policy_version"] == 2
+        assert binding["operator_id"] == events[0].payload["operator_id"]
         assert not hasattr(request, "operator_id")
         assert session.scalar(
             select(func.count(Task.id)).where(
