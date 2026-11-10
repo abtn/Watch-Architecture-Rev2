@@ -4739,6 +4739,37 @@ def test_b37_supersede_assessment_round_trips_successor_and_rechecks_approval_bi
             "successor_state_hash": candidate_snapshot["snapshot_hash"],
         }
         original_review_after = candidate.review_after
+        original_recorded_event_payload = dict(recorded_event.payload)
+
+    with session_factory.begin() as session:
+        tampered_event = session.get(Event, assessment.recorded_event_id)
+        assert tampered_event is not None
+        tampered_event.payload = {
+            **tampered_event.payload,
+            "assessment_payload_hash": "sha256:" + ("0" * 64),
+        }
+
+    with session_factory() as session:
+        change = session.get(LearningChange, supersede_change_id)
+        assert change is not None
+        with pytest.raises(
+            KnowledgeApprovalBindingError,
+            match="knowledge_lifecycle_recorded_event_invalid",
+        ):
+            build_approval_binding(
+                session,
+                change,
+                operator_id=principal_id,
+                approval_policy_version=1,
+                require_assessment=True,
+                snapshot_store=snapshot_store,
+                session_factory=session_factory,
+            )
+
+    with session_factory.begin() as session:
+        tampered_event = session.get(Event, assessment.recorded_event_id)
+        assert tampered_event is not None
+        tampered_event.payload = original_recorded_event_payload
 
     with session_factory.begin() as session:
         candidate = session.get(KnowledgeItem, candidate_id)
