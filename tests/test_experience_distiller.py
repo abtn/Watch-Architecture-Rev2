@@ -4152,3 +4152,598 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
                 ),
                 {"id": first_assessment_id},
             )
+
+
+def test_b37_supersede_assessment_round_trips_successor_and_rechecks_approval_binding(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    request,
+):
+    """Exercise supersede assessment, immutable recording, and B3.6 recheck."""
+    from core.knowledge_approval import (
+        KnowledgeApprovalBindingError,
+        build_approval_binding,
+    )
+    from core.knowledge_lifecycle import (
+        PROPOSED_STATE_HASH_DOMAIN,
+        RECORDED_EVENT_TYPE,
+        _domain_hash,
+        _normalize_json,
+        _task_id,
+        recorded_assessment_event_payload,
+    )
+    from core.knowledge_lifecycle_tasks import (
+        KnowledgeLifecycleAssessmentTask,
+        KnowledgeLifecycleAssessmentTaskRunner,
+    )
+    from core.learning_history import (
+        KNOWLEDGE_CONTENT_HASH_SCHEME,
+        knowledge_item_content_hash,
+    )
+    from core.operator_approval import canonical_operator_identity
+    from core.state_assessment import _timestamp
+
+    fixture = distillation_fixture(2, include_contrary=False)
+    create_proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    runtime.finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=create_proposal.learning_change_id,
+        )
+    )
+    predecessor_approval_task_id, predecessor_attempt, principal = (
+        _create_admitted_approval_task(
+            session_factory,
+            snapshot_store,
+            fixture.team_id,
+            create_proposal.learning_change_id,
+        )
+    )
+    predecessor_result = LearningCommitService(
+        session_factory, snapshot_store
+    ).decide(predecessor_approval_task_id, predecessor_attempt, principal)
+    assert predecessor_result.knowledge_item_id is not None
+    runtime.finalize(
+        TerminalObservation(
+            task_id=predecessor_approval_task_id,
+            attempt=predecessor_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=predecessor_result.committed_at,
+            learning_change_id=predecessor_result.learning_change_id,
+        )
+    )
+
+    candidate_id = uuid4()
+    candidate_origin_change_id = uuid4()
+    candidate_approval_task_id = uuid4()
+    candidate_started_at = datetime.now(timezone.utc) - timedelta(seconds=3)
+    candidate_committed_at = candidate_started_at + timedelta(seconds=1)
+    candidate_review_after = candidate_committed_at + timedelta(days=30)
+    candidate_policy_id = uuid4()
+    proposal_source_task_id = uuid4()
+    supersede_change_id = uuid4()
+    lifecycle_task_id = _task_id(fixture.team_id, supersede_change_id)
+    proposal_started_at = datetime.now(timezone.utc)
+    proposal_completed_at = proposal_started_at + timedelta(seconds=2)
+    proposal_hash = "sha256:" + ("d" * 64)
+    rationale = {
+        "schema_version": 1,
+        "summary": "A validated successor replaces the predecessor.",
+        "reasons": [
+            {
+                "category": "improved_evidence",
+                "statement": "The successor incorporates the updated evidence.",
+            }
+        ],
+    }
+    observation_ref, observation_hash = snapshot_store.put(
+        (
+            '{"attempt":1,"learning_change_id":"'
+            + str(supersede_change_id)
+            + '","result_category":"success_learning_change_proposed"}'
+        ).encode("utf-8")
+    )
+
+    task_ids = [
+        candidate_approval_task_id,
+        proposal_source_task_id,
+        lifecycle_task_id,
+    ]
+
+    def cleanup_b37_supersede_records():
+        with session_factory.begin() as session:
+            session.execute(
+                text(
+                    "ALTER TABLE knowledge_lifecycle_assessments "
+                    "DISABLE TRIGGER USER"
+                )
+            )
+            session.execute(
+                delete(KnowledgeLifecycleAssessment).where(
+                    KnowledgeLifecycleAssessment.task_id == lifecycle_task_id
+                )
+            )
+            session.execute(
+                text(
+                    "ALTER TABLE knowledge_lifecycle_assessments "
+                    "ENABLE TRIGGER USER"
+                )
+            )
+            session.execute(
+                text(
+                    "ALTER TABLE learning_change_operator_provenance "
+                    "DISABLE TRIGGER USER"
+                )
+            )
+            session.execute(
+                delete(LearningChangeOperatorProvenance).where(
+                    LearningChangeOperatorProvenance.learning_change_id
+                    == supersede_change_id
+                )
+            )
+            session.execute(
+                text(
+                    "ALTER TABLE learning_change_operator_provenance "
+                    "ENABLE TRIGGER USER"
+                )
+            )
+            session.execute(delete(Event).where(Event.task_id.in_(task_ids)))
+            session.execute(
+                delete(Outcome).where(
+                    Outcome.recorded_by_task_id.in_(task_ids)
+                )
+            )
+            session.execute(
+                delete(LearningChange).where(
+                    LearningChange.id == supersede_change_id
+                )
+            )
+            session.execute(
+                delete(KnowledgeItem).where(KnowledgeItem.id == candidate_id)
+            )
+            session.execute(
+                delete(LearningChange).where(
+                    LearningChange.id == candidate_origin_change_id
+                )
+            )
+            session.execute(delete(Task).where(Task.id.in_(task_ids)))
+            session.execute(
+                delete(TeamPolicy).where(TeamPolicy.id == candidate_policy_id)
+            )
+
+    request.addfinalizer(cleanup_b37_supersede_records)
+
+    with session_factory.begin() as session:
+        predecessor = session.get(
+            KnowledgeItem, predecessor_result.knowledge_item_id
+        )
+        assert predecessor is not None
+        session.add(
+            TeamPolicy(
+                id=candidate_policy_id,
+                team_id=fixture.team_id,
+                version=2,
+                schema_version=2,
+                rules={"review": {"knowledge_item_interval_days": 30}},
+            )
+        )
+        session.flush()
+        candidate_state = {
+            "id": str(candidate_id),
+            "team_id": str(fixture.team_id),
+            "kind": "practice",
+            "title": "Validated successor practice",
+            "statement": "The successor statement is supported by newer evidence.",
+            "body": "The successor body records the updated procedure.",
+            "applicability": {"domain": "science"},
+            "preconditions": ["The source remains available."],
+            "assumptions": [],
+            "limitations": [],
+            "non_applicability": [],
+            "failure_modes": [],
+            "known_counterexamples": [],
+            "missing_information": [],
+            "uncertainty": [],
+            "confidence": Decimal("0.850"),
+            "status": "active",
+            "version": 1,
+            "last_validated_at": None,
+            "review_after": candidate_review_after,
+            "origin_learning_change_id": str(candidate_origin_change_id),
+            "current_learning_change_id": str(candidate_origin_change_id),
+            "supersedes_item_id": str(predecessor.id),
+            "superseded_by_id": None,
+        }
+        candidate_snapshot = encode_state_snapshot(candidate_state)
+        candidate_approval_task = Task(
+            id=candidate_approval_task_id,
+            team_id=fixture.team_id,
+            task_type="approve_learning_change",
+            status="running",
+            attempt_count=1,
+            policy_version=2,
+            allowed_writes=["LearningChange", "KnowledgeItem"],
+            budget={
+                "max_tool_calls": 0,
+                "max_cost_usd": 0.0,
+                "deadline_seconds": 30,
+            },
+            created_at=candidate_started_at,
+            max_attempts=3,
+        )
+        session.add(candidate_approval_task)
+        session.flush()
+        candidate_origin_change = LearningChange(
+            id=candidate_origin_change_id,
+            team_id=fixture.team_id,
+            target_kind="knowledge_item",
+            target_id=None,
+            operation="create",
+            proposed_state={},
+            previous_state=None,
+            committed_state=candidate_snapshot,
+            evidence_basis=[],
+            evidence_basis_hash="sha256:" + ("0" * 64),
+            status="accepted",
+            idempotency_key=f"b37-candidate-create-{candidate_id}",
+            proposed_by_task_id=fixture.distillation_task_id,
+            committed_by_task_id=candidate_approval_task_id,
+            operator_id="https://host.example/identity#candidate-author",
+            decision_reason=None,
+            created_at=candidate_started_at,
+            committed_at=candidate_committed_at,
+        )
+        session.add(candidate_origin_change)
+        session.flush()
+        session.add(
+            KnowledgeItem(
+                id=candidate_id,
+                team_id=fixture.team_id,
+                kind=candidate_state["kind"],
+                title=candidate_state["title"],
+                statement=candidate_state["statement"],
+                body=candidate_state["body"],
+                applicability=candidate_state["applicability"],
+                preconditions=candidate_state["preconditions"],
+                assumptions=candidate_state["assumptions"],
+                limitations=candidate_state["limitations"],
+                non_applicability=candidate_state["non_applicability"],
+                failure_modes=candidate_state["failure_modes"],
+                known_counterexamples=candidate_state["known_counterexamples"],
+                missing_information=candidate_state["missing_information"],
+                uncertainty=candidate_state["uncertainty"],
+                confidence=candidate_state["confidence"],
+                status="active",
+                version=1,
+                last_validated_at=None,
+                review_after=candidate_review_after,
+                origin_learning_change_id=candidate_origin_change_id,
+                current_learning_change_id=candidate_origin_change_id,
+                supersedes_item_id=predecessor.id,
+                superseded_by_id=None,
+                created_at=candidate_committed_at,
+                updated_at=candidate_committed_at,
+            )
+        )
+        session.add_all(
+            [
+                Event(
+                    id=uuid4(),
+                    task_id=candidate_approval_task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 1,
+                    },
+                    created_at=candidate_started_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=candidate_approval_task_id,
+                    type="learning_change_accepted",
+                    payload={
+                        "learning_change_id": str(candidate_origin_change_id),
+                        "operation": "create",
+                        "decision": "accept",
+                        "operator_id": candidate_origin_change.operator_id,
+                        "approval_task_id": str(candidate_approval_task_id),
+                        "attempt_count": 1,
+                        "committed_at": candidate_committed_at.isoformat(),
+                    },
+                    created_at=candidate_committed_at,
+                ),
+            ]
+        )
+        session.add(
+            Task(
+                id=proposal_source_task_id,
+                team_id=fixture.team_id,
+                task_type="propose_learning_change",
+                status="done",
+                attempt_count=1,
+                policy_version=1,
+                allowed_writes=["LearningChange"],
+                budget={
+                    "max_tool_calls": 0,
+                    "max_cost_usd": 0.0,
+                    "deadline_seconds": 30,
+                },
+                created_at=proposal_started_at,
+                completed_at=proposal_completed_at,
+                max_attempts=3,
+            )
+        )
+        session.flush()
+        team = session.get(Team, fixture.team_id)
+        proposal_source_task = session.get(Task, proposal_source_task_id)
+        assert team is not None and proposal_source_task is not None
+        evidence_pack = ExperienceDistiller(
+            session_factory, snapshot_store, provider=None
+        )._build_pack(
+            session,
+            proposal_source_task,
+            team,
+            tuple(sorted(case.evaluation_id for case in fixture.cases)),
+            allow_completed_task=True,
+            include_version_marker=True,
+        )
+        predecessor_state = knowledge_item_state(predecessor)
+        candidate = session.get(KnowledgeItem, candidate_id)
+        assert candidate is not None
+        proposed_state = {
+            "proposal_hash": proposal_hash,
+            "evidence_basis_hash": evidence_pack.basis_hash,
+            "operator_rationale": rationale,
+            "successor_knowledge_item_id": str(candidate.id),
+            "successor_team_id": str(candidate.team_id),
+            "successor_current_learning_change_id": str(
+                candidate.current_learning_change_id
+            ),
+            "successor_content_version": candidate.version,
+            "successor_content_hash": knowledge_item_content_hash(candidate),
+            "successor_content_hash_scheme": KNOWLEDGE_CONTENT_HASH_SCHEME,
+            "successor_status": candidate.status,
+            "successor_review_after": _timestamp(candidate.review_after),
+            "successor_state_hash": candidate_snapshot["snapshot_hash"],
+        }
+        proposed_state_hash = _domain_hash(
+            PROPOSED_STATE_HASH_DOMAIN, _normalize_json(proposed_state)
+        )
+        supersede_change = LearningChange(
+            id=supersede_change_id,
+            team_id=fixture.team_id,
+            target_kind="knowledge_item",
+            target_id=predecessor.id,
+            operation="supersede",
+            proposed_state=proposed_state,
+            previous_state=encode_state_snapshot(predecessor_state),
+            committed_state=None,
+            evidence_basis=evidence_pack.evidence_basis,
+            evidence_basis_hash=evidence_pack.basis_hash,
+            status="proposed",
+            idempotency_key=f"b37-supersede-{supersede_change_id}",
+            proposed_by_task_id=proposal_source_task_id,
+            committed_by_task_id=None,
+            operator_id=None,
+            decision_reason=None,
+            created_at=proposal_started_at,
+        )
+        session.add(supersede_change)
+        session.flush()
+        session.add(
+            LearningChangeOperatorProvenance(
+                learning_change_id=supersede_change_id,
+                team_id=fixture.team_id,
+                issuer="https://operator.example.test",
+                subject="operator-b37-supersede",
+                recorded_at=proposal_started_at,
+            )
+        )
+        source_outcome = Outcome(
+            id=uuid4(),
+            team_id=fixture.team_id,
+            subject_kind="task",
+            subject_id=proposal_source_task_id,
+            outcome_type="task_execution",
+            expected=None,
+            observation_snapshot_ref=observation_ref,
+            observation_hash=observation_hash,
+            observed_at=proposal_completed_at,
+            recorded_by_task_id=proposal_source_task_id,
+        )
+        session.add(source_outcome)
+        session.flush()
+        session.add_all(
+            [
+                Event(
+                    id=uuid4(),
+                    task_id=proposal_source_task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 1,
+                    },
+                    created_at=proposal_started_at,
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=proposal_source_task_id,
+                    type="learning_change_proposed",
+                    payload={
+                        "learning_change_id": str(supersede_change_id),
+                        "operation": "supersede",
+                        "proposal_hash": proposal_hash,
+                        "proposed_state_hash": proposed_state_hash,
+                        "evidence_basis_hash": evidence_pack.basis_hash,
+                        "attempt_count": 1,
+                    },
+                    created_at=proposal_completed_at - timedelta(seconds=1),
+                ),
+                Event(
+                    id=uuid4(),
+                    task_id=proposal_source_task_id,
+                    type="task_completed",
+                    payload={
+                        "from_status": "running",
+                        "to_status": "done",
+                        "attempt_count": 1,
+                        "result_category": "success_learning_change_proposed",
+                        "failure_reason": None,
+                        "outcome_id": str(source_outcome.id),
+                        "observation_snapshot_ref": observation_ref,
+                        "observation_hash": observation_hash,
+                        "learning_change_id": str(supersede_change_id),
+                    },
+                    created_at=proposal_completed_at,
+                ),
+            ]
+        )
+
+    lifecycle_adapter = KnowledgeLifecycleAssessmentTask(
+        session_factory, snapshot_store
+    )
+    assert lifecycle_adapter.create(supersede_change_id) == lifecycle_task_id
+    runner = KnowledgeLifecycleAssessmentTaskRunner(
+        session_factory, snapshot_store
+    )
+    result = runner.run(lifecycle_task_id)
+    assert result.status == "done"
+    assert result.assessment_id is not None
+    assert result.assessment_result == "eligible"
+    assert result.outcome_id is not None
+
+    with session_factory() as session:
+        predecessor = session.get(
+            KnowledgeItem, predecessor_result.knowledge_item_id
+        )
+        candidate = session.get(KnowledgeItem, candidate_id)
+        change = session.get(LearningChange, supersede_change_id)
+        task = session.get(Task, lifecycle_task_id)
+        assessment = session.get(
+            KnowledgeLifecycleAssessment, result.assessment_id
+        )
+        assert predecessor is not None and candidate is not None
+        assert change is not None and task is not None and assessment is not None
+        assert task.status == "done"
+        assert task.allowed_writes == ["KnowledgeLifecycleAssessment"]
+        assert change.status == "proposed"
+        assert change.committed_by_task_id is None
+        assert predecessor.status == "active"
+        assert predecessor.superseded_by_id is None
+        assert candidate.status == "active"
+        assert candidate.supersedes_item_id == predecessor.id
+        assert assessment.operation == "supersede"
+        assert assessment.assessment_result == "eligible"
+        assert assessment.successor_knowledge_item_id == candidate.id
+        assert assessment.successor_current_learning_change_id == (
+            candidate_origin_change_id
+        )
+        assert assessment.successor_content_version == candidate.version
+        assert assessment.successor_content_hash == knowledge_item_content_hash(
+            candidate
+        )
+        assert assessment.successor_status == "active"
+        assert assessment.successor_review_after == candidate_review_after
+        assert assessment.successor_state_hash == candidate_snapshot["snapshot_hash"]
+        recorded_event = session.get(Event, assessment.recorded_event_id)
+        assert recorded_event is not None
+        assert recorded_event.task_id == lifecycle_task_id
+        assert recorded_event.type == RECORDED_EVENT_TYPE
+        assert recorded_event.created_at == assessment.recorded_at
+        assert recorded_event.payload == recorded_assessment_event_payload(
+            assessment
+        )
+        assert session.scalar(
+            select(func.count(KnowledgeLifecycleAssessment.id)).where(
+                KnowledgeLifecycleAssessment.learning_change_id
+                == supersede_change_id
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == lifecycle_task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) == 1
+        principal_id = canonical_operator_identity(
+            "https://host.example/identity", "b37-reviewer"
+        )
+        binding = build_approval_binding(
+            session,
+            change,
+            operator_id=principal_id,
+            approval_policy_version=1,
+            require_assessment=True,
+            snapshot_store=snapshot_store,
+            session_factory=session_factory,
+        )
+        assert binding["assessment_type"] == "knowledge_lifecycle"
+        assert binding["assessment_id"] == str(assessment.id)
+        assert binding["assessment_payload_hash"] == assessment.payload_hash
+        assert binding["operator_provenance"] == {
+            "issuer": "https://operator.example.test",
+            "subject": "operator-b37-supersede",
+        }
+        assert binding["successor_binding"] == {
+            "successor_knowledge_item_id": str(candidate.id),
+            "successor_team_id": str(candidate.team_id),
+            "successor_current_learning_change_id": str(
+                candidate.current_learning_change_id
+            ),
+            "successor_content_version": candidate.version,
+            "successor_content_hash": knowledge_item_content_hash(candidate),
+            "successor_content_hash_scheme": KNOWLEDGE_CONTENT_HASH_SCHEME,
+            "successor_status": "active",
+            "successor_review_after": _timestamp(candidate.review_after),
+            "successor_state_hash": candidate_snapshot["snapshot_hash"],
+        }
+        original_review_after = candidate.review_after
+
+    with session_factory.begin() as session:
+        candidate = session.get(KnowledgeItem, candidate_id)
+        assert candidate is not None
+        candidate.review_after = candidate.review_after + timedelta(days=1)
+
+    with session_factory() as session:
+        change = session.get(LearningChange, supersede_change_id)
+        assert change is not None
+        with pytest.raises(KnowledgeApprovalBindingError):
+            build_approval_binding(
+                session,
+                change,
+                operator_id=principal_id,
+                approval_policy_version=1,
+                require_assessment=True,
+                snapshot_store=snapshot_store,
+                session_factory=session_factory,
+            )
+
+    with session_factory.begin() as session:
+        candidate = session.get(KnowledgeItem, candidate_id)
+        assert candidate is not None
+        candidate.review_after = original_review_after
+
+    with session_factory() as session:
+        predecessor = session.get(
+            KnowledgeItem, predecessor_result.knowledge_item_id
+        )
+        candidate = session.get(KnowledgeItem, candidate_id)
+        change = session.get(LearningChange, supersede_change_id)
+        assert predecessor is not None and candidate is not None and change is not None
+        assert predecessor.status == "active"
+        assert predecessor.superseded_by_id is None
+        assert candidate.status == "active"
+        assert change.status == "proposed"
+        assert change.committed_by_task_id is None
