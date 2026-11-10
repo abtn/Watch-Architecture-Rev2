@@ -12,7 +12,10 @@ from core.knowledge_approval import (
     build_approval_binding,
 )
 from core.models import LearningChangeOperatorProvenance, Task
-from core.operator_approval import build_request_fingerprint, canonical_operator_identity
+from core.operator_approval import (
+    build_request_fingerprint,
+    canonical_operator_identity,
+)
 
 
 def _learning_change(operation: str) -> SimpleNamespace:
