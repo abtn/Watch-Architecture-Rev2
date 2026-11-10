@@ -1418,6 +1418,17 @@ def _create_revalidation_proposal(
             "freshness_mismatch",
             "knowledge_revalidation_freshness_disposition_mismatch",
         ),
+        ("extra_fields", "knowledge_revalidation_draft_invalid"),
+        ("malformed_shape", "knowledge_revalidation_draft_invalid"),
+        ("missing_required_field", "knowledge_revalidation_draft_invalid"),
+        (
+            "invalid_evaluator_identity",
+            "knowledge_revalidation_evaluator_identity_invalid",
+        ),
+        (
+            "invalid_evaluator_revision",
+            "knowledge_revalidation_evaluator_identity_invalid",
+        ),
     ],
 )
 def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recovers(
@@ -1493,23 +1504,54 @@ def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recove
             target_state: dict[str, object],
             evidence_document: dict[str, object],
             allowed_evidence_references: frozenset[str],
-        ) -> KnowledgeRevalidationAssessmentDraft:
+        ) -> Any:
             self.calls += 1
             references = tuple(sorted(allowed_evidence_references))
             freshness_disposition = "current"
+            valid_payload = {
+                "freshness_disposition": freshness_disposition,
+                "findings": [
+                    {
+                        "code": "supports_revalidation",
+                        "summary": "The rebuilt evidence basis remains relevant.",
+                        "evidence_refs": list(references),
+                    }
+                ],
+            }
             if self.calls == 1 and invalid_draft_case == "invented_reference":
                 references = (*references, "urn:watch:invented-evidence-reference")
+                valid_payload["findings"][0]["evidence_refs"] = list(references)
             elif self.calls == 1 and invalid_draft_case == "freshness_mismatch":
                 freshness_disposition = "stale"
-            return KnowledgeRevalidationAssessmentDraft(
-                freshness_disposition=freshness_disposition,
-                findings=(
-                    KnowledgeRevalidationFinding(
-                        code="supports_revalidation",
-                        summary="The rebuilt evidence basis remains relevant.",
-                        evidence_refs=references,
-                    ),
-                ),
+                valid_payload["freshness_disposition"] = freshness_disposition
+            elif self.calls == 1 and invalid_draft_case == "extra_fields":
+                return {
+                    **valid_payload,
+                    "evaluator_identity": "untrusted-model-identity",
+                    "evaluator_revision": "untrusted-model-revision",
+                    "assessment_payload_hash": "sha256:" + ("0" * 64),
+                    "target_state_hash": "sha256:" + ("0" * 64),
+                }
+            elif self.calls == 1 and invalid_draft_case == "malformed_shape":
+                return {
+                    "freshness_disposition": "current",
+                    "findings": {"code": "supports_revalidation"},
+                }
+            elif self.calls == 1 and invalid_draft_case == "missing_required_field":
+                return {"freshness_disposition": "current"}
+            elif (
+                self.calls == 1
+                and invalid_draft_case == "invalid_evaluator_identity"
+            ):
+                self.evaluator_identity = ""
+            elif (
+                self.calls == 1
+                and invalid_draft_case == "invalid_evaluator_revision"
+            ):
+                self.evaluator_revision = " "
+
+            return KnowledgeRevalidationAssessmentDraft.model_validate(
+                valid_payload
             )
 
     provider = InventedThenValidProvider()
@@ -1608,6 +1650,11 @@ def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recove
             )
         ) == 0
 
+    if invalid_draft_case == "invalid_evaluator_identity":
+        provider.evaluator_identity = "r7b-invented-reference-test"
+    elif invalid_draft_case == "invalid_evaluator_revision":
+        provider.evaluator_revision = "1"
+
     recovered = runner.run(task_id)
     assert recovered.status == "done"
     assert recovered.assessment_id is not None
@@ -1631,6 +1678,8 @@ def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recove
         assert item.current_learning_change_id == committed.learning_change_id
         assert assessment.task_attempt == 2
         assert assessment.assessment_result == "supported"
+        assert assessment.evaluator_identity == "r7b-invented-reference-test"
+        assert assessment.evaluator_revision == "1"
         assert session.scalar(
             select(func.count(KnowledgeRevalidationAssessment.id)).where(
                 KnowledgeRevalidationAssessment.learning_change_id
