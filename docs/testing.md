@@ -832,7 +832,7 @@ The closeout traceability matrix and formal exit record are in [r7-b-b3-9-closeo
 For the current B4 execution, Operator-local synchronization and test execution are skipped because the local machine is unavailable. This is an execution constraint, not a reduction of the B4 acceptance criteria.
 
 - Run checks through GitHub Actions on the exact pull-request head. Record the full tested commit SHA and workflow run URL; a green workflow from another SHA is not exact-head evidence.
-- The hosted workflow must prove a fresh disposable PostgreSQL migration from an empty database, exactly one Alembic head, Ruff, Mypy, the full pytest suite, and cleanup of the disposable database resources.
+- The hosted workflow must prove a fresh disposable PostgreSQL migration from an empty database, exactly one Alembic head, Ruff, Mypy, `git diff --check origin/${GITHUB_BASE_REF}...HEAD`, and the full pytest suite. The PostgreSQL service runs only for the ephemeral Actions job and is disposed of by the runner at job completion.
 - Review the complete source and test patch against the same exact PR head. Record the changed-file inventory, scope review, and any remaining gaps.
 - Do not claim local pytest, local migrations, local Ruff/Mypy, local `git diff --check`, local worktree cleanliness, or local environment restoration. Historical B3 local evidence remains valid for B3 only and is not B4 evidence.
 - Hosted CI does not replace the B4.1 Operator review of the revise/revalidate payloads, exact target snapshot matrix, evidence requirements, assessment routing, idempotency, Events, Outcomes, and replay. B4.2/B4.3 canonical commit work remains gated on that review.
