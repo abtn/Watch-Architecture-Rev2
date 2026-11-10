@@ -1431,6 +1431,10 @@ def _create_revalidation_proposal(
             "knowledge_revalidation_finding_reference_not_in_basis",
         ),
         (
+            "cross_team_reference",
+            "knowledge_revalidation_finding_reference_not_in_basis",
+        ),
+        (
             "omitted_evidence_link",
             "knowledge_revalidation_evidence_link_omitted",
         ),
@@ -1465,6 +1469,19 @@ def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recove
     )
 
     fixture = distillation_fixture(2, include_contrary=False)
+    foreign_fixture = distillation_fixture(1, include_contrary=False)
+    with session_factory() as session:
+        foreign_link = session.scalar(
+            select(EvidenceLink)
+            .where(
+                EvidenceLink.team_id == foreign_fixture.team_id,
+                EvidenceLink.subject_id == foreign_fixture.cases[0].evaluation_id,
+            )
+            .order_by(EvidenceLink.reference_key)
+        )
+        assert foreign_link is not None
+        foreign_evidence_reference = f"evidence_link:{foreign_link.reference_key}"
+
     create_proposal = _distiller(
         session_factory, snapshot_store, _provider()
     ).propose(
@@ -1543,6 +1560,10 @@ def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recove
             }
             if self.calls == 1 and invalid_draft_case == "invented_reference":
                 references = (*references, "urn:watch:invented-evidence-reference")
+                valid_payload["findings"][0]["evidence_refs"] = list(references)
+            elif self.calls == 1 and invalid_draft_case == "cross_team_reference":
+                assert foreign_evidence_reference not in allowed_evidence_references
+                references = (*references, foreign_evidence_reference)
                 valid_payload["findings"][0]["evidence_refs"] = list(references)
             elif (
                 self.calls == 1
