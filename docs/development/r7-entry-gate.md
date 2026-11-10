@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 complete; B1 merged; B2 formally closed with accepted residual verification gaps; B3 COMPLETE and formally closed 2026-11-10. B3.2–B3.6 are implemented and merged, B3.7's matrix is fully mapped, B3.8 exact-head verification passed with the documented Markdown diff-check qualification, and B3.9 documentation closeout/Operator exit acceptance are recorded in `PLAN.md` and `docs/testing.md`.
+**R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 complete; B1 merged; B2 formally closed with accepted residual verification gaps; B3 COMPLETE and formally closed 2026-11-10. B3.2–B3.6 are implemented and merged, B3.7's matrix is fully mapped, B3.8 exact-head verification passed with the documented Markdown diff-check qualification, and B3.9 documentation closeout/Operator exit acceptance are recorded in `PLAN.md` and `docs/testing.md`.**
 
 - This document records the accepted R7 architecture and separate phase gates. R7-A is complete; R7-B B0/B1 are complete, B2 is formally closed with accepted residuals, and B3 is formally closed on 2026-11-10. The B3.8 evidence and B3.9 closeout are recorded in `PLAN.md`, `docs/testing.md`, and the [B3 closeout record](r7-b-b3-9-closeout.md). The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain separately gated and unauthorized.
 - ADR-0032 remains **Accepted — 2026-11-04 for the original R7 architecture and R7-A scope**. Its R7-B D1/D5 design extension and B0.3 integrity contracts are separately accepted for design on 2026-11-05; this does not authorize implementation.
