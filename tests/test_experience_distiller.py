@@ -12,7 +12,8 @@ from typing import Any, Callable, Iterator, Literal
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, event, func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.evaluations import (
@@ -45,6 +46,8 @@ from core.knowledge_quality import (
 )
 from core.knowledge_quality_tasks import KnowledgeQualityAssessmentTaskRunner
 from core.knowledge_revalidation import (
+    RECORDED_EVENT_TYPE,
+    REQUEST_EVENT_TYPE,
     KnowledgeRevalidationAssessmentDraft,
     KnowledgeRevalidationAssessmentService,
     KnowledgeRevalidationFinding,
@@ -2262,8 +2265,13 @@ def test_revalidation_target_and_proposal_drift_fail_before_admission_and_approv
     ["current", "stale", "insufficient", "conflicting", "unassessable"],
 )
 @pytest.mark.parametrize(
-    ("crash_after_record", "fail_first_attempt"),
-    [(False, False), (True, False), (False, True)],
+    ("crash_after_record", "fail_first_attempt", "fail_record_first"),
+    [
+        (False, False, False),
+        (True, False, False),
+        (False, True, False),
+        (False, False, True),
+    ],
 )
 def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
     session_factory,
@@ -2274,6 +2282,7 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
     ],
     crash_after_record: bool,
     fail_first_attempt: bool,
+    fail_record_first: bool,
 ):
     fixture = distillation_fixture(2, include_contrary=False)
     create_proposal = _distiller(
@@ -2349,8 +2358,20 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
             session_factory, snapshot_store
         ),
     )
+    if fail_record_first:
+        def fail_assessment_insert(mapper, connection, assessment) -> None:
+            if assessment.task_id == task_id:
+                raise IntegrityError(
+                    "INSERT INTO knowledge_revalidation_assessments",
+                    {},
+                    RuntimeError("simulated_assessment_insert_failure"),
+                )
 
-    from core.knowledge_revalidation import REQUEST_EVENT_TYPE
+        event.listen(
+            KnowledgeRevalidationAssessment,
+            "before_insert",
+            fail_assessment_insert,
+        )
     from core.task_runtime import TaskNotEligible
 
     invalid_shapes = [
@@ -2530,6 +2551,48 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
         second = runner.run(task_id)
         assert second.status == "done"
         assert second.assessment_id is not None
+    elif fail_record_first:
+        try:
+            with pytest.raises(IntegrityError):
+                runner.run(task_id)
+        finally:
+            event.remove(
+                KnowledgeRevalidationAssessment,
+                "before_insert",
+                fail_assessment_insert,
+            )
+        with session_factory() as session:
+            task = session.get(Task, task_id)
+            assert task is not None
+            assert task.status == "running"
+            assert task.attempt_count == 1
+            assert session.scalar(
+                select(func.count(KnowledgeRevalidationAssessment.id)).where(
+                    KnowledgeRevalidationAssessment.task_id == task_id
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count(Event.id)).where(
+                    Event.task_id == task_id,
+                    Event.type == RECORDED_EVENT_TYPE,
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count(Outcome.id)).where(
+                    Outcome.recorded_by_task_id == task_id
+                )
+            ) == 0
+        recovery = TaskRuntime(
+            session_factory, snapshot_store
+        ).recover_interrupted(
+            now=datetime.now(timezone.utc) + timedelta(seconds=120)
+        )
+        assert recovery.retried == (task_id,)
+        assert recovery.completed == ()
+        assert recovery.failed == ()
+        second = runner.run(task_id)
+        assert second.status == "done"
+        assert second.assessment_id is not None
     else:
         first = runner.run(task_id)
         assert first.status == "done"
@@ -2540,7 +2603,7 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
     assert replay.status == "done"
     assert replay.replayed
     assert replay.assessment_id is not None
-    assert provider.calls == (2 if fail_first_attempt else 1)
+    assert provider.calls == (2 if fail_first_attempt or fail_record_first else 1)
 
     with session_factory() as session:
         item = session.get(KnowledgeItem, committed.knowledge_item_id)
@@ -2560,7 +2623,9 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
             "supported" if freshness_disposition == "current" else "indeterminate"
         )
         assert assessment.freshness_disposition == freshness_disposition
-        assert assessment.task_attempt == (2 if fail_first_attempt else 1)
+        assert assessment.task_attempt == (
+            2 if fail_first_attempt or fail_record_first else 1
+        )
         assert session.scalar(
             select(func.count(KnowledgeRevalidationAssessment.id)).where(
                 KnowledgeRevalidationAssessment.learning_change_id
