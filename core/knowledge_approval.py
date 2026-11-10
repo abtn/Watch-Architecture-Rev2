@@ -34,7 +34,9 @@ class KnowledgeApprovalBindingError(ValueError):
 
 
 def _domain_hash(domain: str, value: Any) -> str:
-    canonical = _canonical_json(value)
+    from core.knowledge_revalidation import _normalize_json
+
+    canonical = _canonical_json(_normalize_json(value))
     digest = hashlib.sha256(
         domain.encode("utf-8") + b"\0" + canonical.encode("utf-8")
     ).hexdigest()
