@@ -428,3 +428,62 @@ def test_stale_or_tampered_recorded_assessments_fail_closed_at_approval(
             session_factory=object(),
         )
 
+@pytest.mark.parametrize(
+    ("operation", "error_reason"),
+    [
+        ("revalidate", "knowledge_revalidation_team_mismatch"),
+        ("retire", "knowledge_lifecycle_team_mismatch"),
+    ],
+)
+def test_cross_team_assessment_binding_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    error_reason: str,
+) -> None:
+    change = _learning_change(operation)
+    if operation == "revalidate":
+        monkeypatch.setattr(
+            knowledge_approval,
+            "_assessment_counts",
+            lambda _session, _change: (0, 1, 0),
+        )
+
+        def cross_team(*args, **kwargs):
+            from core.knowledge_revalidation import KnowledgeRevalidationAssessmentError
+
+            raise KnowledgeRevalidationAssessmentError(error_reason)
+
+        monkeypatch.setattr(
+            "core.knowledge_revalidation.require_recorded_assessment",
+            cross_team,
+        )
+    else:
+        monkeypatch.setattr(
+            knowledge_approval,
+            "_assessment_counts",
+            lambda _session, _change: (0, 0, 1),
+        )
+
+        def cross_team(*args, **kwargs):
+            from core.knowledge_lifecycle import KnowledgeLifecycleAssessmentError
+
+            raise KnowledgeLifecycleAssessmentError(error_reason)
+
+        monkeypatch.setattr(
+            "core.knowledge_lifecycle.require_recorded_assessment",
+            cross_team,
+        )
+
+    with pytest.raises(KnowledgeApprovalBindingError, match=error_reason):
+        build_approval_binding(
+            _session(SimpleNamespace(policy_version=1)),
+            change,
+            operator_id=canonical_operator_identity(
+                "https://host.example/identity", "reviewer"
+            ),
+            approval_policy_version=2,
+            require_assessment=True,
+            snapshot_store=object(),
+            session_factory=object(),
+        )
+
