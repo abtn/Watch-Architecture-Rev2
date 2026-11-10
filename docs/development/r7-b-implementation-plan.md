@@ -2,7 +2,7 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (updated 2026-11-10):** **B0 complete; B1 accepted and merged; B2 formally closed with accepted residual verification gaps; B3.2–B3.6 implemented and merged; B3.7 integrated regression test implementation complete; B3.8–B3.9, B4–B6, and R7-C remain separately gated.** B3.6 PR [#68](https://github.com/abtn/Watch-Architecture-Rev2/pull/68) merged at `4735b93c74025ddee3bd099ef6d5e64cbac34719` from exact PR head `86f3bcf91ca024486f3a3b918a2c7490ec0ea9da`; hosted and Operator-local exact-head verification passed with 908 full-suite tests. B3.7's complete frozen matrix is mapped to merged PRs #69–#82, #84–#87, and #89–#92; PRs #83 and #88 were superseded and closed after their changes were carried forward. Latest PR #92 merged at `0a76c27b8d455509f90a864bc2695d01db04805d` from exact tested head `6b624310d4d3ae53153dba1b9f47e949564de079`; hosted CI run [42831066494](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42831066494) passed fresh PostgreSQL migration/single-head, Ruff, Mypy, 946 tests, and 113 existing Alembic deprecation warnings. Operator-local exact-head verification for PRs #80–#92 has not been run; it belongs to B3.8. The request path remains create-only and the approval allowlist remains exactly `{"create"}`. B3.8 exact-head verification and B3.9 documentation closeout/formal B3 exit acceptance remain gated; B4–B6 and R7-C remain separately gated.
+**Status (updated 2026-11-10):** **B0 complete; B1 accepted and merged; B2 formally closed with accepted residual verification gaps; B3.2–B3.6 implemented and merged; B3.7 matrix implementation complete; B3.8 exact-head verification complete with one documented Markdown diff-check qualification; B3.9 formal B3 exit accepted and closed. B4–B6 and R7-C remain separately gated and unauthorized.** The exact hosted/local tested implementation SHA is `6b624310d4d3ae53153dba1b9f47e949564de079`; hosted CI run [42831066494](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42831066494) passed 946 tests. Operator-local exact-head verification passed 238 focused tests, Ruff, Mypy (38 source files), fresh disposable PostgreSQL migrations to sole head `0018_r7b_lifecycle_review_date`, and 946 full-suite tests. The disposable container was removed, database environment variables restored, and clean `main` restored at `0a588bc43ee6bfab8c6fccd86dbb28c5c2c803dc`. Full evidence and the diff-check qualification are in `docs/testing.md` and [the B3 closeout record](r7-b-b3-9-closeout.md). The approval allowlist remains exactly `{"create"}`; B3 closure does not authorize B4–B6 or R7-C.
 
 
 
@@ -418,7 +418,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 **B2 closeout reference:** B2 is formally closed by explicit Operator instruction on 2026-11-08. The three retained residual verification gaps are recorded in `PLAN.md` and `docs/testing.md`; none is represented as passed. This does not expand B2's create-only authority.
 
 
-**Status:** B3.2–B3.6 are implemented and merged. B3.6 PR #68 merged at `4735b93c74025ddee3bd099ef6d5e64cbac34719` from exact head `86f3bcf91ca024486f3a3b918a2c7490ec0ea9da`; hosted and Operator-local verification passed (908 full-suite tests, migration head `0018_r7b_lifecycle_review_date`, Ruff, Mypy, and diff checks). B3.7 test implementation is complete; the full matrix mapping and hosted CI evidence are recorded in `PLAN.md`, `docs/testing.md`, and the B3.7 matrix. B3.8–B3.9 remain gated; see `PLAN.md` for current status.
+**Status:** B3.2–B3.6 are implemented and merged; B3.7's full frozen matrix is mapped to merged tests; B3.8 exact-head verification is complete on `6b624310d4d3ae53153dba1b9f47e949564de079`; B3.9 documentation closeout and formal B3 exit are complete. See [the B3 closeout record](r7-b-b3-9-closeout.md) and `docs/testing.md` for the exact evidence and diff-check qualification. B3 is formally closed on 2026-11-10. The approval allowlist remains exactly `{"create"}`; B4–B6 and R7-C remain separately gated and unauthorized.
 
 **Goal:** add immutable, operation-specific assessment records and narrow recording Tasks. These assessments supply validated evidence to the existing trusted Operator approval path; they do not authorize or commit lifecycle transitions.
 
@@ -434,7 +434,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 - The active lifecycle approval allowlist remains exactly `create` throughout B3. B3 does not enable revise, revalidate, supersede, or retire commits.
 - Reuse the existing TaskRuntime, Task admission/finalization/recovery, Event, and immutable-record patterns. No second runtime, dispatcher, scheduler, auth stack, or autonomous approval.
 
-### B3 sequence — B3.2–B3.7 test implementation complete; B3.8–B3.9 remain gated
+### B3 sequence — B3.2–B3.9 complete; B3 formally closed 2026-11-10
 
 #### B3.0 — Entry gate and exact-head preflight
 
@@ -652,7 +652,7 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 
 #### B3.7 — Integrated regression matrix
 
-**Implementation status:** B3.7 test implementation is complete. The frozen matrix and exact row-to-test mapping are maintained in [`r7-b-b3-7-integrated-regression-matrix.md`](r7-b-b3-7-integrated-regression-matrix.md); every RV, LC, DB, TK, EV, RP, AP, and E2E ID is mapped to merged tests. Cumulative checkpoints are PRs #69–#82, #84–#87, and #89–#92; PRs #83 and #88 were superseded and closed after their changes were carried forward by rebased PRs #86 and #89. Latest hosted CI is PR #92 run [42831066494](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42831066494): fresh PostgreSQL migration/single-head, Ruff, Mypy, 946 tests, and 113 existing Alembic deprecation warnings. Operator-local exact-head verification has not been run and is owned by B3.8. B3.8 exact-head verification and B3.9 documentation closeout/formal B3 exit acceptance remain gated.
+**Implementation and verification status:** B3.7 test implementation is complete and every frozen matrix ID is mapped to merged tests. B3.8 exact-head verification passed on the hosted-tested SHA with the documented Markdown-only cumulative diff-check qualification. B3.9 reconciled the project records and recorded formal B3 exit acceptance. See [the B3 closeout record](r7-b-b3-9-closeout.md) and `docs/testing.md`.
 
 The merged end-to-end matrix exercises the real persistence, TaskRuntime, Event, assessment, and approval-validation boundaries, including:
 
@@ -672,30 +672,20 @@ The merged end-to-end matrix exercises the real persistence, TaskRuntime, Event,
 
 Tests must assert both the intended assessment record and the absence of unauthorized canonical writes. Do not rely solely on unit tests that bypass TaskRuntime, database constraints, or approval validation.
 
-#### B3.8 — Exact-head verification and exit review
+#### B3.8 — Exact-head verification — ACCEPTED WITH DOCUMENTED QUALIFICATION
 
-**Agent / coding side**
-1. Run the prescribed focused groups independently before the full suite; record exact commands and results.
-2. Run Ruff, Mypy, and `git diff --check`.
-3. Review the complete diff against the B3 changed-file allowlist and this phase boundary. Report every changed file and explain any necessary support change outside the core assessment paths.
-4. Verify no production provider, new runtime/dispatcher/scheduler, authentication stack, direct KnowledgeItem/LearningChange write, or non-create approval grant was introduced.
-5. Ensure hosted CI passes on the exact final PR head.
+**Hosted verification:** PR #92 merged at `0a76c27b8d455509f90a864bc2695d01db04805d` from exact tested head `6b624310d4d3ae53153dba1b9f47e949564de079`; CI run [42831066494](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42831066494) passed fresh PostgreSQL migration/single-head, Ruff, Mypy, and 946 tests with 113 existing Alembic deprecation warnings.
 
-**Operator / local side**
-1. Preflight the exact PR head and clean worktree before syncing/testing.
-2. Run migrations and the full suite against a fresh disposable PostgreSQL instance on a dynamically assigned loopback port.
-3. Run the same focused groups, Ruff, Mypy, and diff check locally; record the exact tested SHA.
-4. Confirm the disposable container is removed and both database environment variables are restored; do not touch persistent `watch` or host port 5432.
-5. Compare hosted and local tested code SHAs; investigate any mismatch rather than calling it exact-head verification.
+**Operator-local verification:** exact tested SHA `6b624310d4d3ae53153dba1b9f47e949564de079`; focused groups independently passed (238 tests); Ruff passed; Mypy passed (38 source files); separate fresh focused/full-suite PostgreSQL databases migrated to sole head `0018_r7b_lifecycle_review_date`; full suite passed 946 tests in 192.71s with 113 existing Alembic warnings. The disposable container was removed, `DATABASE_URL` and `TEST_DATABASE_URL` restored, and clean `main` restored at `0a588bc43ee6bfab8c6fccd86dbb28c5c2c803dc`.
 
-**Expected output:** reproducible hosted/local evidence on one exact code SHA, complete diff/scope review, and a B3 exit recommendation.
+**Diff/scope disposition:** the cumulative B3.7 diff inventory matched the reviewed 12-file set. The scoped cumulative diff check on `core/knowledge_lifecycle.py` and `tests/test_experience_distiller.py` passed. The initial whole cumulative `git diff --check` flagged three Markdown hard-break trailing spaces in B3.7 matrix metadata; these are documented, not represented as a clean whole-diff result. The clean-checkout diff check passed. See `docs/testing.md` and [the B3 closeout record](r7-b-b3-9-closeout.md).
 
-#### B3.9 — Documentation closeout and separate gate
+#### B3.9 — Documentation closeout and formal B3 exit — COMPLETE
 
-1. Update `PLAN.md`, this implementation plan, `docs/testing.md`, ADR-0032 progression, Task documentation, CHANGE_MAP, README, and CONTEXT so that status, task names, write scopes, and authority boundaries agree.
-2. Record actual merged commit, exact hosted/local tested SHA, focused/full test counts, warnings, migration head, static checks, diff review, and any deviations. Do not turn unrun checks into passes.
-3. Obtain explicit Operator acceptance of B3 exit before marking B3 complete.
-4. Keep B4–B6 and R7-C separately gated. B3 exit does not authorize any lifecycle commit path.
+1. Reconcile `PLAN.md`, `CHANGE_MAP.md`, `CONTEXT.md`, `README.md`, `docs/testing.md`, `docs/tasks.md`, ADR-0032, the ADR index, the R7 entry gate, this implementation plan, and the B3.7 matrix against the verified B3.8 results.
+2. Preserve traceability from each verification result and governance decision to the updated documentation; the consolidated evidence-to-document map is in [the B3 closeout record](r7-b-b3-9-closeout.md).
+3. Record **B3 EXIT: COMPLETE — FORMALLY CLOSED (2026-11-10)** following the Operator's explicit instruction to proceed to B3.9 and establish the formal exit status. The Markdown diff-check qualification remains explicit.
+4. Keep B4, B5, B6, and R7-C **NOT AUTHORIZED**. B3 exit is a completion decision only; it is not next-phase approval or implementation authorization. Each later phase requires a separate written Operator decision.
 
 ### B3 acceptance criteria
 
@@ -705,7 +695,7 @@ Tests must assert both the intended assessment record and the absence of unautho
 - Both assessment Tasks use the existing TaskRuntime, exact narrow write scopes, attributable Events, idempotency, recovery, and stable replay.
 - Approval-time validation independently verifies the exact assessment payload and all B0.3 fingerprint bindings.
 - The active approval allowlist remains exactly `create`; B3 introduces no lifecycle commit capability.
-- Focused and full tests, fresh migration/single-head, Ruff, Mypy, `git diff --check`, complete scope review, and hosted/local exact-head verification pass.
+- Focused and full tests, fresh migration/single-head, Ruff, Mypy, source/test diff check, complete scope review, and hosted/local exact-head verification pass; any broader diff-check qualification is explicitly recorded and accepted in the formal closeout.
 - No production evaluator/provider, new runtime/dispatcher/scheduler/auth stack, direct canonical writes, or R7-C work is introduced.
 
 **B3 stop conditions:** stop and return to the Operator if the frozen contracts cannot be represented without changing B0.3, if canonical evidence freshness cannot be verified, if assessment immutability or exact Task scope cannot be enforced, if the approval fingerprint cannot bind all required data, or if implementation would require widening the create-only allowlist. Do not proceed into B4 to work around a B3 blocker.
