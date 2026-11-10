@@ -2854,6 +2854,21 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
             )
         ) == 1
 
+    with pytest.raises(IntegrityError):
+        with session_factory.begin() as session:
+            referenced_change = session.get(
+                LearningChange, revalidation_change_id
+            )
+            assert referenced_change is not None
+            session.delete(referenced_change)
+    with session_factory() as session:
+        assert session.get(LearningChange, revalidation_change_id) is not None
+        assert session.scalar(
+            select(func.count(KnowledgeRevalidationAssessment.id)).where(
+                KnowledgeRevalidationAssessment.task_id == task_id
+            )
+        ) == 1
+
     # The assessment table is intentionally immutable. Disable only user
     # triggers inside this disposable test transaction to remove its fixture.
     with session_factory.begin() as session:
