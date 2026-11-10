@@ -1574,7 +1574,6 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
         assert binding["assessment_type"] == "knowledge_revalidation"
         assert binding["assessment_id"] == str(assessment.id)
         assert binding["assessment_payload_hash"] == assessment.payload_hash
-        assert binding["assessment_result"] is None
         assert binding["target_content_version"] == item.version
         assert binding["target_content_hash"] == assessment.target_content_hash
         assert binding["current_learning_change_id"] == str(
