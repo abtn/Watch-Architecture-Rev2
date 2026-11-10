@@ -461,6 +461,7 @@ class LearningCommitService:
                 "committed_at": committed_at.isoformat(),
             }
             if approval_request.schema_version == 3:
+                event_payload["schema_version"] = 2
                 event_payload["request_fingerprint"] = (
                     approval_request.request_fingerprint
                 )
@@ -770,6 +771,7 @@ class LearningCommitService:
             "committed_at": committed_at.isoformat(),
         }
         if approval_request.schema_version == 3:
+            expected_payload["schema_version"] = 2
             expected_payload["request_fingerprint"] = (
                 approval_request.request_fingerprint
             )
