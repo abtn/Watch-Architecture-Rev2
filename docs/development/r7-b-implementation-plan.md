@@ -2,11 +2,11 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (updated 2026-11-10):** **B0 complete; B1 accepted and merged; B2 formally closed with accepted residual verification gaps; B3.2–B3.6 implemented and merged; B3.7 matrix implementation complete; B3.8 exact-head verification complete with one documented Markdown diff-check qualification; B3.9 formal B3 exit accepted and closed. B4–B6 and R7-C remain separately gated and unauthorized.** The exact hosted/local tested implementation SHA is `6b624310d4d3ae53153dba1b9f47e949564de079`; hosted CI run [42831066494](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42831066494) passed 946 tests. Operator-local exact-head verification passed 238 focused tests, Ruff, Mypy (38 source files), fresh disposable PostgreSQL migrations to sole head `0018_r7b_lifecycle_review_date`, and 946 full-suite tests. The disposable container was removed, database environment variables restored, and clean `main` restored at `0a588bc43ee6bfab8c6fccd86dbb28c5c2c803dc`. Full evidence and the diff-check qualification are in `docs/testing.md` and [the B3 closeout record](r7-b-b3-9-closeout.md). The approval allowlist remains exactly `{"create"}`; B3 closure does not authorize B4–B6 or R7-C.
+**Status (updated 2026-11-11):** B0 complete; B1 merged; B2 closed with accepted residual verification gaps; B3 formally closed on 2026-11-10; B4 explicitly authorized and B4.1 implementation workflow started on `r7b-b4-1-proposal-contract-implementation`, created from exact `main` baseline `de6990a0f1e3c74e06a366975af1bdb10547f43d`. B4.1 is not yet implemented or verified. B5, B6, and R7-C remain unauthorized. Historical B3 hosted/local evidence and its diff-check qualification remain in `docs/testing.md` and the B3 closeout record. The approval allowlist remains exactly `{"create"}` until each B4 commit slice passes its own gate.
 
 
 
-**Baseline:** B0 PR #41 merged to `main` at `64d5fb19be541d80b3cb8941ce3359d4b69565c1`. Revision 3 is the accepted B0 design baseline. The local checkout remains independently subject to the read-only programmer preflight.
+**Baseline:** B0 PR #41 merged to `main` at `64d5fb19be541d80b3cb8941ce3359d4b69565c1`. Revision 3 remains the accepted B0 design baseline. The current B4.1 implementation branch was created from exact `main` SHA `de6990a0f1e3c74e06a366975af1bdb10547f43d`; no local-machine preflight or local test result is claimed for this B4 run.
 
 > Class, file, function and constraint names come from the review and ADR text. Verify each against the repository before relying on it. If a name or behavior differs, record the discrepancy in the PR and do not guess.
 
@@ -685,7 +685,7 @@ Tests must assert both the intended assessment record and the absence of unautho
 1. Reconcile `PLAN.md`, `CHANGE_MAP.md`, `CONTEXT.md`, `README.md`, `docs/testing.md`, `docs/tasks.md`, ADR-0032, the ADR index, the R7 entry gate, this implementation plan, and the B3.7 matrix against the verified B3.8 results.
 2. Preserve traceability from each verification result and governance decision to the updated documentation; the consolidated evidence-to-document map is in [the B3 closeout record](r7-b-b3-9-closeout.md).
 3. Record **B3 EXIT: COMPLETE — FORMALLY CLOSED (2026-11-10)** following the Operator's explicit instruction to proceed to B3.9 and establish the formal exit status. The Markdown diff-check qualification remains explicit.
-4. Keep B4, B5, B6, and R7-C **NOT AUTHORIZED**. B3 exit is a completion decision only; it is not next-phase approval or implementation authorization. Each later phase requires a separate written Operator decision.
+4. At the time of the B3.9 closeout decision, B4, B5, B6, and R7-C were **NOT AUTHORIZED**. B3 exit itself granted no subsequent authority. The Operator later issued a separate B4 authorization, recorded in the Phase B4 status below; B5, B6, and R7-C remain unauthorized.
 
 ### B3 acceptance criteria
 
@@ -704,8 +704,16 @@ Tests must assert both the intended assessment record and the absence of unautho
 
 ## Phase B4: Revise and revalidate
 
-**Status (2026-11-10):** B4 was explicitly authorized by the Operator after formal B3 closure. B4.1 is the current authorized slice. The architecture decision and boundary are recorded in [the B4.0 decision record](r7-b-b4-0-architecture-decision.md). B4 authorization is limited to revise and revalidate; B5, B6, and R7-C remain unauthorized.
+**Status (updated 2026-11-11):** B4 was explicitly authorized after formal B3 closure. B4.1 implementation has started on `r7b-b4-1-proposal-contract-implementation`, from verified `main` SHA `de6990a0f1e3c74e06a366975af1bdb10547f43d`; this is a workflow-start checkpoint, not evidence of completed code or passing tests. B4 is limited to revise and revalidate; B5, B6, and R7-C remain unauthorized. The architecture boundary is recorded in [the B4.0 decision record](r7-b-b4-0-architecture-decision.md).
 
+### B4 execution verification mode — current run
+
+The Operator has requested that local synchronization and local test execution be skipped because the local machine is unavailable. This is a verification-route constraint, not a waiver of B4 acceptance criteria.
+
+- Use GitHub-hosted Actions on the exact pull-request head for executable verification. The workflow must visibly cover fresh disposable PostgreSQL migration/single-head checks, Ruff, Mypy, the full pytest suite, and cleanup. Add or repair hosted coverage if any required check is missing; do not infer it from a generic green badge.
+- Review the complete source and test diff against the exact PR head. Record the tested commit SHA and workflow run. A green run for another SHA is not exact-head evidence.
+- Do not claim Operator-local tests, local migration checks, local `git diff --check`, or local worktree verification. If hosted automation cannot cover a required check, record it as unresolved and keep the B4 gate open.
+- Keep the B4.1 Operator review point below. Hosted CI does not replace review of the frozen proposal payloads, target snapshot, assessment routing, idempotency, Event/Outcome fields, or replay behavior.
 ### B4 architecture decision — reuse the existing proposal and assessment paths
 
 - Extend the existing `propose_learning_change` Task and its current TaskRuntime/application path with explicit operation-specific contracts for `revise` and `revalidate`. Do not add a new Task type, runtime, dispatcher, scheduler, public API, or authentication subsystem.
