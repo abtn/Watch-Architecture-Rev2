@@ -8,11 +8,11 @@ a retrieval projection.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-import hashlib
-import json
 from typing import Any, Literal, Protocol, Sequence
 from uuid import UUID, uuid4
 
@@ -31,6 +31,13 @@ from core.generation_cost import (
     TaskGenerationCostError,
     TaskGenerationCostService,
 )
+from core.learning_history import (
+    KnowledgeHistoryError,
+    encode_state_snapshot,
+    knowledge_item_content_hash,
+    knowledge_item_state,
+    reconstruct_knowledge_item_history,
+)
 from core.models import (
     Evaluation,
     Event,
@@ -44,13 +51,6 @@ from core.models import (
     Signal,
     Task,
     Team,
-)
-from core.learning_history import (
-    KnowledgeHistoryError,
-    encode_state_snapshot,
-    knowledge_item_content_hash,
-    knowledge_item_state,
-    reconstruct_knowledge_item_history,
 )
 from core.objectives import ObjectiveService
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
