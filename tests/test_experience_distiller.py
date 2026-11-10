@@ -1934,6 +1934,11 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
             **original_recorded_event_payload,
             "assessment_payload_hash": "sha256:" + ("0" * 64),
         }
+    with pytest.raises(TaskNotEligible) as tampered_replay_error:
+        runner.run(task_id)
+    assert str(tampered_replay_error.value) == (
+        "knowledge_revalidation_recorded_event_invalid"
+    )
     with session_factory() as session:
         change = session.get(LearningChange, revalidation_change_id)
         assert change is not None
