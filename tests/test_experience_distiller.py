@@ -4970,7 +4970,9 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             assert unchanged_item is not None
             assert unchanged_item.status == "active"
             assert unchanged_item.version == 1
-            assert unchanged_item.current_learning_change_id == committed.learning_change_id
+            assert unchanged_item.current_learning_change_id == (
+                committed.learning_change_id
+            )
             assert session.scalar(
                 select(func.count(KnowledgeLifecycleAssessment.id)).where(
                     KnowledgeLifecycleAssessment.task_id == task_id
