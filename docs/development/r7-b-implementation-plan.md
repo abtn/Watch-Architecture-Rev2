@@ -704,6 +704,38 @@ Tests must assert both the intended assessment record and the absence of unautho
 
 ## Phase B4: Revise and revalidate
 
+**Status (2026-11-10):** B4 was explicitly authorized by the Operator after formal B3 closure. B4.1 is the current authorized slice. The architecture decision and boundary are recorded in [the B4.0 decision record](r7-b-b4-0-architecture-decision.md). B4 authorization is limited to revise and revalidate; B5, B6, and R7-C remain unauthorized.
+
+### B4 architecture decision — reuse the existing proposal and assessment paths
+
+- Extend the existing `propose_learning_change` Task and its current TaskRuntime/application path with explicit operation-specific contracts for `revise` and `revalidate`. Do not add a new Task type, runtime, dispatcher, scheduler, public API, or authentication subsystem.
+- A proposal Task may write only its proposed `LearningChange` and the existing Task-attributed proposal/Event/Outcome records. It never writes a `KnowledgeItem`, projection, approval decision, or TeamPolicy.
+- Revise reuses the existing immutable `KnowledgeQualityAssessment` path. The assessment must evaluate the exact revised proposed state and canonical evidence; the target's current pointer/version/content hash/state must be independently bound and rechecked by application approval and commit validation.
+- Revalidate reuses the existing `KnowledgeRevalidationAssessment` path. Its proposal is state-preserving, targets one exact current `needs_review` item, and cannot carry a content/confidence change. The existing revalidation assessment's target/evidence binding remains mandatory.
+- Keep operation-specific proposal validation separate. Do not weaken create validation or reinterpret a create proposal as revise/revalidate. Preserve historical create records and Event/Outcome replay.
+- No approval allowlist expansion in B4.1. Only after the relevant commit slice and its complete validation/replay tests pass may the existing approval path admit that operation. B4 never admits B5 operations.
+
+### B4.1 — Proposal and assessment contracts
+
+**Goal:** make the existing proposal Task capable of producing rigorously typed revise/revalidate LearningChanges and route each proposal to its already-defined assessment type, without enabling canonical lifecycle commits.
+
+**Coding side**
+1. Trace and document the current create proposal contract end-to-end: request/input, evidence-pack rebuild, generated draft, LearningChange shape, proposal Event, cost reconciliation, TaskRuntime finalization, terminal Outcome, quality Task request, and replay/recovery. Preserve historical create behavior exactly.
+2. Define a revise proposal contract bound to the exact same-Team KnowledgeItem, current LearningChange pointer, content version, v2 content hash, and full-state snapshot/hash. The proposal carries a candidate content state; it cannot choose a different item identity, origin, lifecycle status, successor relation, or policy. The existing quality assessment must bind the exact proposal and evidence. The application independently rechecks target state before assessment admission, approval, and commit.
+3. Define a revalidate proposal contract bound to the exact same-Team current `needs_review` item, pointer, version, content hash, and full-state snapshot/hash. The proposed semantic content and confidence must equal the current item exactly. Route it to `KnowledgeRevalidationAssessment`, never `KnowledgeQualityAssessment`.
+4. Reuse the existing `propose_learning_change` Task, `LearningChange` write scope, TaskRuntime, cost ledger, Task-attributed Events/Outcome, and existing assessment Tasks. Add no new Task type or automatic dispatch.
+5. Specify operation-specific idempotency, proposal hashes, stale-target failure reasons, Event payload fields, TaskRuntime admission/finalization/recovery, and byte/ID-stable replay. Do not permit a stale target to be silently rebased.
+6. Add focused tests for valid/malformed/cross-operation proposals, wrong-Team or stale target, pointer/version/hash drift, assessment routing/binding, proposal Event/Outcome mismatch, cost reconciliation, retry/recovery, and unchanged create-only approval admission.
+
+**Operator review point:** approve the exact revise/revalidate proposal payload and target-snapshot field matrices, evidence requirements, assessment routing, and replay/idempotency behavior before B4.2/B4.3 canonical commit work.
+
+**Expected output:** a small, reviewed contract implementation and focused tests proving both operation-specific proposal paths while create behavior remains compatible; no canonical `KnowledgeItem` writes and no approval allowlist expansion.
+
+**Stop conditions:** stop if the existing proposal Task cannot safely represent the two operation contracts without a second runtime or weakened create validation; if the revalidation proposal cannot be proven content/confidence-preserving; if current target state cannot be bound/rechecked at every trust boundary; or if schema/Task-scope changes appear necessary but are not justified by a demonstrated gap. Return the smallest required design decision instead of inventing infrastructure.
+
+See the [B4.0 architecture decision](r7-b-b4-0-architecture-decision.md) for the accepted design rationale, exact authority boundaries, and evidence at decision time.
+
+
 **Revise** (uses existing `KnowledgeQualityAssessment`)
 - Same item ID; content version +1; origin preserved; current pointer advanced atomically (compare-and-set on exact pointer + expected version).
 - `active` stays `active`; `needs_review` stays `needs_review`. Revise never reactivates.
