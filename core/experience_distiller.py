@@ -8,11 +8,11 @@ a retrieval projection.
 
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+import hashlib
+import json
 from typing import Any, Literal, Protocol, Sequence
 from uuid import UUID, uuid4
 
@@ -585,7 +585,9 @@ class ExperienceDistiller:
                 ):
                     raise ExperienceDistillerError("revision_target_stale")
                 if not self._draft_changes_target(draft, current_state):
-                    raise ExperienceDistillerError("revision_candidate_no_content_change")
+                    raise ExperienceDistillerError(
+                        "revision_candidate_no_content_change"
+                    )
 
             concurrent_prior = session.scalar(
                 select(LearningChange).where(
