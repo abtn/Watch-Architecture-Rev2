@@ -3763,6 +3763,14 @@ class TaskRuntime:
             "proposal_hash": proposal_hash,
             "committed_at": learning_change.committed_at.isoformat(),
         }
+        if request_payload.get("schema_version") == 3:
+            expected_payload["schema_version"] = 2
+            expected_payload["request_fingerprint"] = request_payload[
+                "request_fingerprint"
+            ]
+            expected_payload["approval_binding"] = request_payload[
+                "approval_binding"
+            ]
 
         if expected_decision == "accept":
             expected_payload["knowledge_quality_assessment_id"] = (
