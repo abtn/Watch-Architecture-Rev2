@@ -3,7 +3,7 @@
 **Status:** B3.7 test implementation complete; B3.8 exact-head verification passed with one documented Markdown diff-check qualification; B3.9 formal B3 exit accepted and closed 2026-11-10.
 **Predecessor:** B3.6 — approval-time assessment binding (implemented and merged in PR #68)
 **Implementation gate:** Explicit Operator authorization granted after B3.6 merge
-**Normative contracts:** ADR-0032 and the frozen B3.1 assessment contracts  
+**Normative contracts:** ADR-0032 and the frozen B3.1 assessment contracts
 **Current status authority:** `PLAN.md`
 
 ## 1. Purpose
@@ -179,7 +179,7 @@ B3.7 may be recommended complete only when:
 6. Tests prove the absence of unauthorized canonical `KnowledgeItem` and `LearningChange` writes, including failure and replay paths.
 7. The test report maps each matrix ID to exact test names/files and identifies remaining gaps without describing unrun checks as passed.
 
-B3.7 test completion is not B3.8 exact-head verification and is not B3 phase closure. B3.8 owns exact-head verification; B3.9 owns documentation closeout and explicit Operator B3 exit acceptance. B3 completion does not authorize B4–B6 or R7-C.
+**Historical gate note (before B3.8):** B3.7 test completion was not itself B3.8 exact-head verification or B3 phase closure. That pre-verification gate has now been satisfied: B3.8 exact-head evidence and B3.9 formal exit are recorded in this section and the B3 closeout record. B3 exit does not authorize B4–B6 or R7-C.
 
 ## 8. B3.8 verification and B3.9 closeout record
 
