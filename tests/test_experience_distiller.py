@@ -1415,6 +1415,10 @@ def _create_revalidation_proposal(
             "knowledge_revalidation_finding_reference_not_in_basis",
         ),
         (
+            "omitted_evidence_link",
+            "knowledge_revalidation_evidence_link_omitted",
+        ),
+        (
             "freshness_mismatch",
             "knowledge_revalidation_freshness_disposition_mismatch",
         ),
@@ -1524,6 +1528,21 @@ def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recove
             if self.calls == 1 and invalid_draft_case == "invented_reference":
                 references = (*references, "urn:watch:invented-evidence-reference")
                 valid_payload["findings"][0]["evidence_refs"] = list(references)
+            elif (
+                self.calls == 1
+                and invalid_draft_case == "omitted_evidence_link"
+            ):
+                evidence_link_references = sorted(
+                    reference
+                    for reference in allowed_evidence_references
+                    if reference.startswith("evidence_link:")
+                )
+                assert evidence_link_references
+                valid_payload["findings"][0]["evidence_refs"] = [
+                    reference
+                    for reference in references
+                    if reference != evidence_link_references[0]
+                ]
             elif self.calls == 1 and invalid_draft_case == "freshness_mismatch":
                 freshness_disposition = "stale"
                 valid_payload["freshness_disposition"] = freshness_disposition
@@ -1707,11 +1726,20 @@ def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recove
         ) == 1
 
 
+@pytest.mark.parametrize(
+    ("drift_case", "expected_failure_reason"),
+    [
+        ("evidence_link_stance", "evaluation_proposal_hash_mismatch"),
+        ("source_outcome_hash", "knowledge_revalidation_source_outcome_invalid"),
+    ],
+)
 def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admission(
     session_factory,
     snapshot_store,
     distillation_fixture,
     request,
+    drift_case: str,
+    expected_failure_reason: str,
 ):
     fixture = distillation_fixture(2, include_contrary=False)
     create_proposal = _distiller(
@@ -1769,6 +1797,8 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
     link_id: UUID | None = None
     original_stance: str | None = None
     original_reference_key: str | None = None
+    outcome_id: UUID | None = None
+    original_outcome_hash: str | None = None
 
     def cleanup_revalidation_source_drift() -> None:
         with session_factory.begin() as session:
@@ -1777,6 +1807,10 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
                 if link is not None and original_stance is not None:
                     link.stance = original_stance
                     link.reference_key = original_reference_key
+            if outcome_id is not None and original_outcome_hash is not None:
+                source_outcome = session.get(Outcome, outcome_id)
+                if source_outcome is not None:
+                    source_outcome.observation_hash = original_outcome_hash
             session.execute(
                 text(
                     "ALTER TABLE knowledge_revalidation_assessments "
@@ -1815,40 +1849,57 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
 
     request.addfinalizer(cleanup_revalidation_source_drift)
 
-    with session_factory() as session:
-        link = session.scalar(
-            select(EvidenceLink)
-            .where(
-                EvidenceLink.subject_id == fixture.cases[0].evaluation_id,
-                EvidenceLink.team_id == fixture.team_id,
+    if drift_case == "evidence_link_stance":
+        with session_factory() as session:
+            link = session.scalar(
+                select(EvidenceLink)
+                .where(
+                    EvidenceLink.subject_id == fixture.cases[0].evaluation_id,
+                    EvidenceLink.team_id == fixture.team_id,
+                )
+                .order_by(EvidenceLink.reference_key)
             )
-            .order_by(EvidenceLink.reference_key)
-        )
-        assert link is not None
-        assert link.source_kind == "outcome"
-        assert link.stance == "supports"
-        link_id = link.id
-        original_stance = link.stance
-        original_reference_key = link.reference_key
+            assert link is not None
+            assert link.source_kind == "outcome"
+            assert link.stance == "supports"
+            link_id = link.id
+            original_stance = link.stance
+            original_reference_key = link.reference_key
+    else:
+        with session_factory() as session:
+            source_outcome = session.get(Outcome, fixture.cases[0].outcome_id)
+            assert source_outcome is not None
+            outcome_id = source_outcome.id
+            original_outcome_hash = source_outcome.observation_hash
 
     with session_factory.begin() as session:
-        link = session.get(EvidenceLink, link_id)
-        assert link is not None
-        link.stance = "mentions"
-        link.reference_key = EvaluationService._link_payload(link)[
-            "reference_key"
-        ]
-        assert link.reference_key != original_reference_key
+        if drift_case == "evidence_link_stance":
+            link = session.get(EvidenceLink, link_id)
+            assert link is not None
+            link.stance = "mentions"
+            link.reference_key = EvaluationService._link_payload(link)[
+                "reference_key"
+            ]
+            assert link.reference_key != original_reference_key
+        else:
+            source_outcome = session.get(Outcome, outcome_id)
+            assert source_outcome is not None
+            source_outcome.observation_hash = "sha256:" + "0" * 64
 
     with pytest.raises(TaskNotEligible) as drift_error:
         runner.run(task_id)
-    assert str(drift_error.value) == "evaluation_proposal_hash_mismatch"
+    assert str(drift_error.value) == expected_failure_reason
 
     with session_factory.begin() as session:
-        link = session.get(EvidenceLink, link_id)
-        assert link is not None
-        link.stance = original_stance
-        link.reference_key = original_reference_key
+        if drift_case == "evidence_link_stance":
+            link = session.get(EvidenceLink, link_id)
+            assert link is not None
+            link.stance = original_stance
+            link.reference_key = original_reference_key
+        else:
+            source_outcome = session.get(Outcome, outcome_id)
+            assert source_outcome is not None
+            source_outcome.observation_hash = original_outcome_hash
 
     with session_factory() as session:
         task = session.get(Task, task_id)
