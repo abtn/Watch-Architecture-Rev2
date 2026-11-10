@@ -17,9 +17,7 @@ This file is the **single source of current milestone status**. Other documents 
 
 ## Next actionable step
 
-**B3.3 — COMPLETE AND MERGED (2026-11-09).** PR #62 merged at `f7683b3c7812c3250e0fed5e8e689ade6ecaeca5` after hosted CI passed on final PR head `8ffd6ac5a2b178d6d7045a8d765f3e7c33b59b4e` (run [42580930086](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42580930086)); exact implementation-head hosted/local verification is recorded above and in `docs/testing.md`.
-
-**B3.6 — NEXT GATED CHECKPOINT: approval-time assessment binding.** B3.5 is implemented and merged by PR #66 at `a6cc81c2aef47d659252b89421e27b08735d944b`; hosted and Operator-local exact-PR-head verification both passed at `65edf206eb6cd68859147ee8c2f68a4717c6fa87` (884 full-suite tests, 113 existing Alembic warnings). B3.6 has not been authorized. Do not begin approval-time assessment binding until separate explicit Operator authorization. The approval allowlist remains exactly `create`; B3.7–B3.9, B4–B6, and R7-C remain gated.
+**B3.6 — NEXT GATED CHECKPOINT: approval-time assessment binding.** B3.5 is implemented and merged by PR #66 at `a6cc81c2aef47d659252b89421e27b08735d944b`; hosted and Operator-local exact-PR-head verification both passed at `65edf206eb6cd68859147ee8c2f68a4717c6fa87` (884 full-suite tests, 113 existing Alembic warnings). B3.6 has not been authorized. Do not begin approval-time assessment binding until separate explicit Operator authorization. The approval allowlist remains exactly `create`.
 
 **B3.7 planning extraction (2026-11-10):** The integrated regression matrix has been extracted into [`docs/development/r7-b-b3-7-integrated-regression-matrix.md`](docs/development/r7-b-b3-7-integrated-regression-matrix.md). This is a planning artifact only. B3.7 follows B3.6 in the frozen sequence; no B3.7 tests or implementation are authorized, and B3.6 remains the next gated checkpoint. The approval allowlist remains exactly `create`.
 
