@@ -254,6 +254,10 @@ def build_approval_binding(
             raise KnowledgeApprovalBindingError(
                 "knowledge_approval_assessment_task_missing"
             )
+        if revalidation_assessment.assessment_result != "supported":
+            raise KnowledgeApprovalBindingError(
+                "knowledge_approval_revalidation_not_supported"
+            )
         binding.update(
             {
                 "current_learning_change_id": str(
@@ -309,6 +313,10 @@ def build_approval_binding(
         if task is None or provenance is None:
             raise KnowledgeApprovalBindingError(
                 "knowledge_approval_lifecycle_provenance_missing"
+            )
+        if lifecycle_assessment.assessment_result != "eligible":
+            raise KnowledgeApprovalBindingError(
+                "knowledge_approval_lifecycle_not_eligible"
             )
         binding.update(
             {
