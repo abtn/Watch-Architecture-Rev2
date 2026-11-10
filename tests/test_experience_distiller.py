@@ -3214,14 +3214,20 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         )
         assert proposal_event is not None
         target_binding = proposal_event.payload["target_binding"]
-        assert target_binding == {
-            "target_knowledge_item_id": str(committed.knowledge_item_id),
-            "target_current_learning_change_id": str(before_pointer),
-            "target_content_version": 1,
-            "target_content_hash": target_binding["target_content_hash"],
-            "target_content_hash_scheme": "watch.r7b.knowledge-content.v2",
-            "target_state_hash": change.previous_state["snapshot_hash"],
-        }
+        assert target_binding["target_knowledge_item_id"] == str(
+            committed.knowledge_item_id
+        )
+        assert target_binding["target_current_learning_change_id"] == str(
+            before_pointer
+        )
+        assert target_binding["target_content_version"] == 1
+        assert target_binding["target_content_hash"].startswith("sha256:")
+        assert (
+            target_binding["target_content_hash_scheme"]
+            == "watch.r7b.knowledge-content.v2"
+        )
+        previous_state_hash = change.previous_state["snapshot_hash"]
+        assert target_binding["target_state_hash"] == previous_state_hash
         quality_request = session.scalar(
             select(Event).where(
                 Event.type == "knowledge_quality_assessment_task_requested",
@@ -3254,7 +3260,7 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
             assessment.target_content_hash_scheme
             == "watch.r7b.knowledge-content.v2"
         )
-        assert assessment.target_state_hash == change.previous_state["snapshot_hash"]
+        assert assessment.target_state_hash == previous_state_hash
         unchanged_item = session.get(KnowledgeItem, committed.knowledge_item_id)
         assert unchanged_item is not None
         assert knowledge_item_state(unchanged_item) == before_state

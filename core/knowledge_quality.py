@@ -7,7 +7,6 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from typing import Any, Literal
 from uuid import UUID, uuid4, uuid5
 
@@ -566,7 +565,7 @@ def _revision_target_binding(
         if reconstructed:
             raise KnowledgeHistoryError("revision_target_snapshot_legacy")
         state_hash = learning_change.previous_state["snapshot_hash"]
-        content_hash = knowledge_item_content_hash(SimpleNamespace(**state))
+        content_hash = knowledge_item_content_hash(state)
         if state["id"] != str(target.id) or state["team_id"] != str(target.team_id):
             raise KnowledgeHistoryError("snapshot_target_identity_mismatch")
         if state["status"] not in {"active", "needs_review"}:
