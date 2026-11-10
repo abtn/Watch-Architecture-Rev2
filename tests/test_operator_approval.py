@@ -224,3 +224,182 @@ def test_operator_identity_requires_canonical_nonempty_parts(
     with pytest.raises(OperatorApprovalValidationError) as error:
         canonical_operator_identity(issuer, subject)
     assert error.value.reason == reason
+
+def _approval_binding(
+    team_id: UUID,
+    learning_change_id: UUID,
+    operator_id: str,
+    *,
+    accepted: bool,
+) -> dict[str, object]:
+    assessment_id = uuid4() if accepted else None
+    assessment_hash = "sha256:" + "d" * 64 if accepted else None
+    return {
+        "schema_version": 1,
+        "team_id": str(team_id),
+        "learning_change_id": str(learning_change_id),
+        "operation": "create",
+        "target_kind": "knowledge_item",
+        "target_id": None,
+        "current_learning_change_id": None,
+        "target_content_version": None,
+        "target_content_hash": None,
+        "target_content_hash_scheme": None,
+        "target_status": None,
+        "target_state_hash": None,
+        "proposal_hash": "sha256:" + "a" * 64,
+        "proposed_state_hash": "sha256:" + "b" * 64,
+        "evidence_refs": [],
+        "evidence_basis_hash": "sha256:" + "c" * 64,
+        "approval_policy_version": 4,
+        "assessment_task_policy_version": 2 if accepted else None,
+        "assessment_type": "knowledge_quality" if accepted else None,
+        "assessment_id": str(assessment_id) if assessment_id else None,
+        "assessment_payload_hash": assessment_hash,
+        "evaluator_identity": "watch.r7a.knowledge-quality" if accepted else None,
+        "evaluator_revision": "1" if accepted else None,
+        "operator_provenance": None,
+        "successor_binding": None,
+        "operator_id": operator_id,
+    }
+
+
+def _bound_payload(*, decision: str = "accept") -> dict[str, object]:
+    team_id = uuid4()
+    learning_change_id = uuid4()
+    operator_id = canonical_operator_identity(
+        "https://host.example/identity", "operator-42"
+    )
+    accepted = decision == "accept"
+    binding = _approval_binding(
+        team_id, learning_change_id, operator_id, accepted=accepted
+    )
+    assessment_id = (
+        UUID(binding["assessment_id"]) if accepted else None
+    )
+    assessment_hash = (
+        binding["assessment_payload_hash"] if accepted else None
+    )
+    rejection_reason = "Insufficient evidence." if decision == "reject" else None
+    fingerprint = build_request_fingerprint(
+        team_id=team_id,
+        learning_change_id=learning_change_id,
+        decision=decision,
+        rejection_reason=rejection_reason,
+        operator_id=operator_id,
+        quality_assessment_id=assessment_id,
+        quality_assessment_hash=assessment_hash,
+        approval_binding=binding,
+    )
+    return {
+        "schema_version": 3,
+        "operation": "approve_learning_change",
+        "learning_change_id": str(learning_change_id),
+        "decision": decision,
+        "rejection_reason": rejection_reason,
+        "operator_id": operator_id,
+        "idempotency_key_hash": "sha256:" + "e" * 64,
+        "request_fingerprint": fingerprint,
+        "policy_version": 4,
+        "knowledge_quality_assessment_id": (
+            str(assessment_id) if assessment_id else None
+        ),
+        "knowledge_quality_assessment_hash": assessment_hash,
+        "approval_binding": binding,
+        "_team_id": team_id,
+    }
+
+
+@pytest.mark.parametrize("decision", ["accept", "reject"])
+def test_schema_v3_request_payload_round_trips_complete_approval_binding(
+    decision: str,
+) -> None:
+    payload = _bound_payload(decision=decision)
+    team_id = payload.pop("_team_id")
+    parsed = parse_request_event_payload(
+        payload, team_id=team_id, policy_version=4
+    )
+
+    assert parsed.schema_version == 3
+    assert parsed.approval_binding == payload["approval_binding"]
+    assert parsed.approval_binding["operator_id"] == parsed.operator_id
+    if decision == "accept":
+        assert parsed.quality_assessment_id is not None
+        assert (
+            parsed.approval_binding["assessment_payload_hash"]
+            == parsed.quality_assessment_hash
+        )
+    else:
+        assert parsed.quality_assessment_id is None
+        assert parsed.approval_binding["assessment_type"] is None
+
+
+@pytest.mark.parametrize(
+    ("mutation", "reason"),
+    [
+        (
+            lambda p: p["approval_binding"].update(
+                assessment_payload_hash="sha256:" + "f" * 64
+            ),
+            "operator_task_request_fingerprint_invalid",
+        ),
+        (
+            lambda p: p["approval_binding"].update(
+                operator_id='{"iss":"https://host.example/identity","sub":"other"}'
+            ),
+            "operator_approval_binding_invalid",
+        ),
+        (
+            lambda p: p["approval_binding"].update(approval_policy_version=5),
+            "operator_approval_binding_invalid",
+        ),
+        (
+            lambda p: p["approval_binding"].update(
+                assessment_type="knowledge_lifecycle"
+            ),
+            "operator_approval_binding_invalid",
+        ),
+        (
+            lambda p: p.pop("approval_binding"),
+            "operator_task_request_payload_invalid",
+        ),
+    ],
+)
+def test_schema_v3_binding_tampering_fails_closed(mutation, reason: str) -> None:
+    payload = _bound_payload()
+    team_id = payload.pop("_team_id")
+    mutation(payload)
+
+    with pytest.raises(OperatorApprovalValidationError) as error:
+        parse_request_event_payload(payload, team_id=team_id, policy_version=4)
+
+    assert error.value.reason == reason
+
+
+def test_request_fingerprint_changes_with_assessment_hash_or_host_principal() -> None:
+    payload = _bound_payload()
+    team_id = payload.pop("_team_id")
+    binding = payload["approval_binding"]
+    first = payload["request_fingerprint"]
+    changed_hash = dict(binding)
+    changed_hash["assessment_payload_hash"] = "sha256:" + "f" * 64
+    changed_principal = dict(binding)
+    changed_principal["operator_id"] = canonical_operator_identity(
+        "https://host.example/identity", "operator-43"
+    )
+
+    def fingerprint(changed: dict[str, object]) -> str:
+        return build_request_fingerprint(
+            team_id=team_id,
+            learning_change_id=UUID(payload["learning_change_id"]),
+            decision="accept",
+            rejection_reason=None,
+            operator_id=payload["operator_id"],
+            quality_assessment_id=UUID(payload["knowledge_quality_assessment_id"]),
+            quality_assessment_hash=payload["knowledge_quality_assessment_hash"],
+            approval_binding=changed,
+        )
+
+    assert fingerprint(changed_hash) != first
+    assert fingerprint(changed_principal) != first
+
