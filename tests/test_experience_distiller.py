@@ -3191,6 +3191,10 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     assessment_result: str,
     crash_after_record: bool,
 ):
+    from core.knowledge_approval import (
+        KnowledgeApprovalBindingError,
+        build_approval_binding,
+    )
     from core.knowledge_lifecycle import (
         PROPOSED_STATE_HASH_DOMAIN,
         _domain_hash,
@@ -3211,6 +3215,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         Outcome,
         Task,
     )
+    from core.operator_approval import canonical_operator_identity
 
     if assessment_result == "ineligible":
         original_derive = derive_lifecycle_findings
@@ -4127,6 +4132,57 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             require_current=False,
         )
         assert verified.id == assessment.id
+        reviewer = canonical_operator_identity(
+            "https://host.example/identity", "b37-retire-reviewer"
+        )
+        if assessment_result == "eligible":
+            binding = build_approval_binding(
+                session,
+                change,
+                operator_id=reviewer,
+                approval_policy_version=1,
+                require_assessment=True,
+                snapshot_store=snapshot_store,
+                session_factory=session_factory,
+            )
+            provenance = session.get(
+                LearningChangeOperatorProvenance, learning_change_id
+            )
+            assert provenance is not None
+            assert binding["operation"] == "retire"
+            assert binding["assessment_type"] == "knowledge_lifecycle"
+            assert binding["assessment_id"] == str(assessment.id)
+            assert binding["assessment_payload_hash"] == assessment.payload_hash
+            assert binding["assessment_task_policy_version"] == task.policy_version
+            assert binding["current_learning_change_id"] == str(
+                item.current_learning_change_id
+            )
+            assert binding["target_content_version"] == item.version
+            assert binding["target_content_hash"] == assessment.target_content_hash
+            assert binding["target_state_hash"] == assessment.target_state_hash
+            assert binding["proposal_hash"] == assessment.proposal_hash
+            assert binding["proposed_state_hash"] == assessment.proposed_state_hash
+            assert binding["evidence_basis_hash"] == assessment.evidence_basis_hash
+            assert binding["operator_id"] == reviewer
+            assert binding["operator_provenance"] == {
+                "issuer": provenance.issuer,
+                "subject": provenance.subject,
+            }
+            assert binding["successor_binding"] is None
+        else:
+            with pytest.raises(
+                KnowledgeApprovalBindingError,
+                match="knowledge_approval_lifecycle_not_eligible",
+            ):
+                build_approval_binding(
+                    session,
+                    change,
+                    operator_id=reviewer,
+                    approval_policy_version=1,
+                    require_assessment=True,
+                    snapshot_store=snapshot_store,
+                    session_factory=session_factory,
+                )
         assert session.scalar(
             select(func.count(KnowledgeLifecycleAssessment.id)).where(
                 KnowledgeLifecycleAssessment.learning_change_id
