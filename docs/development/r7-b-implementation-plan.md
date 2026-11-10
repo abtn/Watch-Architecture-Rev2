@@ -418,7 +418,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 **B2 closeout reference:** B2 is formally closed by explicit Operator instruction on 2026-11-08. The three retained residual verification gaps are recorded in `PLAN.md` and `docs/testing.md`; none is represented as passed. This does not expand B2's create-only authority.
 
 
-**Status:** B3.2–B3.6 are implemented and merged. B3.6 PR #68 merged at `4735b93c74025ddee3bd099ef6d5e64cbac34719` from exact head `86f3bcf91ca024486f3a3b918a2c7490ec0ea9da`; hosted and Operator-local verification passed (908 full-suite tests, migration head `0018_r7b_lifecycle_review_date`, Ruff, Mypy, and diff checks). B3.7 implementation is authorized and underway in PR #69; its first integrated supersede assessment plus approval-binding successor-drift test is awaiting CI. B3.8–B3.9 remain gated; see `PLAN.md` for current status.
+**Status:** B3.2–B3.6 are implemented and merged. B3.6 PR #68 merged at `4735b93c74025ddee3bd099ef6d5e64cbac34719` from exact head `86f3bcf91ca024486f3a3b918a2c7490ec0ea9da`; hosted and Operator-local verification passed (908 full-suite tests, migration head `0018_r7b_lifecycle_review_date`, Ruff, Mypy, and diff checks). B3.7 test implementation is complete; the full matrix mapping and hosted CI evidence are recorded in `PLAN.md`, `docs/testing.md`, and the B3.7 matrix. B3.8–B3.9 remain gated; see `PLAN.md` for current status.
 
 **Goal:** add immutable, operation-specific assessment records and narrow recording Tasks. These assessments supply validated evidence to the existing trusted Operator approval path; they do not authorize or commit lifecycle transitions.
 
