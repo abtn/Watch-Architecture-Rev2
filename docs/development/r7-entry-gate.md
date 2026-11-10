@@ -114,7 +114,7 @@ Exit requirements:
 
 ## 4. Accepted architecture decisions and phase gates
 
-The normative architecture is [ADR-0032](../decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md). R7-A's completed implementation contract is [r7-a-implementation-plan.md](r7-a-implementation-plan.md). The R7-B plan sequences the accepted B2 work and separately gated B3–B6 work; the B3.7 planning-only matrix is documented in `r7-b-b3-7-integrated-regression-matrix.md`. `PLAN.md` remains the sole source of current milestone status.
+The normative architecture is [ADR-0032](../decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md). R7-A's completed implementation contract is [r7-a-implementation-plan.md](r7-a-implementation-plan.md). The R7-B plan sequences the accepted B2 work and separately gated B3–B6 work; the B3.7 integrated regression matrix is the controlling acceptance inventory for the currently authorized implementation in PR #69. `PLAN.md` remains the sole source of current milestone status.
 
 | Decision | Accepted resolution / phase-specific gate |
 |---|---|
