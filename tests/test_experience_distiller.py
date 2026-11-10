@@ -4399,13 +4399,19 @@ def test_original_create_approval_replays_after_later_history_transition(
 
 
 @pytest.mark.parametrize(
-    ("assessment_result", "crash_after_record", "fail_record_first"),
+    (
+        "assessment_result",
+        "crash_after_record",
+        "fail_record_first",
+        "fail_finalization_first",
+    ),
     [
-        ("eligible", False, False),
-        ("eligible", True, False),
-        ("ineligible", False, False),
-        ("ineligible", True, False),
-        ("eligible", False, True),
+        ("eligible", False, False, False),
+        ("eligible", True, False, False),
+        ("ineligible", False, False, False),
+        ("ineligible", True, False, False),
+        ("eligible", False, True, False),
+        ("eligible", False, False, True),
     ],
 )
 def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
@@ -4417,6 +4423,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     assessment_result: str,
     crash_after_record: bool,
     fail_record_first: bool,
+    fail_finalization_first: bool,
 ):
     from core.knowledge_approval import (
         KnowledgeApprovalBindingError,
@@ -5024,6 +5031,114 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         assert first_run.assessment_id is not None
         assert first_run.outcome_id is not None
         assert not first_run.replayed
+    elif fail_finalization_first:
+        def fail_terminal_event_insert(mapper, connection, event_record) -> None:
+            if (
+                event_record.task_id == task_id
+                and event_record.type == "task_completed"
+            ):
+                raise IntegrityError(
+                    "INSERT INTO events",
+                    {},
+                    RuntimeError("simulated_lifecycle_finalization_event_failure"),
+                )
+
+        event.listen(Event, "before_insert", fail_terminal_event_insert)
+        try:
+            with pytest.raises(IntegrityError):
+                runner.run(task_id)
+        finally:
+            event.remove(Event, "before_insert", fail_terminal_event_insert)
+
+        with session_factory() as session:
+            interrupted_task = session.get(Task, task_id)
+            recorded_assessment = session.scalar(
+                select(KnowledgeLifecycleAssessment).where(
+                    KnowledgeLifecycleAssessment.task_id == task_id
+                )
+            )
+            assert interrupted_task is not None
+            assert interrupted_task.status == "running"
+            assert interrupted_task.attempt_count == 2
+            assert recorded_assessment is not None
+            assert session.scalar(
+                select(func.count(Event.id)).where(
+                    Event.task_id == task_id,
+                    Event.type == RECORDED_EVENT_TYPE,
+                )
+            ) == 1
+            assert session.scalar(
+                select(func.count(Outcome.id)).where(
+                    Outcome.recorded_by_task_id == task_id
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count(Event.id)).where(
+                    Event.task_id == task_id,
+                    Event.type == "task_completed",
+                )
+            ) == 0
+            unchanged_change = session.get(LearningChange, learning_change_id)
+            unchanged_item = session.get(KnowledgeItem, committed.knowledge_item_id)
+            assert unchanged_change is not None
+            assert unchanged_change.status == "proposed"
+            assert unchanged_item is not None
+            assert unchanged_item.status == "active"
+            assert unchanged_item.version == 1
+            assert unchanged_item.current_learning_change_id == (
+                committed.learning_change_id
+            )
+
+        event.listen(Event, "before_insert", fail_terminal_event_insert)
+        try:
+            with pytest.raises(IntegrityError):
+                TaskRuntime(session_factory, snapshot_store).recover_interrupted(
+                    now=datetime.now(timezone.utc) + timedelta(seconds=120)
+                )
+        finally:
+            event.remove(Event, "before_insert", fail_terminal_event_insert)
+
+        with session_factory() as session:
+            still_running = session.get(Task, task_id)
+            assert still_running is not None
+            assert still_running.status == "running"
+            assert session.scalar(
+                select(func.count(Outcome.id)).where(
+                    Outcome.recorded_by_task_id == task_id
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count(Event.id)).where(
+                    Event.task_id == task_id,
+                    Event.type == "task_completed",
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count(KnowledgeLifecycleAssessment.id)).where(
+                    KnowledgeLifecycleAssessment.task_id == task_id
+                )
+            ) == 1
+            assert session.scalar(
+                select(func.count(Event.id)).where(
+                    Event.task_id == task_id,
+                    Event.type == RECORDED_EVENT_TYPE,
+                )
+            ) == 1
+
+        final_recovery = TaskRuntime(
+            session_factory, snapshot_store
+        ).recover_interrupted(
+            now=datetime.now(timezone.utc) + timedelta(seconds=180)
+        )
+        assert final_recovery.completed == (task_id,)
+        assert final_recovery.retried == ()
+        assert final_recovery.failed == ()
+        first_run = runner.run(task_id)
+        assert first_run.status == "done"
+        assert first_run.assessment_result == assessment_result
+        assert first_run.assessment_id is not None
+        assert first_run.outcome_id is not None
+        assert first_run.replayed
     elif crash_after_record:
         with pytest.raises(
             RuntimeError,
@@ -5036,7 +5151,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         assert first_run.assessment_result == assessment_result
         assert first_run.assessment_id is not None
         assert first_run.outcome_id is not None
-        assert not first_run.replayed
+        assert first_run.replayed is fail_finalization_first
 
     with session_factory() as session:
         committed_assessment = session.scalar(
