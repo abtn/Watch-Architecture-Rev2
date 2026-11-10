@@ -923,7 +923,7 @@ def test_task_runtime_rejects_operator_request_event_identity_tampering(
         event.payload = payload
 
     with pytest.raises(
-        TaskNotEligible, match="operator_task_request_fingerprint_invalid"
+        TaskNotEligible, match="operator_approval_binding_invalid"
     ):
         TaskRuntime(session_factory).admit(request_result.task_id)
 
