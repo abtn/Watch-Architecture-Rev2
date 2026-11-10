@@ -3,6 +3,7 @@
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 from uuid import UUID, uuid4, uuid5
 
@@ -11,6 +12,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.learning_history import (
     KnowledgeHistoryError,
+    decode_state_snapshot,
+    knowledge_item_content_hash,
     knowledge_item_state,
     reconstruct_knowledge_item_history,
 )
@@ -1072,9 +1075,14 @@ class TaskRuntime:
                     raise TaskNotFinalizable(
                         "learning_change_not_found_for_quality_task"
                     )
-                self._create_knowledge_quality_task_request(
-                    session, task, learning_change
-                )
+                if learning_change.operation == "revalidate":
+                    self._create_knowledge_revalidation_task_request(
+                        session, task, learning_change
+                    )
+                else:
+                    self._create_knowledge_quality_task_request(
+                        session, task, learning_change
+                    )
                 session.flush()
 
             return FinalizationResult(
@@ -2657,6 +2665,78 @@ class TaskRuntime:
         session.flush()
         return task
 
+    def _create_knowledge_revalidation_task_request(
+        self,
+        session: Session,
+        source_task: Task,
+        learning_change: LearningChange,
+    ) -> Task:
+        from core.knowledge_revalidation import (
+            ALLOWED_WRITES,
+            REQUEST_EVENT_TYPE,
+            TASK_BUDGET,
+            TASK_MAX_ATTEMPTS,
+            TASK_TYPE,
+            KnowledgeRevalidationAssessmentError,
+            build_revalidation_task_request,
+            validate_revalidation_task_request,
+        )
+
+        if self._snapshot_store is None:
+            raise TaskNotFinalizable(
+                "knowledge_revalidation_snapshot_store_required"
+            )
+        try:
+            task_id, payload = build_revalidation_task_request(
+                session,
+                self._session_factory,
+                self._snapshot_store,
+                learning_change,
+                require_current=True,
+            )
+            existing = session.get(Task, task_id)
+            if existing is not None:
+                validate_revalidation_task_request(
+                    session,
+                    existing,
+                    self._session_factory,
+                    self._snapshot_store,
+                    require_proposed=True,
+                    require_current=True,
+                )
+                return existing
+        except KnowledgeRevalidationAssessmentError as error:
+            raise TaskNotFinalizable(error.reason) from error
+
+        task = Task(
+            id=task_id,
+            team_id=source_task.team_id,
+            task_type=TASK_TYPE,
+            status="pending",
+            attempt_count=0,
+            policy_version=payload["policy_version"],
+            objective_id=None,
+            plan_id=None,
+            plan_action_id=None,
+            allowed_writes=list(ALLOWED_WRITES),
+            budget=dict(TASK_BUDGET),
+            completed_at=None,
+            max_attempts=TASK_MAX_ATTEMPTS,
+        )
+        session.add(task)
+        session.flush()
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=task.id,
+                type=REQUEST_EVENT_TYPE,
+                payload=payload,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        session.flush()
+        return task
+
     @staticmethod
     def _source_action_for_evaluation(
         session: Session, source_task: Task
@@ -3855,32 +3935,280 @@ class TaskRuntime:
             or learning_change.proposed_by_task_id != task.id
             or learning_change.status != "proposed"
             or learning_change.target_kind != "knowledge_item"
-            or learning_change.target_id is not None
-            or learning_change.operation != "create"
+            or learning_change.operation not in {"create", "revise", "revalidate"}
             or learning_change.evidence_basis_hash
             != learning_change.proposed_state.get("evidence_basis_hash")
-            or len(learning_change.evidence_basis) < 1
-            or len(learning_change.evidence_basis) > 8
+            or not isinstance(learning_change.evidence_basis, list)
+            or not 1 <= len(learning_change.evidence_basis) <= 8
             or learning_change.proposed_state.get("evidence_case_count")
             != len(learning_change.evidence_basis)
         ):
             raise TaskNotFinalizable("learning_change_not_proposed")
-        proposal_hash = learning_change.proposed_state.get("proposal_hash")
+
+        proposal_state = learning_change.proposed_state
+        proposal_hash = proposal_state.get("proposal_hash")
         if (
             not isinstance(proposal_hash, str)
             or not proposal_hash.startswith("sha256:")
             or len(proposal_hash) != 71
         ):
             raise TaskNotFinalizable("learning_change_proposal_hash_invalid")
-        charge = session.scalar(
-            select(TaskGenerationCharge).where(
-                TaskGenerationCharge.task_id == task.id,
-                TaskGenerationCharge.attempt_count == task.attempt_count,
-                TaskGenerationCharge.operation == "experience_distillation",
+
+        target_binding: dict[str, Any] | None = None
+        if learning_change.operation == "create":
+            if (
+                learning_change.target_id is not None
+                or learning_change.previous_state is not None
+            ):
+                raise TaskNotFinalizable("learning_change_create_shape_invalid")
+        elif learning_change.operation == "revise":
+            if (
+                learning_change.target_id is None
+                or not isinstance(learning_change.previous_state, dict)
+                or not isinstance(proposal_state, dict)
+            ):
+                raise TaskNotFinalizable("learning_change_revise_shape_invalid")
+            try:
+                previous_raw_state = learning_change.previous_state.get("state")
+                if not isinstance(previous_raw_state, dict):
+                    raise KnowledgeHistoryError("snapshot_state_invalid")
+                pointer = UUID(previous_raw_state.get("current_learning_change_id"))
+                previous_state, reconstructed = decode_state_snapshot(
+                    learning_change.previous_state,
+                    learning_change_id=pointer,
+                    operation="revise",
+                    allow_legacy_root=False,
+                )
+                target = session.scalar(
+                    select(KnowledgeItem)
+                    .where(
+                        KnowledgeItem.id == learning_change.target_id,
+                        KnowledgeItem.team_id == learning_change.team_id,
+                    )
+                    .with_for_update()
+                )
+                if target is None or reconstructed:
+                    raise KnowledgeHistoryError("revision_target_missing_or_legacy")
+                live_state = knowledge_item_state(target)
+                content_hash = knowledge_item_content_hash(target)
+                if (
+                    previous_state["id"] != str(target.id)
+                    or previous_state["team_id"] != str(target.team_id)
+                    or previous_state["status"] not in {"active", "needs_review"}
+                    or target.status not in {"active", "needs_review"}
+                    or live_state != previous_state
+                    or target.version != previous_state["version"]
+                    or target.current_learning_change_id != pointer
+                ):
+                    raise KnowledgeHistoryError("revision_target_stale")
+                reconstruct_knowledge_item_history(session, target)
+                target_binding = {
+                    "target_knowledge_item_id": str(target.id),
+                    "target_current_learning_change_id": previous_state[
+                        "current_learning_change_id"
+                    ],
+                    "target_content_version": previous_state["version"],
+                    "target_content_hash": content_hash,
+                    "target_content_hash_scheme": (
+                        "watch.r7b.knowledge-content.v2"
+                    ),
+                    "target_state_hash": learning_change.previous_state[
+                        "snapshot_hash"
+                    ],
+                }
+                expected_draft_fields = {
+                    "kind",
+                    "title",
+                    "statement",
+                    "body",
+                    "applicability",
+                    "preconditions",
+                    "assumptions",
+                    "limitations",
+                    "non_applicability",
+                    "failure_modes",
+                    "known_counterexamples",
+                    "missing_information",
+                    "uncertainty",
+                    "confidence",
+                    "confidence_band",
+                    "supporting_evidence_refs",
+                    "contrary_evidence_refs",
+                    "context_evidence_refs",
+                }
+                expected_state_keys = expected_draft_fields | {
+                    "evidence_basis_hash",
+                    "evidence_case_count",
+                    "proposal_hash",
+                }
+                if set(proposal_state) != expected_state_keys:
+                    raise KnowledgeHistoryError("revision_proposal_shape_invalid")
+                draft_payload = {
+                    key: proposal_state[key] for key in expected_draft_fields
+                }
+                if hashlib.sha256(
+                    _canonical_json(draft_payload).encode("utf-8")
+                ).hexdigest() != proposal_hash.removeprefix("sha256:"):
+                    raise KnowledgeHistoryError("revision_proposal_hash_mismatch")
+                content_fields = expected_draft_fields - {
+                    "confidence_band",
+                    "supporting_evidence_refs",
+                    "contrary_evidence_refs",
+                    "context_evidence_refs",
+                }
+                changed = any(
+                    draft_payload[field] != previous_state[field]
+                    for field in content_fields - {"confidence"}
+                )
+                try:
+                    changed = changed or (
+                        Decimal(str(draft_payload["confidence"]))
+                        != Decimal(str(previous_state["confidence"]))
+                    )
+                except (InvalidOperation, ValueError) as error:
+                    raise KnowledgeHistoryError(
+                        "revision_confidence_invalid"
+                    ) from error
+                if not changed:
+                    raise KnowledgeHistoryError("revision_candidate_no_content_change")
+                if proposal_state.get("target_binding") is not None:
+                    raise KnowledgeHistoryError("revision_payload_target_field_invalid")
+            except (KnowledgeHistoryError, KeyError, TypeError, ValueError) as error:
+                raise TaskNotFinalizable(
+                    f"learning_change_revise_target_invalid:{error}"
+                ) from error
+        else:
+            expected_state_keys = {
+                "schema_version",
+                "rationale",
+                "target_binding",
+                "evidence_basis_hash",
+                "evidence_case_count",
+                "proposal_hash",
+            }
+            if (
+                learning_change.target_id is None
+                or not isinstance(learning_change.previous_state, dict)
+                or not isinstance(proposal_state, dict)
+                or set(proposal_state) != expected_state_keys
+                or proposal_state.get("schema_version")
+                != "r7b-revalidation-proposal-v1"
+                or not isinstance(proposal_state.get("rationale"), str)
+                or not proposal_state["rationale"].strip()
+                or len(proposal_state["rationale"]) > 2_000
+                or not isinstance(proposal_state.get("target_binding"), dict)
+            ):
+                raise TaskNotFinalizable("learning_change_revalidate_shape_invalid")
+            unsigned_state = {
+                key: value
+                for key, value in proposal_state.items()
+                if key != "proposal_hash"
+            }
+            expected_proposal_hash = "sha256:" + hashlib.sha256(
+                _canonical_json(unsigned_state).encode("utf-8")
+            ).hexdigest()
+            if proposal_hash != expected_proposal_hash:
+                raise TaskNotFinalizable(
+                    "learning_change_revalidation_proposal_hash_mismatch"
+                )
+            try:
+                raw_state = learning_change.previous_state.get("state")
+                if not isinstance(raw_state, dict):
+                    raise KnowledgeHistoryError("snapshot_state_invalid")
+                pointer = UUID(raw_state.get("current_learning_change_id"))
+                previous_state, reconstructed = decode_state_snapshot(
+                    learning_change.previous_state,
+                    learning_change_id=pointer,
+                    operation="revalidate",
+                    allow_legacy_root=False,
+                )
+                target = session.scalar(
+                    select(KnowledgeItem)
+                    .where(
+                        KnowledgeItem.id == learning_change.target_id,
+                        KnowledgeItem.team_id == learning_change.team_id,
+                    )
+                    .with_for_update()
+                )
+                if target is None or reconstructed:
+                    raise KnowledgeHistoryError("revalidation_target_missing_or_legacy")
+                live_state = knowledge_item_state(target)
+                content_hash = knowledge_item_content_hash(target)
+                if (
+                    previous_state["id"] != str(target.id)
+                    or previous_state["team_id"] != str(target.team_id)
+                    or previous_state["status"] != "needs_review"
+                    or target.status != "needs_review"
+                    or live_state != previous_state
+                    or target.version != previous_state["version"]
+                    or target.current_learning_change_id != pointer
+                ):
+                    raise KnowledgeHistoryError("revalidation_target_stale")
+                reconstruct_knowledge_item_history(session, target)
+                target_binding = {
+                    "target_knowledge_item_id": str(target.id),
+                    "target_current_learning_change_id": previous_state[
+                        "current_learning_change_id"
+                    ],
+                    "target_content_version": previous_state["version"],
+                    "target_content_hash": content_hash,
+                    "target_content_hash_scheme": (
+                        "watch.r7b.knowledge-content.v2"
+                    ),
+                    "target_state_hash": learning_change.previous_state[
+                        "snapshot_hash"
+                    ],
+                }
+                if (
+                    proposal_state["target_binding"] != target_binding
+                    or proposal_state.get("evidence_basis_hash")
+                    != learning_change.evidence_basis_hash
+                    or learning_change.idempotency_key
+                    != "r7b-revalidate-proposal-v1:"
+                    + hashlib.sha256(
+                        _canonical_json(
+                            {
+                                "team_id": str(learning_change.team_id),
+                                "task_id": str(task.id),
+                                **unsigned_state,
+                            }
+                        ).encode("utf-8")
+                    ).hexdigest()
+                ):
+                    raise KnowledgeHistoryError(
+                        "revalidation_target_binding_or_idempotency_mismatch"
+                    )
+            except (KnowledgeHistoryError, KeyError, TypeError, ValueError) as error:
+                raise TaskNotFinalizable(
+                    f"learning_change_revalidate_target_invalid:{error}"
+                ) from error
+
+        if learning_change.operation in {"create", "revise"}:
+            charge = session.scalar(
+                select(TaskGenerationCharge).where(
+                    TaskGenerationCharge.task_id == task.id,
+                    TaskGenerationCharge.attempt_count == task.attempt_count,
+                    TaskGenerationCharge.operation == "experience_distillation",
+                )
             )
-        )
-        if charge is None or charge.status != "reconciled":
-            raise TaskNotFinalizable("experience_distillation_cost_not_reconciled")
+            if charge is None or charge.status != "reconciled":
+                raise TaskNotFinalizable(
+                    "experience_distillation_cost_not_reconciled"
+                )
+            generation_charge_id: str | None = str(charge.id)
+        else:
+            any_charge = session.scalar(
+                select(TaskGenerationCharge.id).where(
+                    TaskGenerationCharge.task_id == task.id,
+                    TaskGenerationCharge.operation == "experience_distillation",
+                )
+            )
+            if any_charge is not None:
+                raise TaskNotFinalizable(
+                    "revalidation_proposal_must_not_create_generation_charge"
+                )
+            generation_charge_id = None
+
         proposal_events = list(
             session.scalars(
                 select(Event).where(
@@ -3891,22 +4219,22 @@ class TaskRuntime:
         )
         if len(proposal_events) != 1:
             raise TaskNotFinalizable("learning_change_proposal_event_missing")
-        payload = proposal_events[0].payload
-        if (
-            payload.get("learning_change_id") != str(learning_change.id)
-            or payload.get("evidence_basis_hash")
-            != learning_change.evidence_basis_hash
-            or payload.get("proposal_hash") != proposal_hash
-            or payload.get("generation_charge_id") != str(charge.id)
-            or payload.get("attempt_count") != task.attempt_count
-            or payload.get("operation") != "create"
-            or payload.get("kind") != learning_change.proposed_state.get("kind")
-            or payload.get("evaluation_ids")
-            != [
-                item.get("evaluation_id")
-                for item in learning_change.evidence_basis
-            ]
-        ):
+        expected_event: dict[str, Any] = {
+            "learning_change_id": str(learning_change.id),
+            "operation": learning_change.operation,
+            "evidence_basis_hash": learning_change.evidence_basis_hash,
+            "proposal_hash": proposal_hash,
+            "evaluation_ids": [
+                item.get("evaluation_id") for item in learning_change.evidence_basis
+            ],
+            "generation_charge_id": generation_charge_id,
+            "attempt_count": task.attempt_count,
+        }
+        if learning_change.operation in {"create", "revise"}:
+            expected_event["kind"] = proposal_state.get("kind")
+        if learning_change.operation in {"revise", "revalidate"}:
+            expected_event["target_binding"] = target_binding
+        if proposal_events[0].payload != expected_event:
             raise TaskNotFinalizable("learning_change_proposal_event_mismatch")
 
     @staticmethod
