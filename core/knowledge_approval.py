@@ -180,12 +180,12 @@ def build_approval_binding(
             )
 
             try:
-                assessment = require_quality_assessment(
+                quality_assessment = require_quality_assessment(
                     session, learning_change, require_task_done=True
                 )
             except KnowledgeQualityAssessmentError as error:
                 raise KnowledgeApprovalBindingError(str(error)) from error
-            task = session.get(Task, assessment.creating_task_id)
+            task = session.get(Task, quality_assessment.creating_task_id)
             if task is None:
                 raise KnowledgeApprovalBindingError(
                     "knowledge_approval_assessment_task_missing"
@@ -194,10 +194,10 @@ def build_approval_binding(
                 {
                     "assessment_task_policy_version": task.policy_version,
                     "assessment_type": "knowledge_quality",
-                    "assessment_id": str(assessment.id),
-                    "assessment_payload_hash": assessment.assessment_payload_hash,
-                    "evaluator_identity": assessment.evaluator_identity,
-                    "evaluator_revision": assessment.evaluator_revision,
+                    "assessment_id": str(quality_assessment.id),
+                    "assessment_payload_hash": quality_assessment.assessment_payload_hash,
+                    "evaluator_identity": quality_assessment.evaluator_identity,
+                    "evaluator_revision": quality_assessment.evaluator_revision,
                 }
             )
         return binding
@@ -237,7 +237,7 @@ def build_approval_binding(
         )
 
         try:
-            assessment = require_revalidation_assessment(
+            revalidation_assessment = require_revalidation_assessment(
                 session,
                 learning_change,
                 snapshot_store,
@@ -247,7 +247,7 @@ def build_approval_binding(
             )
         except KnowledgeRevalidationAssessmentError as error:
             raise KnowledgeApprovalBindingError(str(error)) from error
-        task = session.get(Task, assessment.task_id)
+        task = session.get(Task, revalidation_assessment.task_id)
         if task is None:
             raise KnowledgeApprovalBindingError(
                 "knowledge_approval_assessment_task_missing"
@@ -255,22 +255,22 @@ def build_approval_binding(
         binding.update(
             {
                 "current_learning_change_id": str(
-                    assessment.current_learning_change_id
+                    revalidation_assessment.current_learning_change_id
                 ),
-                "target_content_version": assessment.target_content_version,
-                "target_content_hash": assessment.target_content_hash,
-                "target_content_hash_scheme": assessment.target_content_hash_scheme,
-                "target_state_hash": assessment.target_state_hash,
-                "proposal_hash": assessment.proposal_hash,
-                "proposed_state_hash": assessment.proposed_state_hash,
-                "evidence_refs": assessment.evidence_refs,
-                "evidence_basis_hash": assessment.evidence_basis_hash,
+                "target_content_version": revalidation_assessment.target_content_version,
+                "target_content_hash": revalidation_assessment.target_content_hash,
+                "target_content_hash_scheme": revalidation_assessment.target_content_hash_scheme,
+                "target_state_hash": revalidation_assessment.target_state_hash,
+                "proposal_hash": revalidation_assessment.proposal_hash,
+                "proposed_state_hash": revalidation_assessment.proposed_state_hash,
+                "evidence_refs": revalidation_assessment.evidence_refs,
+                "evidence_basis_hash": revalidation_assessment.evidence_basis_hash,
                 "assessment_task_policy_version": task.policy_version,
                 "assessment_type": "knowledge_revalidation",
-                "assessment_id": str(assessment.id),
-                "assessment_payload_hash": assessment.payload_hash,
-                "evaluator_identity": assessment.evaluator_identity,
-                "evaluator_revision": assessment.evaluator_revision,
+                "assessment_id": str(revalidation_assessment.id),
+                "assessment_payload_hash": revalidation_assessment.payload_hash,
+                "evaluator_identity": revalidation_assessment.evaluator_identity,
+                "evaluator_revision": revalidation_assessment.evaluator_revision,
             }
         )
         return binding
@@ -286,7 +286,7 @@ def build_approval_binding(
         )
 
         try:
-            assessment = require_lifecycle_assessment(
+            lifecycle_assessment = require_lifecycle_assessment(
                 session,
                 learning_change,
                 snapshot_store,
@@ -296,7 +296,7 @@ def build_approval_binding(
             )
         except KnowledgeLifecycleAssessmentError as error:
             raise KnowledgeApprovalBindingError(str(error)) from error
-        task = session.get(Task, assessment.task_id)
+        task = session.get(Task, lifecycle_assessment.task_id)
         provenance = session.get(
             LearningChangeOperatorProvenance, learning_change.id
         )
@@ -307,20 +307,20 @@ def build_approval_binding(
         binding.update(
             {
                 "current_learning_change_id": str(
-                    assessment.current_learning_change_id
+                    lifecycle_assessment.current_learning_change_id
                 ),
-                "target_content_version": assessment.target_content_version,
-                "target_content_hash": assessment.target_content_hash,
-                "target_content_hash_scheme": assessment.target_content_hash_scheme,
-                "target_state_hash": assessment.target_state_hash,
-                "proposal_hash": assessment.proposal_hash,
-                "proposed_state_hash": assessment.proposed_state_hash,
-                "evidence_refs": assessment.evidence_refs,
-                "evidence_basis_hash": assessment.evidence_basis_hash,
+                "target_content_version": lifecycle_assessment.target_content_version,
+                "target_content_hash": lifecycle_assessment.target_content_hash,
+                "target_content_hash_scheme": lifecycle_assessment.target_content_hash_scheme,
+                "target_state_hash": lifecycle_assessment.target_state_hash,
+                "proposal_hash": lifecycle_assessment.proposal_hash,
+                "proposed_state_hash": lifecycle_assessment.proposed_state_hash,
+                "evidence_refs": lifecycle_assessment.evidence_refs,
+                "evidence_basis_hash": lifecycle_assessment.evidence_basis_hash,
                 "assessment_task_policy_version": task.policy_version,
                 "assessment_type": "knowledge_lifecycle",
-                "assessment_id": str(assessment.id),
-                "assessment_payload_hash": assessment.payload_hash,
+                "assessment_id": str(lifecycle_assessment.id),
+                "assessment_payload_hash": lifecycle_assessment.payload_hash,
                 "operator_provenance": {
                     "issuer": provenance.issuer,
                     "subject": provenance.subject,
@@ -330,26 +330,26 @@ def build_approval_binding(
         if learning_change.operation == "supersede":
             binding["successor_binding"] = {
                 "successor_knowledge_item_id": (
-                    str(assessment.successor_knowledge_item_id)
-                    if assessment.successor_knowledge_item_id is not None
+                    str(lifecycle_assessment.successor_knowledge_item_id)
+                    if lifecycle_assessment.successor_knowledge_item_id is not None
                     else None
                 ),
                 "successor_team_id": str(learning_change.team_id),
                 "successor_current_learning_change_id": (
-                    str(assessment.successor_current_learning_change_id)
-                    if assessment.successor_current_learning_change_id is not None
+                    str(lifecycle_assessment.successor_current_learning_change_id)
+                    if lifecycle_assessment.successor_current_learning_change_id is not None
                     else None
                 ),
-                "successor_content_version": assessment.successor_content_version,
-                "successor_content_hash": assessment.successor_content_hash,
+                "successor_content_version": lifecycle_assessment.successor_content_version,
+                "successor_content_hash": lifecycle_assessment.successor_content_hash,
                 "successor_content_hash_scheme": (
-                    assessment.successor_content_hash_scheme
+                    lifecycle_assessment.successor_content_hash_scheme
                 ),
-                "successor_status": assessment.successor_status,
+                "successor_status": lifecycle_assessment.successor_status,
                 "successor_review_after": _timestamp(
-                    assessment.successor_review_after
+                    lifecycle_assessment.successor_review_after
                 ),
-                "successor_state_hash": assessment.successor_state_hash,
+                "successor_state_hash": lifecycle_assessment.successor_state_hash,
             }
         return binding
 
