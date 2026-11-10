@@ -1243,15 +1243,27 @@ class _FakeKnowledgeRevalidationProvider:
             "conflicting": "The evidence basis contains unresolved conflicts.",
             "unassessable": "The evidence freshness cannot be assessed.",
         }
+        references = tuple(sorted(allowed_evidence_references))
+        findings = [
+            KnowledgeRevalidationFinding(
+                code=code_by_disposition[self.freshness_disposition],
+                summary=summary_by_disposition[self.freshness_disposition],
+                evidence_refs=references,
+            )
+        ]
+        if self.freshness_disposition == "stale":
+            findings.append(
+                KnowledgeRevalidationFinding(
+                    code="new_observation_required",
+                    summary=(
+                        "The claim is time-sensitive and needs a new source observation."
+                    ),
+                    evidence_refs=references,
+                )
+            )
         return KnowledgeRevalidationAssessmentDraft(
             freshness_disposition=self.freshness_disposition,
-            findings=(
-                KnowledgeRevalidationFinding(
-                    code=code_by_disposition[self.freshness_disposition],
-                    summary=summary_by_disposition[self.freshness_disposition],
-                    evidence_refs=tuple(sorted(allowed_evidence_references)),
-                ),
-            ),
+            findings=tuple(findings),
         )
 
     def assess(
