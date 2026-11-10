@@ -755,19 +755,17 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 
 **Authority and scope boundary:** no migration, TaskDispatcher activation, generic registry/scheduler, public API/auth, canonical `KnowledgeItem`/`LearningChange` writes, lifecycle commit, approval expansion, or B3.6–B3.9/B4–B6/R7-C work was included. The approval allowlist remains exactly `create`. B3.5 is merged; B3.6 approval-time assessment binding remains separately gated and unauthorized.
 
-## R7-B B3.7 — integrated regression matrix planning (2026-11-10; planning only)
+## R7-B B3.6 — approval-time assessment binding (2026-11-10; merged)
 
-The B3.7 matrix has been extracted into [docs/development/r7-b-b3-7-integrated-regression-matrix.md](docs/development/r7-b-b3-7-integrated-regression-matrix.md). This is not a test result or implementation authorization. B3.6 remains the next gated checkpoint; B3.7 follows B3.6 and requires separate explicit Operator authorization.
+- PR #68 merged to `main` at `4735b93c74025ddee3bd099ef6d5e64cbac34719`; exact PR head `86f3bcf91ca024486f3a3b918a2c7490ec0ea9da`.
+- Hosted CI run [42777343863](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42777343863): fresh PostgreSQL migration/single-head, Ruff, Mypy (38 source files), full suite **908 passed, 113 warnings**.
+- Operator-local verification on the exact PR head: fresh disposable PostgreSQL; sole Alembic head `0018_r7b_lifecycle_review_date`; Ruff; Mypy (38 source files); full suite **908 passed, 113 warnings**; `git diff --check`; clean worktree; environment restoration; disposable-container cleanup.
+- Warnings are the existing Alembic `path_separator` deprecations (36 in `tests/test_r7b_assessment_migration.py`, 65 in `tests/test_r7b_history_migration.py`, 12 in `tests/test_team_experience_projection_migration.py`).
+- B3.6 binds operation-specific recorded-assessment state, payload hashes, canonical host Operator identity, policy/evaluator/proposal/target/evidence bindings, and the full supersede successor snapshot across request fingerprint, TaskRuntime, commit, finalization, and replay. Historical request/decision schemas remain compatible.
+- The approval allowlist remains exactly `{"create"}`. Non-create lifecycle requests remain rejected; no lifecycle commit path, automatic dispatcher, migration, public API/auth, or B4–B6/R7-C work was introduced.
 
-**Existing B3.2–B3.5 test baseline mapped by the plan:**
+## R7-B B3.7 — integrated regression matrix (implementation authorized; initial PR open)
 
-- tests/test_knowledge_revalidation.py: freshness/result derivation, evaluator draft/evidence-reference validation, canonical normalization/hash behavior, target/current-pointer binding, and typed TaskRuntime observation constraints.
-- tests/test_knowledge_lifecycle.py: original Operator rationale, strict retire/supersede payload variants, deterministic findings, D7 successor eligibility, complete successor snapshot binding/drift, and lifecycle Task write scope.
-- tests/test_r7b_assessment_models.py and tests/test_r7b_assessment_migration.py: model/relational constraints, assessment uniqueness, Team ownership, Event separation, PostgreSQL immutability, successor reference protection, and migration downgrade safeguards.
-- tests/test_experience_distiller.py: assessment persistence, TaskRuntime integration, Event recording, no-canonical-write assertions, retry/recovery/replay, and the existing create-only Operator/KnowledgeQualityAssessment flow.
-- tests/test_task_runtime.py: shared TaskRuntime lifecycle behavior.
+The matrix remains the acceptance inventory in [`docs/development/r7-b-b3-7-integrated-regression-matrix.md`](development/r7-b-b3-7-integrated-regression-matrix.md). B3.7 implementation was authorized after B3.6 merged. Initial PR [#69](https://github.com/abtn/Watch-Architecture-Rev2/pull/69) adds a PostgreSQL-backed supersede assessment integration case that exercises the real lifecycle TaskRuntime runner, immutable assessment and recorded Event, terminal Outcome, unchanged canonical predecessor/successor state, and B3.6 approval-binding reconstruction with successor review-date drift rejection. CI on exact PR head `926d10cc5b81c510790813b817e594aba9bb5ea9` is pending; Operator-local verification has not been run. This is partial B3.7 implementation, not matrix completion.
 
-**Known planning gap:** the current approval path binds the R7-A KnowledgeQualityAssessment for create-only approval. The B3.6 approval-time binding for KnowledgeRevalidationAssessment and KnowledgeLifecycleAssessment is not implemented in the current baseline. The matrix reserves its fingerprint, principal, tampering, and non-create rejection tests for after B3.6.
-
-No B3.7 tests were added or run for this planning update. No source, migration, Task scope, runtime, or approval allowlist change was made. The approval allowlist remains exactly {"create"}.
-
+B3.7 must continue mapping every matrix row to a concrete test or an explicit residual gap. It must prove no unauthorized canonical writes and that non-create lifecycle approval attempts remain rejected. The approval allowlist remains exactly `{"create"}`. B3.8 owns exact-head verification and B3.9 owns documentation closeout/formal B3 exit acceptance.
