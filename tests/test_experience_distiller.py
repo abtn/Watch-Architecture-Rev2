@@ -1626,6 +1626,220 @@ def test_revalidation_rejects_invented_provider_reference_without_record_and_rec
         ) == 1
 
 
+def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admission(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    request,
+):
+    fixture = distillation_fixture(2, include_contrary=False)
+    create_proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    runtime.finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=create_proposal.learning_change_id,
+        )
+    )
+    approval_task_id, approval_attempt, principal = _create_admitted_approval_task(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        create_proposal.learning_change_id,
+    )
+    committed = LearningCommitService(session_factory, snapshot_store).decide(
+        approval_task_id, approval_attempt, principal
+    )
+    assert committed.knowledge_item_id is not None
+    runtime.finalize(
+        TerminalObservation(
+            task_id=approval_task_id,
+            attempt=approval_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=committed.committed_at,
+            learning_change_id=committed.learning_change_id,
+        )
+    )
+
+    source_task_id, learning_change_id = _create_revalidation_proposal(
+        session_factory,
+        snapshot_store,
+        fixture,
+        committed.knowledge_item_id,
+    )
+    service = KnowledgeRevalidationAssessmentService(
+        session_factory, snapshot_store
+    )
+    task_id = service.create_task(learning_change_id)
+    provider = _FakeKnowledgeRevalidationProvider()
+    runner = KnowledgeRevalidationAssessmentTaskRunner(
+        session_factory, snapshot_store, provider
+    )
+    from core.task_runtime import TaskNotEligible
+
+    link_id: UUID | None = None
+    original_stance: str | None = None
+    original_reference_key: str | None = None
+
+    def cleanup_revalidation_source_drift() -> None:
+        with session_factory.begin() as session:
+            if link_id is not None:
+                link = session.get(EvidenceLink, link_id)
+                if link is not None and original_stance is not None:
+                    link.stance = original_stance
+                    link.reference_key = original_reference_key
+            session.execute(
+                text(
+                    "ALTER TABLE knowledge_revalidation_assessments "
+                    "DISABLE TRIGGER USER"
+                )
+            )
+            session.execute(
+                delete(KnowledgeRevalidationAssessment).where(
+                    KnowledgeRevalidationAssessment.task_id == task_id
+                )
+            )
+            session.execute(
+                text(
+                    "ALTER TABLE knowledge_revalidation_assessments "
+                    "ENABLE TRIGGER USER"
+                )
+            )
+            session.execute(
+                delete(Event).where(
+                    Event.task_id.in_([source_task_id, task_id])
+                )
+            )
+            session.execute(
+                delete(Outcome).where(
+                    Outcome.recorded_by_task_id.in_([source_task_id, task_id])
+                )
+            )
+            session.execute(
+                delete(LearningChange).where(
+                    LearningChange.id == learning_change_id
+                )
+            )
+            session.execute(
+                delete(Task).where(Task.id.in_([source_task_id, task_id]))
+            )
+
+    request.addfinalizer(cleanup_revalidation_source_drift)
+
+    with session_factory() as session:
+        link = session.scalar(
+            select(EvidenceLink)
+            .where(
+                EvidenceLink.subject_id == fixture.cases[0].evaluation_id,
+                EvidenceLink.team_id == fixture.team_id,
+            )
+            .order_by(EvidenceLink.reference_key)
+        )
+        assert link is not None
+        assert link.source_kind == "outcome"
+        assert link.stance == "supports"
+        link_id = link.id
+        original_stance = link.stance
+        original_reference_key = link.reference_key
+
+    with session_factory.begin() as session:
+        link = session.get(EvidenceLink, link_id)
+        assert link is not None
+        link.stance = "mentions"
+        link.reference_key = EvaluationService._link_payload(link)[
+            "reference_key"
+        ]
+        assert link.reference_key != original_reference_key
+
+    with pytest.raises(TaskNotEligible) as drift_error:
+        runner.run(task_id)
+    assert str(drift_error.value) == "evaluation_proposal_hash_mismatch"
+
+    with session_factory.begin() as session:
+        link = session.get(EvidenceLink, link_id)
+        assert link is not None
+        link.stance = original_stance
+        link.reference_key = original_reference_key
+
+    with session_factory() as session:
+        task = session.get(Task, task_id)
+        change = session.get(LearningChange, learning_change_id)
+        item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        assert task is not None and change is not None and item is not None
+        assert task.status == "pending"
+        assert task.attempt_count == 0
+        assert provider.calls == 0
+        assert change.status == "proposed"
+        assert item.version == 1
+        assert item.current_learning_change_id == committed.learning_change_id
+        assert session.scalar(
+            select(func.count(KnowledgeRevalidationAssessment.id)).where(
+                KnowledgeRevalidationAssessment.learning_change_id
+                == learning_change_id
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == task_id,
+                Event.type == "task_started",
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == task_id
+            )
+        ) == 0
+
+    result = runner.run(task_id)
+    assert result.status == "done"
+    assert result.assessment_id is not None
+    assert result.outcome_id is not None
+    assert provider.calls == 1
+
+    with session_factory() as session:
+        task = session.get(Task, task_id)
+        change = session.get(LearningChange, learning_change_id)
+        item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        assessment = session.get(
+            KnowledgeRevalidationAssessment, result.assessment_id
+        )
+        assert task is not None and change is not None and item is not None
+        assert assessment is not None
+        assert task.status == "done"
+        assert task.attempt_count == 1
+        assert assessment.assessment_result == "supported"
+        assert change.status == "proposed"
+        assert item.version == 1
+        assert item.current_learning_change_id == committed.learning_change_id
+        assert session.scalar(
+            select(func.count(KnowledgeRevalidationAssessment.id)).where(
+                KnowledgeRevalidationAssessment.learning_change_id
+                == learning_change_id
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == task_id,
+                Event.type == "knowledge_revalidation_assessment_recorded",
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) == 1
+
+
+
 @pytest.mark.parametrize("freshness_disposition", ["current", "stale"])
 @pytest.mark.parametrize(
     ("crash_after_record", "fail_first_attempt"),
