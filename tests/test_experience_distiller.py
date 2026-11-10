@@ -1816,7 +1816,6 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
                 source_outcome = session.get(Outcome, outcome_id)
                 if source_outcome is not None:
                     source_outcome.observation_hash = original_outcome_hash
-            source_outcome.snapshot_ref = original_outcome_snapshot_ref
                     source_outcome.snapshot_ref = original_outcome_snapshot_ref
             session.execute(
                 text(
