@@ -143,7 +143,9 @@ def test_lifecycle_supersede_binding_includes_full_successor_snapshot_and_proven
         successor_content_hash="sha256:" + "9" * 64,
         successor_content_hash_scheme="watch.r7b.knowledge-content.v2",
         successor_status="active",
-        successor_review_after=datetime(2027, 1, 2, 3, 4, 5, 123456, tzinfo=timezone.utc),
+        successor_review_after=datetime(
+            2027, 1, 2, 3, 4, 5, 123456, tzinfo=timezone.utc
+        ),
         successor_state_hash="sha256:" + "a" * 64,
     )
     monkeypatch.setattr(
