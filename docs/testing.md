@@ -753,7 +753,7 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 - Recovery from a committed immutable assessment and its exact recorded Event; existing retry disposition for interrupted attempts without a committed assessment; deterministic failure for stale proposals; fail-closed behavior for corrupted/mismatched immutable records or Events.
 - Failed replay validates the full attempt history and unique Outcome/terminal Events. Existing revalidation behavior remains covered.
 
-**Authority and scope boundary:** no migration, TaskDispatcher activation, generic registry/scheduler, public API/auth, canonical `KnowledgeItem`/`LearningChange` writes, lifecycle commit, approval expansion, or B3.6–B3.9/B4–B6/R7-C work was included. The approval allowlist remains exactly `create`. B3.5 is merged; B3.6 approval-time assessment binding remains separately gated and unauthorized.
+**B3.5 checkpoint authority and scope boundary (historical):** no migration, TaskDispatcher activation, generic registry/scheduler, public API/auth, canonical `KnowledgeItem`/`LearningChange` writes, lifecycle commit, approval expansion, or then-gated B3.6–B3.9/B4–B6/R7-C work was included in that B3.5 slice. The approval allowlist remained exactly `create`. At that checkpoint B3.5 was merged and B3.6 approval-time assessment binding was still separately gated; later B3.6–B3.9 records below supersede that historical status.
 
 ## R7-B B3.6 — approval-time assessment binding (2026-11-10; merged)
 
