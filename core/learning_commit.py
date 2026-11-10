@@ -198,11 +198,20 @@ class LearningCommitService:
                         session_factory=self._session_factory,
                     )
                 except KnowledgeApprovalBindingError as error:
-                    raise LearningCommitCorrupt(str(error)) from error
-                if expected_binding != approval_request.approval_binding:
-                    raise LearningCommitCorrupt(
-                        "operator_approval_binding_invalid"
-                    )
+                    if is_supported_learning_change(
+                        target_kind=learning_change.target_kind,
+                        operation=learning_change.operation,
+                        target_id=learning_change.target_id,
+                    ):
+                        raise LearningCommitCorrupt(str(error)) from error
+                    # Non-create operations remain outside the approval
+                    # allowlist. Let the existing admission guard reject them
+                    # even when their assessment is missing or malformed.
+                else:
+                    if expected_binding != approval_request.approval_binding:
+                        raise LearningCommitCorrupt(
+                            "operator_approval_binding_invalid"
+                        )
 
             try:
                 TaskRuntime._validate_operator_admission(
