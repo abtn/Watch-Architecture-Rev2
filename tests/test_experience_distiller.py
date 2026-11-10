@@ -131,7 +131,11 @@ def distillation_fixture(
                     id=policy_id,
                     team_id=team_id,
                     version=1,
-                    rules={"unchanged": True},
+                    schema_version=2,
+                    rules={
+                        "sources": [],
+                        "review": {"knowledge_item_interval_days": 1},
+                    },
                 )
             )
             session.flush()
@@ -601,7 +605,9 @@ def test_single_case_proposes_only_narrow_practice_and_replays(
             )
         ) is None
         team_policy = session.get(TeamPolicy, fixture.policy_id)
-        assert team_policy is not None and team_policy.rules == {"unchanged": True}
+        assert team_policy is not None
+        assert team_policy.schema_version == 2
+        assert team_policy.rules["review"]["knowledge_item_interval_days"] == 1
         charge = session.get(TaskGenerationCharge, result.generation_charge_id)
         assert charge is not None
         assert charge.operation == EXPERIENCE_DISTILLATION_OPERATION
@@ -1291,137 +1297,120 @@ def _create_revalidation_proposal(
     fixture: _Fixture,
     knowledge_item_id: UUID,
 ) -> tuple[UUID, UUID]:
-    source_task_id, learning_change_id = uuid4(), uuid4()
-    started_at = datetime.now(timezone.utc)
-    completed_at = started_at + timedelta(seconds=2)
-    proposal_hash = "sha256:" + ("c" * 64)
-    observation_ref, observation_hash = snapshot_store.put(
-        (
-            '{"attempt":1,"learning_change_id":"'
-            + str(learning_change_id)
-            + '","result_category":"success_learning_change_proposed"}'
-        ).encode("utf-8")
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, knowledge_item_id)
+        assert item is not None and item.team_id == fixture.team_id
+        review_after = item.review_after
+        assert review_after is not None
+
+    review_task_id = uuid4()
+    review_started_at = review_after - timedelta(seconds=1)
+    with session_factory.begin() as session:
+        session.add(
+            Task(
+                id=review_task_id,
+                team_id=fixture.team_id,
+                task_type="review_knowledge",
+                status="running",
+                attempt_count=1,
+                policy_version=1,
+                objective_id=None,
+                plan_id=None,
+                plan_action_id=None,
+                allowed_writes=["KnowledgeItem"],
+                budget={
+                    "max_tool_calls": 0,
+                    "max_cost_usd": 0.0,
+                    "deadline_seconds": 30,
+                },
+                created_at=review_started_at,
+                completed_at=None,
+                max_attempts=3,
+            )
+        )
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=review_task_id,
+                type="task_started",
+                payload={
+                    "from_status": "pending",
+                    "to_status": "running",
+                    "attempt_count": 1,
+                },
+                created_at=review_started_at,
+            )
+        )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=review_task_id,
+            attempt=1,
+            result_category="success_knowledge_reviewed",
+            observed_at=review_after,
+        )
     )
 
+    source_task_id = uuid4()
+    source_started_at = review_after + timedelta(seconds=1)
     with session_factory.begin() as session:
-        team = session.get(Team, fixture.team_id)
-        item = session.get(KnowledgeItem, knowledge_item_id)
-        assert team is not None and item is not None
-        assert item.team_id == fixture.team_id
-        source_task = Task(
-            id=source_task_id,
-            team_id=fixture.team_id,
-            task_type="propose_learning_change",
-            status="done",
-            attempt_count=1,
-            policy_version=1,
-            objective_id=None,
-            plan_id=None,
-            plan_action_id=None,
-            allowed_writes=["LearningChange"],
-            budget={
-                "max_tool_calls": 0,
-                "max_cost_usd": 0.0,
-                "deadline_seconds": 30,
-            },
-            created_at=started_at,
-            completed_at=completed_at,
-            max_attempts=3,
+        session.add(
+            Task(
+                id=source_task_id,
+                team_id=fixture.team_id,
+                task_type="propose_learning_change",
+                status="running",
+                attempt_count=1,
+                policy_version=1,
+                objective_id=None,
+                plan_id=None,
+                plan_action_id=None,
+                allowed_writes=["LearningChange"],
+                budget={
+                    "max_tool_calls": 0,
+                    "max_cost_usd": 0.0,
+                    "deadline_seconds": 30,
+                },
+                created_at=source_started_at,
+                completed_at=None,
+                max_attempts=3,
+            )
         )
-        session.add(source_task)
-        session.flush()
-        pack = ExperienceDistiller(
-            session_factory, snapshot_store, provider=None
-        )._build_pack(
-            session,
-            source_task,
-            team,
-            tuple(sorted(case.evaluation_id for case in fixture.cases)),
-            allow_completed_task=True,
-            include_version_marker=True,
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=source_task_id,
+                type="task_started",
+                payload={
+                    "from_status": "pending",
+                    "to_status": "running",
+                    "attempt_count": 1,
+                },
+                created_at=source_started_at,
+            )
         )
-        previous_state = knowledge_item_state(item)
-        change = LearningChange(
-            id=learning_change_id,
-            team_id=fixture.team_id,
-            target_kind="knowledge_item",
-            target_id=item.id,
-            operation="revalidate",
-            proposed_state={
-                "proposal_hash": proposal_hash,
-                "evidence_basis_hash": pack.basis_hash,
-            },
-            previous_state=encode_state_snapshot(previous_state),
-            committed_state=None,
-            evidence_basis=pack.evidence_basis,
-            evidence_basis_hash=pack.basis_hash,
-            status="proposed",
-            idempotency_key=f"r7b-revalidation-test-{learning_change_id}",
-            proposed_by_task_id=source_task_id,
-            created_at=started_at,
-        )
-        session.add(change)
-        outcome = Outcome(
-            id=uuid4(),
-            team_id=fixture.team_id,
-            subject_kind="task",
-            subject_id=source_task_id,
-            outcome_type="task_execution",
-            expected=None,
-            observation_snapshot_ref=observation_ref,
-            observation_hash=observation_hash,
-            observed_at=completed_at,
-            recorded_by_task_id=source_task_id,
-        )
-        session.add(outcome)
-        session.flush()
-        session.add_all(
-            [
-                Event(
-                    id=uuid4(),
-                    task_id=source_task_id,
-                    type="task_started",
-                    payload={
-                        "from_status": "pending",
-                        "to_status": "running",
-                        "attempt_count": 1,
-                    },
-                    created_at=started_at,
-                ),
-                Event(
-                    id=uuid4(),
-                    task_id=source_task_id,
-                    type="learning_change_proposed",
-                    payload={
-                        "learning_change_id": str(learning_change_id),
-                        "operation": "revalidate",
-                        "proposal_hash": proposal_hash,
-                        "evidence_basis_hash": pack.basis_hash,
-                        "attempt_count": 1,
-                    },
-                    created_at=completed_at - timedelta(seconds=1),
-                ),
-                Event(
-                    id=uuid4(),
-                    task_id=source_task_id,
-                    type="task_completed",
-                    payload={
-                        "from_status": "running",
-                        "to_status": "done",
-                        "attempt_count": 1,
-                        "result_category": "success_learning_change_proposed",
-                        "failure_reason": None,
-                        "outcome_id": str(outcome.id),
-                        "observation_snapshot_ref": observation_ref,
-                        "observation_hash": observation_hash,
-                        "learning_change_id": str(learning_change_id),
-                    },
-                    created_at=completed_at,
-                ),
-            ]
-        )
-    return source_task_id, learning_change_id
 
+    proposal = ExperienceDistiller(
+        session_factory,
+        snapshot_store,
+        provider=None,
+        cost_service=TaskGenerationCostService(session_factory),
+    ).propose_revalidation(
+        source_task_id,
+        [case.evaluation_id for case in fixture.cases],
+        knowledge_item_id,
+        rationale="Reassess the existing item against its current evidence.",
+    )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=source_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=review_after + timedelta(seconds=2),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    return source_task_id, proposal.learning_change_id
 
 @pytest.mark.parametrize(
     ("invalid_draft_case", "expected_failure_reason"),
