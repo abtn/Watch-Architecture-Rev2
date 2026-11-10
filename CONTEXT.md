@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 are complete/closed as recorded in PLAN.md. B3.2–B3.6 are implemented and merged. B3.6 (PR #68) merged at `4735b93c74025ddee3bd099ef6d5e64cbac34719`; exact PR head `86f3bcf91ca024486f3a3b918a2c7490ec0ea9da` passed hosted and Operator-local verification (908 full-suite tests, 113 existing Alembic warnings). B3.7 integrated regression implementation is authorized and underway in PR #69; its first integrated supersede/approval-binding test is awaiting hosted CI, and no local result is claimed. B3.8–B3.9 remain separately gated. The active approval allowlist remains exactly `create`; PLAN.md is the sole current status authority.
+R6 is complete through R6-G. R7-0, R7-A, R7-B B0/B1, and B2 are complete/closed as recorded in PLAN.md. B3.2–B3.6 are implemented and merged. B3.6 (PR #68) merged at `4735b93c74025ddee3bd099ef6d5e64cbac34719`; exact PR head `86f3bcf91ca024486f3a3b918a2c7490ec0ea9da` passed hosted and Operator-local verification (908 full-suite tests, 113 existing Alembic warnings). B3.7 integrated regression implementation is authorized and underway in PR #69. Revalidation and supersede TaskRuntime/approval-binding integration tests are awaiting hosted CI on head `303bc28149ab580a9406fde007a156d5d0e6d67a`; no local result is claimed. B3.8–B3.9 remain separately gated. The active approval allowlist remains exactly `create`; PLAN.md is the sole current status authority.
 
 ## Open the smallest relevant set of documents
 
