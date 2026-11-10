@@ -3204,7 +3204,6 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         derive_lifecycle_findings,
         require_recorded_assessment,
     )
-    from core.operator_approval import canonical_operator_identity
     from core.knowledge_lifecycle_tasks import (
         KnowledgeLifecycleAssessmentTask,
         KnowledgeLifecycleAssessmentTaskRunner,
@@ -3216,6 +3215,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
         Outcome,
         Task,
     )
+    from core.operator_approval import canonical_operator_identity
 
     if assessment_result == "ineligible":
         original_derive = derive_lifecycle_findings
