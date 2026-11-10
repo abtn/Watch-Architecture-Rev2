@@ -605,6 +605,7 @@ def _request_fingerprint(
     operator_id: str,
     quality_assessment_id: UUID | None,
     quality_assessment_hash: str | None,
+    approval_binding: dict[str, object] | None = None,
 ) -> str:
     return build_request_fingerprint(
         team_id=team_id,
@@ -614,6 +615,7 @@ def _request_fingerprint(
         operator_id=operator_id,
         quality_assessment_id=quality_assessment_id,
         quality_assessment_hash=quality_assessment_hash,
+        approval_binding=approval_binding,
     )
 
 
@@ -628,9 +630,11 @@ def _request_event_payload(
     policy_version: int,
     quality_assessment_id: UUID | None,
     quality_assessment_hash: str | None,
+    approval_binding: dict[str, object] | None = None,
+    schema_version: int = 3,
 ) -> dict[str, object]:
-    return {
-        "schema_version": 2,
+    payload: dict[str, object] = {
+        "schema_version": schema_version,
         "operation": _APPROVAL_ACTION,
         "learning_change_id": str(learning_change_id),
         "decision": decision,
@@ -644,6 +648,11 @@ def _request_event_payload(
         ),
         "knowledge_quality_assessment_hash": quality_assessment_hash,
     }
+    if schema_version == 3:
+        if approval_binding is None:
+            raise OperatorTaskRequestCorrupt("approval_binding_missing")
+        payload["approval_binding"] = approval_binding
+    return payload
 
 
 def _verify_existing_request(
@@ -655,7 +664,7 @@ def _verify_existing_request(
     rejection_reason: str | None,
     operator_id: str,
     idempotency_key_hash: str,
-    request_fingerprint: str,
+    approval_binding: dict[str, object],
     quality_assessment_id: UUID | None,
     quality_assessment_hash: str | None,
 ) -> OperatorTaskRequestResult:
@@ -689,13 +698,6 @@ def _verify_existing_request(
     payload = events[0].payload
     if payload.get("idempotency_key_hash") != idempotency_key_hash:
         raise OperatorTaskRequestCorrupt("approval_request_key_hash_mismatch")
-    if (
-        payload.get("schema_version") != 1
-        and payload.get("request_fingerprint") != request_fingerprint
-    ):
-        raise OperatorTaskRequestConflict(
-            "idempotency_key_reused_with_different_request"
-        )
 
     policy_version = payload.get("policy_version")
     if (
@@ -706,13 +708,13 @@ def _verify_existing_request(
         raise OperatorTaskRequestCorrupt("approval_request_policy_pin_mismatch")
 
     try:
-        parse_request_event_payload(
+        parsed = parse_request_event_payload(
             payload, team_id=team_id, policy_version=task.policy_version
         )
     except OperatorApprovalValidationError as error:
         raise OperatorTaskRequestCorrupt(error.reason) from error
 
-    if payload.get("schema_version") == 1:
+    if parsed.schema_version == 1:
         if request.decision != "reject" or (
             quality_assessment_id is not None
             or quality_assessment_hash is not None
@@ -750,19 +752,48 @@ def _verify_existing_request(
                 "legacy_approval_request_event_payload_mismatch"
             )
     else:
+        stored_binding = (
+            approval_binding if parsed.schema_version == 3 else None
+        )
+        expected_fingerprint = _request_fingerprint(
+            team_id=team_id,
+            learning_change_id=request.learning_change_id,
+            decision=request.decision,
+            rejection_reason=rejection_reason,
+            operator_id=operator_id,
+            quality_assessment_id=quality_assessment_id,
+            quality_assessment_hash=quality_assessment_hash,
+            approval_binding=stored_binding,
+        )
+        if parsed.request_fingerprint != expected_fingerprint:
+            raise OperatorTaskRequestConflict(
+                "idempotency_key_reused_with_different_request"
+            )
         expected_payload = _request_event_payload(
             learning_change_id=request.learning_change_id,
             decision=request.decision,
             rejection_reason=rejection_reason,
             operator_id=operator_id,
             idempotency_key_hash=idempotency_key_hash,
-            request_fingerprint=request_fingerprint,
+            request_fingerprint=expected_fingerprint,
             policy_version=policy_version,
             quality_assessment_id=quality_assessment_id,
             quality_assessment_hash=quality_assessment_hash,
+            approval_binding=stored_binding,
+            schema_version=parsed.schema_version,
         )
         if payload != expected_payload:
-            raise OperatorTaskRequestCorrupt("approval_request_event_payload_mismatch")
+            raise OperatorTaskRequestCorrupt(
+                "approval_request_event_payload_mismatch"
+            )
+
+    return OperatorTaskRequestResult(
+        task_id=task.id,
+        team_id=team_id,
+        status=task.status,
+        replayed=True,
+    )
+
 
     return OperatorTaskRequestResult(
         task_id=task.id,
