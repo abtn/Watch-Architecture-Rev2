@@ -1439,7 +1439,10 @@ def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recove
     invalid_draft_case: str,
     expected_failure_reason: str,
 ):
-    from core.knowledge_revalidation import RECORDED_EVENT_TYPE
+    from core.knowledge_revalidation import (
+        RECORDED_EVENT_TYPE,
+        assessment_payload_hash,
+    )
 
     fixture = distillation_fixture(2, include_contrary=False)
     create_proposal = _distiller(
@@ -1683,6 +1686,7 @@ def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recove
         assert assessment.assessment_result == "supported"
         assert assessment.evaluator_identity == "r7b-invented-reference-test"
         assert assessment.evaluator_revision == "1"
+        assert assessment.payload_hash == assessment_payload_hash(assessment)
         assert session.scalar(
             select(func.count(KnowledgeRevalidationAssessment.id)).where(
                 KnowledgeRevalidationAssessment.learning_change_id
