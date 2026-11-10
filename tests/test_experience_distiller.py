@@ -1407,13 +1407,42 @@ def _create_revalidation_proposal(
     return source_task_id, learning_change_id
 
 
-def test_revalidation_rejects_invented_provider_reference_without_record_and_recovers(
+@pytest.mark.parametrize(
+    ("invalid_draft_case", "expected_failure_reason"),
+    [
+        (
+            "invented_reference",
+            "knowledge_revalidation_finding_reference_not_in_basis",
+        ),
+        (
+            "freshness_mismatch",
+            "knowledge_revalidation_freshness_disposition_mismatch",
+        ),
+        ("extra_fields", "knowledge_revalidation_draft_invalid"),
+        ("malformed_shape", "knowledge_revalidation_draft_invalid"),
+        ("missing_required_field", "knowledge_revalidation_draft_invalid"),
+        (
+            "invalid_evaluator_identity",
+            "knowledge_revalidation_evaluator_identity_invalid",
+        ),
+        (
+            "invalid_evaluator_revision",
+            "knowledge_revalidation_evaluator_identity_invalid",
+        ),
+    ],
+)
+def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recovers(
     session_factory,
     snapshot_store,
     distillation_fixture,
     request,
+    invalid_draft_case: str,
+    expected_failure_reason: str,
 ):
-    from core.knowledge_revalidation import RECORDED_EVENT_TYPE
+    from core.knowledge_revalidation import (
+        RECORDED_EVENT_TYPE,
+        assessment_payload_hash,
+    )
 
     fixture = distillation_fixture(2, include_contrary=False)
     create_proposal = _distiller(
@@ -1478,20 +1507,57 @@ def test_revalidation_rejects_invented_provider_reference_without_record_and_rec
             target_state: dict[str, object],
             evidence_document: dict[str, object],
             allowed_evidence_references: frozenset[str],
-        ) -> KnowledgeRevalidationAssessmentDraft:
+        ) -> Any:
             self.calls += 1
             references = tuple(sorted(allowed_evidence_references))
-            if self.calls == 1:
+            freshness_disposition = "current"
+            valid_payload: dict[str, Any] = {
+                "freshness_disposition": freshness_disposition,
+                "findings": [
+                    {
+                        "code": "supports_revalidation",
+                        "summary": "The rebuilt evidence basis remains relevant.",
+                        "evidence_refs": list(references),
+                    }
+                ],
+            }
+            if self.calls == 1 and invalid_draft_case == "invented_reference":
                 references = (*references, "urn:watch:invented-evidence-reference")
-            return KnowledgeRevalidationAssessmentDraft(
-                freshness_disposition="current",
-                findings=(
-                    KnowledgeRevalidationFinding(
-                        code="supports_revalidation",
-                        summary="The rebuilt evidence basis remains relevant.",
-                        evidence_refs=references,
-                    ),
-                ),
+                valid_payload["findings"][0]["evidence_refs"] = list(references)
+            elif self.calls == 1 and invalid_draft_case == "freshness_mismatch":
+                freshness_disposition = "stale"
+                valid_payload["freshness_disposition"] = freshness_disposition
+            elif self.calls == 1 and invalid_draft_case == "extra_fields":
+                return {
+                    **valid_payload,
+                    "evaluator_identity": "untrusted-model-identity",
+                    "evaluator_revision": "untrusted-model-revision",
+                    "assessment_payload_hash": "sha256:" + ("0" * 64),
+                    "target_state_hash": "sha256:" + ("0" * 64),
+                }
+            elif self.calls == 1 and invalid_draft_case == "malformed_shape":
+                return {
+                    "freshness_disposition": "current",
+                    "findings": {"code": "supports_revalidation"},
+                }
+            elif (
+                self.calls == 1
+                and invalid_draft_case == "missing_required_field"
+            ):
+                return {"freshness_disposition": "current"}
+            elif (
+                self.calls == 1
+                and invalid_draft_case == "invalid_evaluator_identity"
+            ):
+                self.evaluator_identity = ""
+            elif (
+                self.calls == 1
+                and invalid_draft_case == "invalid_evaluator_revision"
+            ):
+                self.evaluator_revision = " "
+
+            return KnowledgeRevalidationAssessmentDraft.model_validate(
+                valid_payload
             )
 
     provider = InventedThenValidProvider()
@@ -1571,9 +1637,7 @@ def test_revalidation_rejects_invented_provider_reference_without_record_and_rec
             )
         )
         assert failed_event is not None
-        assert failed_event.payload["failure_reason"] == (
-            "knowledge_revalidation_finding_reference_not_in_basis"
-        )
+        assert failed_event.payload["failure_reason"] == expected_failure_reason
         assert session.scalar(
             select(func.count(Event.id)).where(
                 Event.task_id == task_id,
@@ -1591,6 +1655,11 @@ def test_revalidation_rejects_invented_provider_reference_without_record_and_rec
                 Outcome.recorded_by_task_id == task_id
             )
         ) == 0
+
+    if invalid_draft_case == "invalid_evaluator_identity":
+        provider.evaluator_identity = "r7b-invented-reference-test"
+    elif invalid_draft_case == "invalid_evaluator_revision":
+        provider.evaluator_revision = "1"
 
     recovered = runner.run(task_id)
     assert recovered.status == "done"
@@ -1615,6 +1684,9 @@ def test_revalidation_rejects_invented_provider_reference_without_record_and_rec
         assert item.current_learning_change_id == committed.learning_change_id
         assert assessment.task_attempt == 2
         assert assessment.assessment_result == "supported"
+        assert assessment.evaluator_identity == "r7b-invented-reference-test"
+        assert assessment.evaluator_revision == "1"
+        assert assessment.payload_hash == assessment_payload_hash(assessment)
         assert session.scalar(
             select(func.count(KnowledgeRevalidationAssessment.id)).where(
                 KnowledgeRevalidationAssessment.learning_change_id
