@@ -4960,9 +4960,17 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
             )
         with session_factory() as session:
             interrupted_task = session.get(Task, task_id)
+            unchanged_change = session.get(LearningChange, learning_change_id)
+            unchanged_item = session.get(KnowledgeItem, committed.knowledge_item_id)
             assert interrupted_task is not None
             assert interrupted_task.status == "running"
             assert interrupted_task.attempt_count == 2
+            assert unchanged_change is not None
+            assert unchanged_change.status == "proposed"
+            assert unchanged_item is not None
+            assert unchanged_item.status == "active"
+            assert unchanged_item.version == 1
+            assert unchanged_item.current_learning_change_id == committed.learning_change_id
             assert session.scalar(
                 select(func.count(KnowledgeLifecycleAssessment.id)).where(
                     KnowledgeLifecycleAssessment.task_id == task_id
