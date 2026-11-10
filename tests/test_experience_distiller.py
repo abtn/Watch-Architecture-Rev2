@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from threading import Barrier
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, Literal
 from uuid import UUID, uuid4
 
 import pytest
@@ -1214,9 +1214,34 @@ class _FakeKnowledgeRevalidationProvider:
     evaluator_identity = "r7b-revalidation-test"
     evaluator_revision = "1"
 
-    def __init__(self, *, fail_first: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        fail_first: bool = False,
+        freshness_disposition: Literal["current", "stale"] = "current",
+    ) -> None:
         self.calls = 0
         self.fail_first = fail_first
+        self.freshness_disposition = freshness_disposition
+
+    def draft_for_references(
+        self, allowed_evidence_references: frozenset[str]
+    ) -> KnowledgeRevalidationAssessmentDraft:
+        is_current = self.freshness_disposition == "current"
+        return KnowledgeRevalidationAssessmentDraft(
+            freshness_disposition=self.freshness_disposition,
+            findings=(
+                KnowledgeRevalidationFinding(
+                    code=("supports_revalidation" if is_current else "temporally_stale"),
+                    summary=(
+                        "The rebuilt evidence basis remains relevant."
+                        if is_current
+                        else "The evidence basis is temporally stale."
+                    ),
+                    evidence_refs=tuple(sorted(allowed_evidence_references)),
+                ),
+            ),
+        )
 
     def assess(
         self,
@@ -1230,16 +1255,7 @@ class _FakeKnowledgeRevalidationProvider:
         self.calls += 1
         if self.fail_first and self.calls == 1:
             raise RuntimeError("simulated_evaluator_unavailable")
-        return KnowledgeRevalidationAssessmentDraft(
-            freshness_disposition="current",
-            findings=(
-                KnowledgeRevalidationFinding(
-                    code="supports_revalidation",
-                    summary="The rebuilt evidence basis remains relevant.",
-                    evidence_refs=tuple(sorted(allowed_evidence_references)),
-                ),
-            ),
-        )
+        return self.draft_for_references(allowed_evidence_references)
 
 
 def _create_revalidation_proposal(
@@ -1608,6 +1624,7 @@ def test_revalidation_rejects_invented_provider_reference_without_record_and_rec
         ) == 1
 
 
+@pytest.mark.parametrize("freshness_disposition", ["current", "stale"])
 @pytest.mark.parametrize(
     ("crash_after_record", "fail_first_attempt"),
     [(False, False), (True, False), (False, True)],
@@ -1616,6 +1633,7 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
     session_factory,
     snapshot_store,
     distillation_fixture,
+    freshness_disposition: Literal["current", "stale"],
     crash_after_record: bool,
     fail_first_attempt: bool,
 ):
@@ -1666,7 +1684,8 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
     )
     task_id = revalidation_service.create_task(revalidation_change_id)
     provider = _FakeKnowledgeRevalidationProvider(
-        fail_first=fail_first_attempt
+        fail_first=fail_first_attempt,
+        freshness_disposition=freshness_disposition,
     )
 
     class CrashAfterAssessmentRecordRuntime(TaskRuntime):
@@ -1723,16 +1742,7 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
             )
         replayed_record = revalidation_service.record(
             task_id,
-            KnowledgeRevalidationAssessmentDraft(
-                freshness_disposition="current",
-                findings=(
-                    KnowledgeRevalidationFinding(
-                        code="supports_revalidation",
-                        summary="The rebuilt evidence basis remains relevant.",
-                        evidence_refs=tuple(sorted(context.pack.reference_ids)),
-                    ),
-                ),
-            ),
+            provider.draft_for_references(context.pack.reference_ids),
             evaluator_identity=provider.evaluator_identity,
             evaluator_revision=provider.evaluator_revision,
         )
@@ -1776,7 +1786,10 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
         assert item.current_learning_change_id == committed.learning_change_id
         assert item.version == 1
         assert task.status == "done"
-        assert assessment.assessment_result == "supported"
+        assert assessment.assessment_result == (
+            "supported" if freshness_disposition == "current" else "indeterminate"
+        )
+        assert assessment.freshness_disposition == freshness_disposition
         assert assessment.task_attempt == (2 if fail_first_attempt else 1)
         assert session.scalar(
             select(func.count(KnowledgeRevalidationAssessment.id)).where(
@@ -1784,31 +1797,49 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
                 == revalidation_change_id
             )
         ) == 1
-        from core.knowledge_approval import build_approval_binding
+        from core.knowledge_approval import (
+            KnowledgeApprovalBindingError,
+            build_approval_binding,
+        )
         from core.operator_approval import canonical_operator_identity
 
         reviewer = canonical_operator_identity(
             "https://host.example/identity", "b37-revalidation-reviewer"
         )
-        binding = build_approval_binding(
-            session,
-            change,
-            operator_id=reviewer,
-            approval_policy_version=1,
-            require_assessment=True,
-            snapshot_store=snapshot_store,
-            session_factory=session_factory,
-        )
-        assert binding["assessment_type"] == "knowledge_revalidation"
-        assert binding["assessment_id"] == str(assessment.id)
-        assert binding["assessment_payload_hash"] == assessment.payload_hash
-        assert binding["target_content_version"] == item.version
-        assert binding["target_content_hash"] == assessment.target_content_hash
-        assert binding["current_learning_change_id"] == str(
-            item.current_learning_change_id
-        )
-        assert binding["operator_id"] == reviewer
-        assert binding["assessment_task_policy_version"] == task.policy_version
+        if freshness_disposition == "current":
+            binding = build_approval_binding(
+                session,
+                change,
+                operator_id=reviewer,
+                approval_policy_version=1,
+                require_assessment=True,
+                snapshot_store=snapshot_store,
+                session_factory=session_factory,
+            )
+            assert binding["assessment_type"] == "knowledge_revalidation"
+            assert binding["assessment_id"] == str(assessment.id)
+            assert binding["assessment_payload_hash"] == assessment.payload_hash
+            assert binding["target_content_version"] == item.version
+            assert binding["target_content_hash"] == assessment.target_content_hash
+            assert binding["current_learning_change_id"] == str(
+                item.current_learning_change_id
+            )
+            assert binding["operator_id"] == reviewer
+            assert binding["assessment_task_policy_version"] == task.policy_version
+        else:
+            with pytest.raises(
+                KnowledgeApprovalBindingError,
+                match="knowledge_approval_revalidation_not_supported",
+            ):
+                build_approval_binding(
+                    session,
+                    change,
+                    operator_id=reviewer,
+                    approval_policy_version=1,
+                    require_assessment=True,
+                    snapshot_store=snapshot_store,
+                    session_factory=session_factory,
+                )
 
     # The assessment table is intentionally immutable. Disable only user
     # triggers inside this disposable test transaction to remove its fixture.
