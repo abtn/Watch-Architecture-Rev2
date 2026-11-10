@@ -1921,6 +1921,329 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
 
 
 
+
+@pytest.mark.parametrize(
+    ("drift_case", "expected_reason"),
+    [
+        ("target_pointer", "knowledge_revalidation_target_stale"),
+        ("target_content_version", "knowledge_revalidation_target_stale"),
+        ("target_content_hash", "knowledge_revalidation_target_stale"),
+        ("target_full_state_hash", "knowledge_revalidation_target_stale"),
+        (
+            "target_content_hash_scheme",
+            "knowledge_revalidation_task_request_mismatch",
+        ),
+        (
+            "proposal_hash",
+            "knowledge_revalidation_proposal_event_mismatch",
+        ),
+        (
+            "proposed_state_hash",
+            "knowledge_revalidation_task_request_mismatch",
+        ),
+    ],
+)
+def test_revalidation_target_and_proposal_drift_fail_before_admission_and_approval(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    request,
+    drift_case: str,
+    expected_reason: str,
+):
+    from core.knowledge_approval import (
+        KnowledgeApprovalBindingError,
+        build_approval_binding,
+    )
+    from core.knowledge_revalidation import RECORDED_EVENT_TYPE
+    from core.operator_approval import canonical_operator_identity
+    from core.task_runtime import TaskNotEligible
+
+    fixture = distillation_fixture(2, include_contrary=False)
+    create_proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    runtime.finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=create_proposal.learning_change_id,
+        )
+    )
+    approval_task_id, approval_attempt, principal = _create_admitted_approval_task(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        create_proposal.learning_change_id,
+    )
+    committed = LearningCommitService(session_factory, snapshot_store).decide(
+        approval_task_id, approval_attempt, principal
+    )
+    assert committed.knowledge_item_id is not None
+    runtime.finalize(
+        TerminalObservation(
+            task_id=approval_task_id,
+            attempt=approval_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=committed.committed_at,
+            learning_change_id=committed.learning_change_id,
+        )
+    )
+
+    source_task_id, learning_change_id = _create_revalidation_proposal(
+        session_factory,
+        snapshot_store,
+        fixture,
+        committed.knowledge_item_id,
+    )
+    service = KnowledgeRevalidationAssessmentService(
+        session_factory, snapshot_store
+    )
+    task_id = service.create_task(learning_change_id)
+    provider = _FakeKnowledgeRevalidationProvider()
+    runner = KnowledgeRevalidationAssessmentTaskRunner(
+        session_factory, snapshot_store, provider
+    )
+
+    original_item_state: dict[str, Any] = {}
+    original_proposed_state: dict[str, Any] = {}
+    original_request_payload: dict[str, Any] = {}
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        change = session.get(LearningChange, learning_change_id)
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "knowledge_revalidation_assessment_task_requested",
+            )
+        )
+        assert item is not None and change is not None and event is not None
+        original_item_state = {
+            "current_learning_change_id": item.current_learning_change_id,
+            "version": item.version,
+            "statement": item.statement,
+            "review_after": item.review_after,
+        }
+        original_proposed_state = dict(change.proposed_state)
+        original_request_payload = dict(event.payload)
+
+    def apply_drift(session) -> None:
+        item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        change = session.get(LearningChange, learning_change_id)
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "knowledge_revalidation_assessment_task_requested",
+            )
+        )
+        assert item is not None and change is not None and event is not None
+        if drift_case == "target_pointer":
+            item.current_learning_change_id = learning_change_id
+        elif drift_case == "target_content_version":
+            item.version = original_item_state["version"] + 1
+        elif drift_case == "target_content_hash":
+            item.statement = f"{original_item_state['statement']} drift"
+        elif drift_case == "target_full_state_hash":
+            item.review_after = datetime(2027, 2, 1, tzinfo=timezone.utc)
+        elif drift_case == "target_content_hash_scheme":
+            event.payload = {
+                **original_request_payload,
+                "target_content_hash_scheme": "watch.r7b.knowledge-content.v999",
+            }
+        elif drift_case == "proposal_hash":
+            change.proposed_state = {
+                **original_proposed_state,
+                "proposal_hash": "sha256:" + "d" * 64,
+            }
+        elif drift_case == "proposed_state_hash":
+            change.proposed_state = {
+                **original_proposed_state,
+                "operator_supplied_extension": "changed after task creation",
+            }
+        else:
+            raise AssertionError(f"unknown drift case: {drift_case}")
+
+    def restore_drift(session) -> None:
+        item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        change = session.get(LearningChange, learning_change_id)
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "knowledge_revalidation_assessment_task_requested",
+            )
+        )
+        assert item is not None and change is not None and event is not None
+        item.current_learning_change_id = original_item_state[
+            "current_learning_change_id"
+        ]
+        item.version = original_item_state["version"]
+        item.statement = original_item_state["statement"]
+        item.review_after = original_item_state["review_after"]
+        change.proposed_state = dict(original_proposed_state)
+        event.payload = dict(original_request_payload)
+
+    def cleanup_revalidation_drift() -> None:
+        with session_factory.begin() as session:
+            restore_drift(session)
+            session.execute(
+                text(
+                    "ALTER TABLE knowledge_revalidation_assessments "
+                    "DISABLE TRIGGER USER"
+                )
+            )
+            session.execute(
+                delete(KnowledgeRevalidationAssessment).where(
+                    KnowledgeRevalidationAssessment.task_id == task_id
+                )
+            )
+            session.execute(
+                text(
+                    "ALTER TABLE knowledge_revalidation_assessments "
+                    "ENABLE TRIGGER USER"
+                )
+            )
+            session.execute(
+                delete(Event).where(
+                    Event.task_id.in_([source_task_id, task_id])
+                )
+            )
+            session.execute(
+                delete(Outcome).where(
+                    Outcome.recorded_by_task_id.in_([source_task_id, task_id])
+                )
+            )
+            session.execute(
+                delete(LearningChange).where(
+                    LearningChange.id == learning_change_id
+                )
+            )
+            session.execute(
+                delete(Task).where(Task.id.in_([source_task_id, task_id]))
+            )
+
+    request.addfinalizer(cleanup_revalidation_drift)
+
+    # Drift after Task creation must be rejected before TaskRuntime admission.
+    with session_factory.begin() as session:
+        apply_drift(session)
+    with pytest.raises(TaskNotEligible) as drift_error:
+        runner.run(task_id)
+    assert str(drift_error.value) == expected_reason
+    assert provider.calls == 0
+
+    with session_factory() as session:
+        task = session.get(Task, task_id)
+        change = session.get(LearningChange, learning_change_id)
+        assert task is not None and change is not None
+        assert task.status == "pending"
+        assert task.attempt_count == 0
+        assert change.status == "proposed"
+        assert session.scalar(
+            select(func.count(KnowledgeRevalidationAssessment.id)).where(
+                KnowledgeRevalidationAssessment.learning_change_id
+                == learning_change_id
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == task_id,
+                Event.type == "task_started",
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == task_id,
+                Event.type == RECORDED_EVENT_TYPE,
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == task_id
+            )
+        ) == 0
+
+    with session_factory.begin() as session:
+        restore_drift(session)
+
+    # The exact original request remains usable after the drift is repaired.
+    result = runner.run(task_id)
+    assert result.status == "done"
+    assert result.assessment_id is not None
+    assert result.outcome_id is not None
+    assert provider.calls == 1
+
+    with session_factory() as session:
+        assessment = session.get(
+            KnowledgeRevalidationAssessment, result.assessment_id
+        )
+        task = session.get(Task, task_id)
+        assert assessment is not None and task is not None
+        assert task.status == "done"
+        assert task.attempt_count == 1
+        assert assessment.assessment_result == "supported"
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == task_id,
+                Event.type == RECORDED_EVENT_TYPE,
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) == 1
+
+    # The same target/proposal drift is independently rejected at approval time.
+    with session_factory.begin() as session:
+        apply_drift(session)
+    with session_factory.begin() as session:
+        change = session.get(LearningChange, learning_change_id)
+        assert change is not None
+        operator_id = canonical_operator_identity(
+            "https://host.example/identity", "rv06-reviewer"
+        )
+        with pytest.raises(
+            KnowledgeApprovalBindingError,
+            match=expected_reason,
+        ):
+            build_approval_binding(
+                session,
+                change,
+                operator_id=operator_id,
+                approval_policy_version=1,
+                require_assessment=True,
+                snapshot_store=snapshot_store,
+                session_factory=session_factory,
+            )
+
+    with session_factory.begin() as session:
+        restore_drift(session)
+    with session_factory.begin() as session:
+        change = session.get(LearningChange, learning_change_id)
+        assert change is not None
+        binding = build_approval_binding(
+            session,
+            change,
+            operator_id=canonical_operator_identity(
+                "https://host.example/identity", "rv06-reviewer"
+            ),
+            approval_policy_version=1,
+            require_assessment=True,
+            snapshot_store=snapshot_store,
+            session_factory=session_factory,
+        )
+        assert binding["assessment_type"] == "knowledge_revalidation"
+        assert binding["assessment_payload_hash"]
+
+
 @pytest.mark.parametrize(
     "freshness_disposition",
     ["current", "stale", "insufficient", "conflicting", "unassessable"],
