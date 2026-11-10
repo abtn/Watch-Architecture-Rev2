@@ -2357,6 +2357,7 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
     )
     if fail_record_first:
         from core.knowledge_revalidation import (
+            RECORDED_EVENT_TYPE,
             KnowledgeRevalidationAssessmentError,
         )
 
