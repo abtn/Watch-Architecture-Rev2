@@ -1,8 +1,8 @@
 # R7-B B3 — Formal Closeout and Exit Record
 
-**Disposition:** B3 COMPLETE — FORMALLY CLOSED (2026-11-10), with one explicitly documented diff-check qualification.  
-**Authority:** Operator instruction dated 2026-11-10 to proceed to B3.9 and establish a formal B3 exit status.  
-**Current status authority:** `PLAN.md`.  
+**Disposition:** B3 COMPLETE — FORMALLY CLOSED (2026-11-10), with one explicitly documented diff-check qualification.
+**Authority:** Operator instruction dated 2026-11-10 to proceed to B3.9 and establish a formal B3 exit status.
+**Current status authority:** `PLAN.md`.
 **Evidence detail:** `docs/testing.md` and the B3.7 integrated regression matrix.
 
 ## 1. Scope and gate sequence
