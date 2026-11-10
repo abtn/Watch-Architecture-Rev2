@@ -115,6 +115,21 @@ def test_revalidation_binding_pins_current_target_evidence_and_assessment(
     assert binding["assessment_task_policy_version"] == 7
     assert binding["operator_id"] == operator_id
 
+    assessment.assessment_result = "indeterminate"
+    with pytest.raises(
+        KnowledgeApprovalBindingError,
+        match="knowledge_approval_revalidation_not_supported",
+    ):
+        build_approval_binding(
+            _session(task),
+            change,
+            operator_id=operator_id,
+            approval_policy_version=9,
+            require_assessment=True,
+            snapshot_store=object(),
+            session_factory=object(),
+        )
+
 
 def test_lifecycle_supersede_binding_includes_full_successor_snapshot_and_provenance(
     monkeypatch: pytest.MonkeyPatch,
@@ -204,6 +219,21 @@ def test_lifecycle_supersede_binding_includes_full_successor_snapshot_and_proven
         "subject": provenance.subject,
     }
     assert binding["assessment_payload_hash"] == assessment.payload_hash
+
+    assessment.assessment_result = "ineligible"
+    with pytest.raises(
+        KnowledgeApprovalBindingError,
+        match="knowledge_approval_lifecycle_not_eligible",
+    ):
+        build_approval_binding(
+            _session(task, provenance),
+            change,
+            operator_id=operator_id,
+            approval_policy_version=11,
+            require_assessment=True,
+            snapshot_store=object(),
+            session_factory=object(),
+        )
 
 
 def test_assessment_type_mismatch_and_duplicate_records_fail_closed(
