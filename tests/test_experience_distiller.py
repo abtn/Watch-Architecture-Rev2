@@ -5527,6 +5527,16 @@ def test_b37_supersede_assessment_round_trips_successor_and_rechecks_approval_bi
         }
         original_review_after = candidate.review_after
         original_recorded_event_payload = dict(recorded_event.payload)
+        original_successor_state = {
+            "current_learning_change_id": candidate.current_learning_change_id,
+            "version": candidate.version,
+            "statement": candidate.statement,
+            "status": candidate.status,
+            "review_after": candidate.review_after,
+            "last_validated_at": candidate.last_validated_at,
+            "supersedes_item_id": candidate.supersedes_item_id,
+        }
+        original_supersede_proposed_state = dict(change.proposed_state)
 
     with session_factory.begin() as session:
         tampered_event = session.get(Event, assessment.recorded_event_id)
@@ -5558,10 +5568,91 @@ def test_b37_supersede_assessment_round_trips_successor_and_rechecks_approval_bi
         assert tampered_event is not None
         tampered_event.payload = original_recorded_event_payload
 
-    with session_factory.begin() as session:
-        candidate = session.get(KnowledgeItem, candidate_id)
-        assert candidate is not None
-        candidate.review_after = candidate.review_after + timedelta(days=1)
+    successor_drift_cases = [
+        "successor_pointer",
+        "successor_content_version",
+        "successor_content_hash",
+        "successor_status",
+        "successor_review_after",
+        "successor_full_state_hash",
+        "successor_predecessor_relationship",
+        "successor_hash_scheme",
+        "proposed_state_hash",
+    ]
+    for drift_case in successor_drift_cases:
+        with session_factory.begin() as session:
+            candidate = session.get(KnowledgeItem, candidate_id)
+            change = session.get(LearningChange, supersede_change_id)
+            assert candidate is not None and change is not None
+            if drift_case == "successor_pointer":
+                candidate.current_learning_change_id = supersede_change_id
+            elif drift_case == "successor_content_version":
+                candidate.version = original_successor_state["version"] + 1
+            elif drift_case == "successor_content_hash":
+                candidate.statement = (
+                    f"{original_successor_state['statement']} drift"
+                )
+            elif drift_case == "successor_status":
+                candidate.status = "needs_review"
+            elif drift_case == "successor_review_after":
+                candidate.review_after = (
+                    original_successor_state["review_after"]
+                    + timedelta(days=1)
+                )
+            elif drift_case == "successor_full_state_hash":
+                candidate.last_validated_at = datetime(
+                    2027, 1, 1, tzinfo=timezone.utc
+                )
+            elif drift_case == "successor_predecessor_relationship":
+                candidate.supersedes_item_id = None
+            elif drift_case == "successor_hash_scheme":
+                change.proposed_state = {
+                    **original_supersede_proposed_state,
+                    "successor_content_hash_scheme": (
+                        "watch.r7b.knowledge-content.v999"
+                    ),
+                }
+            elif drift_case == "proposed_state_hash":
+                change.proposed_state = {
+                    **original_supersede_proposed_state,
+                    "operator_supplied_extension": "changed after assessment",
+                }
+            else:
+                raise AssertionError(f"unknown successor drift case: {drift_case}")
+
+        with session_factory() as session:
+            change = session.get(LearningChange, supersede_change_id)
+            assert change is not None
+            with pytest.raises(KnowledgeApprovalBindingError):
+                build_approval_binding(
+                    session,
+                    change,
+                    operator_id=principal_id,
+                    approval_policy_version=1,
+                    require_assessment=True,
+                    snapshot_store=snapshot_store,
+                    session_factory=session_factory,
+                )
+
+        with session_factory.begin() as session:
+            candidate = session.get(KnowledgeItem, candidate_id)
+            change = session.get(LearningChange, supersede_change_id)
+            assert candidate is not None and change is not None
+            candidate.current_learning_change_id = original_successor_state[
+                "current_learning_change_id"
+            ]
+            candidate.version = original_successor_state["version"]
+            candidate.statement = original_successor_state["statement"]
+            candidate.status = original_successor_state["status"]
+            candidate.review_after = original_successor_state["review_after"]
+            candidate.last_validated_at = original_successor_state[
+                "last_validated_at"
+            ]
+            candidate.supersedes_item_id = original_successor_state[
+                "supersedes_item_id"
+            ]
+            change.proposed_state = dict(original_supersede_proposed_state)
+
 
     with session_factory() as session:
         change = session.get(LearningChange, supersede_change_id)
