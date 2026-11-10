@@ -229,7 +229,7 @@ def build_approval_binding(
     )
 
     if learning_change.operation == "revalidate":
-        if quality_count or lifecycle_count or revalidation_count != 1:
+        if quality_count or lifecycle_count or revalidation_count > 1:
             raise KnowledgeApprovalBindingError(
                 "knowledge_approval_assessment_type_mismatch"
             )
@@ -278,7 +278,7 @@ def build_approval_binding(
         return binding
 
     if learning_change.operation in {"retire", "supersede"}:
-        if quality_count or revalidation_count or lifecycle_count != 1:
+        if quality_count or revalidation_count or lifecycle_count > 1:
             raise KnowledgeApprovalBindingError(
                 "knowledge_approval_assessment_type_mismatch"
             )
