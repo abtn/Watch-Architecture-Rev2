@@ -710,7 +710,7 @@ Tests must assert both the intended assessment record and the absence of unautho
 
 The Operator has requested that local synchronization and local test execution be skipped because the local machine is unavailable. This is a verification-route constraint, not a waiver of B4 acceptance criteria.
 
-- Use GitHub-hosted Actions on the exact pull-request head for executable verification. The workflow must visibly cover fresh disposable PostgreSQL migration/single-head checks, Ruff, Mypy, the full pytest suite, and cleanup. Add or repair hosted coverage if any required check is missing; do not infer it from a generic green badge.
+- Use GitHub-hosted Actions on the exact pull-request head for executable verification. The workflow must visibly cover fresh disposable PostgreSQL migration/single-head checks, Ruff, Mypy, `git diff --check origin/${GITHUB_BASE_REF}...HEAD`, the full pytest suite, and Actions-managed disposal of the PostgreSQL service when the job ends. Add or repair hosted coverage if any required check is missing; do not infer it from a generic green badge.
 - Review the complete source and test diff against the exact PR head. Record the tested commit SHA and workflow run. A green run for another SHA is not exact-head evidence.
 - Do not claim Operator-local tests, local migration checks, local `git diff --check`, or local worktree verification. If hosted automation cannot cover a required check, record it as unresolved and keep the B4 gate open.
 - Keep the B4.1 Operator review point below. Hosted CI does not replace review of the frozen proposal payloads, target snapshot, assessment routing, idempotency, Event/Outcome fields, or replay behavior.
