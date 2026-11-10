@@ -7,7 +7,6 @@ authorize a LearningChange operation or perform a canonical write.
 from __future__ import annotations
 
 import hashlib
-import json
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
