@@ -1449,12 +1449,13 @@ def _create_revalidation_proposal(
     with session_factory() as session:
         request_event = session.scalar(
             select(Event).where(
-                Event.task_id == source_task_id,
                 Event.type == REQUEST_EVENT_TYPE,
+                Event.payload["learning_change_id"].as_string()
+                == str(proposal.learning_change_id),
             )
         )
         assert request_event is not None
-        fixture.extra_task_ids.append(UUID(request_event.payload["task_id"]))
+        fixture.extra_task_ids.append(request_event.task_id)
     return source_task_id, proposal.learning_change_id
 
 @pytest.mark.parametrize(
