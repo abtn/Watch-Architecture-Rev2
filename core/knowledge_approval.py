@@ -176,11 +176,11 @@ def build_approval_binding(
         if require_assessment:
             from core.knowledge_quality import (
                 KnowledgeQualityAssessmentError,
-                require_recorded_assessment,
+                require_recorded_assessment as require_quality_assessment,
             )
 
             try:
-                assessment = require_recorded_assessment(
+                assessment = require_quality_assessment(
                     session, learning_change, require_task_done=True
                 )
             except KnowledgeQualityAssessmentError as error:
@@ -233,11 +233,11 @@ def build_approval_binding(
             )
         from core.knowledge_revalidation import (
             KnowledgeRevalidationAssessmentError,
-            require_recorded_assessment,
+            require_recorded_assessment as require_revalidation_assessment,
         )
 
         try:
-            assessment = require_recorded_assessment(
+            assessment = require_revalidation_assessment(
                 session,
                 learning_change,
                 snapshot_store,
@@ -282,11 +282,11 @@ def build_approval_binding(
             )
         from core.knowledge_lifecycle import (
             KnowledgeLifecycleAssessmentError,
-            require_recorded_assessment,
+            require_recorded_assessment as require_lifecycle_assessment,
         )
 
         try:
-            assessment = require_recorded_assessment(
+            assessment = require_lifecycle_assessment(
                 session,
                 learning_change,
                 snapshot_store,
