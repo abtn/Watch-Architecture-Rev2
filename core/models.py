@@ -993,6 +993,16 @@ class KnowledgeQualityAssessment(Base):
             ["tasks.id", "tasks.team_id"],
             name="fk_knowledge_quality_assessments_task_team",
         ),
+        ForeignKeyConstraint(
+            ["target_knowledge_item_id", "team_id"],
+            ["knowledge_items.id", "knowledge_items.team_id"],
+            name="fk_knowledge_quality_assessments_target_item_team",
+        ),
+        ForeignKeyConstraint(
+            ["target_current_learning_change_id", "team_id"],
+            ["learning_changes.id", "learning_changes.team_id"],
+            name="fk_knowledge_quality_assessments_target_pointer_team",
+        ),
         UniqueConstraint(
             "learning_change_id",
             name="uq_knowledge_quality_assessments_learning_change",
@@ -1035,6 +1045,112 @@ class KnowledgeQualityAssessment(Base):
             "jsonb_typeof(lineage_report) = 'object' AND "
             "length(narrative) > 0",
             name="ck_knowledge_quality_assessments_payload",
+        ),
+        CheckConstraint(
+            "(target_knowledge_item_id IS NULL AND "
+            "target_current_learning_change_id IS NULL AND "
+            "target_content_version IS NULL AND target_content_hash IS NULL AND "
+            "target_content_hash_scheme IS NULL AND target_state_hash IS NULL) OR "
+            "(target_knowledge_item_id IS NOT NULL AND "
+            "target_current_learning_change_id IS NOT NULL AND "
+            "target_content_version IS NOT NULL AND target_content_version >= 1 AND "
+            "target_content_hash IS NOT NULL AND "
+            "target_content_hash ~ '^sha256:[0-9a-f]{64}
+            "ix_knowledge_quality_assessments_team_learning_change",
+            "team_id",
+            "learning_change_id",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="recorded", server_default="recorded"
+    )
+    learning_change_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
+    creating_task_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
+    target_knowledge_item_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    target_current_learning_change_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    target_content_version: Mapped[int | None] = mapped_column(nullable=True)
+    target_content_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    target_content_hash_scheme: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )
+    target_state_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    proposal_hash: Mapped[str] = mapped_column(String, nullable=False)
+    evidence_basis_hash: Mapped[str] = mapped_column(String, nullable=False)
+    rubric_identity: Mapped[str] = mapped_column(String(255), nullable=False)
+    rubric_revision: Mapped[str] = mapped_column(String(64), nullable=False)
+    evaluator_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    evaluator_identity: Mapped[str] = mapped_column(String(255), nullable=False)
+    evaluator_revision: Mapped[str] = mapped_column(String(255), nullable=False)
+    dimensions: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    narrative: Mapped[str] = mapped_column(Text, nullable=False)
+    lineage_report: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    lineage_report_hash: Mapped[str] = mapped_column(String, nullable=False)
+    evidence_reference_hash: Mapped[str] = mapped_column(String, nullable=False)
+    assessment_payload_hash: Mapped[str] = mapped_column(String, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+
+ AND "
+            "target_content_hash_scheme IS NOT NULL AND "
+            "target_content_hash_scheme = 'watch.r7b.knowledge-content.v2' AND "
+            "target_state_hash IS NOT NULL AND "
+            "target_state_hash ~ '^sha256:[0-9a-f]{64}
+            "ix_knowledge_quality_assessments_team_learning_change",
+            "team_id",
+            "learning_change_id",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="recorded", server_default="recorded"
+    )
+    learning_change_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
+    creating_task_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
+    proposal_hash: Mapped[str] = mapped_column(String, nullable=False)
+    evidence_basis_hash: Mapped[str] = mapped_column(String, nullable=False)
+    rubric_identity: Mapped[str] = mapped_column(String(255), nullable=False)
+    rubric_revision: Mapped[str] = mapped_column(String(64), nullable=False)
+    evaluator_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    evaluator_identity: Mapped[str] = mapped_column(String(255), nullable=False)
+    evaluator_revision: Mapped[str] = mapped_column(String(255), nullable=False)
+    dimensions: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    narrative: Mapped[str] = mapped_column(Text, nullable=False)
+    lineage_report: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    lineage_report_hash: Mapped[str] = mapped_column(String, nullable=False)
+    evidence_reference_hash: Mapped[str] = mapped_column(String, nullable=False)
+    assessment_payload_hash: Mapped[str] = mapped_column(String, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+
+)",
+            name="ck_knowledge_quality_assessments_target_binding",
         ),
         Index(
             "ix_knowledge_quality_assessments_team_learning_change",

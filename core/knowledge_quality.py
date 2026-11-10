@@ -7,6 +7,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any, Literal
 from uuid import UUID, uuid4, uuid5
 
@@ -19,8 +20,17 @@ from core.experience_distiller import (
     ExperienceDistillerError,
     ExperienceEvidencePack,
 )
+from core.learning_history import (
+    KNOWLEDGE_CONTENT_HASH_SCHEME,
+    KnowledgeHistoryError,
+    decode_state_snapshot,
+    knowledge_item_content_hash,
+    knowledge_item_state,
+    reconstruct_knowledge_item_history,
+)
 from core.models import (
     Event,
+    KnowledgeItem,
     KnowledgeQualityAssessment,
     LearningChange,
     Outcome,
@@ -479,6 +489,7 @@ def quality_request_payload(
     learning_change: LearningChange,
     lineage_report: dict[str, Any],
     policy_version: int,
+    target_binding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     proposal_hash = learning_change.proposed_state.get("proposal_hash")
     if not isinstance(proposal_hash, str) or not _HASH_RE.fullmatch(proposal_hash):
@@ -502,6 +513,8 @@ def quality_request_payload(
         "lineage_report_hash": sha256_json(lineage_report),
         "policy_version": policy_version,
     }
+    if target_binding is not None:
+        payload["target_binding"] = target_binding
     payload["idempotency_key"] = (
         "r7a-quality-v1:" + sha256_json(payload).removeprefix("sha256:")
     )
@@ -509,6 +522,106 @@ def quality_request_payload(
     return payload
 
 
+
+
+
+def _revision_target_binding(
+    session: Session,
+    learning_change: LearningChange,
+    *,
+    require_current: bool,
+) -> dict[str, Any]:
+    """Rebuild the exact target pin stored on a revise LearningChange."""
+    if (
+        learning_change.operation != "revise"
+        or learning_change.target_kind != "knowledge_item"
+        or learning_change.target_id is None
+        or not isinstance(learning_change.previous_state, dict)
+    ):
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_revision_target_snapshot_invalid"
+        )
+    query = select(KnowledgeItem).where(
+        KnowledgeItem.id == learning_change.target_id,
+        KnowledgeItem.team_id == learning_change.team_id,
+    )
+    if require_current:
+        query = query.with_for_update()
+    target = session.scalar(query)
+    if target is None:
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_revision_target_not_found"
+        )
+    try:
+        raw_state = learning_change.previous_state.get("state")
+        if not isinstance(raw_state, dict):
+            raise KnowledgeHistoryError("snapshot_state_invalid")
+        pointer = UUID(raw_state.get("current_learning_change_id"))
+        state, reconstructed = decode_state_snapshot(
+            learning_change.previous_state,
+            learning_change_id=pointer,
+            operation="revise",
+            allow_legacy_root=False,
+        )
+        if reconstructed:
+            raise KnowledgeHistoryError("revision_target_snapshot_legacy")
+        state_hash = learning_change.previous_state["snapshot_hash"]
+        content_hash = knowledge_item_content_hash(SimpleNamespace(**state))
+        if state["id"] != str(target.id) or state["team_id"] != str(target.team_id):
+            raise KnowledgeHistoryError("snapshot_target_identity_mismatch")
+        if state["status"] not in {"active", "needs_review"}:
+            raise KnowledgeHistoryError("revision_target_status_invalid")
+        if require_current:
+            if (
+                knowledge_item_state(target) != state
+                or knowledge_item_content_hash(target) != content_hash
+                or target.version != state["version"]
+                or target.current_learning_change_id != pointer
+            ):
+                raise KnowledgeHistoryError("revision_target_stale")
+            reconstruct_knowledge_item_history(session, target)
+    except (KeyError, TypeError, ValueError, KnowledgeHistoryError) as error:
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_revision_target_stale"
+            if require_current
+            else "knowledge_quality_revision_target_snapshot_invalid"
+        ) from error
+    return {
+        "target_knowledge_item_id": str(target.id),
+        "target_current_learning_change_id": state["current_learning_change_id"],
+        "target_content_version": state["version"],
+        "target_content_hash": content_hash,
+        "target_content_hash_scheme": KNOWLEDGE_CONTENT_HASH_SCHEME,
+        "target_state_hash": state_hash,
+    }
+
+
+def _assessment_target_binding(
+    assessment: KnowledgeQualityAssessment,
+) -> dict[str, Any] | None:
+    values = {
+        "target_knowledge_item_id": (
+            str(assessment.target_knowledge_item_id)
+            if assessment.target_knowledge_item_id is not None
+            else None
+        ),
+        "target_current_learning_change_id": (
+            str(assessment.target_current_learning_change_id)
+            if assessment.target_current_learning_change_id is not None
+            else None
+        ),
+        "target_content_version": assessment.target_content_version,
+        "target_content_hash": assessment.target_content_hash,
+        "target_content_hash_scheme": assessment.target_content_hash_scheme,
+        "target_state_hash": assessment.target_state_hash,
+    }
+    if all(value is None for value in values.values()):
+        return None
+    if any(value is None for value in values.values()):
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_assessment_target_binding_invalid"
+        )
+    return values
 
 def build_quality_task_request(
     session: Session,
@@ -529,23 +642,42 @@ def build_quality_task_request(
             not require_proposed
             and learning_change.status not in {"proposed", "accepted", "rejected"}
         )
-        or learning_change.operation != "create"
+        or learning_change.operation not in {"create", "revise"}
         or learning_change.target_kind != "knowledge_item"
-        or learning_change.target_id is not None
+        or (
+            learning_change.operation == "create"
+            and (learning_change.target_id is not None
+                 or learning_change.previous_state is not None)
+        )
+        or (
+            learning_change.operation == "revise"
+            and (learning_change.target_id is None
+                 or learning_change.previous_state is None)
+        )
     ):
         raise KnowledgeQualityAssessmentError(
             "knowledge_quality_source_proposal_invalid"
         )
+    target_binding = (
+        _revision_target_binding(
+            session,
+            learning_change,
+            require_current=learning_change.status == "proposed",
+        )
+        if learning_change.operation == "revise"
+        else None
+    )
     lineage = build_case_lineage_report(
         session, learning_change.team_id, learning_change.evidence_basis
     )
     task_id = quality_task_id(source_task.team_id, learning_change.id)
     payload = quality_request_payload(
         task_id=task_id,
-        team_id=source_task.team_id,
+        team_id=team_id,
         learning_change=learning_change,
         lineage_report=lineage,
         policy_version=source_task.policy_version,
+        target_binding=target_binding,
     )
     return task_id, payload
 
@@ -600,9 +732,18 @@ def validate_quality_task_request(
     )
     if (
         learning_change is None
-        or learning_change.operation != "create"
+        or learning_change.operation not in {"create", "revise"}
         or learning_change.target_kind != "knowledge_item"
-        or learning_change.target_id is not None
+        or (
+            learning_change.operation == "create"
+            and (learning_change.target_id is not None
+                 or learning_change.previous_state is not None)
+        )
+        or (
+            learning_change.operation == "revise"
+            and (learning_change.target_id is None
+                 or learning_change.previous_state is None)
+        )
         or learning_change.proposed_by_task_id is None
         or learning_change.status not in {"proposed", "accepted", "rejected"}
         or (require_proposed and learning_change.status != "proposed")
@@ -774,6 +915,7 @@ def require_recorded_assessment(
         or request.get("proposal_hash") != assessment.proposal_hash
         or request.get("evidence_basis_hash") != assessment.evidence_basis_hash
         or request.get("lineage_report_hash") != assessment.lineage_report_hash
+        or request.get("target_binding") != _assessment_target_binding(assessment)
     ):
         raise KnowledgeQualityAssessmentError(
             "knowledge_quality_assessment_request_mismatch"
@@ -913,6 +1055,11 @@ def recorded_assessment_event_payload(
         "evaluator_kind": assessment.evaluator_kind,
         "evaluator_identity": assessment.evaluator_identity,
         "evaluator_revision": assessment.evaluator_revision,
+        **(
+            {"target_binding": _assessment_target_binding(assessment)}
+            if _assessment_target_binding(assessment) is not None
+            else {}
+        ),
     }
 
 
@@ -933,6 +1080,7 @@ def assessment_record_payload(
     lineage_report: dict[str, Any],
     evidence_reference_hash: str,
     idempotency_key: str,
+    target_binding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "creating_task_id": str(task_id),
@@ -952,6 +1100,9 @@ def assessment_record_payload(
         "evidence_reference_hash": evidence_reference_hash,
         "idempotency_key": idempotency_key,
     }
+    if target_binding is not None:
+        payload["target_binding"] = target_binding
+    return payload
 
 
 def assessment_payload_from_row(
@@ -973,6 +1124,7 @@ def assessment_payload_from_row(
         lineage_report=assessment.lineage_report,
         evidence_reference_hash=assessment.evidence_reference_hash,
         idempotency_key=assessment.idempotency_key,
+        target_binding=_assessment_target_binding(assessment),
     )
 
 
@@ -1115,6 +1267,7 @@ class KnowledgeQualityAssessmentService:
                 lineage_report=lineage,
                 evidence_reference_hash=evidence_reference_hash,
                 idempotency_key=request["idempotency_key"],
+                target_binding=request.get("target_binding"),
             )
             payload_hash = assessment_payload_hash(payload)
             prior = session.scalar(
@@ -1147,6 +1300,40 @@ class KnowledgeQualityAssessmentService:
                 team_id=task.team_id,
                 learning_change_id=learning_change.id,
                 creating_task_id=task.id,
+                target_knowledge_item_id=(
+                    UUID(request["target_binding"]["target_knowledge_item_id"])
+                    if request.get("target_binding") is not None
+                    else None
+                ),
+                target_current_learning_change_id=(
+                    UUID(
+                        request["target_binding"][
+                            "target_current_learning_change_id"
+                        ]
+                    )
+                    if request.get("target_binding") is not None
+                    else None
+                ),
+                target_content_version=(
+                    request["target_binding"]["target_content_version"]
+                    if request.get("target_binding") is not None
+                    else None
+                ),
+                target_content_hash=(
+                    request["target_binding"]["target_content_hash"]
+                    if request.get("target_binding") is not None
+                    else None
+                ),
+                target_content_hash_scheme=(
+                    request["target_binding"]["target_content_hash_scheme"]
+                    if request.get("target_binding") is not None
+                    else None
+                ),
+                target_state_hash=(
+                    request["target_binding"]["target_state_hash"]
+                    if request.get("target_binding") is not None
+                    else None
+                ),
                 proposal_hash=request["proposal_hash"],
                 evidence_basis_hash=request["evidence_basis_hash"],
                 rubric_identity=request["rubric_identity"],
