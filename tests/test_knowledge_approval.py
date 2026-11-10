@@ -298,6 +298,7 @@ def test_assessment_hash_principal_and_policy_are_fingerprint_inputs(
         evidence_basis_hash="sha256:" + "1" * 64,
         id=uuid4(),
         payload_hash="sha256:" + "2" * 64,
+        assessment_result="supported",
         evaluator_identity="watch.r7b.revalidation",
         evaluator_revision="1",
     )
