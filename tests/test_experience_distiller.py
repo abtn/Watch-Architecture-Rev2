@@ -1407,11 +1407,26 @@ def _create_revalidation_proposal(
     return source_task_id, learning_change_id
 
 
-def test_revalidation_rejects_invented_provider_reference_without_record_and_recovers(
+@pytest.mark.parametrize(
+    ("invalid_draft_case", "expected_failure_reason"),
+    [
+        (
+            "invented_reference",
+            "knowledge_revalidation_finding_reference_not_in_basis",
+        ),
+        (
+            "freshness_mismatch",
+            "knowledge_revalidation_freshness_disposition_mismatch",
+        ),
+    ],
+)
+def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recovers(
     session_factory,
     snapshot_store,
     distillation_fixture,
     request,
+    invalid_draft_case: str,
+    expected_failure_reason: str,
 ):
     from core.knowledge_revalidation import RECORDED_EVENT_TYPE
 
@@ -1481,10 +1496,13 @@ def test_revalidation_rejects_invented_provider_reference_without_record_and_rec
         ) -> KnowledgeRevalidationAssessmentDraft:
             self.calls += 1
             references = tuple(sorted(allowed_evidence_references))
-            if self.calls == 1:
+            freshness_disposition = "current"
+            if self.calls == 1 and invalid_draft_case == "invented_reference":
                 references = (*references, "urn:watch:invented-evidence-reference")
+            elif self.calls == 1 and invalid_draft_case == "freshness_mismatch":
+                freshness_disposition = "stale"
             return KnowledgeRevalidationAssessmentDraft(
-                freshness_disposition="current",
+                freshness_disposition=freshness_disposition,
                 findings=(
                     KnowledgeRevalidationFinding(
                         code="supports_revalidation",
@@ -1571,9 +1589,7 @@ def test_revalidation_rejects_invented_provider_reference_without_record_and_rec
             )
         )
         assert failed_event is not None
-        assert failed_event.payload["failure_reason"] == (
-            "knowledge_revalidation_finding_reference_not_in_basis"
-        )
+        assert failed_event.payload["failure_reason"] == expected_failure_reason
         assert session.scalar(
             select(func.count(Event.id)).where(
                 Event.task_id == task_id,
