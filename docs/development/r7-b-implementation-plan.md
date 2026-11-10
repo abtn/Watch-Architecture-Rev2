@@ -418,7 +418,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 **B2 closeout reference:** B2 is formally closed by explicit Operator instruction on 2026-11-08. The three retained residual verification gaps are recorded in `PLAN.md` and `docs/testing.md`; none is represented as passed. This does not expand B2's create-only authority.
 
 
-**Status:** B3.2–B3.5 are implemented and merged. B3.4 merged at `9abd949a8e682b4df75a77f03acca638a62e472e`; B3.5 merged by PR #66 at `a6cc81c2aef47d659252b89421e27b08735d944b`. B3.5 exact PR head `65edf206eb6cd68859147ee8c2f68a4717c6fa87` passed hosted and Operator-local verification (43 focused, 884 full-suite tests, migration head `0018_r7b_lifecycle_review_date`, Ruff, Mypy, and diff checks). B3.6–B3.9 remain gated; see `PLAN.md` for the current authorization state.
+**Status:** B3.2–B3.6 are implemented and merged. B3.6 PR #68 merged at `4735b93c74025ddee3bd099ef6d5e64cbac34719` from exact head `86f3bcf91ca024486f3a3b918a2c7490ec0ea9da`; hosted and Operator-local verification passed (908 full-suite tests, migration head `0018_r7b_lifecycle_review_date`, Ruff, Mypy, and diff checks). B3.7 implementation is authorized and underway in PR #69; its first integrated supersede assessment plus approval-binding successor-drift test is awaiting CI. B3.8–B3.9 remain gated; see `PLAN.md` for current status.
 
 **Goal:** add immutable, operation-specific assessment records and narrow recording Tasks. These assessments supply validated evidence to the existing trusted Operator approval path; they do not authorize or commit lifecycle transitions.
 
@@ -434,7 +434,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 - The active lifecycle approval allowlist remains exactly `create` throughout B3. B3 does not enable revise, revalidate, supersede, or retire commits.
 - Reuse the existing TaskRuntime, Task admission/finalization/recovery, Event, and immutable-record patterns. No second runtime, dispatcher, scheduler, auth stack, or autonomous approval.
 
-### B3 sequence — B3.2–B3.5 implemented and merged; B3.6 is next gated; B3.7 plan extracted only; B3.6–B3.9 execution remains gated
+### B3 sequence — B3.2–B3.6 implemented and merged; B3.7 implementation authorized and underway; B3.8–B3.9 remain gated
 
 #### B3.0 — Entry gate and exact-head preflight
 
@@ -652,7 +652,7 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 
 #### B3.7 — Integrated regression matrix
 
-**Planning artifact:** the extracted matrix and existing-test/gap inventory are in [`r7-b-b3-7-integrated-regression-matrix.md`](r7-b-b3-7-integrated-regression-matrix.md). This document is planning-only. B3.7 is ordered after B3.6, which remains the next gated checkpoint; B3.7 test implementation requires separate explicit Operator authorization after B3.6 is accepted and merged. No B3.7 tests have been added or run.
+**Implementation authorization:** B3.6 was accepted by PR #68 merge at `4735b93c74025ddee3bd099ef6d5e64cbac34719`. B3.7 implementation is authorized. The extracted matrix and existing-test/gap inventory in [`r7-b-b3-7-integrated-regression-matrix.md`](r7-b-b3-7-integrated-regression-matrix.md) remain the controlling acceptance inventory. Initial integrated implementation is in PR #69; the first supersede assessment/approval-binding test is pending hosted CI and has not been locally run. Map each matrix row to concrete existing/new tests or an explicit residual gap. B3.8 owns exact-head verification; B3.9 owns documentation closeout and explicit B3 exit acceptance.
 
 Add end-to-end tests that traverse the real persistence, TaskRuntime, Event, assessment, and approval-validation boundaries. At minimum cover:
 
