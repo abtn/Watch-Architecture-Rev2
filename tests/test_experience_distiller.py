@@ -46,11 +46,11 @@ from core.knowledge_quality import (
 )
 from core.knowledge_quality_tasks import KnowledgeQualityAssessmentTaskRunner
 from core.knowledge_revalidation import (
+    RECORDED_EVENT_TYPE,
+    REQUEST_EVENT_TYPE,
     KnowledgeRevalidationAssessmentDraft,
     KnowledgeRevalidationAssessmentService,
     KnowledgeRevalidationFinding,
-    RECORDED_EVENT_TYPE,
-    REQUEST_EVENT_TYPE,
     validate_revalidation_task_request,
 )
 from core.knowledge_revalidation_tasks import KnowledgeRevalidationAssessmentTaskRunner
