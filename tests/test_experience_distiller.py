@@ -4565,6 +4565,101 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     task_adapter = KnowledgeLifecycleAssessmentTask(
         session_factory, snapshot_store
     )
+    from core.knowledge_lifecycle import (
+        KnowledgeLifecycleAssessmentError,
+        REQUEST_EVENT_TYPE,
+    )
+
+    with session_factory() as session:
+        change = session.get(LearningChange, learning_change_id)
+        proposal_event = session.scalar(
+            select(Event).where(
+                Event.task_id == source_task_id,
+                Event.type == "learning_change_proposed",
+            )
+        )
+        assert change is not None and proposal_event is not None
+        original_proposed_state = dict(change.proposed_state)
+        original_proposal_event_payload = dict(proposal_event.payload)
+
+    invalid_rationale_variants = [
+        "missing_rationale",
+        "malformed_rationale",
+        "missing_reason_statement",
+        "retire_with_null_successor_field",
+    ]
+    for invalid_variant in invalid_rationale_variants:
+        with session_factory.begin() as session:
+            change = session.get(LearningChange, learning_change_id)
+            proposal_event = session.scalar(
+                select(Event).where(
+                    Event.task_id == source_task_id,
+                    Event.type == "learning_change_proposed",
+                )
+            )
+            assert change is not None and proposal_event is not None
+            mutated = dict(original_proposed_state)
+            if invalid_variant == "missing_rationale":
+                mutated.pop("operator_rationale")
+            elif invalid_variant == "malformed_rationale":
+                mutated["operator_rationale"] = "model supplied free-form rationale"
+            elif invalid_variant == "missing_reason_statement":
+                mutated["operator_rationale"] = {
+                    **rationale,
+                    "reasons": [{"category": "improved_evidence"}],
+                }
+            elif invalid_variant == "retire_with_null_successor_field":
+                mutated["successor_knowledge_item_id"] = None
+            change.proposed_state = mutated
+            mutated_hash = _domain_hash(
+                PROPOSED_STATE_HASH_DOMAIN, _normalize_json(mutated)
+            )
+            proposal_event.payload = {
+                **original_proposal_event_payload,
+                "proposed_state_hash": mutated_hash,
+            }
+
+        with pytest.raises(KnowledgeLifecycleAssessmentError):
+            task_adapter.create(learning_change_id)
+
+        with session_factory() as session:
+            assert session.get(Task, task_id) is None
+            assert session.scalar(
+                select(func.count(Event.id)).where(
+                    Event.task_id == task_id,
+                    Event.type == REQUEST_EVENT_TYPE,
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count(KnowledgeLifecycleAssessment.id)).where(
+                    KnowledgeLifecycleAssessment.learning_change_id
+                    == learning_change_id
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count(Event.id)).where(
+                    Event.task_id == task_id,
+                    Event.type == "knowledge_lifecycle_assessment_recorded",
+                )
+            ) == 0
+            assert session.scalar(
+                select(func.count(Outcome.id)).where(
+                    Outcome.recorded_by_task_id == task_id
+                )
+            ) == 0
+
+        with session_factory.begin() as session:
+            change = session.get(LearningChange, learning_change_id)
+            proposal_event = session.scalar(
+                select(Event).where(
+                    Event.task_id == source_task_id,
+                    Event.type == "learning_change_proposed",
+                )
+            )
+            assert change is not None and proposal_event is not None
+            change.proposed_state = dict(original_proposed_state)
+            proposal_event.payload = dict(original_proposal_event_payload)
+
     assert task_adapter.create(learning_change_id) == task_id
     assert task_adapter.create(learning_change_id) == task_id
     task_adapter.validate(task_id)
