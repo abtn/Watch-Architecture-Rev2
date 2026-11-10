@@ -10,12 +10,12 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7 B3 is formally closed on 2026-11-10 following hosted and Operator-local exact-head verification; B4–B6 and R7-C remain not authorized. See PLAN.md for the current status authority and docs/testing.md for evidence.
+R6 is complete through R6-G. R7 B3 is formally closed on 2026-11-10. The Operator has authorized R7-B B4 only; B4.1 proposal/assessment contract work is the next gate. B5, B6, and R7-C remain unauthorized. See PLAN.md for current status and the B4.0 architecture decision for the accepted design.
 
 ## Open the smallest relevant set of documents
 
 1. [`PLAN.md`](PLAN.md) — the only source for current milestone status, gates, and next action.
-2. [`docs/development/r7-entry-gate.md`](docs/development/r7-entry-gate.md), [`ADR-0032`](docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md), [`docs/development/r7-a-implementation-plan.md`](docs/development/r7-a-implementation-plan.md), [`docs/development/r7-b-implementation-plan.md`](docs/development/r7-b-implementation-plan.md), and [`docs/tasks.md`](docs/tasks.md) — accepted architecture, completed R7-A contract and non-authorizing R7-B preparation.
+2. [`docs/development/r7-entry-gate.md`](docs/development/r7-entry-gate.md), [`ADR-0032`](docs/decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md), [`docs/development/r7-a-implementation-plan.md`](docs/development/r7-a-implementation-plan.md), [`docs/development/r7-b-implementation-plan.md`](docs/development/r7-b-implementation-plan.md), [B4.0 architecture decision](docs/development/r7-b-b4-0-architecture-decision.md), and [`docs/tasks.md`](docs/tasks.md) — accepted architecture, completed B3 foundations, and authorized B4 boundary.
 3. [`AGENTS.md`](AGENTS.md) — repository operating rules and stop conditions.
 4. [`CHANGE_MAP.md`](CHANGE_MAP.md) — where each concept is authoritatively specified.
 5. [`docs/control-model.md`](docs/control-model.md) — the Revision 2 Control model.
