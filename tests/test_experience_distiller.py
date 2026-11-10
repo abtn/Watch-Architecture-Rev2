@@ -2624,7 +2624,9 @@ def test_revalidation_task_records_once_and_recovers_without_canonical_writes(
             "supported" if freshness_disposition == "current" else "indeterminate"
         )
         assert assessment.freshness_disposition == freshness_disposition
-        assert assessment.task_attempt == (2 if fail_first_attempt or fail_record_first else 1)
+        assert assessment.task_attempt == (
+            2 if fail_first_attempt or fail_record_first else 1
+        )
         assert session.scalar(
             select(func.count(KnowledgeRevalidationAssessment.id)).where(
                 KnowledgeRevalidationAssessment.learning_change_id
