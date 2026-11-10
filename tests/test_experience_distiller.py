@@ -108,6 +108,7 @@ class _Fixture:
     policy_id: UUID
     distillation_task_id: UUID
     cases: tuple[_Case, ...]
+    extra_task_ids: list[UUID]
 
 
 @pytest.fixture
@@ -285,6 +286,7 @@ def distillation_fixture(
             policy_id=policy_id,
             distillation_task_id=distillation_task_id,
             cases=tuple(cases),
+            extra_task_ids=[],
         )
         created.append(fixture)
         return fixture
@@ -300,6 +302,7 @@ def distillation_fixture(
                 fixture.distillation_task_id,
                 *source_task_ids,
                 *evaluation_task_ids,
+                *fixture.extra_task_ids,
             ]
             with session_factory.begin() as session:
                 session.execute(
@@ -315,9 +318,8 @@ def distillation_fixture(
                     Task.task_type == "assess_knowledge_quality",
                     Task.team_id == fixture.team_id,
                 )
-                proposal_owner = (
-                    LearningChange.proposed_by_task_id
-                    == fixture.distillation_task_id
+                proposal_owner = LearningChange.proposed_by_task_id.in_(
+                    all_task_ids
                 )
                 approval_commit = LearningChange.committed_by_task_id.in_(
                     approval_task_ids
@@ -335,6 +337,23 @@ def distillation_fixture(
                         KnowledgeQualityAssessment.learning_change_id.in_(
                             learning_change_ids
                         )
+                    )
+                )
+                session.execute(
+                    text(
+                        "ALTER TABLE knowledge_revalidation_assessments "
+                        "DISABLE TRIGGER USER"
+                    )
+                )
+                session.execute(
+                    delete(KnowledgeRevalidationAssessment).where(
+                        KnowledgeRevalidationAssessment.task_id.in_(all_task_ids)
+                    )
+                )
+                session.execute(
+                    text(
+                        "ALTER TABLE knowledge_revalidation_assessments "
+                        "ENABLE TRIGGER USER"
                     )
                 )
                 session.execute(
@@ -1312,6 +1331,7 @@ def _create_revalidation_proposal(
         assert review_after is not None
 
     review_task_id = uuid4()
+    fixture.extra_task_ids.append(review_task_id)
     review_started_at = review_after - timedelta(seconds=1)
     with session_factory.begin() as session:
         session.add(
@@ -1360,6 +1380,7 @@ def _create_revalidation_proposal(
     )
 
     source_task_id = uuid4()
+    fixture.extra_task_ids.append(source_task_id)
     source_started_at = review_after + timedelta(seconds=1)
     with session_factory.begin() as session:
         session.add(
@@ -1419,6 +1440,15 @@ def _create_revalidation_proposal(
             learning_change_id=proposal.learning_change_id,
         )
     )
+    with session_factory() as session:
+        request_event = session.scalar(
+            select(Event).where(
+                Event.task_id == source_task_id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+        assert request_event is not None
+        fixture.extra_task_ids.append(UUID(request_event.payload["task_id"]))
     return source_task_id, proposal.learning_change_id
 
 @pytest.mark.parametrize(
@@ -2039,11 +2069,11 @@ def test_revalidation_rebuild_rejects_changed_canonical_evidence_before_admissio
         ),
         (
             "proposal_hash",
-            "knowledge_revalidation_proposal_event_mismatch",
+            "knowledge_revalidation_proposal_hash_mismatch",
         ),
         (
             "proposed_state_hash",
-            "knowledge_revalidation_task_request_mismatch",
+            "knowledge_revalidation_proposal_shape_invalid",
         ),
     ],
 )
@@ -3153,6 +3183,7 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         before_pointer = item.current_learning_change_id
 
     revision_task_id = uuid4()
+    fixture.extra_task_ids.append(revision_task_id)
     started_at = datetime.now(timezone.utc)
     with session_factory.begin() as session:
         session.add(
