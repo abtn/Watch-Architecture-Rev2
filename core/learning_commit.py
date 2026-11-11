@@ -335,10 +335,10 @@ class LearningCommitService:
             revalidation_assessment_id: str | None = None
             revalidation_assessment_hash: str | None = None
             if decision == "accept" and learning_change.operation == "revalidate":
-                from core import knowledge_revalidation
+                from core import knowledge_revalidation as revalidation
 
                 try:
-                    revalidation_assessment = knowledge_revalidation.require_recorded_assessment(
+                    revalidation_assessment = revalidation.require_recorded_assessment(
                         session,
                         learning_change,
                         self._snapshot_store,
@@ -346,7 +346,7 @@ class LearningCommitService:
                         require_task_done=True,
                         require_current=True,
                     )
-                except knowledge_revalidation.KnowledgeRevalidationAssessmentError as error:
+                except revalidation.KnowledgeRevalidationAssessmentError as error:
                     raise LearningCommitError(str(error)) from error
                 approval_binding = approval_request.approval_binding
                 if (
@@ -923,10 +923,10 @@ class LearningCommitService:
         revalidation_assessment_id: str | None = None
         revalidation_assessment_hash: str | None = None
         if recorded_decision == "accept" and learning_change.operation == "revalidate":
-            from core import knowledge_revalidation
+            from core import knowledge_revalidation as revalidation
 
             try:
-                revalidation_assessment = knowledge_revalidation.require_recorded_assessment(
+                revalidation_assessment = revalidation.require_recorded_assessment(
                     session,
                     learning_change,
                     self._snapshot_store,
@@ -934,7 +934,7 @@ class LearningCommitService:
                     require_task_done=True,
                     require_current=False,
                 )
-            except knowledge_revalidation.KnowledgeRevalidationAssessmentError as error:
+            except revalidation.KnowledgeRevalidationAssessmentError as error:
                 raise LearningCommitCorrupt(str(error)) from error
             approval_binding = approval_request.approval_binding
             if (
