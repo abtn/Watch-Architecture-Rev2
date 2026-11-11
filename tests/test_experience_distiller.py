@@ -41,8 +41,10 @@ from core.knowledge_quality import (
     RUBRIC_REVISION,
     KnowledgeQualityAssessmentDraft,
     KnowledgeQualityAssessmentService,
+    KnowledgeQualityAssessmentError,
     KnowledgeQualityDimension,
     build_case_lineage_report,
+    require_recorded_assessment,
 )
 from core.knowledge_quality_tasks import KnowledgeQualityAssessmentTaskRunner
 from core.knowledge_revalidation import (
@@ -3321,6 +3323,24 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         assert quality_task is not None and quality_task.status == "pending"
         assert quality_request.payload["target_binding"] == target_binding
 
+        # Assessment target binding must be recovered from this exact request
+        # Event and fail closed if that durable source is altered.
+        original_request_payload = dict(quality_request.payload)
+        quality_request.payload = {
+            **quality_request.payload,
+            "target_binding": {
+                **target_binding,
+                "target_content_version": target_binding["target_content_version"] + 1,
+            },
+        }
+        with pytest.raises(KnowledgeQualityAssessmentError):
+            require_recorded_assessment(
+                session,
+                session.get(LearningChange, revised.learning_change_id),
+                require_task_done=False,
+            )
+        quality_request.payload = original_request_payload
+
         unchanged_item = session.get(KnowledgeItem, committed.knowledge_item_id)
         assert unchanged_item is not None
         assert knowledge_item_state(unchanged_item) == before_state
@@ -3333,15 +3353,10 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         assessment = session.get(KnowledgeQualityAssessment, assessment_id)
         assert assessment is not None
         assert assessment.learning_change_id == revised.learning_change_id
-        assert assessment.target_knowledge_item_id == committed.knowledge_item_id
-        assert assessment.target_current_learning_change_id == before_pointer
-        assert assessment.target_content_version == 1
-        assert assessment.target_content_hash == target_binding["target_content_hash"]
-        assert (
-            assessment.target_content_hash_scheme
-            == "watch.r7b.knowledge-content.v2"
-        )
-        assert assessment.target_state_hash == previous_state_hash
+        assert assessment.assessment_payload_hash.startswith("sha256:")
+        # The target pin is bound by the original request Event, not duplicated
+        # into assessment-row columns.
+        assert quality_request.payload["target_binding"] == target_binding
         unchanged_item = session.get(KnowledgeItem, committed.knowledge_item_id)
         assert unchanged_item is not None
         assert knowledge_item_state(unchanged_item) == before_state
