@@ -192,15 +192,16 @@ def test_decision_reason_is_canonicalized(
     ("target_kind", "operation", "target_id", "supported"),
     [
         ("knowledge_item", "create", None, True),
-        ("knowledge_item", "revise", uuid4(), False),
+        ("knowledge_item", "create", uuid4(), False),
+        ("knowledge_item", "revise", uuid4(), True),
+        ("knowledge_item", "revise", None, False),
         ("knowledge_item", "revalidate", uuid4(), False),
         ("knowledge_item", "supersede", uuid4(), False),
         ("knowledge_item", "retire", uuid4(), False),
         ("other", "create", None, False),
-        ("knowledge_item", "create", uuid4(), False),
     ],
 )
-def test_only_knowledge_item_create_target_is_supported(
+def test_only_knowledge_item_create_or_revise_target_is_supported(
     target_kind: str, operation: str, target_id, supported: bool
 ) -> None:
     assert is_supported_learning_change(

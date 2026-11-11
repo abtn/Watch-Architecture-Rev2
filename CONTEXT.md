@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7 B3 is formally closed on 2026-11-10. B4 is authorized; B4.1 revise/revalidate proposal contracts and replay corrections are implemented on draft PR #97. The exact PR head `0d1350423043b26565219184b78277390e396f98` passed hosted CI run [#871](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42983920854): fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, and 948 tests (113 existing Alembic deprecation warnings). The B4.1 Operator contract review remains required before B4.2/B4.3. B5, B6, and R7-C remain unauthorized. PLAN.md owns the current status.
+R6 is complete through R6-G. R7 B3 is formally closed. B4.1 contract implementation on draft PR #97 passed exact-head hosted CI on `fb20a3b1a0943926b9cea60a33efdfe329b919dc` (run #874: 948 passed, 113 warnings). The Operator approved the B4.1 contract matrix and authorized B4.2 on 2026-11-11. B4.2 revise canonical commit is in progress on branch `r7b-b4-2-revise-commit`, stacked on the B4.1 head; its verification is pending. B4.3 is not started. B5, B6, and R7-C remain unauthorized. PLAN.md owns current status.
 
 ## Open the smallest relevant set of documents
 

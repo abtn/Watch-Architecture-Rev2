@@ -704,11 +704,11 @@ Tests must assert both the intended assessment record and the absence of unautho
 
 ## Phase B4: Revise and revalidate
 
-**Status (updated 2026-11-11):** B4 was explicitly authorized after formal B3 closure. B4.1 source and focused tests are implemented on draft PR #97. The implementation has no new migration, preserves the create-only approval allowlist, and keeps canonical KnowledgeItem writes out of the proposal path. A review found two completed-Task replay defects; the fixes and regression tests are now on the PR branch, with exact-head hosted verification passed on `0d1350423043b26565219184b78277390e396f98` (run [#871](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42983920854), 948 passed, 113 warnings). B4 remains limited to revise and revalidate; B5, B6, and R7-C remain unauthorized. The architecture boundary is recorded in [the B4.0 decision record](r7-b-b4-0-architecture-decision.md).
+**Status (updated 2026-11-11):** B4 was explicitly authorized after formal B3 closure. B4.1 proposal/assessment contracts and replay corrections are implemented on draft PR #97. Exact PR head `fb20a3b1a0943926b9cea60a33efdfe329b919dc` passed hosted CI run [#874](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42984911531): fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, and 948 tests (113 existing Alembic deprecation warnings). The Operator approved the B4.1 contract matrix on 2026-11-11 and authorized B4.2. B4.2 revise canonical commit is in progress on `r7b-b4-2-revise-commit`, stacked on the B4.1 head; this branch is not yet verified or merged. B4.3 revalidate commit remains separate. No migration is authorized or currently proposed. B5, B6, and R7-C remain unauthorized. The architecture boundary is recorded in [the B4.0 decision record](r7-b-b4-0-architecture-decision.md).
 
 ### B4 execution verification mode — current run
 
-The Operator has run local verification on the pre-replay-fix code head `34282c724b17d6e4c3e07816de58dae24b677605`. The full local result is recorded in `docs/testing.md`; it is historical evidence for that exact SHA only. The replay-fix head must receive its own exact-head hosted CI result, and the Operator may repeat local verification after syncing that head.
+Operator-local verification is available only for the earlier code head `34282c724b17d6e4c3e07816de58dae24b677605`; it is historical evidence for that SHA only. B4.1's replay-fix head and final docs head were verified by hosted CI. The B4.2 branch must receive its own exact-head hosted CI result; do not claim local verification unless the Operator supplies it.
 
 - Use GitHub-hosted Actions on the exact pull-request head for executable verification. The workflow must visibly cover fresh disposable PostgreSQL migration/single-head checks, Ruff, Mypy, `git diff --check origin/${GITHUB_BASE_REF}...HEAD`, the full pytest suite, and Actions-managed disposal of the PostgreSQL service when the job ends. Add or repair hosted coverage if any required check is missing; do not infer it from a generic green badge.
 - Review the complete source and test diff against the exact PR head. Record the tested commit SHA and workflow run. A green run for another SHA is not exact-head evidence.
@@ -735,7 +735,7 @@ The Operator has run local verification on the pre-replay-fix code head `34282c7
 5. Specify operation-specific idempotency, proposal hashes, stale-target failure reasons, Event payload fields, TaskRuntime admission/finalization/recovery, and byte/ID-stable replay. Do not permit a stale target to be silently rebased.
 6. Add focused tests for valid/malformed/cross-operation proposals, wrong-Team or stale target, pointer/version/hash drift, assessment routing/binding, proposal Event/Outcome mismatch, cost reconciliation, retry/recovery, and unchanged create-only approval admission.
 
-**Operator review point:** approve the exact revise/revalidate proposal payload and target-snapshot field matrices, evidence requirements, assessment routing, and replay/idempotency behavior before B4.2/B4.3 canonical commit work.
+**Operator review point — APPROVED 2026-11-11:** The Operator approved the frozen revise/revalidate contract matrix, including exact target binding (KnowledgeItem ID, current LearningChange pointer, content version, v2 content hash and scheme, full-state snapshot hash), same-Team target, evidence basis/proposal hashes, assessment routing, Task/Event/Outcome attribution, and completed-Task replay/idempotency behavior. Revise preserves item identity, origin, lifecycle status, and supersession links; changes content (including confidence where changed); advances version by one; clears `last_validated_at`; and recomputes `review_after` from the approval Task's pinned TeamPolicy. Revalidate remains state-preserving and is deferred to B4.3.
 
 **Expected output:** a small, reviewed contract implementation and focused tests proving both operation-specific proposal paths while create behavior remains compatible; no canonical `KnowledgeItem` writes and no approval allowlist expansion.
 
@@ -762,6 +762,33 @@ See the [B4.0 architecture decision](r7-b-b4-0-architecture-decision.md) for the
 **Acceptance:** tests for every case above, including revise-on-`needs_review`, confidence-only revise, revalidation attempting to change confidence (must fail), stale-assessment revalidation (must fail), content hash unchanged across revalidation, and concurrent compare-and-set races.
 
 ---
+
+### B4.2 — Revise canonical commit
+
+**Status:** implementation in progress on branch `r7b-b4-2-revise-commit`, based on B4.1 PR #97 head `fb20a3b1a0943926b9cea60a33efdfe329b919dc`. This is a stacked implementation branch; B4.1 remains draft and unmerged.
+
+**Goal:** enable only the accepted revise operation to commit one versioned KnowledgeItem transition through the existing trusted Operator Task and TaskRuntime path.
+
+**Coding side**
+1. Rebuild and verify the recorded `KnowledgeQualityAssessment`, its Task/Event/Outcome chain, proposal/evidence hashes, and exact target binding at request, admission, commit, finalization, recovery, and replay.
+2. Lock the same-Team target and compare its complete current state to the immutable `LearningChange.previous_state`; then use a database compare-and-set constrained by exact current LearningChange pointer and expected version. Any drift rejects without rebasing.
+3. Update the existing KnowledgeItem atomically with the accepted LearningChange and decision Event: preserve ID, origin, status, and supersession links; apply the proposed content/confidence; increment version exactly once; advance current pointer; clear `last_validated_at`; and recompute `review_after` from the approval Task's pinned TeamPolicy and commit timestamp.
+4. Retain the full previous snapshot and record a complete committed-state snapshot. Do not create another KnowledgeItem, migration, Task type, runtime, dispatcher, scheduler, API, or authentication subsystem.
+5. Extend TaskRuntime terminal validation and interrupted recovery to validate revise decisions. Replays must return the original decision/item/version and create no duplicate Event, Outcome, LearningChange, or state transition, including after a later accepted history transition.
+6. A rejected revise must preserve the target's canonical state and retain the immutable proposal target snapshot. B0.1 pending supersession proposals/assessments become stale through the pointer/state binding; do not mutate them or implement B5 behavior.
+
+**Minimum regression proof**
+- Accepted revise of `active` and `needs_review` items; status, identity, origin, and successor relations preserved.
+- Content-changing and confidence-only revise; version +1, content hash changes, `last_validated_at` cleared.
+- Pinned-policy `review_after` recomputation, including NULL interval.
+- Missing, duplicate, cross-Team, tampered, or stale assessment/target binding fails closed.
+- Pointer/version/full-state drift and compare-and-set conflict produce no partial canonical state or decision Event.
+- Rejected revise leaves KnowledgeItem unchanged and replays without duplicate writes.
+- TaskRuntime finalization, interrupted recovery, and original approval replay after a later history transition.
+- Create approval/replay compatibility remains unchanged; revalidate, supersede, and retire remain unauthorized.
+- No migration; exact-head hosted CI covers fresh migration/single-head, Ruff, Mypy, patch whitespace, full suite, and disposable PostgreSQL cleanup.
+
+**Stop conditions:** stop if the existing TaskRuntime/Operator path cannot prove the target compare-and-set, assessment chain, or atomic history/Event update; if a schema change appears necessary; or if any operation outside revise must be enabled. Return the smallest blocker instead of adding infrastructure.
 
 ## Phase B5: Supersede, retire and create-with-successor
 
