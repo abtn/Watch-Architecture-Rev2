@@ -86,7 +86,7 @@ class LearningCommitResult:
 
 
 class LearningCommitService:
-    """Validate and atomically accept/reject a create, revise, or revalidate LearningChange.
+    """Validate and atomically decide a create, revise, or revalidate LearningChange.
 
     The business decision and its Event commit together. TaskRuntime remains
     responsible for the separate terminal Task/Outcome transaction.
@@ -337,6 +337,8 @@ class LearningCommitService:
             if decision == "accept" and learning_change.operation == "revalidate":
                 from core.knowledge_revalidation import (
                     KnowledgeRevalidationAssessmentError,
+                )
+                from core.knowledge_revalidation import (
                     require_recorded_assessment as require_revalidation_assessment,
                 )
 
@@ -924,6 +926,8 @@ class LearningCommitService:
         if recorded_decision == "accept" and learning_change.operation == "revalidate":
             from core.knowledge_revalidation import (
                 KnowledgeRevalidationAssessmentError,
+            )
+            from core.knowledge_revalidation import (
                 require_recorded_assessment as require_revalidation_assessment,
             )
 
