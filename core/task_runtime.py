@@ -3827,7 +3827,7 @@ class TaskRuntime:
                     or learning_change.target_id is None
                 )
             )
-            or learning_change.operation not in {"create", "revise"}
+            or learning_change.operation not in {"create", "revise", "revalidate"}
             or not isinstance(learning_change.proposed_state, dict)
             or learning_change.committed_at is None
             or learning_change.committed_at != observation.observed_at
@@ -3921,12 +3921,23 @@ class TaskRuntime:
             ]
 
         if expected_decision == "accept":
-            expected_payload["knowledge_quality_assessment_id"] = (
-                quality_assessment_id_value
-            )
-            expected_payload["knowledge_quality_assessment_hash"] = (
-                quality_assessment_hash
-            )
+            if learning_change.operation == "revalidate":
+                approval_binding = request_payload.get("approval_binding")
+                if not isinstance(approval_binding, dict):
+                    raise TaskNotFinalizable("operator_approval_binding_invalid")
+                expected_payload["knowledge_revalidation_assessment_id"] = (
+                    approval_binding.get("assessment_id")
+                )
+                expected_payload["knowledge_revalidation_assessment_hash"] = (
+                    approval_binding.get("assessment_payload_hash")
+                )
+            else:
+                expected_payload["knowledge_quality_assessment_id"] = (
+                    quality_assessment_id_value
+                )
+                expected_payload["knowledge_quality_assessment_hash"] = (
+                    quality_assessment_hash
+                )
             committed_state: dict[str, Any] | None = None
             if learning_change.operation == "create":
                 items = list(
@@ -3961,7 +3972,7 @@ class TaskRuntime:
                     committed_state, _ = decode_state_snapshot(
                         learning_change.committed_state,
                         learning_change_id=learning_change.id,
-                        operation="revise",
+                        operation=learning_change.operation,
                     )
                 except (KnowledgeHistoryError, TypeError, ValueError) as error:
                     raise TaskNotFinalizable(
@@ -3983,7 +3994,7 @@ class TaskRuntime:
                     and history.learning_change_ids[0] != learning_change.id
                 )
                 or (
-                    learning_change.operation == "revise"
+                    learning_change.operation in {"revise", "revalidate"}
                     and (
                         committed_state is None
                         or history.states[
