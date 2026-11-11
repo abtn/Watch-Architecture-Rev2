@@ -1586,38 +1586,6 @@ def test_revalidation_proposal_replays_after_task_completion(
         ) == before_events
 
 
-@pytest.mark.parametrize(
-    ("invalid_draft_case", "expected_failure_reason"),
-    [
-        (
-            "invented_reference",
-            "knowledge_revalidation_finding_reference_not_in_basis",
-        ),
-        (
-            "cross_team_reference",
-            "knowledge_revalidation_finding_reference_not_in_basis",
-        ),
-        (
-            "omitted_evidence_link",
-            "knowledge_revalidation_evidence_link_omitted",
-        ),
-        (
-            "freshness_mismatch",
-            "knowledge_revalidation_freshness_disposition_mismatch",
-        ),
-        ("extra_fields", "knowledge_revalidation_draft_invalid"),
-        ("malformed_shape", "knowledge_revalidation_draft_invalid"),
-        ("missing_required_field", "knowledge_revalidation_draft_invalid"),
-        (
-            "invalid_evaluator_identity",
-            "knowledge_revalidation_evaluator_identity_invalid",
-        ),
-        (
-            "invalid_evaluator_revision",
-            "knowledge_revalidation_evaluator_identity_invalid",
-        ),
-    ],
-)
 def test_operator_commits_supported_revalidation_without_changing_content(
     session_factory,
     snapshot_store,
@@ -1830,6 +1798,38 @@ def test_rejected_revalidation_does_not_mutate_the_knowledge_item(
         assert change.committed_state is None
 
 
+@pytest.mark.parametrize(
+    ("invalid_draft_case", "expected_failure_reason"),
+    [
+        (
+            "invented_reference",
+            "knowledge_revalidation_finding_reference_not_in_basis",
+        ),
+        (
+            "cross_team_reference",
+            "knowledge_revalidation_finding_reference_not_in_basis",
+        ),
+        (
+            "omitted_evidence_link",
+            "knowledge_revalidation_evidence_link_omitted",
+        ),
+        (
+            "freshness_mismatch",
+            "knowledge_revalidation_freshness_disposition_mismatch",
+        ),
+        ("extra_fields", "knowledge_revalidation_draft_invalid"),
+        ("malformed_shape", "knowledge_revalidation_draft_invalid"),
+        ("missing_required_field", "knowledge_revalidation_draft_invalid"),
+        (
+            "invalid_evaluator_identity",
+            "knowledge_revalidation_evaluator_identity_invalid",
+        ),
+        (
+            "invalid_evaluator_revision",
+            "knowledge_revalidation_evaluator_identity_invalid",
+        ),
+    ],
+)
 def test_revalidation_rejects_untrusted_provider_draft_without_record_and_recovers(
     session_factory,
     snapshot_store,
