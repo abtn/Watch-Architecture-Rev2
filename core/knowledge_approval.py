@@ -397,52 +397,6 @@ def build_approval_binding(
         return binding
 
     if not require_assessment:
-            return binding
-        if snapshot_store is None or session_factory is None:
-            raise KnowledgeApprovalBindingError(
-                "knowledge_approval_snapshot_context_required"
-            )
-        from core.knowledge_revalidation import (
-            require_recorded_assessment as require_revalidation_assessment,
-        )
-
-        try:
-            revalidation_assessment = require_revalidation_assessment(
-                session,
-                learning_change,
-                snapshot_store,
-                session_factory,
-                require_task_done=True,
-                require_current=learning_change.status == "proposed",
-            )
-        except KnowledgeRevalidationAssessmentError as error:
-            raise KnowledgeApprovalBindingError(str(error)) from error
-        task = session.get(Task, revalidation_assessment.task_id)
-        if task is None:
-            raise KnowledgeApprovalBindingError(
-                "knowledge_approval_assessment_task_missing"
-            )
-        if revalidation_assessment.assessment_result != "supported":
-            raise KnowledgeApprovalBindingError(
-                "knowledge_approval_revalidation_not_supported"
-            )
-        binding.update(
-            {
-                "proposal_hash": revalidation_assessment.proposal_hash,
-                "proposed_state_hash": revalidation_assessment.proposed_state_hash,
-                "evidence_refs": revalidation_assessment.evidence_refs,
-                "evidence_basis_hash": revalidation_assessment.evidence_basis_hash,
-                "assessment_task_policy_version": task.policy_version,
-                "assessment_type": "knowledge_revalidation",
-                "assessment_id": str(revalidation_assessment.id),
-                "assessment_payload_hash": revalidation_assessment.payload_hash,
-                "evaluator_identity": revalidation_assessment.evaluator_identity,
-                "evaluator_revision": revalidation_assessment.evaluator_revision,
-            }
-        )
-        return binding
-
-    if not require_assessment:
         raise KnowledgeApprovalBindingError(
             "knowledge_approval_assessment_required_for_operation"
         )
