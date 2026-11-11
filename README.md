@@ -27,7 +27,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** B3 is formally closed; B4.1 proposal/assessment contracts on draft [PR #97](https://github.com/abtn/Watch-Architecture-Rev2/pull/97) passed exact-head hosted CI on `fb20a3b1a0943926b9cea60a33efdfe329b919dc` (run #874, 948 passed, 113 warnings). The Operator approved the B4.1 contract matrix and authorized B4.2 on 2026-11-11. B4.2 revise canonical commit is in progress on branch `r7b-b4-2-revise-commit`; it is stacked on the B4.1 head and has not yet passed CI. B4.3 is not started. B5, B6, and R7-C remain unauthorized. See [PLAN.md](PLAN.md), [the B4.0 architecture decision](docs/development/r7-b-b4-0-architecture-decision.md), and [testing evidence](docs/testing.md).
+- **R7:** B3 is formally closed. B4.1 is merged in PR #97; B4.2 revise canonical commit is merged in PR #99 at `1c69073990b8ccd7a1ee29a806faf04c066d95ad` after exact-head CI run #897 passed (951 tests, 113 warnings). B4.3 revalidate canonical commit is in progress on draft [PR #100](https://github.com/abtn/Watch-Architecture-Rev2/pull/100); exact-head CI is pending. B5, B6, and R7-C remain unauthorized. See [PLAN.md](PLAN.md), [the B4.0 architecture decision](docs/development/r7-b-b4-0-architecture-decision.md), and [testing evidence](docs/testing.md).
 
 ## Future plan
 
