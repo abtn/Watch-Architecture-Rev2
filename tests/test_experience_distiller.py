@@ -3426,7 +3426,7 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
             next_confidence = confidence + Decimal("0.001")
             if next_confidence > Decimal("1"):
                 next_confidence = confidence - Decimal("0.001")
-            content["confidence"] = str(next_confidence)
+            content["confidence"] = float(next_confidence)
         return content
 
     provider = _FakeDistillationProvider(revised_content)
