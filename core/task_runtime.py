@@ -3871,6 +3871,7 @@ class TaskRuntime:
             expected_payload["knowledge_quality_assessment_hash"] = (
                 quality_assessment_hash
             )
+            committed_state: dict[str, Any] | None = None
             if learning_change.operation == "create":
                 items = list(
                     session.scalars(
@@ -3927,9 +3928,12 @@ class TaskRuntime:
                 )
                 or (
                     learning_change.operation == "revise"
-                    and history.states[
-                        history.learning_change_ids.index(learning_change.id)
-                    ] != committed_state
+                    and (
+                        committed_state is None
+                        or history.states[
+                            history.learning_change_ids.index(learning_change.id)
+                        ] != committed_state
+                    )
                 )
             ):
                 raise TaskNotFinalizable("committed_knowledge_item_mismatch")
