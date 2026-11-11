@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from threading import Barrier
+from types import SimpleNamespace
 from typing import Any, Callable, Iterator, Literal
 from uuid import UUID, uuid4
 
@@ -1669,7 +1670,9 @@ def test_operator_commits_supported_revalidation_without_changing_content(
     class ReviewCommitDateTime(datetime):
         @classmethod
         def now(cls, tz=None):
-            return review_commit_at if tz is not None else review_commit_at.replace(tzinfo=None)
+            if tz is not None:
+                return review_commit_at
+            return review_commit_at.replace(tzinfo=None)
 
     with monkeypatch.context() as patch:
         patch.setattr(
