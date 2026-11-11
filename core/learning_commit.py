@@ -422,6 +422,8 @@ class LearningCommitService:
                     )
                     applicability = draft.applicability.model_dump(mode="json")
                 if learning_change.operation == "create":
+                    if draft is None:
+                        raise LearningCommitCorrupt("learning_change_draft_missing")
                     prior_items = list(
                         session.scalars(
                             select(KnowledgeItem).where(
