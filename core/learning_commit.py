@@ -919,7 +919,42 @@ class LearningCommitService:
             else None
         )
         quality_assessment_hash = approval_request.quality_assessment_hash
-        if recorded_decision == "accept":
+        revalidation_assessment_id: str | None = None
+        revalidation_assessment_hash: str | None = None
+        if recorded_decision == "accept" and learning_change.operation == "revalidate":
+            from core.knowledge_revalidation import (
+                KnowledgeRevalidationAssessmentError,
+                require_recorded_assessment as require_revalidation_assessment,
+            )
+
+            try:
+                revalidation_assessment = require_revalidation_assessment(
+                    session,
+                    learning_change,
+                    self._snapshot_store,
+                    self._session_factory,
+                    require_task_done=True,
+                    require_current=False,
+                )
+            except KnowledgeRevalidationAssessmentError as error:
+                raise LearningCommitCorrupt(str(error)) from error
+            approval_binding = approval_request.approval_binding
+            if (
+                approval_binding is None
+                or approval_binding.get("assessment_type") != "knowledge_revalidation"
+                or approval_binding.get("assessment_id")
+                != str(revalidation_assessment.id)
+                or approval_binding.get("assessment_payload_hash")
+                != revalidation_assessment.payload_hash
+                or quality_assessment_id is not None
+                or quality_assessment_hash is not None
+            ):
+                raise LearningCommitCorrupt(
+                    "operator_revalidation_assessment_binding_invalid"
+                )
+            revalidation_assessment_id = str(revalidation_assessment.id)
+            revalidation_assessment_hash = revalidation_assessment.payload_hash
+        elif recorded_decision == "accept":
             try:
                 quality_assessment = require_recorded_assessment(
                     session, learning_change, require_task_done=True
@@ -978,7 +1013,7 @@ class LearningCommitService:
                     or learning_change.target_id is None
                 )
             )
-            or learning_change.operation not in {"create", "revise"}
+            or learning_change.operation not in {"create", "revise", "revalidate"}
         ):
             raise LearningCommitConflict("learning_change_decision_request_conflict")
 
@@ -1097,7 +1132,7 @@ class LearningCommitService:
                     committed_state, _ = decode_state_snapshot(
                         learning_change.committed_state,
                         learning_change_id=learning_change.id,
-                        operation="revise",
+                        operation=learning_change.operation,
                     )
                 except (KnowledgeHistoryError, TypeError, ValueError) as error:
                     raise LearningCommitCorrupt(
@@ -1108,12 +1143,20 @@ class LearningCommitService:
             item_id = item.id
             expected_payload["knowledge_item_id"] = str(item.id)
             expected_payload["knowledge_item_version"] = expected_version
-            expected_payload["knowledge_quality_assessment_id"] = (
-                quality_assessment_id
-            )
-            expected_payload["knowledge_quality_assessment_hash"] = (
-                quality_assessment_hash
-            )
+            if learning_change.operation == "revalidate":
+                expected_payload["knowledge_revalidation_assessment_id"] = (
+                    revalidation_assessment_id
+                )
+                expected_payload["knowledge_revalidation_assessment_hash"] = (
+                    revalidation_assessment_hash
+                )
+            else:
+                expected_payload["knowledge_quality_assessment_id"] = (
+                    quality_assessment_id
+                )
+                expected_payload["knowledge_quality_assessment_hash"] = (
+                    quality_assessment_hash
+                )
             try:
                 history = reconstruct_knowledge_item_history(session, item)
             except KnowledgeHistoryError as error:
@@ -1130,7 +1173,7 @@ class LearningCommitService:
                     and history.learning_change_ids[0] != learning_change.id
                 )
                 or (
-                    learning_change.operation == "revise"
+                    learning_change.operation in {"revise", "revalidate"}
                     and (
                         committed_state is None
                         or history.states[
