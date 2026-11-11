@@ -1389,11 +1389,17 @@ def test_needs_review_item_is_not_retrievable_even_if_projection_remains(
 def test_revalidated_item_is_hidden_until_its_new_projection_is_published(
     experience_env: TeamExperienceEnv,
 ) -> None:
-    review_due_at = datetime.now(timezone.utc)
-    item_id = experience_env.add_accepted_item(
-        committed_at=review_due_at
+    item_created_at = (
+        datetime.now(timezone.utc)
         - timedelta(days=experience_env.review_interval_days)
+        + timedelta(hours=1)
     )
+    item_id = experience_env.add_accepted_item(committed_at=item_created_at)
+    with experience_env.session_factory() as session:
+        item = session.get(KnowledgeItem, item_id)
+        assert item is not None and item.review_after is not None
+        review_due_at = item.review_after
+
     provider = FakeEmbeddingProvider()
     indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
     assert indexer.index_knowledge_item(item_id).outcome == "indexed"
@@ -1417,7 +1423,9 @@ def test_revalidated_item_is_hidden_until_its_new_projection_is_published(
     )
     assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
 
-    revalidation_id = experience_env.add_accepted_revalidation(item_id)
+    revalidation_id = experience_env.add_accepted_revalidation(
+        item_id, committed_at=review_due_at + timedelta(seconds=1)
+    )
     assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
 
     with experience_env.session_factory() as session:
