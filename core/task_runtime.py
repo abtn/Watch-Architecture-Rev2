@@ -3701,28 +3701,13 @@ class TaskRuntime:
         quality_assessment_hash = request_payload.get(
             "knowledge_quality_assessment_hash"
         )
-        if expected_decision == "accept":
-            from core.knowledge_quality import (
-                KnowledgeQualityAssessmentError,
-                require_recorded_assessment,
-            )
-
-            if (
-                not isinstance(quality_assessment_id_value, str)
-                or not isinstance(quality_assessment_hash, str)
-            ):
-                raise TaskNotFinalizable("operator_quality_assessment_required")
-            try:
-                quality_assessment_id = UUID(quality_assessment_id_value)
-            except ValueError as error:
-                raise TaskNotFinalizable(
-                    "operator_quality_assessment_reference_invalid"
-                ) from error
-            if str(quality_assessment_id) != quality_assessment_id_value:
-                raise TaskNotFinalizable(
-                    "operator_quality_assessment_reference_invalid"
-                )
-        elif (
+        quality_assessment_id_value = request_payload.get(
+            "knowledge_quality_assessment_id"
+        )
+        quality_assessment_hash = request_payload.get(
+            "knowledge_quality_assessment_hash"
+        )
+        if expected_decision == "reject" and (
             quality_assessment_id_value is not None
             or quality_assessment_hash is not None
         ):
@@ -3752,22 +3737,73 @@ class TaskRuntime:
         if learning_change is None or learning_change.team_id != task.team_id:
             raise TaskNotFinalizable("learning_change_not_found_for_task_team")
         if expected_decision == "accept":
-            from core.knowledge_quality import (
-                KnowledgeQualityAssessmentError,
-                require_recorded_assessment,
-            )
-
-            try:
-                quality_assessment = require_recorded_assessment(
-                    session, learning_change, require_task_done=True
+            if learning_change.operation == "revalidate":
+                from core.knowledge_revalidation import (
+                    KnowledgeRevalidationAssessmentError,
+                    require_recorded_assessment as require_revalidation_assessment,
                 )
-            except KnowledgeQualityAssessmentError as error:
-                raise TaskNotFinalizable(str(error)) from error
-            if (
-                str(quality_assessment.id) != quality_assessment_id_value
-                or quality_assessment.assessment_payload_hash != quality_assessment_hash
-            ):
-                raise TaskNotFinalizable("operator_quality_assessment_binding_invalid")
+
+                try:
+                    revalidation_assessment = require_revalidation_assessment(
+                        session,
+                        learning_change,
+                        self._snapshot_store,
+                        self._session_factory,
+                        require_task_done=True,
+                        require_current=False,
+                    )
+                except KnowledgeRevalidationAssessmentError as error:
+                    raise TaskNotFinalizable(str(error)) from error
+                approval_binding = request_payload.get("approval_binding")
+                if (
+                    quality_assessment_id_value is not None
+                    or quality_assessment_hash is not None
+                    or not isinstance(approval_binding, dict)
+                    or approval_binding.get("assessment_type")
+                    != "knowledge_revalidation"
+                    or approval_binding.get("assessment_id")
+                    != str(revalidation_assessment.id)
+                    or approval_binding.get("assessment_payload_hash")
+                    != revalidation_assessment.payload_hash
+                ):
+                    raise TaskNotFinalizable(
+                        "operator_revalidation_assessment_binding_invalid"
+                    )
+            else:
+                from core.knowledge_quality import (
+                    KnowledgeQualityAssessmentError,
+                    require_recorded_assessment,
+                )
+
+                if (
+                    not isinstance(quality_assessment_id_value, str)
+                    or not isinstance(quality_assessment_hash, str)
+                ):
+                    raise TaskNotFinalizable("operator_quality_assessment_required")
+                try:
+                    quality_assessment_id = UUID(quality_assessment_id_value)
+                except ValueError as error:
+                    raise TaskNotFinalizable(
+                        "operator_quality_assessment_reference_invalid"
+                    ) from error
+                if str(quality_assessment_id) != quality_assessment_id_value:
+                    raise TaskNotFinalizable(
+                        "operator_quality_assessment_reference_invalid"
+                    )
+                try:
+                    quality_assessment = require_recorded_assessment(
+                        session, learning_change, require_task_done=True
+                    )
+                except KnowledgeQualityAssessmentError as error:
+                    raise TaskNotFinalizable(str(error)) from error
+                if (
+                    str(quality_assessment.id) != quality_assessment_id_value
+                    or quality_assessment.assessment_payload_hash
+                    != quality_assessment_hash
+                ):
+                    raise TaskNotFinalizable(
+                        "operator_quality_assessment_binding_invalid"
+                    )
         if (
             learning_change is None
             or learning_change.status != expected_status
