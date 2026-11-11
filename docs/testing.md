@@ -860,6 +860,6 @@ Regression coverage now verifies:
 
 ### Latest-head verification
 
-The replay corrections and regression tests are committed to the same draft PR branch. Exact-head hosted CI is required for the resulting final commit before B4.1 verification can be called complete. Record the tested SHA and workflow URL here after that run concludes. The B4.1 Operator review of the payload/target snapshot matrices, evidence requirements, assessment routing, Events/Outcomes, and replay/idempotency remains a separate gate before B4.2/B4.3 canonical commit work.
+The replay corrections and regression tests are committed to the same draft PR branch. Exact-head hosted CI passed on `0d1350423043b26565219184b78277390e396f98`: [run #871](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42983920854). Fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, and the full suite (**948 passed, 113 warnings**) all passed. The 113 warnings are existing Alembic `path_separator` deprecations. This completes the executable verification portion of B4.1; the Operator contract review remains a separate gate before B4.2/B4.3. The B4.1 Operator review of the payload/target snapshot matrices, evidence requirements, assessment routing, Events/Outcomes, and replay/idempotency remains a separate gate before B4.2/B4.3 canonical commit work.
 
 B5, B6, and R7-C remain unauthorized.
