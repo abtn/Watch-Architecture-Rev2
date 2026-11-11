@@ -1389,16 +1389,14 @@ def test_needs_review_item_is_not_retrievable_even_if_projection_remains(
 def test_revalidated_item_is_hidden_until_its_new_projection_is_published(
     experience_env: TeamExperienceEnv,
 ) -> None:
-    item_id = experience_env.add_accepted_item()
+    review_due_at = datetime.now(timezone.utc)
+    item_id = experience_env.add_accepted_item(
+        committed_at=review_due_at
+        - timedelta(days=experience_env.review_interval_days)
+    )
     provider = FakeEmbeddingProvider()
     indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
     assert indexer.index_knowledge_item(item_id).outcome == "indexed"
-
-    review_due_at = datetime.now(timezone.utc)
-    with experience_env.session_factory.begin() as session:
-        item = session.get(KnowledgeItem, item_id)
-        assert item is not None
-        item.review_after = review_due_at - timedelta(seconds=1)
 
     review_task_id = experience_env.add_review_task()
     runtime = TaskRuntime(
