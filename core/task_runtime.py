@@ -3701,12 +3701,6 @@ class TaskRuntime:
         quality_assessment_hash = request_payload.get(
             "knowledge_quality_assessment_hash"
         )
-        quality_assessment_id_value = request_payload.get(
-            "knowledge_quality_assessment_id"
-        )
-        quality_assessment_hash = request_payload.get(
-            "knowledge_quality_assessment_hash"
-        )
         if expected_decision == "reject" and (
             quality_assessment_id_value is not None
             or quality_assessment_hash is not None
