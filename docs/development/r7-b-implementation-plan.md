@@ -817,6 +817,22 @@ See the [B4.0 architecture decision](r7-b-b4-0-architecture-decision.md) for the
 
 **Stop conditions:** stop if revalidation cannot prove the exact target snapshot, assessment provenance, atomic state transition, TaskRuntime finalization/recovery/replay, or publication gate using existing infrastructure; if a schema change appears necessary; or if any B5/B6 operation must be enabled. Return the smallest blocker instead of adding infrastructure.
 
+### B4.4 — Integrated regression and closeout
+
+**Status: STARTED — initial read-only audit recorded 2026-11-11.** The audit is based on exact merged main SHA `5f37927ff33d9e740c0ff56512d261dace36ab67`; see [the B4.4 audit record](r7-b-b4-4-integrated-regression-audit.md). No B4.4 regression implementation or hosted verification is claimed yet.
+
+**Goal:** prove the combined B4.1/B4.2/B4.3 contracts and commits across lifecycle invariants, true concurrency, stale assessments, TaskRuntime retry/recovery/replay, projection visibility, and exact-head hosted CI; then complete the Operator source/diff review.
+
+**Initial audit findings:** existing tests already cover revise acceptance/rejection, confidence-only and content-changing revise, revise recovery and replay after a later accepted revision, revalidation acceptance/rejection and immediate replay, assessment/target binding, history reconstruction, and projection invalidation/republish. The initial audit identifies six proof gaps for B4.4: (G1) a simultaneous two-session PostgreSQL compare-and-set race on one item; (G2) revalidation approval recovery after decision commit but before TaskRuntime finalization; (G3) original revalidation approval replay after a later history transition; (G4) one same-item revise→revalidate integration sequence with fresh assessment binding; and (G5) rejected-revalidation approval replay with duplicate-write counts; and (G6) accepted revise commit from a needs_review item (the current end-to-end revise test starts from active, while needs_review is covered at the binding/history-unit level). These are test-evidence gaps, not established implementation defects. Full mapping and exact test references are in the audit record.
+
+**B4.4 sequence:**
+1. Close only the identified regression-proof gaps G1–G6; make a production correction only if a test demonstrates a defect.
+2. Run GitHub-hosted CI on the exact PR head: fresh disposable PostgreSQL migration/single-head, Ruff, Mypy, `git diff --check origin/${GITHUB_BASE_REF}...HEAD`, full pytest, and disposable PostgreSQL cleanup.
+3. Record the exact tested SHA and workflow run; review the complete source/test diff and frozen B4.1 contract matrices.
+4. Reconcile PLAN, CHANGE_MAP, this plan, and docs/testing. B4 remains open until required evidence and explicit Operator acceptance are recorded.
+
+**Boundaries:** no migration, Task type, second runtime, dispatcher, scheduler, API, authentication subsystem, production evaluator/provider, or synchronous indexing shortcut. B5, B6, and R7-C remain unauthorized. Stop if a frozen earlier-phase contract or authority boundary must change.
+
 ---
 
 ## Phase B5: Supersede, retire and create-with-successor
