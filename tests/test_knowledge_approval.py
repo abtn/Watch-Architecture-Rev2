@@ -169,7 +169,7 @@ def test_revise_binding_pins_needs_review_target_and_quality_assessment(
     )
     monkeypatch.setattr(
         "core.knowledge_quality._assessment_target_binding",
-        lambda _assessment: target_binding,
+        lambda _session, _assessment: target_binding,
     )
     monkeypatch.setattr(
         "core.knowledge_quality.require_recorded_assessment",
