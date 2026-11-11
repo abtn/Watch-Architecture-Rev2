@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.models import (
+    KnowledgeItem,
     KnowledgeLifecycleAssessment,
     KnowledgeQualityAssessment,
     KnowledgeRevalidationAssessment,
@@ -285,36 +286,53 @@ def build_approval_binding(
             )
         return binding
 
-    if not require_assessment:
-        raise KnowledgeApprovalBindingError(
-            "knowledge_approval_assessment_required_for_operation"
-        )
-    if snapshot_store is None or session_factory is None:
-        raise KnowledgeApprovalBindingError(
-            "knowledge_approval_snapshot_context_required"
-        )
-
-    previous = learning_change.previous_state
-    if (
-        not isinstance(previous, dict)
-        or not isinstance(previous.get("state"), dict)
-    ):
-        raise KnowledgeApprovalBindingError(
-            "knowledge_approval_target_snapshot_missing"
-        )
-    target_state = previous["state"]
-    binding.update(
-        {
-            "target_status": target_state.get("status"),
-        }
-    )
-
     if learning_change.operation == "revalidate":
         if quality_count or lifecycle_count or revalidation_count > 1:
             raise KnowledgeApprovalBindingError(
                 "knowledge_approval_assessment_type_mismatch"
             )
-        from core.knowledge_revalidation import KnowledgeRevalidationAssessmentError
+        from core.knowledge_revalidation import (
+            KnowledgeRevalidationAssessmentError,
+            _target_state_from_proposal,
+        )
+        from core.learning_history import KNOWLEDGE_CONTENT_HASH_SCHEME
+        from core.models import KnowledgeItem
+
+        target = session.scalar(
+            select(KnowledgeItem).where(
+                KnowledgeItem.id == learning_change.target_id,
+                KnowledgeItem.team_id == learning_change.team_id,
+            )
+        )
+        if target is None:
+            raise KnowledgeApprovalBindingError(
+                "knowledge_approval_revalidation_target_missing"
+            )
+        try:
+            target_state, target_state_hash, target_content_hash = (
+                _target_state_from_proposal(
+                    learning_change, target, require_current=True
+                )
+            )
+        except KnowledgeRevalidationAssessmentError as error:
+            raise KnowledgeApprovalBindingError(str(error)) from error
+        binding.update(
+            {
+                "current_learning_change_id": target_state[
+                    "current_learning_change_id"
+                ],
+                "target_content_version": target_state["version"],
+                "target_content_hash": target_content_hash,
+                "target_content_hash_scheme": KNOWLEDGE_CONTENT_HASH_SCHEME,
+                "target_state_hash": target_state_hash,
+            }
+        )
+        if not require_assessment:
+            return binding
+        if snapshot_store is None or session_factory is None:
+            raise KnowledgeApprovalBindingError(
+                "knowledge_approval_snapshot_context_required"
+            )
         from core.knowledge_revalidation import (
             require_recorded_assessment as require_revalidation_assessment,
         )
@@ -341,17 +359,6 @@ def build_approval_binding(
             )
         binding.update(
             {
-                "current_learning_change_id": str(
-                    revalidation_assessment.current_learning_change_id
-                ),
-                "target_content_version": (
-                    revalidation_assessment.target_content_version
-                ),
-                "target_content_hash": revalidation_assessment.target_content_hash,
-                "target_content_hash_scheme": (
-                    revalidation_assessment.target_content_hash_scheme
-                ),
-                "target_state_hash": revalidation_assessment.target_state_hash,
                 "proposal_hash": revalidation_assessment.proposal_hash,
                 "proposed_state_hash": revalidation_assessment.proposed_state_hash,
                 "evidence_refs": revalidation_assessment.evidence_refs,
@@ -365,6 +372,30 @@ def build_approval_binding(
             }
         )
         return binding
+
+    if not require_assessment:
+        raise KnowledgeApprovalBindingError(
+            "knowledge_approval_assessment_required_for_operation"
+        )
+    if snapshot_store is None or session_factory is None:
+        raise KnowledgeApprovalBindingError(
+            "knowledge_approval_snapshot_context_required"
+        )
+
+    previous = learning_change.previous_state
+    if (
+        not isinstance(previous, dict)
+        or not isinstance(previous.get("state"), dict)
+    ):
+        raise KnowledgeApprovalBindingError(
+            "knowledge_approval_target_snapshot_missing"
+        )
+    target_state = previous["state"]
+    binding.update(
+        {
+            "target_status": target_state.get("status"),
+        }
+    )
 
     if learning_change.operation in {"retire", "supersede"}:
         if quality_count or revalidation_count or lifecycle_count > 1:
