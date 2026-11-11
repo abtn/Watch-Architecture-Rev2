@@ -827,15 +827,39 @@ The closeout traceability matrix and formal exit record are in [r7-b-b3-9-closeo
 
 **Formal disposition:** B3 is COMPLETE and formally closed on 2026-11-10 following the Operator's explicit instruction to proceed to B3.9 and establish the formal exit status. B4, B5, B6, and R7-C remain NOT AUTHORIZED and require separate written Operator decisions. The approval allowlist remains exactly `{"create"}`.
 
-## R7-B B4 — current hosted-only verification route (2026-11-11)
+## R7-B B4.1 — proposal contracts and replay corrections (2026-11-11)
 
-For the current B4 execution, Operator-local synchronization and test execution are skipped because the local machine is unavailable. This is an execution constraint, not a reduction of the B4 acceptance criteria.
+PR [#97](https://github.com/abtn/Watch-Architecture-Rev2/pull/97) implements the B4.1 revise/revalidate proposal and assessment contracts. The implementation reuses the existing `propose_learning_change` Task and TaskRuntime, keeps the proposal write scope at `["LearningChange"]`, routes revise to `KnowledgeQualityAssessment` and revalidate to `KnowledgeRevalidationAssessment`, leaves canonical `KnowledgeItem` state unchanged, retains the create-only approval allowlist, and introduces no migration.
 
-- Run checks through GitHub Actions on the exact pull-request head. Record the full tested commit SHA and workflow run URL; a green workflow from another SHA is not exact-head evidence.
-- The hosted workflow must prove a fresh disposable PostgreSQL migration from an empty database, exactly one Alembic head, Ruff, Mypy, `git diff --check origin/${GITHUB_BASE_REF}...HEAD`, and the full pytest suite. The PostgreSQL service runs only for the ephemeral Actions job and is disposed of by the runner at job completion.
-- Review the complete source and test patch against the same exact PR head. Record the changed-file inventory, scope review, and any remaining gaps.
-- Do not claim local pytest, local migrations, local Ruff/Mypy, local `git diff --check`, local worktree cleanliness, or local environment restoration. Historical B3 local evidence remains valid for B3 only and is not B4 evidence.
-- Hosted CI does not replace the B4.1 Operator review of the revise/revalidate payloads, exact target snapshot matrix, evidence requirements, assessment routing, idempotency, Events, Outcomes, and replay. B4.2/B4.3 canonical commit work remains gated on that review.
-- If hosted CI does not cover any required check, report the missing proof and keep the relevant B4 gate open. Do not infer success from a workflow name or a partial green job.
+### Operator-local verification of the pre-replay-fix implementation head
 
-**Current disposition:** verification route documented; no B4 code, test, migration, or hosted workflow result is claimed by this section. See [PLAN.md](../PLAN.md) for the current implementation checkpoint and authority.
+Exact tested SHA: `34282c724b17d6e4c3e07816de58dae24b677605`.
+
+- Fresh disposable PostgreSQL 16 database; migration from empty database succeeded.
+- Exactly one Alembic head; current revision `0018_r7b_lifecycle_review_date`.
+- Ruff and Mypy passed.
+- `git diff --check origin/main...HEAD` passed.
+- Full suite: **947 passed, 113 warnings, 267.34 seconds**.
+- Disposable PostgreSQL container removed; `DATABASE_URL` and `TEST_DATABASE_URL` restored.
+- The 113 warnings were Alembic `path_separator` deprecation warnings.
+
+This result is exact evidence for SHA `34282c7...` only. It predates the replay corrections described below and must not be represented as local verification of the later PR head.
+
+### Replay review corrections
+
+The source review identified two completed-Task replay defects:
+
+1. Revalidation checked for an existing proposal only after requiring a running Task. It now validates the original Task identity/write scope with completed Tasks permitted for an existing matching proposal, then returns the persisted proposal read-only. Conflicting operation, target, evidence IDs, or rationale still fail. A completed Task without an existing proposal cannot create one.
+2. Revise replay checked provider configuration before checking for an existing proposal. The provider check now occurs only after the existing-proposal replay path and running-Task validation. A matching completed proposal can therefore replay without a configured provider.
+
+Regression coverage now verifies:
+- Revalidation proposal replay after TaskRuntime completion returns the same LearningChange ID.
+- Reusing the completed revalidation Task with a conflicting rationale is rejected.
+- Replay creates no additional LearningChange or proposal Event.
+- Revise replay after Task completion succeeds with `provider=None` and creates no additional LearningChange or proposal Event.
+
+### Latest-head verification
+
+The replay corrections and regression tests are committed to the same draft PR branch. Exact-head hosted CI is required for the resulting final commit before B4.1 verification can be called complete. Record the tested SHA and workflow URL here after that run concludes. The B4.1 Operator review of the payload/target snapshot matrices, evidence requirements, assessment routing, Events/Outcomes, and replay/idempotency remains a separate gate before B4.2/B4.3 canonical commit work.
+
+B5, B6, and R7-C remain unauthorized.
