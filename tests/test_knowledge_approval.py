@@ -26,7 +26,13 @@ def _learning_change(operation: str) -> SimpleNamespace:
         target_id=uuid4(),
         operation=operation,
         status="proposed",
-        previous_state={"state": {"status": "active"}},
+        previous_state={
+            "state": {
+                "status": "needs_review" if operation == "revalidate" else "active",
+                "current_learning_change_id": str(uuid4()),
+                "version": 5,
+            }
+        },
         proposed_state={"proposal_hash": "sha256:" + "a" * 64},
         evidence_basis=[{"source": "fixture"}],
         evidence_basis_hash="sha256:" + "b" * 64,
@@ -110,7 +116,7 @@ def test_revalidation_binding_pins_current_target_evidence_and_assessment(
     assert binding["assessment_id"] == str(assessment.id)
     assert binding["assessment_payload_hash"] == assessment.payload_hash
     assert binding["target_content_version"] == 5
-    assert binding["target_status"] == "active"
+    assert binding["target_status"] == "needs_review"
     assert binding["approval_policy_version"] == 9
     assert binding["assessment_task_policy_version"] == 7
     assert binding["operator_id"] == operator_id
