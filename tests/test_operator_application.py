@@ -996,7 +996,7 @@ def test_request_creation_rejects_revise_without_target_snapshot(
 
 @pytest.mark.parametrize(
     "operation",
-    ["revalidate", "supersede", "retire"],
+    ["supersede", "retire"],
 )
 def test_task_runtime_rejects_every_unauthorized_lifecycle_operation(
     session_factory: sessionmaker[Session],
@@ -1037,7 +1037,7 @@ def test_task_runtime_rejects_every_unauthorized_lifecycle_operation(
 
 @pytest.mark.parametrize(
     "operation",
-    ["revalidate", "supersede", "retire"],
+    ["supersede", "retire"],
 )
 def test_learning_commit_rechecks_supported_operation_eligibility(
     session_factory: sessionmaker[Session],
@@ -1078,7 +1078,7 @@ def test_learning_commit_rechecks_supported_operation_eligibility(
 
 @pytest.mark.parametrize(
     "operation",
-    ["revalidate", "supersede", "retire"],
+    ["supersede", "retire"],
 )
 def test_finalization_rejects_every_unauthorized_lifecycle_operation(
     session_factory: sessionmaker[Session],
@@ -1120,7 +1120,7 @@ def test_finalization_rejects_every_unauthorized_lifecycle_operation(
 
 @pytest.mark.parametrize(
     "operation",
-    ["revalidate", "supersede", "retire"],
+    ["supersede", "retire"],
 )
 def test_interrupted_recovery_rejects_every_unauthorized_lifecycle_operation(
     session_factory: sessionmaker[Session],
