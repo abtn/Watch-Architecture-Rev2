@@ -12,6 +12,7 @@ from core.learning_history import (
     KnowledgeHistoryError,
     ReviewMarker,
     _validate_live_supersession_links,
+    _validate_transition,
     decode_state_snapshot,
     encode_state_snapshot,
     reconstruct_history,
@@ -131,6 +132,34 @@ def test_versioned_create_root_is_not_marked_as_legacy():
 
     assert result.state == state
     assert result.reconstructed_legacy_fields == frozenset()
+
+
+@pytest.mark.parametrize("status", ["active", "needs_review"])
+def test_revise_transition_preserves_supported_lifecycle_status(status: str) -> None:
+    item_id = uuid4()
+    team_id = uuid4()
+    root_id = uuid4()
+    change_id = uuid4()
+    committed_at = datetime(2026, 11, 11, tzinfo=timezone.utc)
+    previous = _state(
+        item_id, team_id, root_id, pointer=root_id, status=status, version=3
+    )
+    committed = dict(previous)
+    committed["current_learning_change_id"] = str(change_id)
+    committed["version"] = previous["version"] + 1
+    committed["confidence"] = "0.801"
+    committed["last_validated_at"] = None
+
+    _validate_transition(
+        "revise",
+        previous,
+        committed,
+        change_id=change_id,
+        committed_at=committed_at,
+    )
+
+    assert committed["status"] == status
+    assert committed["version"] == 4
 
 
 def test_revise_chain_uses_pointer_links_and_matches_leaf_state():
