@@ -876,7 +876,7 @@ B4.2 enables only revise canonical commit through the existing Operator Task and
 
 ## R7-B B4.3 — revalidate canonical commit (PR #100 merge verification record)
 
-Branch: `r7b-b4-3-revalidate-commit`; open PR [#100](https://github.com/abtn/Watch-Architecture-Rev2/pull/100) (ready for review; not a draft), based on merged B4.2 main.
+Merged branch: `r7b-b4-3-revalidate-commit`; PR [#100](https://github.com/abtn/Watch-Architecture-Rev2/pull/100) squash-merged to `main` at `f9c585c174799cf26fc0d7bf8ed57a8396e2b5aa`. Final PR head: `2f4135a7affe38cf1b564409e5b1b077ba4cb3ae`.
 
 The current implementation work:
 - Enables revalidate in the existing trusted Operator approval path, while keeping supersede and retire outside the allowlist.
