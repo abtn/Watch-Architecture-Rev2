@@ -1244,7 +1244,11 @@ def _create_admitted_approval_task(
     decision: str = "accept",
     reason: str | None = None,
 ):
-    if decision == "accept":
+    with session_factory() as session:
+        learning_change = session.get(LearningChange, learning_change_id)
+        assert learning_change is not None
+        operation = learning_change.operation
+    if decision == "accept" and operation != "revalidate":
         _run_quality_assessment(
             session_factory, snapshot_store, learning_change_id
         )
@@ -1255,9 +1259,9 @@ def _create_admitted_approval_task(
         rejection_reason=reason,
     )
     result = OperatorApplicationAdapter(
-        session_factory
+        session_factory, snapshot_store
     ).request_learning_change_decision(_approval_principal(team_id), request)
-    admission = TaskRuntime(session_factory).admit(result.task_id)
+    admission = TaskRuntime(session_factory, snapshot_store).admit(result.task_id)
     return result.task_id, admission.attempt_count, _approval_principal(team_id)
 
 
