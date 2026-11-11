@@ -874,7 +874,7 @@ PR [#99](https://github.com/abtn/Watch-Architecture-Rev2/pull/99) merged to `mai
 
 B4.2 enables only revise canonical commit through the existing Operator Task and TaskRuntime path. No migration, new Task type, second runtime, dispatcher, scheduler, public API, or authentication subsystem was introduced. B4.3 remained separate until the Operator explicitly authorized it after B4.2 merged.
 
-## R7-B B4.3 — revalidate canonical commit (EXACT-HEAD CI PASSED — PR #100 READY FOR REVIEW)
+## R7-B B4.3 — revalidate canonical commit (PR #100 verification record)
 
 Branch: `r7b-b4-3-revalidate-commit`; open PR [#100](https://github.com/abtn/Watch-Architecture-Rev2/pull/100) (ready for review; not a draft), based on merged B4.2 main.
 
