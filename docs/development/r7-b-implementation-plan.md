@@ -2,7 +2,7 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (updated 2026-11-11):** B0 complete; B1 merged; B2 closed with accepted residual verification gaps; B3 formally closed on 2026-11-10; B4 explicitly authorized. B4.1 proposal/assessment contracts are implemented on draft PR #97, including revise/revalidate routing, exact target binding, and completed-task replay protections. Two replay regressions were added: revalidation replay after Task completion (including conflicting rationale rejection) and revise replay without a configured provider. The prior code head `34282c724b17d6e4c3e07816de58dae24b677605` passed Operator-local checks (947 tests, Ruff, Mypy, disposable PostgreSQL migration/single-head, and diff check); that local result predates these replay corrections. Exact-head hosted CI passed on `0d1350423043b26565219184b78277390e396f98` in run [#871](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42983920854): fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, and **948 passed, 113 warnings**. The B4.1 Operator contract review remains a separate gate before B4.2/B4.3. B5, B6, and R7-C remain unauthorized. The approval allowlist remains exactly `{"create"}` until each B4 commit slice passes its own gate.
+**Status (updated 2026-11-11):** B0 complete; B1 merged; B2 closed with accepted residual verification gaps; B3 formally closed on 2026-11-10; B4 explicitly authorized. B4.1 proposal/assessment contracts are merged in PR #97. B4.2 revise canonical commit is merged in PR #99 at `1c69073990b8ccd7a1ee29a806faf04c066d95ad`; exact PR head `802d0aafacf3ccaee8a8c496416bbf9f09caf2aa` passed hosted CI run [#897](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42993908728): fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, and **951 passed, 113 warnings**. The Operator authorized B4.3 revalidate canonical commit after B4.2 merged. B4.3 revalidate canonical commit is implemented on open PR [#100](https://github.com/abtn/Watch-Architecture-Rev2/pull/100), which is ready for review and is not a draft. Implementation head `77b14203feee844d0ad43bc3d7c6bb3008ed1b72` passed CI run [#923](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43013850608); the later pre-reconciliation PR head `19bf0f491728539d548dd3702b2c076e608066b4` passed exact-head CI run [#926](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43014479911), with fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, and **949 passed, 113 warnings**. These are historical heads; the current follow-up head and its exact-head CI are tracked on PR #100. Operator review/merge is pending. B5, B6, and R7-C remain unauthorized. No migration is authorized or proposed.
 
 
 
@@ -704,11 +704,11 @@ Tests must assert both the intended assessment record and the absence of unautho
 
 ## Phase B4: Revise and revalidate
 
-**Status (updated 2026-11-11):** B4 was explicitly authorized after formal B3 closure. B4.1 proposal/assessment contracts and replay corrections are implemented on draft PR #97. Exact PR head `fb20a3b1a0943926b9cea60a33efdfe329b919dc` passed hosted CI run [#874](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42984911531): fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, and 948 tests (113 existing Alembic deprecation warnings). The Operator approved the B4.1 contract matrix on 2026-11-11 and authorized B4.2. B4.2 revise canonical commit is in progress on `r7b-b4-2-revise-commit`, stacked on the B4.1 head; this branch is not yet verified or merged. B4.3 revalidate commit remains separate. No migration is authorized or currently proposed. B5, B6, and R7-C remain unauthorized. The architecture boundary is recorded in [the B4.0 decision record](r7-b-b4-0-architecture-decision.md).
+**Status (updated 2026-11-11):** B4 was explicitly authorized after formal B3 closure. B4.1 proposal/assessment contracts and replay corrections were merged in PR #97. The earlier B4.1 implementation head `fb20a3b1a0943926b9cea60a33efdfe329b919dc` passed hosted CI run [#874](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42984911531): fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, and 948 tests (113 existing Alembic deprecation warnings). The Operator approved the B4.1 contract matrix on 2026-11-11 and authorized B4.2. B4.2 revise canonical commit is merged in PR #99 at `1c69073990b8ccd7a1ee29a806faf04c066d95ad`; exact-head hosted CI run #897 passed 951 tests (113 warnings). B4.3 is the active, separately implemented revalidate commit slice on open PR #100, ready for review and not a draft. Historical implementation and pre-reconciliation exact-head CI evidence, and the current follow-up head/check status, are recorded in the B4.3 verification section and on PR #100. No migration is authorized or currently proposed. B5, B6, and R7-C remain unauthorized. The architecture boundary is recorded in [the B4.0 decision record](r7-b-b4-0-architecture-decision.md).
 
 ### B4 execution verification mode — current run
 
-Operator-local verification is available only for the earlier code head `34282c724b17d6e4c3e07816de58dae24b677605`; it is historical evidence for that SHA only. B4.1's replay-fix head and final docs head were verified by hosted CI. The B4.2 branch must receive its own exact-head hosted CI result; do not claim local verification unless the Operator supplies it.
+Operator-local verification is available only for the earlier code head `34282c724b17d6e4c3e07816de58dae24b677605`; it is historical evidence for that SHA only. B4.1's replay-fix head and final docs head were verified by hosted CI. B4.2 exact-head hosted verification is recorded above; no Operator-local verification is claimed. B4.3 exact-head hosted verification is recorded in its section below.
 
 - Use GitHub-hosted Actions on the exact pull-request head for executable verification. The workflow must visibly cover fresh disposable PostgreSQL migration/single-head checks, Ruff, Mypy, `git diff --check origin/${GITHUB_BASE_REF}...HEAD`, the full pytest suite, and Actions-managed disposal of the PostgreSQL service when the job ends. Add or repair hosted coverage if any required check is missing; do not infer it from a generic green badge.
 - Review the complete source and test diff against the exact PR head. Record the tested commit SHA and workflow run. A green run for another SHA is not exact-head evidence.
@@ -735,7 +735,7 @@ Operator-local verification is available only for the earlier code head `34282c7
 5. Specify operation-specific idempotency, proposal hashes, stale-target failure reasons, Event payload fields, TaskRuntime admission/finalization/recovery, and byte/ID-stable replay. Do not permit a stale target to be silently rebased.
 6. Add focused tests for valid/malformed/cross-operation proposals, wrong-Team or stale target, pointer/version/hash drift, assessment routing/binding, proposal Event/Outcome mismatch, cost reconciliation, retry/recovery, and unchanged create-only approval admission.
 
-**Operator review point — APPROVED 2026-11-11:** The Operator approved the frozen revise/revalidate contract matrix, including exact target binding (KnowledgeItem ID, current LearningChange pointer, content version, v2 content hash and scheme, full-state snapshot hash), same-Team target, evidence basis/proposal hashes, assessment routing, Task/Event/Outcome attribution, and completed-Task replay/idempotency behavior. Revise preserves item identity, origin, lifecycle status, and supersession links; changes content (including confidence where changed); advances version by one; clears `last_validated_at`; and recomputes `review_after` from the approval Task's pinned TeamPolicy. Revalidate remains state-preserving and is deferred to B4.3.
+**Operator review point — APPROVED 2026-11-11:** The Operator approved the frozen revise/revalidate contract matrix, including exact target binding (KnowledgeItem ID, current LearningChange pointer, content version, v2 content hash and scheme, full-state snapshot hash), same-Team target, evidence basis/proposal hashes, assessment routing, Task/Event/Outcome attribution, and completed-Task replay/idempotency behavior. Revise preserves item identity, origin, lifecycle status, and supersession links; changes content (including confidence where changed); advances version by one; clears `last_validated_at`; and recomputes `review_after` from the approval Task's pinned TeamPolicy. Revalidate is state-preserving and is now the active B4.3 commit slice.
 
 **Expected output:** a small, reviewed contract implementation and focused tests proving both operation-specific proposal paths while create behavior remains compatible; no canonical `KnowledgeItem` writes and no approval allowlist expansion.
 
@@ -765,7 +765,7 @@ See the [B4.0 architecture decision](r7-b-b4-0-architecture-decision.md) for the
 
 ### B4.2 — Revise canonical commit
 
-**Status:** implementation in progress on branch `r7b-b4-2-revise-commit`, based on B4.1 PR #97 head `fb20a3b1a0943926b9cea60a33efdfe329b919dc`. This is a stacked implementation branch; B4.1 remains draft and unmerged.
+**Status: COMPLETE — MERGED.** PR #99 merged to `main` at `1c69073990b8ccd7a1ee29a806faf04c066d95ad`. Exact PR head `802d0aafacf3ccaee8a8c496416bbf9f09caf2aa` passed hosted CI run #897: fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, and 951 tests (113 warnings).
 
 **Goal:** enable only the accepted revise operation to commit one versioned KnowledgeItem transition through the existing trusted Operator Task and TaskRuntime path.
 
@@ -789,6 +789,35 @@ See the [B4.0 architecture decision](r7-b-b4-0-architecture-decision.md) for the
 - No migration; exact-head hosted CI covers fresh migration/single-head, Ruff, Mypy, patch whitespace, full suite, and disposable PostgreSQL cleanup.
 
 **Stop conditions:** stop if the existing TaskRuntime/Operator path cannot prove the target compare-and-set, assessment chain, or atomic history/Event update; if a schema change appears necessary; or if any operation outside revise must be enabled. Return the smallest blocker instead of adding infrastructure.
+
+### B4.3 — Revalidate canonical commit
+
+**Status:** implementation complete on PR [#100](https://github.com/abtn/Watch-Architecture-Rev2/pull/100), branch `r7b-b4-3-revalidate-commit`, based on merged B4.2 main. The implementation head `77b14203feee844d0ad43bc3d7c6bb3008ed1b72` passed CI run [#923](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43013850608). The later pre-reconciliation PR head `19bf0f491728539d548dd3702b2c076e608066b4` passed exact-head CI run [#926](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43014479911): fresh PostgreSQL migration/single Alembic-head verification, Ruff, Mypy (38 source files), PR patch whitespace, and **949 passed, 113 warnings**. The 113 warnings are existing Alembic `path_separator` deprecations; disposable PostgreSQL service and runner cleanup passed. The import-only cleanup and documentation follow-up are later changes; their exact-head CI is tracked on PR #100. Operator review/merge remains pending.
+
+**Goal:** enable only the accepted `revalidate` operation through the same trusted Operator approval Task, LearningCommitService, and TaskRuntime lifecycle path.
+
+**Coding side**
+1. Require the exact same-Team `needs_review` KnowledgeItem and pin its ID, current LearningChange pointer, content version, v2 content hash/scheme, and full-state snapshot hash. The proposal and assessment must preserve semantic content and confidence.
+2. Rebuild and verify the recorded supported `KnowledgeRevalidationAssessment`, its Task/Event/Outcome chain, evaluator identity/revision, evidence basis, proposal hashes, and Task policy binding at request, admission, commit, finalization, recovery, and replay.
+3. Lock the target and compare its complete live state to the immutable proposal snapshot. Commit with compare-and-set on Team, item ID, `needs_review` status, exact current pointer, and expected content version. Any drift rejects without rebasing.
+4. Atomically transition only `needs_review → active`; preserve content, confidence, content hash, content version, origin, and supersession links exactly; set `last_validated_at` to canonical commit time; recompute `review_after` from the approval Task's pinned TeamPolicy; advance the current pointer; and retain the complete committed-state snapshot.
+5. Write one Task-attributed decision Event with the LearningChange disposition. A rejected revalidation must leave the KnowledgeItem unchanged. Original accepted/rejected decisions must replay without duplicate writes, including after later history transitions.
+6. Preserve the existing Team Experience publication gate. Advancing the current pointer makes the previous projection ineligible immediately; retrieval must remain empty until the existing indexer republishes against the new pointer/state. Do not add a synchronous indexing shortcut or alternate publication path.
+7. Keep the existing TaskRuntime as the only lifecycle owner. Add no migration, Task type, runtime, dispatcher, scheduler, API, or authentication subsystem.
+
+**Minimum regression proof**
+- Accepted revalidation of a current `needs_review` item; status becomes active, content hash/version/confidence/origin/supersession links remain unchanged, pointer advances, and validation/review dates follow the pinned policy.
+- Missing, duplicate, unsupported, cross-Team, tampered, or stale revalidation assessment/target binding fails closed.
+- Pointer/version/full-state drift and compare-and-set conflict produce no partial canonical state or decision Event.
+- Rejected revalidation leaves the KnowledgeItem unchanged and replays without duplicate writes.
+- TaskRuntime admission, finalization, interrupted recovery, and original approval replay after a later history transition.
+- Old projection is immediately ineligible after pointer advancement; retrieval resumes only after the existing indexer republishes the current state.
+- Create and revise approval/replay compatibility remains unchanged; supersede and retire remain unauthorized.
+- No migration; exact-head hosted CI covers fresh migration/single-head, Ruff, Mypy, patch whitespace, full suite, and disposable PostgreSQL cleanup.
+
+**Stop conditions:** stop if revalidation cannot prove the exact target snapshot, assessment provenance, atomic state transition, TaskRuntime finalization/recovery/replay, or publication gate using existing infrastructure; if a schema change appears necessary; or if any B5/B6 operation must be enabled. Return the smallest blocker instead of adding infrastructure.
+
+---
 
 ## Phase B5: Supersede, retire and create-with-successor
 

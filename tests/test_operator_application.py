@@ -737,7 +737,7 @@ def test_non_proposed_learning_change_cannot_start_a_new_request(
 
     with pytest.raises(
         LearningChangeNotApprovable,
-        match="only_knowledge_item_create_or_revise_is_supported",
+        match="only_knowledge_item_create_revise_or_revalidate_is_supported",
     ):
         OperatorApplicationAdapter(session_factory).request_learning_change_decision(
             _principal(approval_context.team_id),
@@ -930,7 +930,7 @@ def test_task_runtime_rejects_operator_request_event_identity_tampering(
 
 @pytest.mark.parametrize(
     "operation",
-    ["revalidate", "supersede", "retire"],
+    ["supersede", "retire"],
 )
 def test_request_creation_rejects_every_unauthorized_lifecycle_operation(
     session_factory: sessionmaker[Session],
@@ -947,7 +947,7 @@ def test_request_creation_rejects_every_unauthorized_lifecycle_operation(
 
     with pytest.raises(
         LearningChangeNotApprovable,
-        match="only_knowledge_item_create_or_revise_is_supported",
+        match="only_knowledge_item_create_revise_or_revalidate_is_supported",
     ):
         OperatorApplicationAdapter(session_factory).request_learning_change_decision(
             _principal(approval_context.team_id),
@@ -996,7 +996,7 @@ def test_request_creation_rejects_revise_without_target_snapshot(
 
 @pytest.mark.parametrize(
     "operation",
-    ["revalidate", "supersede", "retire"],
+    ["supersede", "retire"],
 )
 def test_task_runtime_rejects_every_unauthorized_lifecycle_operation(
     session_factory: sessionmaker[Session],
@@ -1037,7 +1037,7 @@ def test_task_runtime_rejects_every_unauthorized_lifecycle_operation(
 
 @pytest.mark.parametrize(
     "operation",
-    ["revalidate", "supersede", "retire"],
+    ["supersede", "retire"],
 )
 def test_learning_commit_rechecks_supported_operation_eligibility(
     session_factory: sessionmaker[Session],
@@ -1078,7 +1078,7 @@ def test_learning_commit_rechecks_supported_operation_eligibility(
 
 @pytest.mark.parametrize(
     "operation",
-    ["revalidate", "supersede", "retire"],
+    ["supersede", "retire"],
 )
 def test_finalization_rejects_every_unauthorized_lifecycle_operation(
     session_factory: sessionmaker[Session],
@@ -1113,14 +1113,14 @@ def test_finalization_rejects_every_unauthorized_lifecycle_operation(
         with pytest.raises(
             TaskNotFinalizable, match="operator_task_request_event_invalid"
         ):
-            TaskRuntime._validate_learning_change_decision_result(
+            TaskRuntime(session_factory)._validate_learning_change_decision_result(
                 session, task, observation
             )
 
 
 @pytest.mark.parametrize(
     "operation",
-    ["revalidate", "supersede", "retire"],
+    ["supersede", "retire"],
 )
 def test_interrupted_recovery_rejects_every_unauthorized_lifecycle_operation(
     session_factory: sessionmaker[Session],

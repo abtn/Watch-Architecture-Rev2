@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from threading import Barrier
+from types import SimpleNamespace
 from typing import Any, Callable, Iterator, Literal
 from uuid import UUID, uuid4
 
@@ -62,7 +63,11 @@ from core.learning_commit import (
     LearningCommitError,
     LearningCommitService,
 )
-from core.learning_history import encode_state_snapshot, knowledge_item_state
+from core.learning_history import (
+    encode_state_snapshot,
+    knowledge_item_content_hash,
+    knowledge_item_state,
+)
 from core.models import (
     Evaluation,
     Event,
@@ -1244,7 +1249,11 @@ def _create_admitted_approval_task(
     decision: str = "accept",
     reason: str | None = None,
 ):
-    if decision == "accept":
+    with session_factory() as session:
+        learning_change = session.get(LearningChange, learning_change_id)
+        assert learning_change is not None
+        operation = learning_change.operation
+    if decision == "accept" and operation != "revalidate":
         _run_quality_assessment(
             session_factory, snapshot_store, learning_change_id
         )
@@ -1255,9 +1264,9 @@ def _create_admitted_approval_task(
         rejection_reason=reason,
     )
     result = OperatorApplicationAdapter(
-        session_factory
+        session_factory, snapshot_store
     ).request_learning_change_decision(_approval_principal(team_id), request)
-    admission = TaskRuntime(session_factory).admit(result.task_id)
+    admission = TaskRuntime(session_factory, snapshot_store).admit(result.task_id)
     return result.task_id, admission.attempt_count, _approval_principal(team_id)
 
 
@@ -1576,6 +1585,242 @@ def test_revalidation_proposal_replays_after_task_completion(
                 Event.type == "learning_change_proposed",
             )
         ) == before_events
+
+
+def test_operator_commits_supported_revalidation_without_changing_content(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    monkeypatch,
+):
+    fixture = distillation_fixture(
+        2, include_contrary=False, review_interval_days=1
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    create_proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=create_proposal.learning_change_id,
+        )
+    )
+    create_task_id, create_attempt, create_principal = _create_admitted_approval_task(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        create_proposal.learning_change_id,
+    )
+    created = LearningCommitService(session_factory, snapshot_store).decide(
+        create_task_id, create_attempt, create_principal
+    )
+    assert created.knowledge_item_id is not None
+    runtime.finalize(
+        TerminalObservation(
+            task_id=create_task_id,
+            attempt=create_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=created.committed_at,
+            learning_change_id=created.learning_change_id,
+        )
+    )
+
+    _, revalidation_change_id = _create_revalidation_proposal(
+        session_factory,
+        snapshot_store,
+        fixture,
+        created.knowledge_item_id,
+    )
+    assessment_service = KnowledgeRevalidationAssessmentService(
+        session_factory, snapshot_store
+    )
+    assessment_task_id = assessment_service.create_task(revalidation_change_id)
+    assessment_runner = KnowledgeRevalidationAssessmentTaskRunner(
+        session_factory,
+        snapshot_store,
+        _FakeKnowledgeRevalidationProvider(),
+    )
+    assessment_result = assessment_runner.run(assessment_task_id)
+    assert assessment_result.status == "done"
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, created.knowledge_item_id)
+        assert item is not None
+        original_state = knowledge_item_state(item)
+        original_content_hash = knowledge_item_content_hash(item)
+        original_review_after = item.review_after
+        assert original_review_after is not None
+        assert item.status == "needs_review"
+
+    approval_task_id, approval_attempt, principal = _create_admitted_approval_task(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        revalidation_change_id,
+    )
+    import core.learning_commit as learning_commit
+
+    review_commit_at = original_review_after + timedelta(seconds=3)
+
+    class ReviewCommitDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is not None:
+                return review_commit_at
+            return review_commit_at.replace(tzinfo=None)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            learning_commit,
+            "datetime",
+            SimpleNamespace(
+                datetime=ReviewCommitDateTime,
+                timezone=timezone,
+                timedelta=timedelta,
+            ),
+        )
+        committed = LearningCommitService(
+            session_factory, snapshot_store
+        ).decide(approval_task_id, approval_attempt, principal)
+    assert committed.knowledge_item_id == created.knowledge_item_id
+
+    runtime.finalize(
+        TerminalObservation(
+            task_id=approval_task_id,
+            attempt=approval_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=committed.committed_at,
+            learning_change_id=revalidation_change_id,
+        )
+    )
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, created.knowledge_item_id)
+        change = session.get(LearningChange, revalidation_change_id)
+        decision_event = session.scalar(
+            select(Event).where(
+                Event.task_id == approval_task_id,
+                Event.type == "learning_change_accepted",
+            )
+        )
+        assert item is not None and change is not None and decision_event is not None
+        committed_item_state = knowledge_item_state(item)
+        assert item.status == "active"
+        assert item.version == original_state["version"]
+        assert item.current_learning_change_id == revalidation_change_id
+        assert item.origin_learning_change_id == UUID(
+            original_state["origin_learning_change_id"]
+        )
+        assert item.last_validated_at == committed.committed_at
+        assert item.review_after == committed.committed_at + timedelta(days=1)
+        assert knowledge_item_content_hash(item) == original_content_hash
+        assert committed_item_state["status"] == "active"
+        assert committed_item_state["version"] == original_state["version"]
+        assert change.status == "accepted"
+        assert change.committed_state is not None
+        assert decision_event.payload["knowledge_revalidation_assessment_id"]
+        assert decision_event.payload["knowledge_revalidation_assessment_hash"]
+
+    replay = LearningCommitService(session_factory, snapshot_store).decide(
+        approval_task_id, approval_attempt, principal
+    )
+    assert replay.replayed is True
+    assert replay.knowledge_item_id == created.knowledge_item_id
+
+
+def test_rejected_revalidation_does_not_mutate_the_knowledge_item(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(
+        2, include_contrary=False, review_interval_days=1
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    create_proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=create_proposal.learning_change_id,
+        )
+    )
+    create_task_id, create_attempt, create_principal = _create_admitted_approval_task(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        create_proposal.learning_change_id,
+    )
+    created = LearningCommitService(session_factory, snapshot_store).decide(
+        create_task_id, create_attempt, create_principal
+    )
+    assert created.knowledge_item_id is not None
+    runtime.finalize(
+        TerminalObservation(
+            task_id=create_task_id,
+            attempt=create_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=created.committed_at,
+            learning_change_id=created.learning_change_id,
+        )
+    )
+
+    _, revalidation_change_id = _create_revalidation_proposal(
+        session_factory,
+        snapshot_store,
+        fixture,
+        created.knowledge_item_id,
+    )
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, created.knowledge_item_id)
+        assert item is not None
+        original_state = knowledge_item_state(item)
+        original_content_hash = knowledge_item_content_hash(item)
+
+    approval_task_id, approval_attempt, principal = _create_admitted_approval_task(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        revalidation_change_id,
+        decision="reject",
+        reason="The current evidence does not justify restoring active status.",
+    )
+    committed = LearningCommitService(session_factory, snapshot_store).decide(
+        approval_task_id, approval_attempt, principal
+    )
+    assert committed.knowledge_item_id is None
+    runtime.finalize(
+        TerminalObservation(
+            task_id=approval_task_id,
+            attempt=approval_attempt,
+            result_category="success_learning_change_rejected",
+            observed_at=committed.committed_at,
+            learning_change_id=revalidation_change_id,
+        )
+    )
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, created.knowledge_item_id)
+        change = session.get(LearningChange, revalidation_change_id)
+        assert item is not None and change is not None
+        assert knowledge_item_state(item) == original_state
+        assert knowledge_item_content_hash(item) == original_content_hash
+        assert change.status == "rejected"
+        assert change.committed_state is None
 
 
 @pytest.mark.parametrize(

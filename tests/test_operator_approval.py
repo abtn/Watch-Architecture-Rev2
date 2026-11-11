@@ -195,13 +195,13 @@ def test_decision_reason_is_canonicalized(
         ("knowledge_item", "create", uuid4(), False),
         ("knowledge_item", "revise", uuid4(), True),
         ("knowledge_item", "revise", None, False),
-        ("knowledge_item", "revalidate", uuid4(), False),
+        ("knowledge_item", "revalidate", uuid4(), True),
         ("knowledge_item", "supersede", uuid4(), False),
         ("knowledge_item", "retire", uuid4(), False),
         ("other", "create", None, False),
     ],
 )
-def test_only_knowledge_item_create_or_revise_target_is_supported(
+def test_only_supported_knowledge_item_operation_target_shapes_are_accepted(
     target_kind: str, operation: str, target_id, supported: bool
 ) -> None:
     assert is_supported_learning_change(

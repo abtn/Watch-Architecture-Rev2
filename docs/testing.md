@@ -862,19 +862,30 @@ Regression coverage now verifies:
 
 The replay corrections and regression tests are committed to the same draft PR branch. Exact-head hosted CI passed on `fb20a3b1a0943926b9cea60a33efdfe329b919dc`: [run #874](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42984911531). Fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, and the full suite (**948 passed, 113 warnings**) all passed. The 113 warnings are existing Alembic `path_separator` deprecations. The Operator approved the frozen B4.1 contract matrix on 2026-11-11 and authorized B4.2. B4.1's executable verification and Operator review gates are complete; PR #97 remains draft and unmerged.
 
-## R7-B B4.2 — revise canonical commit (IMPLEMENTATION IN PROGRESS)
+## R7-B B4.2 — revise canonical commit (MERGED — PR #99)
 
-Branch: `r7b-b4-2-revise-commit`, based on B4.1 PR head `fb20a3b1a0943926b9cea60a33efdfe329b919dc`. This is a stacked implementation branch; exact-head CI has not yet run.
+B4.1 was merged first in PR #97 at `d1c70a312688b8b297027500abcb57d13f53961d`. The stacked B4.2 work was then placed on a clean branch based directly on that merged main tree; the superseded stacked PR #98 was closed rather than merged, avoiding a duplicate B4.1 diff.
 
-The current implementation adds:
-- Approval binding for revise against the exact target pointer, content version/hash/scheme, and full-state snapshot hash; accepted revise additionally binds the recorded `KnowledgeQualityAssessment`.
-- Existing Operator admission support for revise while leaving revalidate, retire, and supersede unsupported.
-- Atomic revise commit of the same KnowledgeItem using a locked full-state comparison and a database compare-and-set on current pointer and expected version.
-- Version +1, status/identity/origin/supersession preservation, content/confidence replacement, `last_validated_at = NULL`, and `review_after` recomputation from the approval Task's pinned TeamPolicy.
-- Retained `previous_state` and a versioned `committed_state` snapshot for history reconstruction.
-- TaskRuntime terminal validation for accepted/rejected revise, including the existing Task Outcome/Event and replay checks.
-- Integration regression coverage for accepted revise, assessment binding, version/pointer advance, policy review date, rejected revise with no canonical mutation, and replay.
+PR [#99](https://github.com/abtn/Watch-Architecture-Rev2/pull/99) merged to `main` at `1c69073990b8ccd7a1ee29a806faf04c066d95ad`. Exact PR head `802d0aafacf3ccaee8a8c496416bbf9f09caf2aa` passed hosted CI run [#897](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42993908728):
+- Fresh PostgreSQL migration and single Alembic-head verification.
+- Ruff, Mypy, and PR patch-whitespace check.
+- Full suite: **951 passed, 113 warnings**.
+- Disposable PostgreSQL container and network cleanup.
 
-No migration, new Task type, runtime, dispatcher, scheduler, public API, or authentication subsystem was added. This is implementation evidence only, not a verification result. The B4.2 branch must pass exact-head hosted CI and complete source/test diff review before it can be considered verified. B4.3 revalidate commit has not started.
+B4.2 enables only revise canonical commit through the existing Operator Task and TaskRuntime path. No migration, new Task type, second runtime, dispatcher, scheduler, public API, or authentication subsystem was introduced. B4.3 remained separate until the Operator explicitly authorized it after B4.2 merged.
 
-B5, B6, and R7-C remain unauthorized.
+## R7-B B4.3 — revalidate canonical commit (PR #100 verification record)
+
+Branch: `r7b-b4-3-revalidate-commit`; open PR [#100](https://github.com/abtn/Watch-Architecture-Rev2/pull/100) (ready for review; not a draft), based on merged B4.2 main.
+
+The current implementation work:
+- Enables revalidate in the existing trusted Operator approval path, while keeping supersede and retire outside the allowlist.
+- Binds the exact same-Team needs_review target, current pointer, content version/hash/scheme, full-state snapshot, and recorded supported KnowledgeRevalidationAssessment.
+- Adds a locked target recheck and compare-and-set for the needs_review → active transition.
+- Preserves semantic content, confidence, content hash, content version, origin, and supersession links; sets last_validated_at and recomputes review_after from the approval Task's pinned TeamPolicy.
+- Adds revalidation-specific decision Event assessment references and TaskRuntime admission/finalization/replay validation.
+- Adds accepted and rejected commit regression tests plus a Team Experience projection test proving the old projection stays hidden until republished against the advanced pointer.
+
+The first hosted run on the initial PR head failed test collection because the invalid-draft parameterization was attached to the successful-commit test; the decorator was moved to the invalid-draft test. Subsequent runs exposed two chronology-fixture issues and one projection-fixture issue; the tests were corrected to preserve canonical review-history timing and to index while the item was still retrieval-eligible. Implementation head `77b14203feee844d0ad43bc3d7c6bb3008ed1b72` passed hosted CI run [#923](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43013850608): fresh PostgreSQL migration/single-head verification, Ruff, Mypy, patch whitespace, and **949 passed, 113 warnings**. This is historical implementation-head evidence, not the final PR-head result. The later pre-reconciliation PR head `19bf0f491728539d548dd3702b2c076e608066b4` passed exact-head hosted CI run [#926](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43014479911): fresh PostgreSQL migration/single-head verification, Ruff, Mypy (38 source files), patch whitespace, and **949 passed, 113 warnings**. The 113 warnings are existing Alembic `path_separator` deprecations; disposable PostgreSQL service and runner cleanup passed. The subsequent import-only cleanup and documentation reconciliation are follow-up changes; their current exact PR head and CI result are tracked on [PR #100](https://github.com/abtn/Watch-Architecture-Rev2/pull/100).
+
+No migration, new Task type, second runtime, dispatcher, scheduler, API, authentication subsystem, production evaluator/provider, B5 lifecycle commit, B6, or R7-C work is included. B5, B6, and R7-C remain unauthorized.

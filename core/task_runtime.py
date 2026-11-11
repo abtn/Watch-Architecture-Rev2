@@ -380,7 +380,12 @@ class TaskRuntime:
                 raise TaskNotEligible("task_attempts_exhausted")
 
             if task.task_type == _OPERATOR_TASK_TYPE:
-                self._validate_operator_admission(session, task)
+                self._validate_operator_admission(
+                    session,
+                    task,
+                    snapshot_store=self._snapshot_store,
+                    session_factory=self._session_factory,
+                )
             elif self._is_r6g_evaluation_task(session, task):
                 try:
                     self._validate_evaluation_task_request(session, task)
@@ -597,7 +602,12 @@ class TaskRuntime:
 
     @staticmethod
     def _validate_operator_admission(
-        session: Session, task: Task, *, allow_completed: bool = False
+        session: Session,
+        task: Task,
+        *,
+        allow_completed: bool = False,
+        snapshot_store: SnapshotStore | None = None,
+        session_factory: sessionmaker[Session] | None = None,
     ) -> None:
         """Fail closed unless this is an intact, no-deadline approval Task."""
         if (
@@ -675,7 +685,7 @@ class TaskRuntime:
             )
         ):
             raise TaskNotEligible("operator_task_request_target_invalid")
-        if decision == "accept":
+        if decision == "accept" and learning_change.operation != "revalidate":
             from core.knowledge_quality import (
                 KnowledgeQualityAssessmentError,
                 require_recorded_assessment,
@@ -706,6 +716,8 @@ class TaskRuntime:
                     operator_id=request_payload.operator_id,
                     approval_policy_version=task.policy_version,
                     require_assessment=decision == "accept",
+                    snapshot_store=snapshot_store,
+                    session_factory=session_factory,
                 )
             except KnowledgeApprovalBindingError as error:
                 raise TaskNotEligible(str(error)) from error
@@ -1593,9 +1605,8 @@ class TaskRuntime:
             knowledge_quality_assessment_id=assessment.id,
         )
 
-    @staticmethod
     def _committed_operator_decision_observation(
-        session: Session, task: Task
+        self, session: Session, task: Task
     ) -> TerminalObservation | None:
         """Reconcile a committed Operator decision for its owner or a loser.
 
@@ -1608,7 +1619,12 @@ class TaskRuntime:
         if task.task_type != _OPERATOR_TASK_TYPE:
             return None
         try:
-            TaskRuntime._validate_operator_admission(session, task)
+            self._validate_operator_admission(
+                session,
+                task,
+                snapshot_store=self._snapshot_store,
+                session_factory=self._session_factory,
+            )
         except TaskNotEligible as error:
             raise TaskNotFinalizable(
                 "operator_task_request_event_invalid"
@@ -1684,7 +1700,7 @@ class TaskRuntime:
                 observed_at=learning_change.committed_at,
                 learning_change_id=learning_change.id,
             )
-            TaskRuntime._validate_learning_change_decision_result(
+            self._validate_learning_change_decision_result(
                 session, task, observation
             )
             return observation
@@ -1710,7 +1726,7 @@ class TaskRuntime:
             observed_at=learning_change.committed_at,
             learning_change_id=learning_change.id,
         )
-        TaskRuntime._validate_learning_change_decision_result(
+        self._validate_learning_change_decision_result(
             session,
             winning_task,
             winning_observation,
@@ -3618,8 +3634,8 @@ class TaskRuntime:
         if allow_completed and task.completed_at != observation.observed_at:
             raise TaskNotFinalizable("knowledge_quality_terminal_timestamp_mismatch")
 
-    @staticmethod
     def _validate_learning_change_decision_result(
+        self,
         session: Session,
         task: Task,
         observation: TerminalObservation,
@@ -3645,8 +3661,12 @@ class TaskRuntime:
             raise TaskNotFinalizable("recorded_terminal_outcome_corrupt")
 
         try:
-            TaskRuntime._validate_operator_admission(
-                session, task, allow_completed=allow_completed
+            self._validate_operator_admission(
+                session,
+                task,
+                allow_completed=allow_completed,
+                snapshot_store=self._snapshot_store,
+                session_factory=self._session_factory,
             )
         except TaskNotEligible as error:
             raise TaskNotFinalizable(
@@ -3681,28 +3701,7 @@ class TaskRuntime:
         quality_assessment_hash = request_payload.get(
             "knowledge_quality_assessment_hash"
         )
-        if expected_decision == "accept":
-            from core.knowledge_quality import (
-                KnowledgeQualityAssessmentError,
-                require_recorded_assessment,
-            )
-
-            if (
-                not isinstance(quality_assessment_id_value, str)
-                or not isinstance(quality_assessment_hash, str)
-            ):
-                raise TaskNotFinalizable("operator_quality_assessment_required")
-            try:
-                quality_assessment_id = UUID(quality_assessment_id_value)
-            except ValueError as error:
-                raise TaskNotFinalizable(
-                    "operator_quality_assessment_reference_invalid"
-                ) from error
-            if str(quality_assessment_id) != quality_assessment_id_value:
-                raise TaskNotFinalizable(
-                    "operator_quality_assessment_reference_invalid"
-                )
-        elif (
+        if expected_decision == "reject" and (
             quality_assessment_id_value is not None
             or quality_assessment_hash is not None
         ):
@@ -3732,22 +3731,79 @@ class TaskRuntime:
         if learning_change is None or learning_change.team_id != task.team_id:
             raise TaskNotFinalizable("learning_change_not_found_for_task_team")
         if expected_decision == "accept":
-            from core.knowledge_quality import (
-                KnowledgeQualityAssessmentError,
-                require_recorded_assessment,
-            )
-
-            try:
-                quality_assessment = require_recorded_assessment(
-                    session, learning_change, require_task_done=True
+            if learning_change.operation == "revalidate":
+                from core.knowledge_revalidation import (
+                    KnowledgeRevalidationAssessmentError,
                 )
-            except KnowledgeQualityAssessmentError as error:
-                raise TaskNotFinalizable(str(error)) from error
-            if (
-                str(quality_assessment.id) != quality_assessment_id_value
-                or quality_assessment.assessment_payload_hash != quality_assessment_hash
-            ):
-                raise TaskNotFinalizable("operator_quality_assessment_binding_invalid")
+                from core.knowledge_revalidation import (
+                    require_recorded_assessment as require_revalidation_assessment,
+                )
+
+                if self._snapshot_store is None:
+                    raise TaskNotFinalizable(
+                        "operator_revalidation_snapshot_context_missing"
+                    )
+                try:
+                    revalidation_assessment = require_revalidation_assessment(
+                        session,
+                        learning_change,
+                        self._snapshot_store,
+                        self._session_factory,
+                        require_task_done=True,
+                        require_current=False,
+                    )
+                except KnowledgeRevalidationAssessmentError as error:
+                    raise TaskNotFinalizable(str(error)) from error
+                approval_binding = request_payload.get("approval_binding")
+                if (
+                    quality_assessment_id_value is not None
+                    or quality_assessment_hash is not None
+                    or not isinstance(approval_binding, dict)
+                    or approval_binding.get("assessment_type")
+                    != "knowledge_revalidation"
+                    or approval_binding.get("assessment_id")
+                    != str(revalidation_assessment.id)
+                    or approval_binding.get("assessment_payload_hash")
+                    != revalidation_assessment.payload_hash
+                ):
+                    raise TaskNotFinalizable(
+                        "operator_revalidation_assessment_binding_invalid"
+                    )
+            else:
+                from core.knowledge_quality import (
+                    KnowledgeQualityAssessmentError,
+                    require_recorded_assessment,
+                )
+
+                if (
+                    not isinstance(quality_assessment_id_value, str)
+                    or not isinstance(quality_assessment_hash, str)
+                ):
+                    raise TaskNotFinalizable("operator_quality_assessment_required")
+                try:
+                    quality_assessment_id = UUID(quality_assessment_id_value)
+                except ValueError as error:
+                    raise TaskNotFinalizable(
+                        "operator_quality_assessment_reference_invalid"
+                    ) from error
+                if str(quality_assessment_id) != quality_assessment_id_value:
+                    raise TaskNotFinalizable(
+                        "operator_quality_assessment_reference_invalid"
+                    )
+                try:
+                    quality_assessment = require_recorded_assessment(
+                        session, learning_change, require_task_done=True
+                    )
+                except KnowledgeQualityAssessmentError as error:
+                    raise TaskNotFinalizable(str(error)) from error
+                if (
+                    str(quality_assessment.id) != quality_assessment_id_value
+                    or quality_assessment.assessment_payload_hash
+                    != quality_assessment_hash
+                ):
+                    raise TaskNotFinalizable(
+                        "operator_quality_assessment_binding_invalid"
+                    )
         if (
             learning_change is None
             or learning_change.status != expected_status
@@ -3765,13 +3821,13 @@ class TaskRuntime:
                 )
             )
             or (
-                learning_change.operation == "revise"
+                learning_change.operation in {"revise", "revalidate"}
                 and (
                     learning_change.previous_state is None
                     or learning_change.target_id is None
                 )
             )
-            or learning_change.operation not in {"create", "revise"}
+            or learning_change.operation not in {"create", "revise", "revalidate"}
             or not isinstance(learning_change.proposed_state, dict)
             or learning_change.committed_at is None
             or learning_change.committed_at != observation.observed_at
@@ -3865,12 +3921,23 @@ class TaskRuntime:
             ]
 
         if expected_decision == "accept":
-            expected_payload["knowledge_quality_assessment_id"] = (
-                quality_assessment_id_value
-            )
-            expected_payload["knowledge_quality_assessment_hash"] = (
-                quality_assessment_hash
-            )
+            if learning_change.operation == "revalidate":
+                approval_binding = request_payload.get("approval_binding")
+                if not isinstance(approval_binding, dict):
+                    raise TaskNotFinalizable("operator_approval_binding_invalid")
+                expected_payload["knowledge_revalidation_assessment_id"] = (
+                    approval_binding.get("assessment_id")
+                )
+                expected_payload["knowledge_revalidation_assessment_hash"] = (
+                    approval_binding.get("assessment_payload_hash")
+                )
+            else:
+                expected_payload["knowledge_quality_assessment_id"] = (
+                    quality_assessment_id_value
+                )
+                expected_payload["knowledge_quality_assessment_hash"] = (
+                    quality_assessment_hash
+                )
             committed_state: dict[str, Any] | None = None
             if learning_change.operation == "create":
                 items = list(
@@ -3905,7 +3972,7 @@ class TaskRuntime:
                     committed_state, _ = decode_state_snapshot(
                         learning_change.committed_state,
                         learning_change_id=learning_change.id,
-                        operation="revise",
+                        operation=learning_change.operation,
                     )
                 except (KnowledgeHistoryError, TypeError, ValueError) as error:
                     raise TaskNotFinalizable(
@@ -3927,7 +3994,7 @@ class TaskRuntime:
                     and history.learning_change_ids[0] != learning_change.id
                 )
                 or (
-                    learning_change.operation == "revise"
+                    learning_change.operation in {"revise", "revalidate"}
                     and (
                         committed_state is None
                         or history.states[
