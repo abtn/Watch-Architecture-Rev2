@@ -205,8 +205,8 @@ class LearningCommitService:
                         target_id=learning_change.target_id,
                     ):
                         raise LearningCommitCorrupt(str(error)) from error
-                    # Non-create operations remain outside the approval
-                    # allowlist. Let the existing admission guard reject them
+                    # Operations beyond create/revise remain outside the
+                    # approval allowlist. Let the admission guard reject them
                     # even when their assessment is missing or malformed.
                 else:
                     if expected_binding != approval_request.approval_binding:
@@ -246,7 +246,7 @@ class LearningCommitService:
                 )
                 or learning_change.committed_by_task_id is not None
             ):
-                raise LearningCommitError("only_knowledge_item_create_is_supported")
+                raise LearningCommitError("only_knowledge_item_create_or_revise_is_supported")
 
             team = session.scalar(
                 select(Team)
