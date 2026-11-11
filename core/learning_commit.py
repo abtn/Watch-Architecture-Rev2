@@ -412,10 +412,13 @@ class LearningCommitService:
             knowledge_item_version: int | None = None
             committed_state: dict[str, object] | None = None
             if decision == "accept":
-                confidence = decimal.Decimal(str(draft.confidence)).quantize(
-                    decimal.Decimal("0.001")
-                )
-                applicability = draft.applicability.model_dump(mode="json")
+                if learning_change.operation in {"create", "revise"}:
+                    if draft is None:
+                        raise LearningCommitCorrupt("learning_change_draft_missing")
+                    confidence = decimal.Decimal(str(draft.confidence)).quantize(
+                        decimal.Decimal("0.001")
+                    )
+                    applicability = draft.applicability.model_dump(mode="json")
                 if learning_change.operation == "create":
                     prior_items = list(
                         session.scalars(
@@ -601,6 +604,90 @@ class LearningCommitService:
                         )
                     session.refresh(target)
                     knowledge_item_id = target.id
+                elif learning_change.operation == "revalidate":
+                    target = session.scalar(
+                        select(KnowledgeItem)
+                        .where(
+                            KnowledgeItem.id == learning_change.target_id,
+                            KnowledgeItem.team_id == learning_change.team_id,
+                        )
+                        .with_for_update()
+                    )
+                    if target is None:
+                        raise LearningCommitConflict("revalidation_target_missing")
+                    previous = learning_change.previous_state
+                    if (
+                        not isinstance(previous, dict)
+                        or not isinstance(previous.get("state"), dict)
+                    ):
+                        raise LearningCommitCorrupt(
+                            "revalidation_target_snapshot_invalid"
+                        )
+                    try:
+                        pointer = uuid.UUID(
+                            previous["state"]["current_learning_change_id"]
+                        )
+                        previous_state, reconstructed = decode_state_snapshot(
+                            previous,
+                            learning_change_id=pointer,
+                            operation="revalidate",
+                            allow_legacy_root=False,
+                        )
+                        from core.knowledge_revalidation import (
+                            _target_state_from_proposal,
+                        )
+
+                        target_state, _, _ = _target_state_from_proposal(
+                            learning_change, target, require_current=True
+                        )
+                    except (KnowledgeHistoryError, ValueError, TypeError) as error:
+                        raise LearningCommitConflict(
+                            "revalidation_target_compare_and_set_failed"
+                        ) from error
+                    if reconstructed or target_state != previous_state:
+                        raise LearningCommitConflict(
+                            "revalidation_target_compare_and_set_failed"
+                        )
+
+                    committed_values = dict(target_state)
+                    committed_values.update(
+                        {
+                            "status": "active",
+                            "last_validated_at": committed_at.isoformat(),
+                            "review_after": (
+                                review_after.isoformat()
+                                if review_after is not None
+                                else None
+                            ),
+                            "current_learning_change_id": str(learning_change.id),
+                        }
+                    )
+                    committed_state = encode_state_snapshot(committed_values)
+                    cas_id = session.execute(
+                        update(KnowledgeItem)
+                        .where(
+                            KnowledgeItem.id == target.id,
+                            KnowledgeItem.team_id == target.team_id,
+                            KnowledgeItem.status == "needs_review",
+                            KnowledgeItem.current_learning_change_id == pointer,
+                            KnowledgeItem.version == previous_state["version"],
+                        )
+                        .values(
+                            status="active",
+                            last_validated_at=committed_at,
+                            review_after=review_after,
+                            current_learning_change_id=learning_change.id,
+                        )
+                        .returning(KnowledgeItem.id),
+                        execution_options={"synchronize_session": False},
+                    ).scalar_one_or_none()
+                    if cas_id != target.id:
+                        raise LearningCommitConflict(
+                            "revalidation_target_compare_and_set_failed"
+                        )
+                    session.refresh(target)
+                    knowledge_item_id = target.id
+                    knowledge_item_version = target.version
                 else:
                     raise LearningCommitError("learning_change_operation_not_supported")
 
@@ -646,12 +733,20 @@ class LearningCommitService:
                         "committed_knowledge_item_version_missing"
                     )
                 event_payload["knowledge_item_version"] = knowledge_item_version
-                event_payload["knowledge_quality_assessment_id"] = (
-                    quality_assessment_id
-                )
-                event_payload["knowledge_quality_assessment_hash"] = (
-                    quality_assessment_hash
-                )
+                if learning_change.operation == "revalidate":
+                    event_payload["knowledge_revalidation_assessment_id"] = (
+                        revalidation_assessment_id
+                    )
+                    event_payload["knowledge_revalidation_assessment_hash"] = (
+                        revalidation_assessment_hash
+                    )
+                else:
+                    event_payload["knowledge_quality_assessment_id"] = (
+                        quality_assessment_id
+                    )
+                    event_payload["knowledge_quality_assessment_hash"] = (
+                        quality_assessment_hash
+                    )
             if rejection_reason is not None:
                 event_payload["reason"] = rejection_reason
 
