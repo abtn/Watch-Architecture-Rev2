@@ -2,11 +2,11 @@
 
 **Audience:** the implementing agent.
 **Sources:** Operator acceptance of the R7-B B0 decision review on 2026-11-05; ADR-0032 (original acceptance 2026-11-04 for R7-A, with the separately accepted R7-B design addendum below); INV-12/13; ADR-0029 D7; and the reviews of Revisions 1–3.
-**Status (updated 2026-11-11):** B0 complete; B1 merged; B2 closed with accepted residual verification gaps; B3 formally closed on 2026-11-10; B4 explicitly authorized and B4.1 implementation workflow started on `r7b-b4-1-proposal-contract-implementation`, created from exact `main` baseline `de6990a0f1e3c74e06a366975af1bdb10547f43d`. B4.1 is not yet implemented or verified. B5, B6, and R7-C remain unauthorized. Historical B3 hosted/local evidence and its diff-check qualification remain in `docs/testing.md` and the B3 closeout record. The approval allowlist remains exactly `{"create"}` until each B4 commit slice passes its own gate.
+**Status (updated 2026-11-11):** B0 complete; B1 merged; B2 closed with accepted residual verification gaps; B3 formally closed on 2026-11-10; B4 explicitly authorized. B4.1 proposal/assessment contracts are implemented on draft PR #97, including revise/revalidate routing, exact target binding, and completed-task replay protections. Two replay regressions were added: revalidation replay after Task completion (including conflicting rationale rejection) and revise replay without a configured provider. The prior code head `34282c724b17d6e4c3e07816de58dae24b677605` passed Operator-local checks (947 tests, Ruff, Mypy, disposable PostgreSQL migration/single-head, and diff check); that local result predates these replay corrections. The latest PR head requires exact-head CI before verification can be marked complete. B5, B6, and R7-C remain unauthorized. The approval allowlist remains exactly `{"create"}` until each B4 commit slice passes its own gate.
 
 
 
-**Baseline:** B0 PR #41 merged to `main` at `64d5fb19be541d80b3cb8941ce3359d4b69565c1`. Revision 3 remains the accepted B0 design baseline. The current B4.1 implementation branch was created from exact `main` SHA `de6990a0f1e3c74e06a366975af1bdb10547f43d`; no local-machine preflight or local test result is claimed for this B4 run.
+**Baseline:** B0 PR #41 merged to `main` at `64d5fb19be541d80b3cb8941ce3359d4b69565c1`. Revision 3 remains the accepted B0 design baseline. B4.1 PR #97 was created from exact `main` SHA `de6990a0f1e3c74e06a366975af1bdb10547f43d`. Operator-local verification was performed on the earlier implementation head `34282c724b17d6e4c3e07816de58dae24b677605`; it must not be attributed to the later replay-fix commits.
 
 > Class, file, function and constraint names come from the review and ADR text. Verify each against the repository before relying on it. If a name or behavior differs, record the discrepancy in the PR and do not guess.
 
@@ -704,11 +704,11 @@ Tests must assert both the intended assessment record and the absence of unautho
 
 ## Phase B4: Revise and revalidate
 
-**Status (updated 2026-11-11):** B4 was explicitly authorized after formal B3 closure. B4.1 implementation has started on `r7b-b4-1-proposal-contract-implementation`, from verified `main` SHA `de6990a0f1e3c74e06a366975af1bdb10547f43d`; this is a workflow-start checkpoint, not evidence of completed code or passing tests. B4 is limited to revise and revalidate; B5, B6, and R7-C remain unauthorized. The architecture boundary is recorded in [the B4.0 decision record](r7-b-b4-0-architecture-decision.md).
+**Status (updated 2026-11-11):** B4 was explicitly authorized after formal B3 closure. B4.1 source and focused tests are implemented on draft PR #97. The implementation has no new migration, preserves the create-only approval allowlist, and keeps canonical KnowledgeItem writes out of the proposal path. A review found two completed-Task replay defects; the fixes and regression tests are now on the PR branch, with exact-head hosted verification pending. B4 remains limited to revise and revalidate; B5, B6, and R7-C remain unauthorized. The architecture boundary is recorded in [the B4.0 decision record](r7-b-b4-0-architecture-decision.md).
 
 ### B4 execution verification mode — current run
 
-The Operator has requested that local synchronization and local test execution be skipped because the local machine is unavailable. This is a verification-route constraint, not a waiver of B4 acceptance criteria.
+The Operator has run local verification on the pre-replay-fix code head `34282c724b17d6e4c3e07816de58dae24b677605`. The full local result is recorded in `docs/testing.md`; it is historical evidence for that exact SHA only. The replay-fix head must receive its own exact-head hosted CI result, and the Operator may repeat local verification after syncing that head.
 
 - Use GitHub-hosted Actions on the exact pull-request head for executable verification. The workflow must visibly cover fresh disposable PostgreSQL migration/single-head checks, Ruff, Mypy, `git diff --check origin/${GITHUB_BASE_REF}...HEAD`, the full pytest suite, and Actions-managed disposal of the PostgreSQL service when the job ends. Add or repair hosted coverage if any required check is missing; do not infer it from a generic green badge.
 - Review the complete source and test diff against the exact PR head. Record the tested commit SHA and workflow run. A green run for another SHA is not exact-head evidence.
