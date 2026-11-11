@@ -304,8 +304,6 @@ def build_approval_binding(
         if not require_assessment:
             from core.knowledge_revalidation import (
                 KnowledgeRevalidationAssessmentError,
-            )
-            from core.knowledge_revalidation import (
                 _target_state_from_proposal,
             )
             from core.learning_history import KNOWLEDGE_CONTENT_HASH_SCHEME
