@@ -147,12 +147,12 @@ def _build_legacy_request_fingerprint(
 def is_supported_learning_change(
     *, target_kind: object, operation: object, target_id: object
 ) -> bool:
-    """Return whether the currently authorized create/revise target shape matches."""
+    """Return whether an authorized KnowledgeItem decision has the correct target shape."""
     return (
         target_kind == SUPPORTED_LEARNING_CHANGE_TARGET_KIND
         and (
             (operation == "create" and target_id is None)
-            or (operation == "revise" and target_id is not None)
+            or (operation in {"revise", "revalidate"} and target_id is not None)
         )
     )
 
