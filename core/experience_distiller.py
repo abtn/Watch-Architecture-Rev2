@@ -284,7 +284,6 @@ class ExperienceDistiller:
             if task is None:
                 raise ExperienceDistillerError("task_not_found")
             team = session.get(Team, task.team_id)
-            team = self._require_task_scope(task, team)
             prior_changes = list(
                 session.scalars(
                     select(LearningChange).where(
@@ -293,6 +292,10 @@ class ExperienceDistiller:
                 )
             )
             if prior_changes:
+                # A completed proposal Task may only replay its exact existing
+                # proposal. Validate the original Task identity and write scope
+                # before returning any persisted result.
+                self._require_task_scope(task, team, allow_completed=True)
                 if len(prior_changes) != 1:
                     raise ExperienceDistillerConflict(
                         "learning_change_task_history_conflict"
@@ -324,6 +327,7 @@ class ExperienceDistiller:
                     replayed=True,
                 )
 
+            team = self._require_task_scope(task, team)
             pack = self._build_pack(session, task, team, normalized_ids)
             _, _, previous_state, target_binding = self._capture_target_state(
                 session,
@@ -403,9 +407,6 @@ class ExperienceDistiller:
         target_knowledge_item_id: UUID | None,
     ) -> LearningChangeProposalResult:
         normalized_ids = self._normalize_evaluation_ids(evaluation_ids)
-        provider = self._provider
-        if provider is None:
-            raise ExperienceDistillerError("distillation_provider_not_configured")
 
         # Matching prior proposals are returned before any provider call or
         # reservation. This remains true after TaskRuntime has finalized the
@@ -421,11 +422,13 @@ class ExperienceDistiller:
                     )
                 )
             )
+            team = session.get(Team, task.team_id)
             if prior_changes:
                 if len(prior_changes) != 1:
                     raise ExperienceDistillerConflict(
                         "learning_change_task_history_conflict"
                     )
+                self._require_task_scope(task, team, allow_completed=True)
                 prior = prior_changes[0]
                 prior_evaluations = tuple(
                     sorted(
@@ -451,8 +454,12 @@ class ExperienceDistiller:
                     generation_charge_id=None,
                     replayed=True,
                 )
-            team = session.get(Team, task.team_id)
             team = self._require_task_scope(task, team)
+            provider = self._provider
+            if provider is None:
+                raise ExperienceDistillerError(
+                    "distillation_provider_not_configured"
+                )
             pack = self._build_pack(session, task, team, normalized_ids)
             target_state = None
             previous_state = None
