@@ -148,11 +148,13 @@ def _build_legacy_request_fingerprint(
 def is_supported_learning_change(
     *, target_kind: object, operation: object, target_id: object
 ) -> bool:
-    """Return whether the currently authorized create-only target shape matches."""
+    """Return whether the currently authorized create/revise target shape matches."""
     return (
         target_kind == SUPPORTED_LEARNING_CHANGE_TARGET_KIND
-        and operation == SUPPORTED_LEARNING_CHANGE_OPERATION
-        and target_id is None
+        and (
+            (operation == "create" and target_id is None)
+            or (operation == "revise" and target_id is not None)
+        )
     )
 
 
@@ -232,7 +234,7 @@ def _validate_approval_binding(
         or isinstance(binding.get("approval_policy_version"), bool)
         or binding.get("target_kind") != SUPPORTED_LEARNING_CHANGE_TARGET_KIND
         or binding.get("operation") not in {
-            "create", "revalidate", "retire", "supersede"
+            "create", "revise", "revalidate", "retire", "supersede"
         }
     ):
         raise OperatorApprovalValidationError(
@@ -303,6 +305,7 @@ def _validate_approval_binding(
     assessment_policy = binding.get("assessment_task_policy_version")
     expected_types = {
         "create": "knowledge_quality",
+        "revise": "knowledge_quality",
         "revalidate": "knowledge_revalidation",
         "retire": "knowledge_lifecycle",
         "supersede": "knowledge_lifecycle",
