@@ -86,7 +86,7 @@ class LearningCommitResult:
 
 
 class LearningCommitService:
-    """Validate and atomically accept/reject a create-only LearningChange.
+    """Validate and atomically accept/reject a create or revise LearningChange.
 
     The business decision and its Event commit together. TaskRuntime remains
     responsible for the separate terminal Task/Outcome transaction.
