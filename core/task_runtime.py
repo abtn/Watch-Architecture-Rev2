@@ -3955,11 +3955,18 @@ class TaskRuntime:
                         "rejected_learning_change_has_knowledge_item"
                     )
             else:
-                item = session.get(KnowledgeItem, learning_change.target_id)
-                if item is None or item.team_id != learning_change.team_id:
+                rejected_target = session.get(
+                    KnowledgeItem, learning_change.target_id
+                )
+                if (
+                    rejected_target is None
+                    or rejected_target.team_id != learning_change.team_id
+                ):
                     raise TaskNotFinalizable("rejected_revision_target_missing")
                 try:
-                    history = reconstruct_knowledge_item_history(session, item)
+                    history = reconstruct_knowledge_item_history(
+                        session, rejected_target
+                    )
                 except KnowledgeHistoryError as error:
                     raise TaskNotFinalizable(str(error)) from error
                 if learning_change.id in history.learning_change_ids:
