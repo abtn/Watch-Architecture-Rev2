@@ -510,7 +510,7 @@ class LearningCommitService:
                         ),
                     }
                     committed_state = encode_state_snapshot(committed_values)
-                    cas = session.execute(
+                    cas_id = session.execute(
                         update(KnowledgeItem)
                         .where(
                             KnowledgeItem.id == target.id,
@@ -540,8 +540,8 @@ class LearningCommitService:
                             current_learning_change_id=learning_change.id,
                         ),
                         execution_options={"synchronize_session": False},
-                    )
-                    if cas.rowcount != 1:
+                    ).scalar_one_or_none()
+                    if cas_id != target.id:
                         raise LearningCommitConflict(
                             "revision_target_compare_and_set_failed"
                         )
@@ -1025,13 +1025,20 @@ class LearningCommitService:
                         "rejected_learning_change_has_knowledge_item"
                     )
             else:
-                item = session.get(KnowledgeItem, learning_change.target_id)
-                if item is None or item.team_id != learning_change.team_id:
+                rejected_target = session.get(
+                    KnowledgeItem, learning_change.target_id
+                )
+                if (
+                    rejected_target is None
+                    or rejected_target.team_id != learning_change.team_id
+                ):
                     raise LearningCommitCorrupt(
                         "rejected_revision_target_missing"
                     )
                 try:
-                    history = reconstruct_knowledge_item_history(session, item)
+                    history = reconstruct_knowledge_item_history(
+                        session, rejected_target
+                    )
                 except KnowledgeHistoryError as error:
                     raise LearningCommitCorrupt(str(error)) from error
                 if learning_change.id in history.learning_change_ids:
