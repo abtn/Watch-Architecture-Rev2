@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7 B3 is formally closed. B4.1 and B4.2 are merged; B4.2 PR #99 passed exact-head hosted CI (951 passed, 113 warnings) and merged at `1c69073990b8ccd7a1ee29a806faf04c066d95ad`. B4.3 revalidate canonical commit is in progress on draft PR #100; exact-head CI and focused regression proof are pending. B5, B6, and R7-C remain unauthorized. PLAN.md owns current status.
+R6 is complete through R6-G. R7 B3 is formally closed. B4.1 and B4.2 are merged; B4.2 PR #99 passed exact-head hosted CI (951 passed, 113 warnings) and merged at `1c69073990b8ccd7a1ee29a806faf04c066d95ad`. B4.3 revalidate canonical commit is implemented on PR #100; exact-head hosted CI run #923 passed (949 tests, 113 warnings). Operator review/merge is pending. B5, B6, and R7-C remain unauthorized. PLAN.md owns current status.
 
 ## Open the smallest relevant set of documents
 
