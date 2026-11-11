@@ -165,15 +165,15 @@ class OperatorApplicationAdapter:
             if learning_change is None:
                 raise LearningChangeNotApprovable("learning_change_not_found")
 
-            # B4.2 enables only create and revise. Revalidate and lifecycle
-            # operations remain outside the approval allowlist.
+            # B4.3 enables revalidate through the same trusted approval path.
+            # Lifecycle operations remain outside the approval allowlist.
             if not is_supported_learning_change(
                 target_kind=learning_change.target_kind,
                 operation=learning_change.operation,
                 target_id=learning_change.target_id,
             ):
                 raise LearningChangeNotApprovable(
-                    "only_knowledge_item_create_or_revise_is_supported"
+                    "only_knowledge_item_create_revise_or_revalidate_is_supported"
                 )
 
             team_id = learning_change.team_id
