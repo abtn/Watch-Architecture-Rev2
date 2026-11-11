@@ -1007,7 +1007,7 @@ class LearningCommitService:
                 )
             )
             or (
-                learning_change.operation == "revise"
+                learning_change.operation in {"revise", "revalidate"}
                 and (
                     learning_change.previous_state is None
                     or learning_change.target_id is None
