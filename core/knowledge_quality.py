@@ -596,31 +596,51 @@ def _revision_target_binding(
 
 
 def _assessment_target_binding(
+    session: Session,
     assessment: KnowledgeQualityAssessment,
 ) -> dict[str, Any] | None:
-    values = {
-        "target_knowledge_item_id": (
-            str(assessment.target_knowledge_item_id)
-            if assessment.target_knowledge_item_id is not None
-            else None
-        ),
-        "target_current_learning_change_id": (
-            str(assessment.target_current_learning_change_id)
-            if assessment.target_current_learning_change_id is not None
-            else None
-        ),
-        "target_content_version": assessment.target_content_version,
-        "target_content_hash": assessment.target_content_hash,
-        "target_content_hash_scheme": assessment.target_content_hash_scheme,
-        "target_state_hash": assessment.target_state_hash,
-    }
-    if all(value is None for value in values.values()):
+    """Recover the immutable target pin from the assessment Task's request Event."""
+    events = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == assessment.creating_task_id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+    )
+    if len(events) != 1 or not isinstance(events[0].payload, dict):
+        raise KnowledgeQualityAssessmentError(
+            "knowledge_quality_assessment_request_event_invalid"
+        )
+    binding = events[0].payload.get("target_binding")
+    if binding is None:
         return None
-    if any(value is None for value in values.values()):
+    expected_keys = {
+        "target_knowledge_item_id",
+        "target_current_learning_change_id",
+        "target_content_version",
+        "target_content_hash",
+        "target_content_hash_scheme",
+        "target_state_hash",
+    }
+    if (
+        not isinstance(binding, dict)
+        or set(binding) != expected_keys
+        or _canonical_uuid(binding.get("target_knowledge_item_id")) is None
+        or _canonical_uuid(binding.get("target_current_learning_change_id")) is None
+        or isinstance(binding.get("target_content_version"), bool)
+        or not isinstance(binding.get("target_content_version"), int)
+        or binding["target_content_version"] < 1
+        or not isinstance(binding.get("target_content_hash"), str)
+        or not _HASH_RE.fullmatch(binding["target_content_hash"])
+        or binding.get("target_content_hash_scheme") != KNOWLEDGE_CONTENT_HASH_SCHEME
+        or not isinstance(binding.get("target_state_hash"), str)
+        or not _HASH_RE.fullmatch(binding["target_state_hash"])
+    ):
         raise KnowledgeQualityAssessmentError(
             "knowledge_quality_assessment_target_binding_invalid"
         )
-    return values
+    return dict(binding)
 
 def build_quality_task_request(
     session: Session,
@@ -866,7 +886,7 @@ def require_recorded_assessment(
         or assessment.evaluator_identity != EVALUATOR_IDENTITY
         or assessment.evaluator_revision != EVALUATOR_REVISION
         or assessment.assessment_payload_hash
-        != assessment_payload_hash(assessment_payload_from_row(assessment))
+        != assessment_payload_hash(assessment_payload_from_row(session, assessment))
         or assessment.lineage_report_hash != sha256_json(assessment.lineage_report)
     ):
         raise KnowledgeQualityAssessmentError(
@@ -914,7 +934,7 @@ def require_recorded_assessment(
         or request.get("proposal_hash") != assessment.proposal_hash
         or request.get("evidence_basis_hash") != assessment.evidence_basis_hash
         or request.get("lineage_report_hash") != assessment.lineage_report_hash
-        or request.get("target_binding") != _assessment_target_binding(assessment)
+        or request.get("target_binding") != _assessment_target_binding(session, assessment)
     ):
         raise KnowledgeQualityAssessmentError(
             "knowledge_quality_assessment_request_mismatch"
@@ -951,7 +971,9 @@ def require_recorded_assessment(
     )
     if (
         len(recorded) != 1
-        or recorded[0].payload != recorded_assessment_event_payload(assessment)
+        or recorded[0].payload != recorded_assessment_event_payload(
+            assessment, target_binding=request.get("target_binding")
+        )
         or recorded[0].created_at != assessment.recorded_at
     ):
         raise KnowledgeQualityAssessmentError(
@@ -1040,6 +1062,8 @@ def assessment_payload_hash(payload: dict[str, Any]) -> str:
 
 def recorded_assessment_event_payload(
     assessment: KnowledgeQualityAssessment,
+    *,
+    target_binding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "assessment_id": str(assessment.id),
@@ -1054,11 +1078,7 @@ def recorded_assessment_event_payload(
         "evaluator_kind": assessment.evaluator_kind,
         "evaluator_identity": assessment.evaluator_identity,
         "evaluator_revision": assessment.evaluator_revision,
-        **(
-            {"target_binding": _assessment_target_binding(assessment)}
-            if _assessment_target_binding(assessment) is not None
-            else {}
-        ),
+        **({"target_binding": target_binding} if target_binding is not None else {}),
     }
 
 
@@ -1105,6 +1125,7 @@ def assessment_record_payload(
 
 
 def assessment_payload_from_row(
+    session: Session,
     assessment: KnowledgeQualityAssessment,
 ) -> dict[str, Any]:
     return assessment_record_payload(
@@ -1123,7 +1144,7 @@ def assessment_payload_from_row(
         lineage_report=assessment.lineage_report,
         evidence_reference_hash=assessment.evidence_reference_hash,
         idempotency_key=assessment.idempotency_key,
-        target_binding=_assessment_target_binding(assessment),
+        target_binding=_assessment_target_binding(session, assessment),
     )
 
 
@@ -1299,40 +1320,6 @@ class KnowledgeQualityAssessmentService:
                 team_id=task.team_id,
                 learning_change_id=learning_change.id,
                 creating_task_id=task.id,
-                target_knowledge_item_id=(
-                    UUID(request["target_binding"]["target_knowledge_item_id"])
-                    if request.get("target_binding") is not None
-                    else None
-                ),
-                target_current_learning_change_id=(
-                    UUID(
-                        request["target_binding"][
-                            "target_current_learning_change_id"
-                        ]
-                    )
-                    if request.get("target_binding") is not None
-                    else None
-                ),
-                target_content_version=(
-                    request["target_binding"]["target_content_version"]
-                    if request.get("target_binding") is not None
-                    else None
-                ),
-                target_content_hash=(
-                    request["target_binding"]["target_content_hash"]
-                    if request.get("target_binding") is not None
-                    else None
-                ),
-                target_content_hash_scheme=(
-                    request["target_binding"]["target_content_hash_scheme"]
-                    if request.get("target_binding") is not None
-                    else None
-                ),
-                target_state_hash=(
-                    request["target_binding"]["target_state_hash"]
-                    if request.get("target_binding") is not None
-                    else None
-                ),
                 proposal_hash=request["proposal_hash"],
                 evidence_basis_hash=request["evidence_basis_hash"],
                 rubric_identity=request["rubric_identity"],
@@ -1356,7 +1343,9 @@ class KnowledgeQualityAssessmentService:
                     id=uuid4(),
                     task_id=task.id,
                     type=RECORDED_EVENT_TYPE,
-                    payload=recorded_assessment_event_payload(assessment),
+                    payload=recorded_assessment_event_payload(
+                        assessment, target_binding=request.get("target_binding")
+                    ),
                     created_at=assessment.recorded_at,
                 )
             )
