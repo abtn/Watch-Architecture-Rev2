@@ -3739,6 +3739,10 @@ class TaskRuntime:
                     require_recorded_assessment as require_revalidation_assessment,
                 )
 
+                if self._snapshot_store is None:
+                    raise TaskNotFinalizable(
+                        "operator_revalidation_snapshot_context_missing"
+                    )
                 try:
                     revalidation_assessment = require_revalidation_assessment(
                         session,
