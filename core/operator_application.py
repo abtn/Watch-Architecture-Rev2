@@ -442,9 +442,7 @@ class OperatorApplicationAdapter:
                 if task is None:
                     raise OperatorTaskRequestCorrupt("approval_task_disappeared")
                 conflict_observation = (
-                    TaskRuntime._committed_operator_decision_observation(
-                        session, task
-                    )
+                    task_runtime._committed_operator_decision_observation(session, task)
                 )
             if (
                 conflict_observation is None
@@ -481,9 +479,7 @@ class OperatorApplicationAdapter:
                 if task is None:
                     raise OperatorTaskRequestCorrupt("approval_task_disappeared")
                 conflict_observation = (
-                    TaskRuntime._committed_operator_decision_observation(
-                        session, task
-                    )
+                    task_runtime._committed_operator_decision_observation(session, task)
                 )
             if (
                 conflict_observation is None
