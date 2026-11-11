@@ -737,7 +737,7 @@ def test_non_proposed_learning_change_cannot_start_a_new_request(
 
     with pytest.raises(
         LearningChangeNotApprovable,
-        match="only_knowledge_item_create_is_supported",
+        match="only_knowledge_item_create_or_revise_is_supported",
     ):
         OperatorApplicationAdapter(session_factory).request_learning_change_decision(
             _principal(approval_context.team_id),
@@ -930,7 +930,7 @@ def test_task_runtime_rejects_operator_request_event_identity_tampering(
 
 @pytest.mark.parametrize(
     "operation",
-    ["revise", "revalidate", "supersede", "retire"],
+    ["revalidate", "supersede", "retire"],
 )
 def test_request_creation_rejects_every_unauthorized_lifecycle_operation(
     session_factory: sessionmaker[Session],
@@ -972,9 +972,31 @@ def test_request_creation_rejects_every_unauthorized_lifecycle_operation(
         ) == 0
 
 
+def test_request_creation_rejects_revise_without_target_snapshot(
+    session_factory: sessionmaker[Session],
+    approval_context: ApprovalContext,
+) -> None:
+    with session_factory.begin() as session:
+        learning_change = session.get(
+            LearningChange, approval_context.learning_change_id
+        )
+        assert learning_change is not None
+        learning_change.operation = "revise"
+        learning_change.target_id = uuid4()
+
+    with pytest.raises(
+        LearningChangeNotApprovable,
+        match="knowledge_quality_revision_target_snapshot_invalid",
+    ):
+        OperatorApplicationAdapter(session_factory).request_learning_change_decision(
+            _principal(approval_context.team_id),
+            _request(approval_context.learning_change_id),
+        )
+
+
 @pytest.mark.parametrize(
     "operation",
-    ["revise", "revalidate", "supersede", "retire"],
+    ["revalidate", "supersede", "retire"],
 )
 def test_task_runtime_rejects_every_unauthorized_lifecycle_operation(
     session_factory: sessionmaker[Session],
@@ -1015,9 +1037,9 @@ def test_task_runtime_rejects_every_unauthorized_lifecycle_operation(
 
 @pytest.mark.parametrize(
     "operation",
-    ["revise", "revalidate", "supersede", "retire"],
+    ["revalidate", "supersede", "retire"],
 )
-def test_learning_commit_rechecks_create_only_eligibility(
+def test_learning_commit_rechecks_supported_operation_eligibility(
     session_factory: sessionmaker[Session],
     snapshot_store,
     approval_context: ApprovalContext,
@@ -1056,7 +1078,7 @@ def test_learning_commit_rechecks_create_only_eligibility(
 
 @pytest.mark.parametrize(
     "operation",
-    ["revise", "revalidate", "supersede", "retire"],
+    ["revalidate", "supersede", "retire"],
 )
 def test_finalization_rejects_every_unauthorized_lifecycle_operation(
     session_factory: sessionmaker[Session],
@@ -1098,7 +1120,7 @@ def test_finalization_rejects_every_unauthorized_lifecycle_operation(
 
 @pytest.mark.parametrize(
     "operation",
-    ["revise", "revalidate", "supersede", "retire"],
+    ["revalidate", "supersede", "retire"],
 )
 def test_interrupted_recovery_rejects_every_unauthorized_lifecycle_operation(
     session_factory: sessionmaker[Session],
