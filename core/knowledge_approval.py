@@ -228,6 +228,14 @@ def build_approval_binding(
             raise KnowledgeApprovalBindingError(
                 "knowledge_approval_revision_target_mismatch"
             )
+        previous_state = learning_change.previous_state
+        if (
+            not isinstance(previous_state, dict)
+            or not isinstance(previous_state.get("state"), dict)
+        ):
+            raise KnowledgeApprovalBindingError(
+                "knowledge_approval_target_snapshot_missing"
+            )
         binding.update(
             {
                 "current_learning_change_id": target_binding[
@@ -239,7 +247,7 @@ def build_approval_binding(
                     "target_content_hash_scheme"
                 ],
                 "target_state_hash": target_binding["target_state_hash"],
-                "target_status": target_state.get("status"),
+                "target_status": previous_state["state"].get("status"),
             }
         )
         if require_assessment:
