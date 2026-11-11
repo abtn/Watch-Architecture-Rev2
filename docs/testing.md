@@ -860,6 +860,21 @@ Regression coverage now verifies:
 
 ### Latest-head verification
 
-The replay corrections and regression tests are committed to the same draft PR branch. Exact-head hosted CI passed on `0d1350423043b26565219184b78277390e396f98`: [run #871](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42983920854). Fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, and the full suite (**948 passed, 113 warnings**) all passed. The 113 warnings are existing Alembic `path_separator` deprecations. This completes the executable verification portion of B4.1; the Operator contract review remains a separate gate before B4.2/B4.3. The B4.1 Operator review of the payload/target snapshot matrices, evidence requirements, assessment routing, Events/Outcomes, and replay/idempotency remains a separate gate before B4.2/B4.3 canonical commit work.
+The replay corrections and regression tests are committed to the same draft PR branch. Exact-head hosted CI passed on `fb20a3b1a0943926b9cea60a33efdfe329b919dc`: [run #874](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42984911531). Fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, and the full suite (**948 passed, 113 warnings**) all passed. The 113 warnings are existing Alembic `path_separator` deprecations. The Operator approved the frozen B4.1 contract matrix on 2026-11-11 and authorized B4.2. B4.1's executable verification and Operator review gates are complete; PR #97 remains draft and unmerged.
+
+## R7-B B4.2 — revise canonical commit (IMPLEMENTATION IN PROGRESS)
+
+Branch: `r7b-b4-2-revise-commit`, based on B4.1 PR head `fb20a3b1a0943926b9cea60a33efdfe329b919dc`. This is a stacked implementation branch; exact-head CI has not yet run.
+
+The current implementation adds:
+- Approval binding for revise against the exact target pointer, content version/hash/scheme, and full-state snapshot hash; accepted revise additionally binds the recorded `KnowledgeQualityAssessment`.
+- Existing Operator admission support for revise while leaving revalidate, retire, and supersede unsupported.
+- Atomic revise commit of the same KnowledgeItem using a locked full-state comparison and a database compare-and-set on current pointer and expected version.
+- Version +1, status/identity/origin/supersession preservation, content/confidence replacement, `last_validated_at = NULL`, and `review_after` recomputation from the approval Task's pinned TeamPolicy.
+- Retained `previous_state` and a versioned `committed_state` snapshot for history reconstruction.
+- TaskRuntime terminal validation for accepted/rejected revise, including the existing Task Outcome/Event and replay checks.
+- Integration regression coverage for accepted revise, assessment binding, version/pointer advance, policy review date, rejected revise with no canonical mutation, and replay.
+
+No migration, new Task type, runtime, dispatcher, scheduler, public API, or authentication subsystem was added. This is implementation evidence only, not a verification result. The B4.2 branch must pass exact-head hosted CI and complete source/test diff review before it can be considered verified. B4.3 revalidate commit has not started.
 
 B5, B6, and R7-C remain unauthorized.
