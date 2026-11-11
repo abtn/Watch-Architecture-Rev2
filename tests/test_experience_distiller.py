@@ -3562,18 +3562,17 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         assert item.status == before_state["status"]
         assert item.last_validated_at is None
         assert item.review_after == revision_commit.committed_at + timedelta(days=7)
-        assert change.previous_state == {
-            "snapshot_version": change.previous_state["snapshot_version"],
-            "state": before_state,
-            "snapshot_hash": before_state_hash,
-        }
+        assert change.previous_state is not None
+        assert change.previous_state["state"] == before_state
+        assert change.previous_state["snapshot_hash"] == previous_state_hash
         assert change.committed_state["state"] == knowledge_item_state(item)
         assert decision_event.payload["operation"] == "revise"
         assert decision_event.payload["knowledge_item_id"] == str(item.id)
         assert decision_event.payload["knowledge_item_version"] == item.version
         assert decision_event.payload["knowledge_quality_assessment_id"]
         assert decision_event.payload["approval_binding"]["target_content_version"] == 1
-        assert session.get(Task, approval_request.task_id).status == "done"
+        approval_task = session.get(Task, approval_request.task_id)
+        assert approval_task is not None and approval_task.status == "done"
 
     replay = LearningCommitService(session_factory, snapshot_store).decide(
         approval_request.task_id, admission.attempt_count, principal
