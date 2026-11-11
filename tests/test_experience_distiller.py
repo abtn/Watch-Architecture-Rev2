@@ -1460,6 +1460,112 @@ def _create_revalidation_proposal(
         fixture.extra_task_ids.append(request_event.task_id)
     return source_task_id, proposal.learning_change_id
 
+
+def test_revalidation_proposal_replays_after_task_completion(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(
+        2, include_contrary=False, review_interval_days=1
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    create_proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=create_proposal.learning_change_id,
+        )
+    )
+    approval_task_id, approval_attempt, principal = _create_admitted_approval_task(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        create_proposal.learning_change_id,
+    )
+    committed = LearningCommitService(session_factory, snapshot_store).decide(
+        approval_task_id, approval_attempt, principal
+    )
+    assert committed.knowledge_item_id is not None
+    runtime.finalize(
+        TerminalObservation(
+            task_id=approval_task_id,
+            attempt=approval_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=committed.committed_at,
+            learning_change_id=committed.learning_change_id,
+        )
+    )
+
+    source_task_id, change_id = _create_revalidation_proposal(
+        session_factory,
+        snapshot_store,
+        fixture,
+        committed.knowledge_item_id,
+    )
+    evaluation_ids = [case.evaluation_id for case in fixture.cases]
+    rationale = "بازبینی دوباره بر پایه شواهد فعلی."
+    with session_factory() as session:
+        task = session.get(Task, source_task_id)
+        assert task is not None and task.status == "done"
+        before_changes = session.scalar(
+            select(func.count(LearningChange.id)).where(
+                LearningChange.proposed_by_task_id == source_task_id
+            )
+        )
+        before_events = session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == source_task_id,
+                Event.type == "learning_change_proposed",
+            )
+        )
+
+    distiller = ExperienceDistiller(
+        session_factory,
+        snapshot_store,
+        provider=None,
+        cost_service=TaskGenerationCostService(session_factory),
+    )
+    replay = distiller.propose_revalidation(
+        source_task_id,
+        evaluation_ids,
+        committed.knowledge_item_id,
+        rationale=rationale,
+    )
+    assert replay.replayed is True
+    assert replay.learning_change_id == change_id
+
+    with pytest.raises(
+        ExperienceDistillerError,
+        match="learning_change_task_basis_conflict",
+    ):
+        distiller.propose_revalidation(
+            source_task_id,
+            evaluation_ids,
+            committed.knowledge_item_id,
+            rationale="A conflicting rationale must not reuse the proposal.",
+        )
+
+    with session_factory() as session:
+        assert session.scalar(
+            select(func.count(LearningChange.id)).where(
+                LearningChange.proposed_by_task_id == source_task_id
+            )
+        ) == before_changes
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == source_task_id,
+                Event.type == "learning_change_proposed",
+            )
+        ) == before_events
+
+
 @pytest.mark.parametrize(
     ("invalid_draft_case", "expected_failure_reason"),
     [
@@ -3369,6 +3475,41 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         assert unchanged_item is not None
         assert knowledge_item_state(unchanged_item) == before_state
 
+    with session_factory() as session:
+        before_events = session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == revision_task_id,
+                Event.type == "learning_change_proposed",
+            )
+        )
+        before_changes = session.scalar(
+            select(func.count(LearningChange.id)).where(
+                LearningChange.proposed_by_task_id == revision_task_id
+            )
+        )
+
+    replay = _distiller(
+        session_factory, snapshot_store, provider=None
+    ).propose_revision(
+        revision_task_id,
+        [case.evaluation_id for case in fixture.cases],
+        committed.knowledge_item_id,
+    )
+    assert replay.replayed is True
+    assert replay.learning_change_id == revised.learning_change_id
+
+    with session_factory() as session:
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == revision_task_id,
+                Event.type == "learning_change_proposed",
+            )
+        ) == before_events
+        assert session.scalar(
+            select(func.count(LearningChange.id)).where(
+                LearningChange.proposed_by_task_id == revision_task_id
+            )
+        ) == before_changes
 
 
 def test_recorded_quality_assessment_is_completed_by_interrupted_recovery(
