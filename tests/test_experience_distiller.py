@@ -3640,7 +3640,9 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         )
         assert item is not None and change is not None and decision_event is not None
         assert item.id == committed.knowledge_item_id
-        assert item.origin_learning_change_id == before_state["origin_learning_change_id"]
+        assert item.origin_learning_change_id == before_state[
+            "origin_learning_change_id"
+        ]
         assert item.current_learning_change_id == revised.learning_change_id
         assert item.version == before_state["version"] + 1
         assert item.status == before_state["status"]
