@@ -3934,7 +3934,9 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
             principal,
         )
         assert original_revision_replay.replayed
-        assert original_revision_replay.knowledge_item_id == committed.knowledge_item_id
+        assert (
+            original_revision_replay.knowledge_item_id == committed.knowledge_item_id
+        )
 
         with pytest.raises(
             LearningCommitCorrupt,
