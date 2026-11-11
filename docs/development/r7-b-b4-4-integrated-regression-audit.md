@@ -90,6 +90,12 @@ The revalidation rejection test proves no KnowledgeItem mutation and TaskRuntime
 
 **Required proof:** replay the original rejected revalidation approval and assert the original rejection is returned with no duplicate decision Event, Outcome, or canonical mutation.
 
+### G6 — Accepted revise commit from needs_review
+
+The revise approval-binding test uses a needs_review target, and the history unit test proves the transition validator preserves that status. The identified end-to-end canonical revise test starts from an active item; no accepted revise commit starting from a needs_review KnowledgeItem was identified.
+
+**Required proof:** commit a valid revise against a current needs_review item and verify the status remains needs_review, content/version/pointer/date semantics follow the revise contract, history reconstructs, and the current projection remains ineligible while status is needs_review.
+
 ## 5. Scope and stop conditions
 
 - Keep the supported B4 operations exactly create, revise, and revalidate.
@@ -101,7 +107,7 @@ The revalidation rejection test proves no KnowledgeItem mutation and TaskRuntime
 ## 6. B4.4 sequence
 
 1. **Audit baseline — recorded here:** inspect exact merged main and map existing source/tests to the frozen B4 requirements.
-2. **Close regression gaps G1–G5:** implement only missing deterministic tests and minimal demonstrated corrections.
+2. **Close regression gaps G1–G6:** implement only missing deterministic tests and minimal demonstrated corrections.
 3. **Run exact-head hosted CI:** fresh disposable PostgreSQL migration/single-head, Ruff, Mypy, git diff --check origin/${GITHUB_BASE_REF}...HEAD, full pytest, and hosted disposable-service cleanup. Record exact PR head and workflow run.
 4. **Operator source/diff review:** review the complete final source/test diff and the frozen B4.1 contract matrices. CI does not replace this review.
 5. **Documentation closeout:** reconcile PLAN, CHANGE_MAP, this implementation plan, and docs/testing; record B4 exit only after all required evidence and explicit Operator acceptance.
