@@ -928,6 +928,7 @@ class LearningCommitService:
                 )
         item_id: uuid.UUID | None = None
         if recorded_decision == "accept":
+            committed_state: dict[str, Any] | None = None
             if learning_change.operation == "create":
                 items = list(
                     session.scalars(
@@ -996,9 +997,12 @@ class LearningCommitService:
                 )
                 or (
                     learning_change.operation == "revise"
-                    and history.states[
-                        history.learning_change_ids.index(learning_change.id)
-                    ] != committed_state
+                    and (
+                        committed_state is None
+                        or history.states[
+                            history.learning_change_ids.index(learning_change.id)
+                        ] != committed_state
+                    )
                 )
             ):
                 raise LearningCommitCorrupt("committed_knowledge_item_mismatch")
