@@ -993,16 +993,6 @@ class KnowledgeQualityAssessment(Base):
             ["tasks.id", "tasks.team_id"],
             name="fk_knowledge_quality_assessments_task_team",
         ),
-        ForeignKeyConstraint(
-            ["target_knowledge_item_id", "team_id"],
-            ["knowledge_items.id", "knowledge_items.team_id"],
-            name="fk_knowledge_quality_assessments_target_item_team",
-        ),
-        ForeignKeyConstraint(
-            ["target_current_learning_change_id", "team_id"],
-            ["learning_changes.id", "learning_changes.team_id"],
-            name="fk_knowledge_quality_assessments_target_pointer_team",
-        ),
         UniqueConstraint(
             "learning_change_id",
             name="uq_knowledge_quality_assessments_learning_change",
@@ -1046,22 +1036,6 @@ class KnowledgeQualityAssessment(Base):
             "length(narrative) > 0",
             name="ck_knowledge_quality_assessments_payload",
         ),
-        CheckConstraint(
-            "(target_knowledge_item_id IS NULL AND "
-            "target_current_learning_change_id IS NULL AND "
-            "target_content_version IS NULL AND target_content_hash IS NULL AND "
-            "target_content_hash_scheme IS NULL AND target_state_hash IS NULL) OR "
-            "(target_knowledge_item_id IS NOT NULL AND "
-            "target_current_learning_change_id IS NOT NULL AND "
-            "target_content_version IS NOT NULL AND target_content_version >= 1 AND "
-            "target_content_hash IS NOT NULL AND "
-            "target_content_hash ~ '^sha256:[0-9a-f]{64}$' AND "
-            "target_content_hash_scheme IS NOT NULL AND "
-            "target_content_hash_scheme = 'watch.r7b.knowledge-content.v2' AND "
-            "target_state_hash IS NOT NULL AND "
-            "target_state_hash ~ '^sha256:[0-9a-f]{64}$')",
-            name="ck_knowledge_quality_assessments_target_binding",
-        ),
         Index(
             "ix_knowledge_quality_assessments_team_learning_change",
             "team_id",
@@ -1081,18 +1055,6 @@ class KnowledgeQualityAssessment(Base):
     creating_task_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), nullable=False
     )
-    target_knowledge_item_id: Mapped[UUID | None] = mapped_column(
-        Uuid(as_uuid=True), nullable=True
-    )
-    target_current_learning_change_id: Mapped[UUID | None] = mapped_column(
-        Uuid(as_uuid=True), nullable=True
-    )
-    target_content_version: Mapped[int | None] = mapped_column(nullable=True)
-    target_content_hash: Mapped[str | None] = mapped_column(String, nullable=True)
-    target_content_hash_scheme: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )
-    target_state_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     proposal_hash: Mapped[str] = mapped_column(String, nullable=False)
     evidence_basis_hash: Mapped[str] = mapped_column(String, nullable=False)
     rubric_identity: Mapped[str] = mapped_column(String(255), nullable=False)
