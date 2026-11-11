@@ -3244,6 +3244,31 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
     assert revised.generation_charge_id is not None
     assert provider.calls == 1
 
+    with session_factory.begin() as session:
+        change = session.get(LearningChange, revised.learning_change_id)
+        assert change is not None
+        original_idempotency_key = change.idempotency_key
+        change.idempotency_key = "r7b-revise-v1:tampered"
+
+    with pytest.raises(
+        TaskNotFinalizable,
+        match="learning_change_revise_target_invalid:revision_proposal_idempotency_mismatch",
+    ):
+        runtime.finalize(
+            TerminalObservation(
+                task_id=revision_task_id,
+                attempt=1,
+                result_category="success_learning_change_proposed",
+                observed_at=datetime.now(timezone.utc),
+                learning_change_id=revised.learning_change_id,
+            )
+        )
+
+    with session_factory.begin() as session:
+        change = session.get(LearningChange, revised.learning_change_id)
+        assert change is not None
+        change.idempotency_key = original_idempotency_key
+
     runtime.finalize(
         TerminalObservation(
             task_id=revision_task_id,

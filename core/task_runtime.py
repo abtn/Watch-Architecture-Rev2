@@ -4051,6 +4051,19 @@ class TaskRuntime:
 
                 if _proposal_sha256_json(draft_payload) != proposal_hash:
                     raise KnowledgeHistoryError("revision_proposal_hash_mismatch")
+                expected_idempotency_key = "r7b-revise-v1:" + _proposal_sha256_json(
+                    {
+                        "team_id": str(learning_change.team_id),
+                        "task_id": str(task.id),
+                        "target_binding": target_binding,
+                        "evidence_basis_hash": learning_change.evidence_basis_hash,
+                        "proposal_hash": proposal_hash,
+                    }
+                ).removeprefix("sha256:")
+                if learning_change.idempotency_key != expected_idempotency_key:
+                    raise KnowledgeHistoryError(
+                        "revision_proposal_idempotency_mismatch"
+                    )
                 content_fields = expected_draft_fields - {
                     "confidence_band",
                     "supporting_evidence_refs",
