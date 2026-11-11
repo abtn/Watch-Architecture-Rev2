@@ -3618,16 +3618,10 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
     assert revision_commit.knowledge_item_id == committed.knowledge_item_id
     assert not revision_commit.replayed
 
-    terminal = runtime.finalize(
-        TerminalObservation(
-            task_id=approval_request.task_id,
-            attempt=admission.attempt_count,
-            result_category="success_learning_change_accepted",
-            observed_at=revision_commit.committed_at,
-            learning_change_id=revised.learning_change_id,
-        )
+    recovery = runtime.recover_interrupted(
+        now=revision_commit.committed_at + timedelta(seconds=61)
     )
-    assert terminal.status == "done"
+    assert approval_request.task_id in recovery.completed
 
     with session_factory() as session:
         item = session.get(KnowledgeItem, committed.knowledge_item_id)
