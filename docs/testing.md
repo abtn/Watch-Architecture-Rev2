@@ -898,3 +898,16 @@ The initial read-only source/test audit is recorded in [the B4.4 audit](developm
 ### Supplemental B4.3 Operator-local verification on exact merged-main tree
 
 The Operator ran the verification script on branch r7b-b4-3-merged-verification, exact HEAD 5f37927ff33d9e740c0ff56512d261dace36ab67. Fresh disposable PostgreSQL migration and single-head checks passed; 232 focused B4.3 tests passed; Ruff passed; Mypy passed across 38 source files; and the full suite passed **949 tests with 113 warnings in 211.03s**. Pytest exit code was 0. The disposable container was removed. The 113 warnings were Alembic path_separator deprecations. This supplements, but does not replace, the exact-PR-head hosted CI evidence for PR #100 (run #932). The test log was saved at %TEMP%\watch-b43-full-tests-20261111-164732.log.
+
+### B4.4 G1 — Concurrent revise/revalidate compare-and-set proofs (2026-11-11)
+
+Verified on branch `r7b-b4-4-regression-proof`, starting at `006ed2bef2e43d736421c93ec423b34453fb36fe`, using dedicated database `watch_b44_g1` in the no-volume disposable PostgreSQL container `watch-r6a-step1-pg`. The database was migrated to the single head `0018_r7b_lifecycle_review_date`. `DATABASE_URL` and `TEST_DATABASE_URL` were temporarily set to this database and their prior values were restored after each command.
+
+- `uv run pytest tests/test_experience_distiller.py::test_concurrent_revise_approvals_advance_one_knowledge_item_once -q` — **1 passed**.
+- `uv run pytest tests/test_experience_distiller.py::test_concurrent_revalidate_approvals_advance_one_knowledge_item_once -q` — **1 passed**.
+- Existing revise, accepted/rejected revalidation, and competing-approval selections — **8 passed**.
+- `uv run ruff check tests/test_experience_distiller.py` — passed.
+- `uv run mypy core` — passed, 38 source files.
+- `git diff --check` — passed.
+
+Each race used two independent PostgreSQL backend PIDs and separate SQLAlchemy sessions. A test-only SQLAlchemy event hook synchronized both transactions immediately before the existing KnowledgeItem compare-and-set `UPDATE`; it removed `SELECT ... FOR UPDATE` clauses only during these two tests to expose the unchanged pointer/version predicate to a real concurrent update race. No arbitrary sleeps, production changes, schema changes, or migrations were introduced. Both tests verify one accepted transition, exact pointer/version behavior, reconstructable history, one canonical committed state/decision Event/Outcome, loser failure, rejected terminal-success attempts, and failed retries. Full-suite and hosted exact-head verification are not included in this G1 checkpoint.
