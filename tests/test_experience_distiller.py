@@ -3581,6 +3581,125 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
     assert replay.knowledge_item_id == committed.knowledge_item_id
     assert replay.learning_change_id == revised.learning_change_id
 
+    rejected_revision_task_id = uuid4()
+    fixture.extra_task_ids.append(rejected_revision_task_id)
+    rejected_started_at = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        session.add(
+            Task(
+                id=rejected_revision_task_id,
+                team_id=fixture.team_id,
+                task_type="propose_learning_change",
+                status="running",
+                attempt_count=1,
+                policy_version=template.policy_version,
+                objective_id=None,
+                plan_id=None,
+                plan_action_id=None,
+                allowed_writes=["LearningChange"],
+                budget=dict(template.budget),
+                created_at=rejected_started_at,
+                completed_at=None,
+                max_attempts=template.max_attempts,
+            )
+        )
+        session.flush()
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=rejected_revision_task_id,
+                type="task_started",
+                payload={
+                    "from_status": "pending",
+                    "to_status": "running",
+                    "attempt_count": 1,
+                },
+                created_at=rejected_started_at,
+            )
+        )
+
+    def rejected_content(prompt: str) -> dict[str, Any]:
+        content = _content_from_prompt(prompt)
+        content["body"] = "A second candidate revision that the Operator rejects."
+        return content
+
+    rejected_proposal = _distiller(
+        session_factory,
+        snapshot_store,
+        _FakeDistillationProvider(rejected_content),
+    ).propose_revision(
+        rejected_revision_task_id,
+        [case.evaluation_id for case in fixture.cases],
+        committed.knowledge_item_id,
+    )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=rejected_revision_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=rejected_proposal.learning_change_id,
+        )
+    )
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        assert item is not None
+        state_before_rejection = knowledge_item_state(item)
+
+    rejection_principal = _approval_principal(fixture.team_id)
+    rejection_request = LearningChangeDecisionRequest(
+        learning_change_id=rejected_proposal.learning_change_id,
+        decision="reject",
+        idempotency_key=uuid4(),
+        rejection_reason="The revised candidate is not sufficiently supported.",
+    )
+    rejection_adapter = OperatorApplicationAdapter(
+        session_factory, snapshot_store
+    )
+    rejected_task = rejection_adapter.request_learning_change_decision(
+        rejection_principal, rejection_request
+    )
+    rejected_admission = runtime.admit(rejected_task.task_id)
+    rejected_commit = LearningCommitService(
+        session_factory, snapshot_store
+    ).decide(
+        rejected_task.task_id,
+        rejected_admission.attempt_count,
+        rejection_principal,
+    )
+    assert rejected_commit.decision == "reject"
+    assert rejected_commit.knowledge_item_id is None
+    runtime.finalize(
+        TerminalObservation(
+            task_id=rejected_task.task_id,
+            attempt=rejected_admission.attempt_count,
+            result_category="success_learning_change_rejected",
+            observed_at=rejected_commit.committed_at,
+            learning_change_id=rejected_proposal.learning_change_id,
+        )
+    )
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        rejected_change = session.get(
+            LearningChange, rejected_proposal.learning_change_id
+        )
+        assert item is not None and rejected_change is not None
+        assert knowledge_item_state(item) == state_before_rejection
+        assert item.current_learning_change_id == revised.learning_change_id
+        assert rejected_change.previous_state["state"] == state_before_rejection
+        assert rejected_change.committed_state is None
+
+    rejected_replay = LearningCommitService(
+        session_factory, snapshot_store
+    ).decide(
+        rejected_task.task_id,
+        rejected_admission.attempt_count,
+        rejection_principal,
+    )
+    assert rejected_replay.replayed
+    assert rejected_replay.decision == "reject"
+    assert rejected_replay.knowledge_item_id is None
+
 
 def test_recorded_quality_assessment_is_completed_by_interrupted_recovery(
     session_factory,
