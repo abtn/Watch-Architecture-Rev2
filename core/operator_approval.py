@@ -147,7 +147,7 @@ def _build_legacy_request_fingerprint(
 def is_supported_learning_change(
     *, target_kind: object, operation: object, target_id: object
 ) -> bool:
-    """Return whether an authorized KnowledgeItem decision has the correct target shape."""
+    """Return whether an authorized KnowledgeItem decision has a valid target."""
     return (
         target_kind == SUPPORTED_LEARNING_CHANGE_TARGET_KIND
         and (
