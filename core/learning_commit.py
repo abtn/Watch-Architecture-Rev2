@@ -337,8 +337,6 @@ class LearningCommitService:
             if decision == "accept" and learning_change.operation == "revalidate":
                 from core.knowledge_revalidation import (
                     KnowledgeRevalidationAssessmentError,
-                )
-                from core.knowledge_revalidation import (
                     require_recorded_assessment as require_revalidation_assessment,
                 )
 
@@ -930,8 +928,6 @@ class LearningCommitService:
         if recorded_decision == "accept" and learning_change.operation == "revalidate":
             from core.knowledge_revalidation import (
                 KnowledgeRevalidationAssessmentError,
-            )
-            from core.knowledge_revalidation import (
                 require_recorded_assessment as require_revalidation_assessment,
             )
 
