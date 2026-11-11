@@ -878,3 +878,31 @@ The current implementation adds:
 No migration, new Task type, runtime, dispatcher, scheduler, public API, or authentication subsystem was added. This is implementation evidence only, not a verification result. The B4.2 branch must pass exact-head hosted CI and complete source/test diff review before it can be considered verified. B4.3 revalidate commit has not started.
 
 B5, B6, and R7-C remain unauthorized.
+
+## R7-B B4.2 — revise canonical commit (MERGED — PR #99)
+
+B4.1 was merged first in PR #97 at `d1c70a312688b8b297027500abcb57d13f53961d`. The stacked B4.2 work was then placed on a clean branch based directly on that merged main tree; the superseded stacked PR #98 was closed rather than merged, avoiding a duplicate B4.1 diff.
+
+PR [#99](https://github.com/abtn/Watch-Architecture-Rev2/pull/99) merged to `main` at `1c69073990b8ccd7a1ee29a806faf04c066d95ad`. Exact PR head `802d0aafacf3ccaee8a8c496416bbf9f09caf2aa` passed hosted CI run [#897](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42993908728):
+- Fresh PostgreSQL migration and single Alembic-head verification.
+- Ruff, Mypy, and PR patch-whitespace check.
+- Full suite: **951 passed, 113 warnings**.
+- Disposable PostgreSQL container and network cleanup.
+
+B4.2 enables only revise canonical commit through the existing Operator Task and TaskRuntime path. No migration, new Task type, second runtime, dispatcher, scheduler, public API, or authentication subsystem was introduced. B4.3 remained separate until the Operator explicitly authorized it after B4.2 merged.
+
+## R7-B B4.3 — revalidate canonical commit (IMPLEMENTATION IN PROGRESS)
+
+Branch: `r7b-b4-3-revalidate-commit`; draft PR [#100](https://github.com/abtn/Watch-Architecture-Rev2/pull/100), based on merged B4.2 main.
+
+The current implementation work:
+- Enables revalidate in the existing trusted Operator approval path, while keeping supersede and retire outside the allowlist.
+- Binds the exact same-Team needs_review target, current pointer, content version/hash/scheme, full-state snapshot, and recorded supported KnowledgeRevalidationAssessment.
+- Adds a locked target recheck and compare-and-set for the needs_review → active transition.
+- Preserves semantic content, confidence, content hash, content version, origin, and supersession links; sets last_validated_at and recomputes review_after from the approval Task's pinned TeamPolicy.
+- Adds revalidation-specific decision Event assessment references and TaskRuntime admission/finalization/replay validation.
+- Adds accepted and rejected commit regression tests plus a Team Experience projection test proving the old projection stays hidden until republished against the advanced pointer.
+
+Two early CI attempts exposed static-check defects before type-check/tests ran: run #899 found a malformed duplicate revalidation-binding block plus import/line-length issues; run #904 found one remaining Ruff import-order issue. Those defects were corrected on later branch commits. The current documentation-updated head still requires exact-head hosted CI; no test-pass claim is made for B4.3 yet.
+
+No migration, new Task type, second runtime, dispatcher, scheduler, API, authentication subsystem, production evaluator/provider, B5 lifecycle commit, B6, or R7-C work is included. B5, B6, and R7-C remain unauthorized.
