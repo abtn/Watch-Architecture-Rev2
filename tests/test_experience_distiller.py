@@ -3251,8 +3251,13 @@ def test_accepted_create_requires_recorded_quality_assessment(
 
 
 @pytest.mark.parametrize("initial_status", ["active", "needs_review"])
+@pytest.mark.parametrize("revision_kind", ["content", "confidence_only"])
 def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
-    session_factory, snapshot_store, distillation_fixture, initial_status: str
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    initial_status: str,
+    revision_kind: str,
 ):
     fixture = distillation_fixture(
         2, include_contrary=False, review_interval_days=7
@@ -3395,10 +3400,33 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
 
     def revised_content(prompt: str) -> dict[str, Any]:
         content = _content_from_prompt(prompt)
-        content["body"] = (
-            "The revised practice preserves source evidence and records a distinct "
-            "observation before drawing a conclusion."
-        )
+        if revision_kind == "content":
+            content["body"] = (
+                "The revised practice preserves source evidence and records a distinct "
+                "observation before drawing a conclusion."
+            )
+        else:
+            for field in (
+                "kind",
+                "title",
+                "statement",
+                "body",
+                "applicability",
+                "preconditions",
+                "assumptions",
+                "limitations",
+                "non_applicability",
+                "failure_modes",
+                "known_counterexamples",
+                "missing_information",
+                "uncertainty",
+            ):
+                content[field] = before_state[field]
+            confidence = Decimal(str(before_state["confidence"]))
+            next_confidence = confidence + Decimal("0.001")
+            if next_confidence > Decimal("1"):
+                next_confidence = confidence - Decimal("0.001")
+            content["confidence"] = str(next_confidence)
         return content
 
     provider = _FakeDistillationProvider(revised_content)
@@ -3616,6 +3644,8 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         assert item.current_learning_change_id == revised.learning_change_id
         assert item.version == before_state["version"] + 1
         assert item.status == before_state["status"]
+        if revision_kind == "confidence_only":
+            assert item.confidence != Decimal(str(before_state["confidence"]))
         assert item.last_validated_at is None
         assert item.review_after == revision_commit.committed_at + timedelta(days=7)
         assert change.previous_state is not None
