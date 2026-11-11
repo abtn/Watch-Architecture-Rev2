@@ -3565,6 +3565,7 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         assert change.previous_state is not None
         assert change.previous_state["state"] == before_state
         assert change.previous_state["snapshot_hash"] == previous_state_hash
+        assert change.committed_state is not None
         assert change.committed_state["state"] == knowledge_item_state(item)
         assert decision_event.payload["operation"] == "revise"
         assert decision_event.payload["knowledge_item_id"] == str(item.id)
@@ -3686,6 +3687,7 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         assert item is not None and rejected_change is not None
         assert knowledge_item_state(item) == state_before_rejection
         assert item.current_learning_change_id == revised.learning_change_id
+        assert rejected_change.previous_state is not None
         assert rejected_change.previous_state["state"] == state_before_rejection
         assert rejected_change.committed_state is None
 
