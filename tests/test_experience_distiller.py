@@ -1590,6 +1590,7 @@ def test_operator_commits_supported_revalidation_without_changing_content(
     session_factory,
     snapshot_store,
     distillation_fixture,
+    monkeypatch,
 ):
     fixture = distillation_fixture(
         2, include_contrary=False, review_interval_days=1
@@ -1661,9 +1662,28 @@ def test_operator_commits_supported_revalidation_without_changing_content(
         fixture.team_id,
         revalidation_change_id,
     )
-    committed = LearningCommitService(session_factory, snapshot_store).decide(
-        approval_task_id, approval_attempt, principal
-    )
+    import core.learning_commit as learning_commit
+
+    review_commit_at = review_after + timedelta(seconds=3)
+
+    class ReviewCommitDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return review_commit_at if tz is not None else review_commit_at.replace(tzinfo=None)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            learning_commit,
+            "datetime",
+            SimpleNamespace(
+                datetime=ReviewCommitDateTime,
+                timezone=timezone,
+                timedelta=timedelta,
+            ),
+        )
+        committed = LearningCommitService(
+            session_factory, snapshot_store
+        ).decide(approval_task_id, approval_attempt, principal)
     assert committed.knowledge_item_id == created.knowledge_item_id
 
     runtime.finalize(
