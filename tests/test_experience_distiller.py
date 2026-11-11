@@ -3250,8 +3250,9 @@ def test_accepted_create_requires_recorded_quality_assessment(
         assert accepted_event.payload["knowledge_quality_assessment_hash"]
 
 
+@pytest.mark.parametrize("initial_status", ["active", "needs_review"])
 def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
-    session_factory, snapshot_store, distillation_fixture
+    session_factory, snapshot_store, distillation_fixture, initial_status: str
 ):
     fixture = distillation_fixture(
         2, include_contrary=False, review_interval_days=7
@@ -3297,6 +3298,61 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         item = session.get(KnowledgeItem, committed.knowledge_item_id)
         template = session.get(Task, fixture.distillation_task_id)
         assert item is not None and template is not None
+        due_at = item.review_after
+    if initial_status == "needs_review":
+        assert due_at is not None
+        review_task_id = uuid4()
+        fixture.extra_task_ids.append(review_task_id)
+        review_started_at = due_at - timedelta(seconds=1)
+        with session_factory.begin() as session:
+            session.add(
+                Task(
+                    id=review_task_id,
+                    team_id=fixture.team_id,
+                    task_type="review_knowledge",
+                    status="running",
+                    attempt_count=1,
+                    policy_version=template.policy_version,
+                    objective_id=None,
+                    plan_id=None,
+                    plan_action_id=None,
+                    allowed_writes=["KnowledgeItem"],
+                    budget={
+                        "max_tool_calls": 0,
+                        "max_cost_usd": 0.0,
+                        "deadline_seconds": 30,
+                    },
+                    created_at=review_started_at,
+                    completed_at=None,
+                    max_attempts=3,
+                )
+            )
+            session.flush()
+            session.add(
+                Event(
+                    id=uuid4(),
+                    task_id=review_task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 1,
+                    },
+                    created_at=review_started_at,
+                )
+            )
+        runtime.finalize(
+            TerminalObservation(
+                task_id=review_task_id,
+                attempt=1,
+                result_category="success_knowledge_reviewed",
+                observed_at=due_at,
+            )
+        )
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        assert item is not None and item.status == initial_status
         before_state = knowledge_item_state(item)
         before_pointer = item.current_learning_change_id
 
