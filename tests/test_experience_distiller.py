@@ -3926,6 +3926,16 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
             )
         )
 
+        original_revision_replay = LearningCommitService(
+            session_factory, snapshot_store
+        ).decide(
+            approval_request.task_id,
+            admission.attempt_count,
+            principal,
+        )
+        assert original_revision_replay.replayed
+        assert original_revision_replay.knowledge_item_id == committed.knowledge_item_id
+
         with pytest.raises(
             LearningCommitCorrupt,
             match="knowledge_quality_revision_target_stale",
