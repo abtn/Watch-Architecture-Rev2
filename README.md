@@ -27,7 +27,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** B3 was formally closed on 2026-11-10; its hosted/local evidence and documented diff-check qualification remain in [the B3 closeout](docs/development/r7-b-b3-9-closeout.md). B4 is authorized and the B4.1 implementation workflow has started from verified `main` SHA `de6990a0f1e3c74e06a366975af1bdb10547f43d`. The current B4 run uses hosted exact-PR-head verification plus source/diff review; no local-test result is claimed. The approval allowlist remains exactly `create` during B4.1. B5, B6, and R7-C remain unauthorized. See [PLAN.md](PLAN.md) and the [B4.0 architecture decision](docs/development/r7-b-b4-0-architecture-decision.md).
+- **R7:** B3 was formally closed on 2026-11-10; its hosted/local evidence and documented diff-check qualification remain in [the B3 closeout](docs/development/r7-b-b3-9-closeout.md). B4 is authorized and B4.1 revise/revalidate proposal contracts are implemented on draft [PR #97](https://github.com/abtn/Watch-Architecture-Rev2/pull/97). Completed-Task replay corrections and regression tests are included; exact-head hosted verification is pending. The earlier implementation head passed Operator-local verification (947 tests), recorded in [docs/testing.md](docs/testing.md). The approval allowlist remains exactly `create` during B4.1. B5, B6, and R7-C remain unauthorized. See [PLAN.md](PLAN.md) and the [B4.0 architecture decision](docs/development/r7-b-b4-0-architecture-decision.md).
 
 ## Future plan
 
