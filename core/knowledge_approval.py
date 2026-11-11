@@ -204,6 +204,77 @@ def build_approval_binding(
             )
         return binding
 
+    if learning_change.operation == "revise":
+        if revalidation_count or lifecycle_count or quality_count > 1:
+            raise KnowledgeApprovalBindingError(
+                "knowledge_approval_assessment_type_mismatch"
+            )
+        from core.knowledge_quality import KnowledgeQualityAssessmentError
+        from core.knowledge_quality import (
+            _assessment_target_binding,
+            _revision_target_binding,
+            require_recorded_assessment as require_quality_assessment,
+        )
+
+        try:
+            target_binding = _revision_target_binding(
+                session,
+                learning_change,
+                require_current=learning_change.status == "proposed",
+            )
+        except KnowledgeQualityAssessmentError as error:
+            raise KnowledgeApprovalBindingError(str(error)) from error
+        if target_binding["target_knowledge_item_id"] != str(learning_change.target_id):
+            raise KnowledgeApprovalBindingError(
+                "knowledge_approval_revision_target_mismatch"
+            )
+        binding.update(
+            {
+                "current_learning_change_id": target_binding[
+                    "target_current_learning_change_id"
+                ],
+                "target_content_version": target_binding["target_content_version"],
+                "target_content_hash": target_binding["target_content_hash"],
+                "target_content_hash_scheme": target_binding[
+                    "target_content_hash_scheme"
+                ],
+                "target_state_hash": target_binding["target_state_hash"],
+                "target_status": target_state.get("status"),
+            }
+        )
+        if require_assessment:
+            try:
+                quality_assessment = require_quality_assessment(
+                    session, learning_change, require_task_done=True
+                )
+                recorded_target_binding = _assessment_target_binding(
+                    session, quality_assessment
+                )
+            except KnowledgeQualityAssessmentError as error:
+                raise KnowledgeApprovalBindingError(str(error)) from error
+            if recorded_target_binding != target_binding:
+                raise KnowledgeApprovalBindingError(
+                    "knowledge_approval_revision_assessment_target_mismatch"
+                )
+            task = session.get(Task, quality_assessment.creating_task_id)
+            if task is None:
+                raise KnowledgeApprovalBindingError(
+                    "knowledge_approval_assessment_task_missing"
+                )
+            binding.update(
+                {
+                    "assessment_task_policy_version": task.policy_version,
+                    "assessment_type": "knowledge_quality",
+                    "assessment_id": str(quality_assessment.id),
+                    "assessment_payload_hash": (
+                        quality_assessment.assessment_payload_hash
+                    ),
+                    "evaluator_identity": quality_assessment.evaluator_identity,
+                    "evaluator_revision": quality_assessment.evaluator_revision,
+                }
+            )
+        return binding
+
     if not require_assessment:
         raise KnowledgeApprovalBindingError(
             "knowledge_approval_assessment_required_for_operation"
