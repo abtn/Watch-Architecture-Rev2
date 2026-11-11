@@ -209,10 +209,12 @@ def build_approval_binding(
             raise KnowledgeApprovalBindingError(
                 "knowledge_approval_assessment_type_mismatch"
             )
-        from core.knowledge_quality import KnowledgeQualityAssessmentError
         from core.knowledge_quality import (
+            KnowledgeQualityAssessmentError,
             _assessment_target_binding,
             _revision_target_binding,
+        )
+        from core.knowledge_quality import (
             require_recorded_assessment as require_quality_assessment,
         )
 
