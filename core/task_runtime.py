@@ -380,7 +380,12 @@ class TaskRuntime:
                 raise TaskNotEligible("task_attempts_exhausted")
 
             if task.task_type == _OPERATOR_TASK_TYPE:
-                self._validate_operator_admission(session, task)
+                self._validate_operator_admission(
+                    session,
+                    task,
+                    snapshot_store=self._snapshot_store,
+                    session_factory=self._session_factory,
+                )
             elif self._is_r6g_evaluation_task(session, task):
                 try:
                     self._validate_evaluation_task_request(session, task)
@@ -597,7 +602,12 @@ class TaskRuntime:
 
     @staticmethod
     def _validate_operator_admission(
-        session: Session, task: Task, *, allow_completed: bool = False
+        session: Session,
+        task: Task,
+        *,
+        allow_completed: bool = False,
+        snapshot_store: SnapshotStore | None = None,
+        session_factory: sessionmaker[Session] | None = None,
     ) -> None:
         """Fail closed unless this is an intact, no-deadline approval Task."""
         if (
@@ -675,7 +685,7 @@ class TaskRuntime:
             )
         ):
             raise TaskNotEligible("operator_task_request_target_invalid")
-        if decision == "accept":
+        if decision == "accept" and learning_change.operation != "revalidate":
             from core.knowledge_quality import (
                 KnowledgeQualityAssessmentError,
                 require_recorded_assessment,
@@ -706,6 +716,8 @@ class TaskRuntime:
                     operator_id=request_payload.operator_id,
                     approval_policy_version=task.policy_version,
                     require_assessment=decision == "accept",
+                    snapshot_store=snapshot_store,
+                    session_factory=session_factory,
                 )
             except KnowledgeApprovalBindingError as error:
                 raise TaskNotEligible(str(error)) from error
@@ -1593,9 +1605,8 @@ class TaskRuntime:
             knowledge_quality_assessment_id=assessment.id,
         )
 
-    @staticmethod
     def _committed_operator_decision_observation(
-        session: Session, task: Task
+        self, session: Session, task: Task
     ) -> TerminalObservation | None:
         """Reconcile a committed Operator decision for its owner or a loser.
 
@@ -1608,7 +1619,12 @@ class TaskRuntime:
         if task.task_type != _OPERATOR_TASK_TYPE:
             return None
         try:
-            TaskRuntime._validate_operator_admission(session, task)
+            self._validate_operator_admission(
+                session,
+                task,
+                snapshot_store=self._snapshot_store,
+                session_factory=self._session_factory,
+            )
         except TaskNotEligible as error:
             raise TaskNotFinalizable(
                 "operator_task_request_event_invalid"
@@ -1684,7 +1700,7 @@ class TaskRuntime:
                 observed_at=learning_change.committed_at,
                 learning_change_id=learning_change.id,
             )
-            TaskRuntime._validate_learning_change_decision_result(
+            self._validate_learning_change_decision_result(
                 session, task, observation
             )
             return observation
@@ -1710,7 +1726,7 @@ class TaskRuntime:
             observed_at=learning_change.committed_at,
             learning_change_id=learning_change.id,
         )
-        TaskRuntime._validate_learning_change_decision_result(
+        self._validate_learning_change_decision_result(
             session,
             winning_task,
             winning_observation,
@@ -3618,8 +3634,8 @@ class TaskRuntime:
         if allow_completed and task.completed_at != observation.observed_at:
             raise TaskNotFinalizable("knowledge_quality_terminal_timestamp_mismatch")
 
-    @staticmethod
     def _validate_learning_change_decision_result(
+        self,
         session: Session,
         task: Task,
         observation: TerminalObservation,
@@ -3645,8 +3661,12 @@ class TaskRuntime:
             raise TaskNotFinalizable("recorded_terminal_outcome_corrupt")
 
         try:
-            TaskRuntime._validate_operator_admission(
-                session, task, allow_completed=allow_completed
+            self._validate_operator_admission(
+                session,
+                task,
+                allow_completed=allow_completed,
+                snapshot_store=self._snapshot_store,
+                session_factory=self._session_factory,
             )
         except TaskNotEligible as error:
             raise TaskNotFinalizable(
