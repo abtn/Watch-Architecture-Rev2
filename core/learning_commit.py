@@ -465,7 +465,9 @@ class LearningCommitService:
                         != uuid.UUID(previous_state["current_learning_change_id"])
                         or target.version != previous_state["version"]
                     ):
-                        raise LearningCommitConflict("revision_target_compare_and_set_failed")
+                        raise LearningCommitConflict(
+                            "revision_target_compare_and_set_failed"
+                        )
 
                     next_version = target.version + 1
                     knowledge_item_version = next_version
@@ -928,7 +930,7 @@ class LearningCommitService:
                 )
         item_id: uuid.UUID | None = None
         if recorded_decision == "accept":
-            committed_state: dict[str, Any] | None = None
+            committed_state: dict[str, typing.Any] | None = None
             if learning_change.operation == "create":
                 items = list(
                     session.scalars(
