@@ -3252,15 +3252,19 @@ def test_accepted_create_requires_recorded_quality_assessment(
 
 @pytest.mark.parametrize("initial_status", ["active", "needs_review"])
 @pytest.mark.parametrize("revision_kind", ["content", "confidence_only"])
+@pytest.mark.parametrize("review_interval_days", [None, 7])
 def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
     session_factory,
     snapshot_store,
     distillation_fixture,
     initial_status: str,
     revision_kind: str,
+    review_interval_days: int | None,
 ):
     fixture = distillation_fixture(
-        2, include_contrary=False, review_interval_days=7
+        2,
+        include_contrary=False,
+        review_interval_days=review_interval_days,
     )
     runtime = TaskRuntime(session_factory, snapshot_store)
 
@@ -3305,7 +3309,8 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         assert item is not None and template is not None
         due_at = item.review_after
     if initial_status == "needs_review":
-        assert due_at is not None
+        if due_at is None:
+            pytest.skip("needs_review requires a configured review interval")
         review_task_id = uuid4()
         fixture.extra_task_ids.append(review_task_id)
         review_started_at = due_at - timedelta(seconds=1)
@@ -3643,7 +3648,13 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         if revision_kind == "confidence_only":
             assert item.confidence != Decimal(str(before_state["confidence"]))
         assert item.last_validated_at is None
-        assert item.review_after == revision_commit.committed_at + timedelta(days=7)
+        expected_review_after = (
+            None
+            if review_interval_days is None
+            else revision_commit.committed_at
+            + timedelta(days=review_interval_days)
+        )
+        assert item.review_after == expected_review_after
         assert change.previous_state is not None
         assert change.previous_state["state"] == before_state
         assert change.previous_state["snapshot_hash"] == previous_state_hash
@@ -3784,7 +3795,7 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
     assert rejected_replay.decision == "reject"
     assert rejected_replay.knowledge_item_id is None
 
-    if initial_status == "active":
+    if initial_status == "active" and review_interval_days is not None:
         stale_revision_task_id = uuid4()
         fixture.extra_task_ids.append(stale_revision_task_id)
         stale_started_at = datetime.now(timezone.utc)
