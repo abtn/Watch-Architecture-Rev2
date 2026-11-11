@@ -3323,24 +3323,6 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         assert quality_task is not None and quality_task.status == "pending"
         assert quality_request.payload["target_binding"] == target_binding
 
-        # Assessment target binding must be recovered from this exact request
-        # Event and fail closed if that durable source is altered.
-        original_request_payload = dict(quality_request.payload)
-        quality_request.payload = {
-            **quality_request.payload,
-            "target_binding": {
-                **target_binding,
-                "target_content_version": target_binding["target_content_version"] + 1,
-            },
-        }
-        with pytest.raises(KnowledgeQualityAssessmentError):
-            require_recorded_assessment(
-                session,
-                session.get(LearningChange, revised.learning_change_id),
-                require_task_done=False,
-            )
-        quality_request.payload = original_request_payload
-
         unchanged_item = session.get(KnowledgeItem, committed.knowledge_item_id)
         assert unchanged_item is not None
         assert knowledge_item_state(unchanged_item) == before_state
@@ -3349,14 +3331,40 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
     assessment_id = _run_quality_assessment(
         session_factory, snapshot_store, revised.learning_change_id
     )
-    with session_factory() as session:
+    with session_factory.begin() as session:
         assessment = session.get(KnowledgeQualityAssessment, assessment_id)
         assert assessment is not None
         assert assessment.learning_change_id == revised.learning_change_id
         assert assessment.assessment_payload_hash.startswith("sha256:")
-        # The target pin is bound by the original request Event, not duplicated
-        # into assessment-row columns.
-        assert quality_request.payload["target_binding"] == target_binding
+        request_event = session.scalar(
+            select(Event).where(
+                Event.task_id == assessment.creating_task_id,
+                Event.type == "knowledge_quality_assessment_task_requested",
+            )
+        )
+        assert request_event is not None
+        assert request_event.payload["target_binding"] == target_binding
+
+        # Altering the original request pin must invalidate the recorded
+        # assessment payload hash; the transaction restores the original Event.
+        original_request_payload = dict(request_event.payload)
+        request_event.payload = {
+            **request_event.payload,
+            "target_binding": {
+                **target_binding,
+                "target_content_version": target_binding["target_content_version"] + 1,
+            },
+        }
+        with pytest.raises(
+            KnowledgeQualityAssessmentError,
+            match="knowledge_quality_assessment_binding_invalid",
+        ):
+            require_recorded_assessment(
+                session,
+                session.get(LearningChange, revised.learning_change_id),
+            )
+        request_event.payload = original_request_payload
+
         unchanged_item = session.get(KnowledgeItem, committed.knowledge_item_id)
         assert unchanged_item is not None
         assert knowledge_item_state(unchanged_item) == before_state
