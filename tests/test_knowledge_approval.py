@@ -191,8 +191,9 @@ def test_revise_binding_pins_needs_review_target_and_quality_assessment(
     assert binding["assessment_type"] == "knowledge_quality"
     assert binding["assessment_id"] == str(assessment.id)
     assert binding["assessment_payload_hash"] == assessment.assessment_payload_hash
-    assert binding["assessment_task_id"] == str(assessment.task_id)
     assert binding["assessment_task_policy_version"] == 7
+    assert binding["evaluator_identity"] == assessment.evaluator_identity
+    assert binding["evaluator_revision"] == assessment.evaluator_revision
     assert binding["target_knowledge_item_id"] == str(change.target_id)
     assert binding["target_status"] == "needs_review"
     assert binding["target_content_version"] == 5
