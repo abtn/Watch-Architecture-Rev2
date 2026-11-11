@@ -1386,6 +1386,40 @@ def test_needs_review_item_is_not_retrievable_even_if_projection_remains(
     assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
 
 
+def test_revalidated_item_is_hidden_until_its_new_projection_is_published(
+    experience_env: TeamExperienceEnv,
+) -> None:
+    item_id = experience_env.add_accepted_item()
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
+    assert indexer.index_knowledge_item(item_id).outcome == "indexed"
+
+    with experience_env.session_factory.begin() as session:
+        item = session.get(KnowledgeItem, item_id)
+        assert item is not None
+        item.status = "needs_review"
+
+    retriever = HybridKnowledgeRetriever(
+        experience_env.session_factory, experience_env.snapshot_store, provider
+    )
+    assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
+
+    revalidation_id = experience_env.add_accepted_revalidation(item_id)
+    assert retriever.retrieve(experience_env.team_id, "alpha practice") == ()
+
+    with experience_env.session_factory() as session:
+        item = session.get(KnowledgeItem, item_id)
+        assert item is not None
+        assert item.status == "active"
+        assert item.current_learning_change_id == revalidation_id
+
+    result = indexer.index_knowledge_item(item_id)
+    assert result.outcome == "indexed"
+    passages = retriever.retrieve(experience_env.team_id, "alpha practice")
+    assert passages
+    assert {passage.knowledge_item_id for passage in passages} == {item_id}
+
+
 def test_pending_supersession_candidate_is_hidden_until_reciprocal_commit(
     experience_env: TeamExperienceEnv,
 ) -> None:
