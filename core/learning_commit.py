@@ -538,7 +538,8 @@ class LearningCommitService:
                             last_validated_at=None,
                             review_after=review_after,
                             current_learning_change_id=learning_change.id,
-                        ),
+                        )
+                        .returning(KnowledgeItem.id),
                         execution_options={"synchronize_session": False},
                     ).scalar_one_or_none()
                     if cas_id != target.id:
