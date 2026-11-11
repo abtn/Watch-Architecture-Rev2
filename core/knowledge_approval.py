@@ -296,7 +296,6 @@ def build_approval_binding(
             _target_state_from_proposal,
         )
         from core.learning_history import KNOWLEDGE_CONTENT_HASH_SCHEME
-        from core.models import KnowledgeItem
 
         target = session.scalar(
             select(KnowledgeItem).where(
@@ -311,7 +310,9 @@ def build_approval_binding(
         try:
             target_state, target_state_hash, target_content_hash = (
                 _target_state_from_proposal(
-                    learning_change, target, require_current=True
+                    learning_change,
+                    target,
+                    require_current=learning_change.status == "proposed",
                 )
             )
         except KnowledgeRevalidationAssessmentError as error:
@@ -344,7 +345,7 @@ def build_approval_binding(
                 snapshot_store,
                 session_factory,
                 require_task_done=True,
-                require_current=True,
+                require_current=learning_change.status == "proposed",
             )
         except KnowledgeRevalidationAssessmentError as error:
             raise KnowledgeApprovalBindingError(str(error)) from error
