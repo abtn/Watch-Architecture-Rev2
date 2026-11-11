@@ -947,7 +947,7 @@ def test_request_creation_rejects_every_unauthorized_lifecycle_operation(
 
     with pytest.raises(
         LearningChangeNotApprovable,
-        match="only_knowledge_item_create_is_supported",
+        match="only_knowledge_item_create_or_revise_is_supported",
     ):
         OperatorApplicationAdapter(session_factory).request_learning_change_decision(
             _principal(approval_context.team_id),
