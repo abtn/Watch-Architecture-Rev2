@@ -358,6 +358,7 @@ class LearningCommitService:
                     review_after = committed_at + datetime.timedelta(days=interval_days)
 
             knowledge_item_id: uuid.UUID | None = None
+            knowledge_item_version: int | None = None
             committed_state: dict[str, object] | None = None
             if decision == "accept":
                 confidence = decimal.Decimal(str(draft.confidence)).quantize(
@@ -379,6 +380,7 @@ class LearningCommitService:
                         )
 
                     knowledge_item_id = uuid.uuid4()
+                    knowledge_item_version = 1
                     committed_state = {
                         "id": str(knowledge_item_id),
                         "team_id": str(team.id),
@@ -466,6 +468,7 @@ class LearningCommitService:
                         raise LearningCommitConflict("revision_target_compare_and_set_failed")
 
                     next_version = target.version + 1
+                    knowledge_item_version = next_version
                     committed_values = {
                         "kind": draft.kind,
                         "title": draft.title,
@@ -599,9 +602,11 @@ class LearningCommitService:
                     )
             if knowledge_item_id is not None:
                 event_payload["knowledge_item_id"] = str(knowledge_item_id)
-                event_payload["knowledge_item_version"] = (
-                    1 if learning_change.operation == "create" else target.version
-                )
+                if knowledge_item_version is None:
+                    raise LearningCommitCorrupt(
+                        "committed_knowledge_item_version_missing"
+                    )
+                event_payload["knowledge_item_version"] = knowledge_item_version
                 event_payload["knowledge_quality_assessment_id"] = (
                     quality_assessment_id
                 )
@@ -954,7 +959,7 @@ class LearningCommitService:
                     )
                 item = items[0]
                 try:
-                    committed_state, reconstructed = decode_state_snapshot(
+                    committed_state, _ = decode_state_snapshot(
                         learning_change.committed_state,
                         learning_change_id=learning_change.id,
                         operation="revise",
