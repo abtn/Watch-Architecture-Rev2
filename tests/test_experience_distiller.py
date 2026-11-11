@@ -25,6 +25,7 @@ from core.evaluations import (
 from core.experience_distiller import (
     EXPERIENCE_DISTILLATION_OPERATION,
     ExperienceDistiller,
+    ExperienceDistillerConflict,
     ExperienceDistillerError,
 )
 from core.generation import (
@@ -1542,7 +1543,7 @@ def test_revalidation_proposal_replays_after_task_completion(
     assert replay.learning_change_id == change_id
 
     with pytest.raises(
-        ExperienceDistillerError,
+        ExperienceDistillerConflict,
         match="learning_change_task_basis_conflict",
     ):
         distiller.propose_revalidation(
