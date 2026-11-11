@@ -10,7 +10,7 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current milestone snapshot (phase status in PLAN.md)
 
-R6 is complete through R6-G. R7 B3 is formally closed on 2026-11-10. B4 is authorized and the B4.1 implementation workflow has started on `r7b-b4-1-proposal-contract-implementation` from exact `main` baseline `de6990a0f1e3c74e06a366975af1bdb10547f43d`. Current B4 verification uses hosted exact-PR-head CI plus source/diff review; no local-test result is claimed. B5, B6, and R7-C remain unauthorized. PLAN.md owns the current status.
+R6 is complete through R6-G. R7 B3 is formally closed on 2026-11-10. B4 is authorized; B4.1 revise/revalidate proposal contracts and replay corrections are implemented on draft PR #97. The pre-replay-fix head `34282c724b17d6e4c3e07816de58dae24b677605` passed Operator-local verification (947 tests, Ruff, Mypy, disposable migration/single-head, and diff check); exact-head hosted verification of the replay fixes remains pending. The B4.1 Operator contract review remains required before B4.2/B4.3. B5, B6, and R7-C remain unauthorized. PLAN.md owns the current status.
 
 ## Open the smallest relevant set of documents
 
