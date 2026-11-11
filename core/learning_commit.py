@@ -86,7 +86,7 @@ class LearningCommitResult:
 
 
 class LearningCommitService:
-    """Validate and atomically accept/reject a create or revise LearningChange.
+    """Validate and atomically accept/reject a create, revise, or revalidate LearningChange.
 
     The business decision and its Event commit together. TaskRuntime remains
     responsible for the separate terminal Task/Outcome transaction.
@@ -216,7 +216,11 @@ class LearningCommitService:
 
             try:
                 TaskRuntime._validate_operator_admission(
-                    session, task, allow_completed=task.status == "done"
+                    session,
+                    task,
+                    allow_completed=task.status == "done",
+                    snapshot_store=self._snapshot_store,
+                    session_factory=self._session_factory,
                 )
             except TaskNotEligible as error:
                 raise LearningCommitCorrupt(str(error)) from error
@@ -247,7 +251,7 @@ class LearningCommitService:
                 or learning_change.committed_by_task_id is not None
             ):
                 raise LearningCommitError(
-                    "only_knowledge_item_create_or_revise_is_supported"
+                    "only_knowledge_item_create_revise_or_revalidate_is_supported"
                 )
 
             team = session.scalar(
@@ -307,19 +311,64 @@ class LearningCommitService:
             if terminal_outcomes or terminal_events:
                 raise LearningCommitCorrupt("approval_task_terminal_state_exists")
 
-            try:
-                draft, pack = self._evidence_validator.validate_learning_change(
-                    session, learning_change
+            draft = None
+            pack = None
+            if learning_change.operation == "revalidate":
+                self._validate_proposer_terminal(
+                    session,
+                    learning_change,
+                    learning_change.proposed_by_task_id,
                 )
-            except ExperienceDistillerError as error:
-                raise LearningCommitError(error.reason) from error
+            else:
+                try:
+                    draft, pack = self._evidence_validator.validate_learning_change(
+                        session, learning_change
+                    )
+                except ExperienceDistillerError as error:
+                    raise LearningCommitError(error.reason) from error
+                self._validate_proposer_terminal(
+                    session, learning_change, pack.task_id
+                )
 
-            self._validate_proposer_terminal(
-                session, learning_change, pack.task_id
-            )
             quality_assessment_id: str | None = None
             quality_assessment_hash: str | None = None
-            if decision == "accept":
+            revalidation_assessment_id: str | None = None
+            revalidation_assessment_hash: str | None = None
+            if decision == "accept" and learning_change.operation == "revalidate":
+                from core.knowledge_revalidation import (
+                    KnowledgeRevalidationAssessmentError,
+                    require_recorded_assessment as require_revalidation_assessment,
+                )
+
+                try:
+                    revalidation_assessment = require_revalidation_assessment(
+                        session,
+                        learning_change,
+                        self._snapshot_store,
+                        self._session_factory,
+                        require_task_done=True,
+                        require_current=True,
+                    )
+                except KnowledgeRevalidationAssessmentError as error:
+                    raise LearningCommitError(str(error)) from error
+                approval_binding = approval_request.approval_binding
+                if (
+                    approval_binding is None
+                    or approval_binding.get("assessment_type")
+                    != "knowledge_revalidation"
+                    or approval_binding.get("assessment_id")
+                    != str(revalidation_assessment.id)
+                    or approval_binding.get("assessment_payload_hash")
+                    != revalidation_assessment.payload_hash
+                    or approval_request.quality_assessment_id is not None
+                    or approval_request.quality_assessment_hash is not None
+                ):
+                    raise LearningCommitError(
+                        "operator_revalidation_assessment_binding_invalid"
+                    )
+                revalidation_assessment_id = str(revalidation_assessment.id)
+                revalidation_assessment_hash = revalidation_assessment.payload_hash
+            elif decision == "accept":
                 try:
                     quality_assessment = require_recorded_assessment(
                         session, learning_change, require_task_done=True
