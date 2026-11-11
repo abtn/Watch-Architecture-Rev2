@@ -548,24 +548,7 @@ class LearningCommitService:
                         raise LearningCommitConflict(
                             "revision_target_compare_and_set_failed"
                         )
-                    target.kind = draft.kind
-                    target.title = draft.title
-                    target.statement = draft.statement
-                    target.body = draft.body
-                    target.applicability = applicability
-                    target.preconditions = draft.preconditions
-                    target.assumptions = draft.assumptions
-                    target.limitations = draft.limitations
-                    target.non_applicability = draft.non_applicability
-                    target.failure_modes = draft.failure_modes
-                    target.known_counterexamples = draft.known_counterexamples
-                    target.missing_information = draft.missing_information
-                    target.uncertainty = draft.uncertainty
-                    target.confidence = confidence
-                    target.version = next_version
-                    target.last_validated_at = None
-                    target.review_after = review_after
-                    target.current_learning_change_id = learning_change.id
+                    session.refresh(target)
                     knowledge_item_id = target.id
                 else:
                     raise LearningCommitError("learning_change_operation_not_supported")
