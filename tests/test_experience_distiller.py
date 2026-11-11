@@ -1655,6 +1655,8 @@ def test_operator_commits_supported_revalidation_without_changing_content(
         assert item is not None
         original_state = knowledge_item_state(item)
         original_content_hash = knowledge_item_content_hash(item)
+        original_review_after = item.review_after
+        assert original_review_after is not None
         assert item.status == "needs_review"
 
     approval_task_id, approval_attempt, principal = _create_admitted_approval_task(
@@ -1665,7 +1667,7 @@ def test_operator_commits_supported_revalidation_without_changing_content(
     )
     import core.learning_commit as learning_commit
 
-    review_commit_at = review_after + timedelta(seconds=3)
+    review_commit_at = original_review_after + timedelta(seconds=3)
 
     class ReviewCommitDateTime(datetime):
         @classmethod
