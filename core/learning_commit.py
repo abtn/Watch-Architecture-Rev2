@@ -9,7 +9,7 @@ import hashlib
 import typing
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.experience_distiller import (
@@ -22,6 +22,7 @@ from core.knowledge_quality import (
 )
 from core.learning_history import (
     KnowledgeHistoryError,
+    decode_state_snapshot,
     encode_state_snapshot,
     knowledge_item_state,
     reconstruct_knowledge_item_history,
@@ -85,7 +86,7 @@ class LearningCommitResult:
 
 
 class LearningCommitService:
-    """Validate and atomically accept/reject a create-only LearningChange.
+    """Validate and atomically accept/reject a create or revise LearningChange.
 
     The business decision and its Event commit together. TaskRuntime remains
     responsible for the separate terminal Task/Outcome transaction.
@@ -204,8 +205,8 @@ class LearningCommitService:
                         target_id=learning_change.target_id,
                     ):
                         raise LearningCommitCorrupt(str(error)) from error
-                    # Non-create operations remain outside the approval
-                    # allowlist. Let the existing admission guard reject them
+                    # Operations beyond create/revise remain outside the
+                    # approval allowlist. Let the admission guard reject them
                     # even when their assessment is missing or malformed.
                 else:
                     if expected_binding != approval_request.approval_binding:
@@ -245,7 +246,9 @@ class LearningCommitService:
                 )
                 or learning_change.committed_by_task_id is not None
             ):
-                raise LearningCommitError("only_knowledge_item_create_is_supported")
+                raise LearningCommitError(
+                    "only_knowledge_item_create_or_revise_is_supported"
+                )
 
             team = session.scalar(
                 select(Team)
@@ -357,86 +360,204 @@ class LearningCommitService:
                     review_after = committed_at + datetime.timedelta(days=interval_days)
 
             knowledge_item_id: uuid.UUID | None = None
+            knowledge_item_version: int | None = None
             committed_state: dict[str, object] | None = None
             if decision == "accept":
-                prior_items = list(
-                    session.scalars(
-                        select(KnowledgeItem).where(
-                            KnowledgeItem.origin_learning_change_id
-                            == learning_change.id
-                        )
-                    )
-                )
-                if prior_items:
-                    raise LearningCommitCorrupt(
-                        "knowledge_item_exists_for_uncommitted_learning_change"
-                    )
-
-                knowledge_item_id = uuid.uuid4()
                 confidence = decimal.Decimal(str(draft.confidence)).quantize(
                     decimal.Decimal("0.001")
                 )
                 applicability = draft.applicability.model_dump(mode="json")
-                committed_state = {
-                    "id": str(knowledge_item_id),
-                    "team_id": str(team.id),
-                    "kind": draft.kind,
-                    "title": draft.title,
-                    "statement": draft.statement,
-                    "body": draft.body,
-                    "applicability": applicability,
-                    "preconditions": draft.preconditions,
-                    "assumptions": draft.assumptions,
-                    "limitations": draft.limitations,
-                    "non_applicability": draft.non_applicability,
-                    "failure_modes": draft.failure_modes,
-                    "known_counterexamples": draft.known_counterexamples,
-                    "missing_information": draft.missing_information,
-                    "uncertainty": draft.uncertainty,
-                    "confidence": str(confidence),
-                    "status": "active",
-                    "version": 1,
-                    "last_validated_at": None,
-                    "review_after": (
-                        review_after.isoformat() if review_after is not None else None
-                    ),
-                    "origin_learning_change_id": str(learning_change.id),
-                    "current_learning_change_id": str(learning_change.id),
-                    "supersedes_item_id": None,
-                    "superseded_by_id": None,
-                }
-                committed_state = encode_state_snapshot(committed_state)
-                session.add(
-                    KnowledgeItem(
-                        id=knowledge_item_id,
-                        team_id=team.id,
-                        kind=draft.kind,
-                        title=draft.title,
-                        statement=draft.statement,
-                        body=draft.body,
-                        applicability=applicability,
-                        preconditions=draft.preconditions,
-                        assumptions=draft.assumptions,
-                        limitations=draft.limitations,
-                        non_applicability=draft.non_applicability,
-                        failure_modes=draft.failure_modes,
-                        known_counterexamples=draft.known_counterexamples,
-                        missing_information=draft.missing_information,
-                        uncertainty=draft.uncertainty,
-                        confidence=confidence,
-                        status="active",
-                        version=1,
-                        last_validated_at=None,
-                        review_after=review_after,
-                        origin_learning_change_id=learning_change.id,
-                        current_learning_change_id=learning_change.id,
-                        supersedes_item_id=None,
-                        superseded_by_id=None,
+                if learning_change.operation == "create":
+                    prior_items = list(
+                        session.scalars(
+                            select(KnowledgeItem).where(
+                                KnowledgeItem.origin_learning_change_id
+                                == learning_change.id
+                            )
+                        )
                     )
-                )
+                    if prior_items:
+                        raise LearningCommitCorrupt(
+                            "knowledge_item_exists_for_uncommitted_learning_change"
+                        )
+
+                    knowledge_item_id = uuid.uuid4()
+                    knowledge_item_version = 1
+                    committed_state = {
+                        "id": str(knowledge_item_id),
+                        "team_id": str(team.id),
+                        "kind": draft.kind,
+                        "title": draft.title,
+                        "statement": draft.statement,
+                        "body": draft.body,
+                        "applicability": applicability,
+                        "preconditions": draft.preconditions,
+                        "assumptions": draft.assumptions,
+                        "limitations": draft.limitations,
+                        "non_applicability": draft.non_applicability,
+                        "failure_modes": draft.failure_modes,
+                        "known_counterexamples": draft.known_counterexamples,
+                        "missing_information": draft.missing_information,
+                        "uncertainty": draft.uncertainty,
+                        "confidence": str(confidence),
+                        "status": "active",
+                        "version": 1,
+                        "last_validated_at": None,
+                        "review_after": (
+                            review_after.isoformat()
+                            if review_after is not None
+                            else None
+                        ),
+                        "origin_learning_change_id": str(learning_change.id),
+                        "current_learning_change_id": str(learning_change.id),
+                        "supersedes_item_id": None,
+                        "superseded_by_id": None,
+                    }
+                    committed_state = encode_state_snapshot(committed_state)
+                    session.add(
+                        KnowledgeItem(
+                            id=knowledge_item_id,
+                            team_id=team.id,
+                            kind=draft.kind,
+                            title=draft.title,
+                            statement=draft.statement,
+                            body=draft.body,
+                            applicability=applicability,
+                            preconditions=draft.preconditions,
+                            assumptions=draft.assumptions,
+                            limitations=draft.limitations,
+                            non_applicability=draft.non_applicability,
+                            failure_modes=draft.failure_modes,
+                            known_counterexamples=draft.known_counterexamples,
+                            missing_information=draft.missing_information,
+                            uncertainty=draft.uncertainty,
+                            confidence=confidence,
+                            status="active",
+                            version=1,
+                            last_validated_at=None,
+                            review_after=review_after,
+                            origin_learning_change_id=learning_change.id,
+                            current_learning_change_id=learning_change.id,
+                            supersedes_item_id=None,
+                            superseded_by_id=None,
+                        )
+                    )
+                elif learning_change.operation == "revise":
+                    target = session.scalar(
+                        select(KnowledgeItem)
+                        .where(
+                            KnowledgeItem.id == learning_change.target_id,
+                            KnowledgeItem.team_id == learning_change.team_id,
+                        )
+                        .with_for_update()
+                    )
+                    if target is None:
+                        raise LearningCommitConflict("revision_target_missing")
+                    previous = learning_change.previous_state
+                    if not isinstance(previous, dict) or not isinstance(
+                        previous.get("state"), dict
+                    ):
+                        raise LearningCommitCorrupt(
+                            "revision_target_snapshot_invalid"
+                        )
+                    previous_state = previous["state"]
+                    if (
+                        knowledge_item_state(target) != previous_state
+                        or target.current_learning_change_id
+                        != uuid.UUID(previous_state["current_learning_change_id"])
+                        or target.version != previous_state["version"]
+                    ):
+                        raise LearningCommitConflict(
+                            "revision_target_compare_and_set_failed"
+                        )
+
+                    next_version = target.version + 1
+                    knowledge_item_version = next_version
+                    committed_values = {
+                        "id": str(target.id),
+                        "team_id": str(target.team_id),
+                        "kind": draft.kind,
+                        "title": draft.title,
+                        "statement": draft.statement,
+                        "body": draft.body,
+                        "applicability": applicability,
+                        "preconditions": draft.preconditions,
+                        "assumptions": draft.assumptions,
+                        "limitations": draft.limitations,
+                        "non_applicability": draft.non_applicability,
+                        "failure_modes": draft.failure_modes,
+                        "known_counterexamples": draft.known_counterexamples,
+                        "missing_information": draft.missing_information,
+                        "uncertainty": draft.uncertainty,
+                        "confidence": str(confidence),
+                        "status": target.status,
+                        "version": next_version,
+                        "last_validated_at": None,
+                        "review_after": (
+                            review_after.isoformat()
+                            if review_after is not None
+                            else None
+                        ),
+                        "origin_learning_change_id": str(
+                            target.origin_learning_change_id
+                        ),
+                        "current_learning_change_id": str(learning_change.id),
+                        "supersedes_item_id": (
+                            str(target.supersedes_item_id)
+                            if target.supersedes_item_id is not None
+                            else None
+                        ),
+                        "superseded_by_id": (
+                            str(target.superseded_by_id)
+                            if target.superseded_by_id is not None
+                            else None
+                        ),
+                    }
+                    committed_state = encode_state_snapshot(committed_values)
+                    cas_id = session.execute(
+                        update(KnowledgeItem)
+                        .where(
+                            KnowledgeItem.id == target.id,
+                            KnowledgeItem.team_id == target.team_id,
+                            KnowledgeItem.current_learning_change_id
+                            == uuid.UUID(previous_state["current_learning_change_id"]),
+                            KnowledgeItem.version == previous_state["version"],
+                        )
+                        .values(
+                            kind=draft.kind,
+                            title=draft.title,
+                            statement=draft.statement,
+                            body=draft.body,
+                            applicability=applicability,
+                            preconditions=draft.preconditions,
+                            assumptions=draft.assumptions,
+                            limitations=draft.limitations,
+                            non_applicability=draft.non_applicability,
+                            failure_modes=draft.failure_modes,
+                            known_counterexamples=draft.known_counterexamples,
+                            missing_information=draft.missing_information,
+                            uncertainty=draft.uncertainty,
+                            confidence=confidence,
+                            version=next_version,
+                            last_validated_at=None,
+                            review_after=review_after,
+                            current_learning_change_id=learning_change.id,
+                        )
+                        .returning(KnowledgeItem.id),
+                        execution_options={"synchronize_session": False},
+                    ).scalar_one_or_none()
+                    if cas_id != target.id:
+                        raise LearningCommitConflict(
+                            "revision_target_compare_and_set_failed"
+                        )
+                    session.refresh(target)
+                    knowledge_item_id = target.id
+                else:
+                    raise LearningCommitError("learning_change_operation_not_supported")
 
             learning_change.status = "accepted" if decision == "accept" else "rejected"
-            learning_change.previous_state = None
+            if learning_change.operation == "create":
+                learning_change.previous_state = None
             learning_change.committed_state = committed_state
             learning_change.committed_by_task_id = task.id
             learning_change.operator_id = operator_id
@@ -451,7 +572,7 @@ class LearningCommitService:
             event_payload: dict[str, object] = {
                 "schema_version": 1,
                 "learning_change_id": str(learning_change.id),
-                "operation": "create",
+                "operation": learning_change.operation,
                 "decision": decision,
                 "operator_id": operator_id,
                 "approval_task_id": str(task.id),
@@ -471,7 +592,11 @@ class LearningCommitService:
                     )
             if knowledge_item_id is not None:
                 event_payload["knowledge_item_id"] = str(knowledge_item_id)
-                event_payload["knowledge_item_version"] = 1
+                if knowledge_item_version is None:
+                    raise LearningCommitCorrupt(
+                        "committed_knowledge_item_version_missing"
+                    )
+                event_payload["knowledge_item_version"] = knowledge_item_version
                 event_payload["knowledge_quality_assessment_id"] = (
                     quality_assessment_id
                 )
@@ -694,10 +819,22 @@ class LearningCommitService:
         if (
             recorded_decision != requested_decision
             or learning_change.decision_reason != rejection_reason
-            or learning_change.previous_state is not None
             or learning_change.target_kind != "knowledge_item"
-            or learning_change.operation != "create"
-            or learning_change.target_id is not None
+            or (
+                learning_change.operation == "create"
+                and (
+                    learning_change.previous_state is not None
+                    or learning_change.target_id is not None
+                )
+            )
+            or (
+                learning_change.operation == "revise"
+                and (
+                    learning_change.previous_state is None
+                    or learning_change.target_id is None
+                )
+            )
+            or learning_change.operation not in {"create", "revise"}
         ):
             raise LearningCommitConflict("learning_change_decision_request_conflict")
 
@@ -761,7 +898,7 @@ class LearningCommitService:
         expected_payload: dict[str, object] = {
             "schema_version": 1,
             "learning_change_id": str(learning_change.id),
-            "operation": "create",
+            "operation": learning_change.operation,
             "decision": recorded_decision,
             "operator_id": operator_id,
             "approval_task_id": str(task.id),
@@ -781,22 +918,52 @@ class LearningCommitService:
                 )
         item_id: uuid.UUID | None = None
         if recorded_decision == "accept":
-            items = list(
-                session.scalars(
-                    select(KnowledgeItem).where(
-                        KnowledgeItem.origin_learning_change_id
-                        == learning_change.id
+            committed_state: dict[str, typing.Any] | None = None
+            if learning_change.operation == "create":
+                items = list(
+                    session.scalars(
+                        select(KnowledgeItem).where(
+                            KnowledgeItem.origin_learning_change_id
+                            == learning_change.id
+                        )
                     )
                 )
-            )
-            if len(items) != 1:
-                raise LearningCommitCorrupt(
-                    "committed_knowledge_item_missing_or_duplicate"
+                if len(items) != 1:
+                    raise LearningCommitCorrupt(
+                        "committed_knowledge_item_missing_or_duplicate"
+                    )
+                item = items[0]
+                expected_version = 1
+                expected_history_id = learning_change.id
+            else:
+                items = list(
+                    session.scalars(
+                        select(KnowledgeItem).where(
+                            KnowledgeItem.id == learning_change.target_id,
+                            KnowledgeItem.team_id == learning_change.team_id,
+                        )
+                    )
                 )
-            item = items[0]
+                if len(items) != 1:
+                    raise LearningCommitCorrupt(
+                        "revised_knowledge_item_missing_or_duplicate"
+                    )
+                item = items[0]
+                try:
+                    committed_state, _ = decode_state_snapshot(
+                        learning_change.committed_state,
+                        learning_change_id=learning_change.id,
+                        operation="revise",
+                    )
+                except (KnowledgeHistoryError, TypeError, ValueError) as error:
+                    raise LearningCommitCorrupt(
+                        "revised_knowledge_item_committed_snapshot_invalid"
+                    ) from error
+                expected_version = committed_state["version"]
+                expected_history_id = learning_change.id
             item_id = item.id
             expected_payload["knowledge_item_id"] = str(item.id)
-            expected_payload["knowledge_item_version"] = 1
+            expected_payload["knowledge_item_version"] = expected_version
             expected_payload["knowledge_quality_assessment_id"] = (
                 quality_assessment_id
             )
@@ -813,20 +980,59 @@ class LearningCommitService:
                 raise LearningCommitCorrupt(str(error)) from error
             if (
                 item.team_id != learning_change.team_id
-                or not history.learning_change_ids
-                or history.learning_change_ids[0] != learning_change.id
+                or expected_history_id not in history.learning_change_ids
+                or (
+                    learning_change.operation == "create"
+                    and history.learning_change_ids[0] != learning_change.id
+                )
+                or (
+                    learning_change.operation == "revise"
+                    and (
+                        committed_state is None
+                        or history.states[
+                            history.learning_change_ids.index(learning_change.id)
+                        ] != committed_state
+                    )
+                )
             ):
                 raise LearningCommitCorrupt("committed_knowledge_item_mismatch")
         else:
             expected_payload["reason"] = rejection_reason
-            if learning_change.committed_state is not None or session.scalar(
-                select(KnowledgeItem.id).where(
-                    KnowledgeItem.origin_learning_change_id == learning_change.id
-                )
-            ) is not None:
+            if learning_change.committed_state is not None:
                 raise LearningCommitCorrupt(
-                    "rejected_learning_change_has_knowledge_item"
+                    "rejected_learning_change_has_committed_state"
                 )
+            if learning_change.operation == "create":
+                if session.scalar(
+                    select(KnowledgeItem.id).where(
+                        KnowledgeItem.origin_learning_change_id
+                        == learning_change.id
+                    )
+                ) is not None:
+                    raise LearningCommitCorrupt(
+                        "rejected_learning_change_has_knowledge_item"
+                    )
+            else:
+                rejected_target = session.get(
+                    KnowledgeItem, learning_change.target_id
+                )
+                if (
+                    rejected_target is None
+                    or rejected_target.team_id != learning_change.team_id
+                ):
+                    raise LearningCommitCorrupt(
+                        "rejected_revision_target_missing"
+                    )
+                try:
+                    history = reconstruct_knowledge_item_history(
+                        session, rejected_target
+                    )
+                except KnowledgeHistoryError as error:
+                    raise LearningCommitCorrupt(str(error)) from error
+                if learning_change.id in history.learning_change_ids:
+                    raise LearningCommitCorrupt(
+                        "rejected_revision_appears_in_accepted_history"
+                    )
 
         if (
             event.type != expected_type

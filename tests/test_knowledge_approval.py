@@ -131,6 +131,82 @@ def test_revalidation_binding_pins_current_target_evidence_and_assessment(
         )
 
 
+def test_revise_binding_pins_needs_review_target_and_quality_assessment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    change = _learning_change("revise")
+    change.previous_state = {"state": {"status": "needs_review"}}
+    task = SimpleNamespace(policy_version=7)
+    assessment = SimpleNamespace(
+        id=uuid4(),
+        task_id=uuid4(),
+        creating_task_id=uuid4(),
+        assessment_payload_hash="sha256:" + "c" * 64,
+        evaluator_identity="watch.r7b.quality",
+        evaluator_revision="1",
+    )
+    target_binding = {
+        "target_knowledge_item_id": str(change.target_id),
+        "target_current_learning_change_id": str(uuid4()),
+        "target_content_version": 5,
+        "target_content_hash": "sha256:" + "d" * 64,
+        "target_content_hash_scheme": "watch.r7b.knowledge-content.v2",
+        "target_state_hash": "sha256:" + "e" * 64,
+    }
+    monkeypatch.setattr(
+        knowledge_approval,
+        "_assessment_counts",
+        lambda _session, _change: (1, 0, 0),
+    )
+
+    def revision_binding(session, learning_change, *, require_current):
+        assert learning_change is change
+        assert require_current is True
+        return target_binding
+
+    monkeypatch.setattr(
+        "core.knowledge_quality._revision_target_binding", revision_binding
+    )
+    monkeypatch.setattr(
+        "core.knowledge_quality._assessment_target_binding",
+        lambda _session, _assessment: target_binding,
+    )
+    monkeypatch.setattr(
+        "core.knowledge_quality.require_recorded_assessment",
+        lambda session, learning_change, *, require_task_done: assessment,
+    )
+
+    operator_id = canonical_operator_identity(
+        "https://host.example/identity", "reviewer-revise"
+    )
+    binding = build_approval_binding(
+        _session(task),
+        change,
+        operator_id=operator_id,
+        approval_policy_version=9,
+        require_assessment=True,
+    )
+
+    assert binding["operation"] == "revise"
+    assert binding["assessment_type"] == "knowledge_quality"
+    assert binding["assessment_id"] == str(assessment.id)
+    assert binding["assessment_payload_hash"] == assessment.assessment_payload_hash
+    assert binding["assessment_task_policy_version"] == 7
+    assert binding["evaluator_identity"] == assessment.evaluator_identity
+    assert binding["evaluator_revision"] == assessment.evaluator_revision
+    assert binding["target_id"] == str(change.target_id)
+    assert binding["current_learning_change_id"] == target_binding[
+        "target_current_learning_change_id"
+    ]
+    assert binding["target_state_hash"] == target_binding["target_state_hash"]
+    assert binding["target_status"] == "needs_review"
+    assert binding["target_content_version"] == 5
+    assert binding["target_content_hash_scheme"] == (
+        "watch.r7b.knowledge-content.v2"
+    )
+    assert binding["operator_id"] == operator_id
+
+
 def test_lifecycle_supersede_binding_includes_full_successor_snapshot_and_provenance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
