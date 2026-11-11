@@ -165,16 +165,15 @@ class OperatorApplicationAdapter:
             if learning_change is None:
                 raise LearningChangeNotApprovable("learning_change_not_found")
 
-            # B3 remains create-only. The broader binding resolver is shared
-            # with the later R7-B operation gates, but this adapter does not
-            # create approval Tasks for lifecycle operations.
+            # B4.2 enables only create and revise. Revalidate and lifecycle
+            # operations remain outside the approval allowlist.
             if not is_supported_learning_change(
                 target_kind=learning_change.target_kind,
                 operation=learning_change.operation,
                 target_id=learning_change.target_id,
             ):
                 raise LearningChangeNotApprovable(
-                    "only_knowledge_item_create_is_supported"
+                    "only_knowledge_item_create_or_revise_is_supported"
                 )
 
             team_id = learning_change.team_id
