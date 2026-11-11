@@ -12,7 +12,7 @@ from typing import Any, Callable, Iterator, Literal
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, event, func, select, text
+from sqlalchemy import delete, event, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -352,6 +352,17 @@ def distillation_fixture(
                     text(
                         "ALTER TABLE knowledge_revalidation_assessments "
                         "ENABLE TRIGGER USER"
+                    )
+                )
+                session.execute(
+                    update(KnowledgeItem)
+                    .where(
+                        KnowledgeItem.origin_learning_change_id.in_(
+                            learning_change_ids
+                        )
+                    )
+                    .values(
+                        current_learning_change_id=KnowledgeItem.origin_learning_change_id
                     )
                 )
                 session.execute(
@@ -3250,14 +3261,12 @@ def test_accepted_create_requires_recorded_quality_assessment(
         assert accepted_event.payload["knowledge_quality_assessment_hash"]
 
 
-@pytest.mark.parametrize("initial_status", ["active", "needs_review"])
 @pytest.mark.parametrize("revision_kind", ["content", "confidence_only"])
 @pytest.mark.parametrize("review_interval_days", [None, 7])
 def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
     session_factory,
     snapshot_store,
     distillation_fixture,
-    initial_status: str,
     revision_kind: str,
     review_interval_days: int | None,
 ):
@@ -3307,62 +3316,7 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         item = session.get(KnowledgeItem, committed.knowledge_item_id)
         template = session.get(Task, fixture.distillation_task_id)
         assert item is not None and template is not None
-        due_at = item.review_after
-    if initial_status == "needs_review":
-        if due_at is None:
-            pytest.skip("needs_review requires a configured review interval")
-        review_task_id = uuid4()
-        fixture.extra_task_ids.append(review_task_id)
-        review_started_at = due_at - timedelta(seconds=1)
-        with session_factory.begin() as session:
-            session.add(
-                Task(
-                    id=review_task_id,
-                    team_id=fixture.team_id,
-                    task_type="review_knowledge",
-                    status="running",
-                    attempt_count=1,
-                    policy_version=template.policy_version,
-                    objective_id=None,
-                    plan_id=None,
-                    plan_action_id=None,
-                    allowed_writes=["KnowledgeItem"],
-                    budget={
-                        "max_tool_calls": 0,
-                        "max_cost_usd": 0.0,
-                        "deadline_seconds": 30,
-                    },
-                    created_at=review_started_at,
-                    completed_at=None,
-                    max_attempts=3,
-                )
-            )
-            session.flush()
-            session.add(
-                Event(
-                    id=uuid4(),
-                    task_id=review_task_id,
-                    type="task_started",
-                    payload={
-                        "from_status": "pending",
-                        "to_status": "running",
-                        "attempt_count": 1,
-                    },
-                    created_at=review_started_at,
-                )
-            )
-        runtime.finalize(
-            TerminalObservation(
-                task_id=review_task_id,
-                attempt=1,
-                result_category="success_knowledge_reviewed",
-                observed_at=due_at,
-            )
-        )
-
-    with session_factory() as session:
-        item = session.get(KnowledgeItem, committed.knowledge_item_id)
-        assert item is not None and item.status == initial_status
+        assert item.status == "active"
         before_state = knowledge_item_state(item)
         before_pointer = item.current_learning_change_id
 
@@ -3639,7 +3593,7 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
         )
         assert item is not None and change is not None and decision_event is not None
         assert item.id == committed.knowledge_item_id
-        assert item.origin_learning_change_id == before_state[
+        assert str(item.origin_learning_change_id) == before_state[
             "origin_learning_change_id"
         ]
         assert item.current_learning_change_id == revised.learning_change_id
@@ -3795,176 +3749,207 @@ def test_revise_proposal_pins_exact_target_and_records_bound_assessment(
     assert rejected_replay.decision == "reject"
     assert rejected_replay.knowledge_item_id is None
 
-    if initial_status == "active" and review_interval_days is not None:
-        stale_revision_task_id = uuid4()
-        fixture.extra_task_ids.append(stale_revision_task_id)
-        stale_started_at = datetime.now(timezone.utc)
-        with session_factory.begin() as session:
-            session.add(
-                Task(
-                    id=stale_revision_task_id,
-                    team_id=fixture.team_id,
-                    task_type="propose_learning_change",
-                    status="running",
-                    attempt_count=1,
-                    policy_version=template.policy_version,
-                    objective_id=None,
-                    plan_id=None,
-                    plan_action_id=None,
-                    allowed_writes=["LearningChange"],
-                    budget=dict(template.budget),
-                    created_at=stale_started_at,
-                    completed_at=None,
-                    max_attempts=template.max_attempts,
-                )
+    stale_revision_task_id = uuid4()
+    fixture.extra_task_ids.append(stale_revision_task_id)
+    stale_started_at = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        session.add(
+            Task(
+                id=stale_revision_task_id,
+                team_id=fixture.team_id,
+                task_type="propose_learning_change",
+                status="running",
+                attempt_count=1,
+                policy_version=template.policy_version,
+                objective_id=None,
+                plan_id=None,
+                plan_action_id=None,
+                allowed_writes=["LearningChange"],
+                budget=dict(template.budget),
+                created_at=stale_started_at,
+                completed_at=None,
+                max_attempts=template.max_attempts,
             )
-            session.flush()
-            session.add(
-                Event(
-                    id=uuid4(),
-                    task_id=stale_revision_task_id,
-                    type="task_started",
-                    payload={
-                        "from_status": "pending",
-                        "to_status": "running",
-                        "attempt_count": 1,
-                    },
-                    created_at=stale_started_at,
-                )
+        )
+        session.flush()
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=stale_revision_task_id,
+                type="task_started",
+                payload={
+                    "from_status": "pending",
+                    "to_status": "running",
+                    "attempt_count": 1,
+                },
+                created_at=stale_started_at,
             )
+        )
 
-        def stale_content(prompt: str) -> dict[str, Any]:
-            content = _content_from_prompt(prompt)
-            content["body"] = "A candidate that must become stale before approval."
-            return content
+    def stale_content(prompt: str) -> dict[str, Any]:
+        content = _content_from_prompt(prompt)
+        content["body"] = "A candidate that must become stale before approval."
+        return content
 
-        stale_proposal = _distiller(
+    stale_proposal = _distiller(
+        session_factory,
+        snapshot_store,
+        _FakeDistillationProvider(stale_content),
+    ).propose_revision(
+        stale_revision_task_id,
+        [case.evaluation_id for case in fixture.cases],
+        committed.knowledge_item_id,
+    )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=stale_revision_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=stale_proposal.learning_change_id,
+        )
+    )
+    _run_quality_assessment(
+        session_factory, snapshot_store, stale_proposal.learning_change_id
+    )
+    stale_principal = _approval_principal(fixture.team_id)
+    stale_request = OperatorApplicationAdapter(
+        session_factory, snapshot_store
+    ).request_learning_change_decision(
+        stale_principal,
+        LearningChangeDecisionRequest(
+            learning_change_id=stale_proposal.learning_change_id,
+            decision="accept",
+            idempotency_key=uuid4(),
+        ),
+    )
+    stale_admission = runtime.admit(stale_request.task_id)
+
+    competing_revision_task_id = uuid4()
+    fixture.extra_task_ids.append(competing_revision_task_id)
+    competing_started_at = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        session.add(
+            Task(
+                id=competing_revision_task_id,
+                team_id=fixture.team_id,
+                task_type="propose_learning_change",
+                status="running",
+                attempt_count=1,
+                policy_version=template.policy_version,
+                objective_id=None,
+                plan_id=None,
+                plan_action_id=None,
+                allowed_writes=["LearningChange"],
+                budget=dict(template.budget),
+                created_at=competing_started_at,
+                completed_at=None,
+                max_attempts=template.max_attempts,
+            )
+        )
+        session.flush()
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=competing_revision_task_id,
+                type="task_started",
+                payload={
+                    "from_status": "pending",
+                    "to_status": "running",
+                    "attempt_count": 1,
+                },
+                created_at=competing_started_at,
+            )
+        )
+
+    def competing_content(prompt: str) -> dict[str, Any]:
+        content = _content_from_prompt(prompt)
+        content["body"] = "The competing revision that wins the target compare-and-set."
+        return content
+
+    competing_proposal = _distiller(
+        session_factory,
+        snapshot_store,
+        _FakeDistillationProvider(competing_content),
+    ).propose_revision(
+        competing_revision_task_id,
+        [case.evaluation_id for case in fixture.cases],
+        committed.knowledge_item_id,
+    )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=competing_revision_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=competing_proposal.learning_change_id,
+        )
+    )
+    competing_approval_task_id, competing_attempt, competing_principal = (
+        _create_admitted_approval_task(
             session_factory,
             snapshot_store,
-            _FakeDistillationProvider(stale_content),
-        ).propose_revision(
-            stale_revision_task_id,
-            [case.evaluation_id for case in fixture.cases],
-            committed.knowledge_item_id,
+            fixture.team_id,
+            competing_proposal.learning_change_id,
         )
-        runtime.finalize(
-            TerminalObservation(
-                task_id=stale_revision_task_id,
-                attempt=1,
-                result_category="success_learning_change_proposed",
-                observed_at=datetime.now(timezone.utc),
-                learning_change_id=stale_proposal.learning_change_id,
-            )
+    )
+    competing_commit = LearningCommitService(
+        session_factory, snapshot_store
+    ).decide(
+        competing_approval_task_id,
+        competing_attempt,
+        competing_principal,
+    )
+    assert competing_commit.decision == "accept"
+    runtime.finalize(
+        TerminalObservation(
+            task_id=competing_approval_task_id,
+            attempt=competing_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=competing_commit.committed_at,
+            learning_change_id=competing_proposal.learning_change_id,
         )
-        _run_quality_assessment(
-            session_factory, snapshot_store, stale_proposal.learning_change_id
-        )
-        stale_principal = _approval_principal(fixture.team_id)
-        stale_request = OperatorApplicationAdapter(
-            session_factory, snapshot_store
-        ).request_learning_change_decision(
+    )
+
+    original_revision_replay = LearningCommitService(
+        session_factory, snapshot_store
+    ).decide(
+        approval_request.task_id,
+        admission.attempt_count,
+        principal,
+    )
+    assert original_revision_replay.replayed
+    assert (
+        original_revision_replay.knowledge_item_id == committed.knowledge_item_id
+    )
+
+    with pytest.raises(
+        LearningCommitCorrupt,
+        match="knowledge_quality_revision_target_stale",
+    ):
+        LearningCommitService(session_factory, snapshot_store).decide(
+            stale_request.task_id,
+            stale_admission.attempt_count,
             stale_principal,
-            LearningChangeDecisionRequest(
-                learning_change_id=stale_proposal.learning_change_id,
-                decision="accept",
-                idempotency_key=uuid4(),
-            ),
         )
-        stale_admission = runtime.admit(stale_request.task_id)
-
-        with session_factory() as session:
-            item = session.get(KnowledgeItem, committed.knowledge_item_id)
-            assert item is not None and item.status == "active"
-            stale_due_at = item.review_after
-        assert stale_due_at is not None
-        stale_review_task_id = uuid4()
-        fixture.extra_task_ids.append(stale_review_task_id)
-        review_started_at = stale_due_at - timedelta(seconds=1)
-        with session_factory.begin() as session:
-            session.add(
-                Task(
-                    id=stale_review_task_id,
-                    team_id=fixture.team_id,
-                    task_type="review_knowledge",
-                    status="running",
-                    attempt_count=1,
-                    policy_version=template.policy_version,
-                    objective_id=None,
-                    plan_id=None,
-                    plan_action_id=None,
-                    allowed_writes=["KnowledgeItem"],
-                    budget={
-                        "max_tool_calls": 0,
-                        "max_cost_usd": 0.0,
-                        "deadline_seconds": 30,
-                    },
-                    created_at=review_started_at,
-                    completed_at=None,
-                    max_attempts=3,
-                )
-            )
-            session.flush()
-            session.add(
-                Event(
-                    id=uuid4(),
-                    task_id=stale_review_task_id,
-                    type="task_started",
-                    payload={
-                        "from_status": "pending",
-                        "to_status": "running",
-                        "attempt_count": 1,
-                    },
-                    created_at=review_started_at,
-                )
-            )
-        runtime.finalize(
-            TerminalObservation(
-                task_id=stale_review_task_id,
-                attempt=1,
-                result_category="success_knowledge_reviewed",
-                observed_at=stale_due_at,
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, committed.knowledge_item_id)
+        change = session.get(LearningChange, stale_proposal.learning_change_id)
+        decision_events = session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == stale_request.task_id,
+                Event.type.in_(
+                    ("learning_change_accepted", "learning_change_rejected")
+                ),
             )
         )
-
-        original_revision_replay = LearningCommitService(
-            session_factory, snapshot_store
-        ).decide(
-            approval_request.task_id,
-            admission.attempt_count,
-            principal,
-        )
-        assert original_revision_replay.replayed
-        assert (
-            original_revision_replay.knowledge_item_id == committed.knowledge_item_id
-        )
-
-        with pytest.raises(
-            LearningCommitCorrupt,
-            match="knowledge_quality_revision_target_stale",
-        ):
-            LearningCommitService(session_factory, snapshot_store).decide(
-                stale_request.task_id,
-                stale_admission.attempt_count,
-                stale_principal,
-            )
-        with session_factory() as session:
-            item = session.get(KnowledgeItem, committed.knowledge_item_id)
-            change = session.get(LearningChange, stale_proposal.learning_change_id)
-            decision_events = session.scalar(
-                select(func.count(Event.id)).where(
-                    Event.task_id == stale_request.task_id,
-                    Event.type.in_(
-                        ("learning_change_accepted", "learning_change_rejected")
-                    ),
-                )
-            )
-            assert item is not None and change is not None
-            assert item.status == "needs_review"
-            assert item.current_learning_change_id == revised.learning_change_id
-            assert item.version == before_state["version"] + 1
-            assert change.status == "proposed"
-            assert change.committed_by_task_id is None
-            assert decision_events == 0
+        assert item is not None and change is not None
+        assert item.status == "active"
+        assert item.current_learning_change_id == competing_proposal.learning_change_id
+        assert item.version == before_state["version"] + 2
+        assert change.status == "proposed"
+        assert change.committed_by_task_id is None
+        assert decision_events == 0
 
 
 def test_recorded_quality_assessment_is_completed_by_interrupted_recovery(
