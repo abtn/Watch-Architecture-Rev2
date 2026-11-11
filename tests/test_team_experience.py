@@ -1394,10 +1394,25 @@ def test_revalidated_item_is_hidden_until_its_new_projection_is_published(
     indexer = TeamExperienceIndexer(experience_env.session_factory, provider)
     assert indexer.index_knowledge_item(item_id).outcome == "indexed"
 
+    review_due_at = datetime.now(timezone.utc)
     with experience_env.session_factory.begin() as session:
         item = session.get(KnowledgeItem, item_id)
         assert item is not None
-        item.status = "needs_review"
+        item.review_after = review_due_at - timedelta(seconds=1)
+
+    review_task_id = experience_env.add_review_task()
+    runtime = TaskRuntime(
+        experience_env.session_factory, experience_env.snapshot_store
+    )
+    admission = runtime.admit(review_task_id)
+    runtime.finalize(
+        TerminalObservation(
+            task_id=review_task_id,
+            attempt=admission.attempt_count,
+            result_category="success_knowledge_reviewed",
+            observed_at=review_due_at,
+        )
+    )
 
     retriever = HybridKnowledgeRetriever(
         experience_env.session_factory, experience_env.snapshot_store, provider
