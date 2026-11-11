@@ -497,6 +497,8 @@ class LearningCommitService:
                         )
                     )
                 elif learning_change.operation == "revise":
+                    if draft is None:
+                        raise LearningCommitCorrupt("learning_change_draft_missing")
                     target = session.scalar(
                         select(KnowledgeItem)
                         .where(
