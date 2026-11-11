@@ -979,7 +979,7 @@ class EvidenceLink(Base):
 
 
 class KnowledgeQualityAssessment(Base):
-    """Immutable, evidence-bound quality assessment of one create proposal."""
+    """Immutable, evidence-bound quality assessment of a create or revise proposal."""
 
     __tablename__ = "knowledge_quality_assessments"
     __table_args__ = (

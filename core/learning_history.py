@@ -237,9 +237,15 @@ def _normalize_snapshot_state(state: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def knowledge_item_content_hash(item: KnowledgeItem) -> str:
-    """Hash only the B2 semantic KnowledgeItem fields using the v2 scheme."""
-    content_state = {field: getattr(item, field) for field in _CONTENT_FIELDS}
+def knowledge_item_content_hash(
+    item: KnowledgeItem | Mapping[str, Any],
+) -> str:
+    """Hash B2 semantic fields from a row or a decoded KnowledgeItem state."""
+    content_state = (
+        {field: item[field] for field in _CONTENT_FIELDS}
+        if isinstance(item, Mapping)
+        else {field: getattr(item, field) for field in _CONTENT_FIELDS}
+    )
 
     confidence = content_state["confidence"]
     if isinstance(confidence, bool) or not isinstance(

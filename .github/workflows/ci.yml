@@ -41,6 +41,8 @@ jobs:
     steps:
       - name: Check out the exact commit
         uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.3.2
@@ -76,6 +78,10 @@ jobs:
 
       - name: Type-check
         run: uv run mypy core
+
+      - name: Check pull-request patch whitespace
+        if: github.event_name == 'pull_request'
+        run: git diff --check "origin/${GITHUB_BASE_REF}...HEAD"
 
       - name: Test
         run: uv run pytest -q

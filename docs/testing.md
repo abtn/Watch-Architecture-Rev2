@@ -826,3 +826,40 @@ Focused tests, run independently:
 The closeout traceability matrix and formal exit record are in [r7-b-b3-9-closeout.md](development/r7-b-b3-9-closeout.md). The current status is authoritative in `PLAN.md`. The documentation reconciliation updates PLAN, CHANGE_MAP, CONTEXT, README, testing records, Task documentation, the B3.7 matrix, the R7-B implementation plan, the R7 entry gate, ADR-0032, and the ADR index. No implementation, migration, Task registration, approval expansion, or next-phase work is part of B3.9.
 
 **Formal disposition:** B3 is COMPLETE and formally closed on 2026-11-10 following the Operator's explicit instruction to proceed to B3.9 and establish the formal exit status. B4, B5, B6, and R7-C remain NOT AUTHORIZED and require separate written Operator decisions. The approval allowlist remains exactly `{"create"}`.
+
+## R7-B B4.1 — proposal contracts and replay corrections (2026-11-11)
+
+PR [#97](https://github.com/abtn/Watch-Architecture-Rev2/pull/97) implements the B4.1 revise/revalidate proposal and assessment contracts. The implementation reuses the existing `propose_learning_change` Task and TaskRuntime, keeps the proposal write scope at `["LearningChange"]`, routes revise to `KnowledgeQualityAssessment` and revalidate to `KnowledgeRevalidationAssessment`, leaves canonical `KnowledgeItem` state unchanged, retains the create-only approval allowlist, and introduces no migration.
+
+### Operator-local verification of the pre-replay-fix implementation head
+
+Exact tested SHA: `34282c724b17d6e4c3e07816de58dae24b677605`.
+
+- Fresh disposable PostgreSQL 16 database; migration from empty database succeeded.
+- Exactly one Alembic head; current revision `0018_r7b_lifecycle_review_date`.
+- Ruff and Mypy passed.
+- `git diff --check origin/main...HEAD` passed.
+- Full suite: **947 passed, 113 warnings, 267.34 seconds**.
+- Disposable PostgreSQL container removed; `DATABASE_URL` and `TEST_DATABASE_URL` restored.
+- The 113 warnings were Alembic `path_separator` deprecation warnings.
+
+This result is exact evidence for SHA `34282c7...` only. It predates the replay corrections described below and must not be represented as local verification of the later PR head.
+
+### Replay review corrections
+
+The source review identified two completed-Task replay defects:
+
+1. Revalidation checked for an existing proposal only after requiring a running Task. It now validates the original Task identity/write scope with completed Tasks permitted for an existing matching proposal, then returns the persisted proposal read-only. Conflicting operation, target, evidence IDs, or rationale still fail. A completed Task without an existing proposal cannot create one.
+2. Revise replay checked provider configuration before checking for an existing proposal. The provider check now occurs only after the existing-proposal replay path and running-Task validation. A matching completed proposal can therefore replay without a configured provider.
+
+Regression coverage now verifies:
+- Revalidation proposal replay after TaskRuntime completion returns the same LearningChange ID.
+- Reusing the completed revalidation Task with a conflicting rationale is rejected.
+- Replay creates no additional LearningChange or proposal Event.
+- Revise replay after Task completion succeeds with `provider=None` and creates no additional LearningChange or proposal Event.
+
+### Latest-head verification
+
+The replay corrections and regression tests are committed to the same draft PR branch. Exact-head hosted CI passed on `0d1350423043b26565219184b78277390e396f98`: [run #871](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42983920854). Fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, and the full suite (**948 passed, 113 warnings**) all passed. The 113 warnings are existing Alembic `path_separator` deprecations. This completes the executable verification portion of B4.1; the Operator contract review remains a separate gate before B4.2/B4.3. The B4.1 Operator review of the payload/target snapshot matrices, evidence requirements, assessment routing, Events/Outcomes, and replay/idempotency remains a separate gate before B4.2/B4.3 canonical commit work.
+
+B5, B6, and R7-C remain unauthorized.
