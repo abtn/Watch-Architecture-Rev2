@@ -934,7 +934,8 @@ def require_recorded_assessment(
         or request.get("proposal_hash") != assessment.proposal_hash
         or request.get("evidence_basis_hash") != assessment.evidence_basis_hash
         or request.get("lineage_report_hash") != assessment.lineage_report_hash
-        or request.get("target_binding") != _assessment_target_binding(session, assessment)
+        or request.get("target_binding")
+        != _assessment_target_binding(session, assessment)
     ):
         raise KnowledgeQualityAssessmentError(
             "knowledge_quality_assessment_request_mismatch"
