@@ -246,7 +246,9 @@ class LearningCommitService:
                 )
                 or learning_change.committed_by_task_id is not None
             ):
-                raise LearningCommitError("only_knowledge_item_create_or_revise_is_supported")
+                raise LearningCommitError(
+                    "only_knowledge_item_create_or_revise_is_supported"
+                )
 
             team = session.scalar(
                 select(Team)
