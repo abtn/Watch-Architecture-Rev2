@@ -893,7 +893,7 @@ No migration, new Task type, second runtime, dispatcher, scheduler, API, authent
 
 ## R7-B B4.4 — integrated regression audit (STARTED — 2026-11-11)
 
-The initial read-only source/test audit is recorded in [the B4.4 audit](development/r7-b-b4-4-integrated-regression-audit.md), against exact merged main SHA 5f37927ff33d9e740c0ff56512d261dace36ab67. The audit maps existing B4.1/B4.2/B4.3 tests and records five remaining regression-proof gaps: simultaneous PostgreSQL compare-and-set race; revalidation approval recovery after canonical decision commit; revalidation approval replay after a later history transition; one same-item revise→revalidate sequence with fresh assessment binding; and rejected-revalidation approval replay/idempotency counts. These are evidence gaps, not confirmed implementation defects. No B4.4 test implementation or hosted run is claimed at this start record.
+The initial read-only source/test audit is recorded in [the B4.4 audit](development/r7-b-b4-4-integrated-regression-audit.md), against exact merged main SHA 5f37927ff33d9e740c0ff56512d261dace36ab67. The audit maps existing B4.1/B4.2/B4.3 tests and records six remaining regression-proof gaps: simultaneous PostgreSQL compare-and-set race; revalidation approval recovery after canonical decision commit; revalidation approval replay after a later history transition; one same-item revise→revalidate sequence with fresh assessment binding; and rejected-revalidation approval replay/idempotency counts; and accepted revise from a needs_review item. These are evidence gaps, not confirmed implementation defects. No B4.4 test implementation or hosted run is claimed at this start record.
 
 ### Supplemental B4.3 Operator-local verification on exact merged-main tree
 
