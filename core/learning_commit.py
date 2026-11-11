@@ -472,6 +472,8 @@ class LearningCommitService:
                     next_version = target.version + 1
                     knowledge_item_version = next_version
                     committed_values = {
+                        "id": str(target.id),
+                        "team_id": str(target.team_id),
                         "kind": draft.kind,
                         "title": draft.title,
                         "statement": draft.statement,
