@@ -60,7 +60,7 @@ class OperatorNotAuthorized(OperatorApplicationError):
 
 
 class LearningChangeNotApprovable(OperatorApplicationError):
-    """The LearningChange is not an eligible Checkpoint 3 create proposal."""
+    """The LearningChange is not an eligible B4 create/revise proposal."""
 
 
 class OperatorTaskRequestConflict(OperatorApplicationError):
