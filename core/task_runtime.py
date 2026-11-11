@@ -3756,10 +3756,22 @@ class TaskRuntime:
             or learning_change.decision_reason != request_payload.get(
                 "rejection_reason"
             )
-            or learning_change.previous_state is not None
             or learning_change.target_kind != "knowledge_item"
-            or learning_change.target_id is not None
-            or learning_change.operation != "create"
+            or (
+                learning_change.operation == "create"
+                and (
+                    learning_change.previous_state is not None
+                    or learning_change.target_id is not None
+                )
+            )
+            or (
+                learning_change.operation == "revise"
+                and (
+                    learning_change.previous_state is None
+                    or learning_change.target_id is None
+                )
+            )
+            or learning_change.operation not in {"create", "revise"}
             or not isinstance(learning_change.proposed_state, dict)
             or learning_change.committed_at is None
             or learning_change.committed_at != observation.observed_at
@@ -3834,7 +3846,7 @@ class TaskRuntime:
         expected_payload: dict[str, Any] = {
             "schema_version": 1,
             "learning_change_id": str(learning_change.id),
-            "operation": "create",
+            "operation": learning_change.operation,
             "decision": expected_decision,
             "operator_id": request_payload["operator_id"],
             "approval_task_id": str(task.id),
@@ -3859,21 +3871,48 @@ class TaskRuntime:
             expected_payload["knowledge_quality_assessment_hash"] = (
                 quality_assessment_hash
             )
-            items = list(
-                session.scalars(
-                    select(KnowledgeItem).where(
-                        KnowledgeItem.origin_learning_change_id
-                        == learning_change.id
+            if learning_change.operation == "create":
+                items = list(
+                    session.scalars(
+                        select(KnowledgeItem).where(
+                            KnowledgeItem.origin_learning_change_id
+                            == learning_change.id
+                        )
                     )
                 )
-            )
-            if len(items) != 1:
-                raise TaskNotFinalizable(
-                    "committed_knowledge_item_missing_or_duplicate"
+                if len(items) != 1:
+                    raise TaskNotFinalizable(
+                        "committed_knowledge_item_missing_or_duplicate"
+                    )
+                item = items[0]
+                expected_version = 1
+            else:
+                items = list(
+                    session.scalars(
+                        select(KnowledgeItem).where(
+                            KnowledgeItem.id == learning_change.target_id,
+                            KnowledgeItem.team_id == learning_change.team_id,
+                        )
+                    )
                 )
-            item = items[0]
+                if len(items) != 1:
+                    raise TaskNotFinalizable(
+                        "revised_knowledge_item_missing_or_duplicate"
+                    )
+                item = items[0]
+                try:
+                    committed_state, _ = decode_state_snapshot(
+                        learning_change.committed_state,
+                        learning_change_id=learning_change.id,
+                        operation="revise",
+                    )
+                except (KnowledgeHistoryError, TypeError, ValueError) as error:
+                    raise TaskNotFinalizable(
+                        "revised_knowledge_item_committed_snapshot_invalid"
+                    ) from error
+                expected_version = committed_state["version"]
             expected_payload["knowledge_item_id"] = str(item.id)
-            expected_payload["knowledge_item_version"] = 1
+            expected_payload["knowledge_item_version"] = expected_version
             try:
                 history = reconstruct_knowledge_item_history(session, item)
             except KnowledgeHistoryError as error:
@@ -3881,21 +3920,50 @@ class TaskRuntime:
             if (
                 learning_change.decision_reason is not None
                 or item.team_id != task.team_id
-                or not history.learning_change_ids
-                or history.learning_change_ids[0] != learning_change.id
+                or learning_change.id not in history.learning_change_ids
+                or (
+                    learning_change.operation == "create"
+                    and history.learning_change_ids[0] != learning_change.id
+                )
+                or (
+                    learning_change.operation == "revise"
+                    and history.states[
+                        history.learning_change_ids.index(learning_change.id)
+                    ] != committed_state
+                )
             ):
                 raise TaskNotFinalizable("committed_knowledge_item_mismatch")
         else:
             expected_payload["reason"] = request_payload.get("rejection_reason")
-            existing_item = session.scalar(
-                select(KnowledgeItem.id).where(
-                    KnowledgeItem.origin_learning_change_id == learning_change.id
+            if learning_change.committed_state is not None:
+                raise TaskNotFinalizable(
+                    "rejected_learning_change_has_committed_state"
                 )
-            )
+            if learning_change.operation == "create":
+                existing_item = session.scalar(
+                    select(KnowledgeItem.id).where(
+                        KnowledgeItem.origin_learning_change_id
+                        == learning_change.id
+                    )
+                )
+                if existing_item is not None:
+                    raise TaskNotFinalizable(
+                        "rejected_learning_change_has_knowledge_item"
+                    )
+            else:
+                item = session.get(KnowledgeItem, learning_change.target_id)
+                if item is None or item.team_id != learning_change.team_id:
+                    raise TaskNotFinalizable("rejected_revision_target_missing")
+                try:
+                    history = reconstruct_knowledge_item_history(session, item)
+                except KnowledgeHistoryError as error:
+                    raise TaskNotFinalizable(str(error)) from error
+                if learning_change.id in history.learning_change_ids:
+                    raise TaskNotFinalizable(
+                        "rejected_revision_appears_in_accepted_history"
+                    )
             if (
-                learning_change.committed_state is not None
-                or existing_item is not None
-                or not isinstance(request_payload.get("rejection_reason"), str)
+                not isinstance(request_payload.get("rejection_reason"), str)
                 or not request_payload["rejection_reason"]
             ):
                 raise TaskNotFinalizable(
