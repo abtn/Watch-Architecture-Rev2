@@ -374,7 +374,7 @@ Snapshot-first history reconstruction is conditionally accepted, subject to B1 p
 
 **B6 — Legacy compatibility and hardening:** repeated review/revalidation history, legacy Events/snapshots, approval replay after later transitions, unauthorized drift rejection and full regression verification.
 
-B3.2–B3.6 are implemented and merged; B3.7's complete integrated matrix is mapped to merged tests; B3.8 exact-head verification and B3.9 documentation closeout/formal B3 exit are complete. B3 is formally closed on 2026-11-10. B4 is separately authorized. Within B4.4, G1 concurrent revise/revalidate proof and G2 accepted-revalidation approval crash/recovery proof are complete and merged. G3's bounded regression proof is verified on open PR #107; G4–G6 remain gated and unauthorized. B5, B6, and R7-C also remain unauthorized. G3 authorization does not authorize the remaining gates.
+B3.2–B3.6 are implemented and merged; B3.7's complete integrated matrix is mapped to merged tests; B3.8 exact-head verification and B3.9 documentation closeout/formal B3 exit are complete. B3 is formally closed on 2026-11-10. B4 is separately authorized. Within B4.4, G1, G2, and G3 are complete and merged (PRs #103, #105, and #107). G4 is authorized for documentation planning only; its extracted plan covers one same-item revise → stale pre-revise revalidation rejection → fresh post-revise revalidation sequence, including reconstructed history and projection eligibility. G4 implementation awaits separate explicit authorization. G5 and G6 remain unauthorized. B5, B6, and R7-C also remain unauthorized. G3 authorization does not authorize the remaining gates.
 
 ### R7-C — Retrieval quality and downstream-use evaluation — NOT AUTHORIZED
 
