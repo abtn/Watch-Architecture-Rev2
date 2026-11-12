@@ -926,3 +926,8 @@ The regression `test_operator_commits_and_recovers_revalidation_after_finalize_c
 **Hosted exact-head CI:** run [#43182375964](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43182375964) passed on `60790c6e4ec19393f0c236238ab290c8df60fb05`: fresh PostgreSQL migration/single-head, locked dependency install, Ruff, Mypy, patch whitespace, full suite (**953 passed, 113 warnings**), and disposable-container cleanup.
 
 **Operator-local exact-head verification:** the same SHA passed migration/single-head at `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), `git diff --check`, and full pytest (**953 passed, 113 warnings in 286.09s**). The worktree was clean; `DATABASE_URL` and `TEST_DATABASE_URL` were restored; the disposable container was removed.
+
+
+### B4.4 G3 — Revalidation approval replay after a later history transition (authorized 2026-11-12)
+
+Scope: prove replay of the original accepted revalidation approval after a later accepted revise on the same KnowledgeItem. Use the existing trusted Operator adapter, proposal/assessment helpers, and TaskRuntime path. Retain the original request and idempotency key; replay it only after the later revision is current. Verify the original decision, Task, commit time, and Outcome are returned; the later KnowledgeItem state and current pointer do not change; and no request, decision, terminal Event, or Outcome is duplicated. Prefer a single focused test in tests/test_experience_distiller.py. No manual canonical-row fabrication, schema/migration, runtime, lock, or approval-scope change. This is an authorization and execution plan, not a claim that G3 has passed verification.
