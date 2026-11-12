@@ -1,5 +1,5 @@
 # R7-B B4.4 — Integrated Regression Audit
-**Status: IN PROGRESS — G1 and G2 complete and merged; G3 regression proof verified on code/test head `97fc75a` and documented on open PR #107; merge pending explicit Operator approval; G4–G6 remain unauthorized (updated 2026-11-12).**
+**Status: IN PROGRESS — G1, G2, and G3 complete and merged; G4 documentation plan authorized and recorded; G4 implementation not started; G5–G6 remain unauthorized (updated 2026-11-12).**
 **Baseline:** exact merged main commit 5f37927ff33d9e740c0ff56512d261dace36ab67.
 **Implementation parent:** B4.3 merge commit f9c585c174799cf26fc0d7bf8ed57a8396e2b5aa.
 **Scope:** B4.4 only. This document records the audit and G1–G3 regression-proof outcomes; implementation changes are limited to their separately reviewed PRs. It does not authorize B5, B6, or R7-C.
