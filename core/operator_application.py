@@ -405,10 +405,10 @@ class OperatorApplicationAdapter:
             LearningCommitService,
         )
         from core.task_runtime import (
+            _STALE_OPERATOR_APPROVAL_REASONS,
             TaskNotEligible,
             TaskRuntime,
             TerminalObservation,
-            _STALE_OPERATOR_APPROVAL_REASONS,
         )
 
         task_runtime = TaskRuntime(self._session_factory, self._snapshot_store)
@@ -463,6 +463,7 @@ class OperatorApplicationAdapter:
             if (
                 conflict_observation is None
                 or conflict_observation.result_category != "terminal_failure"
+                or not isinstance(failure_reason, str)
                 or (
                     failure_reason != "learning_change_already_decided"
                     and failure_reason not in _STALE_OPERATOR_APPROVAL_REASONS
@@ -483,7 +484,7 @@ class OperatorApplicationAdapter:
                 self._session_factory, self._snapshot_store
             ).decide(request_result.task_id, attempt, principal)
         except LearningCommitError as error:
-            if str(error) in _STALE_APPROVAL_CONFLICTS:
+            if str(error) in _STALE_OPERATOR_APPROVAL_REASONS:
                 with self._session_factory() as session:
                     task = session.get(Task, request_result.task_id)
                     if (
