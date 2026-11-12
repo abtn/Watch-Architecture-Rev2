@@ -1,4 +1,4 @@
-| R7 | **R7-0/R7-A/B0/B1/B2 complete; B3 formally closed; B4.1–B4.3 merged; B4.4 in progress with G1–G4 complete and merged; G5 documentation plan authorized only; G5 implementation pending separate authorization; G6 unauthorized; B5, B6, and R7-C unauthorized.** | B4.4 G1–G4 are complete and merged by PRs #103, #105, #107, and #109. G4 merge commit: 15d565956cde44a7bd3d124e0bb62d188063846f. G5's rejected-revalidation replay plan is documented in [the G5 plan](docs/development/r7-b-b4-4-g5-rejected-revalidation-replay-plan.md); this authorizes planning only, not implementation. G6 remains a separate unapproved proof gate. B5, B6, and R7-C remain unauthorized. See docs/testing.md for exact verification evidence. |
+# PLAN.md — Milestones and Current Gate
 
 This file is the **single source of current milestone status**. Other documents link here rather than copying status tables. A phase is complete only when its exit criteria and formal gate are satisfied; implementation presence alone is not completion.
 
