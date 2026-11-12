@@ -3433,6 +3433,7 @@ def test_rejected_revalidation_does_not_mutate_the_knowledge_item(
             assert knowledge_item_state(item) == original_state
             assert knowledge_item_content_hash(item) == original_content_hash
             assert change.status == "rejected"
+            assert change.operation == "revalidate"
             assert change.committed_state is None
             assert change.decision_reason == rejection_reason
             assert change.committed_by_task_id == original.task_id
@@ -3472,6 +3473,13 @@ def test_rejected_revalidation_does_not_mutate_the_knowledge_item(
                 )
             )
             assert len(request_events) == 1
+            assert session.scalar(
+                select(func.count(Event.id)).where(
+                    Event.type == "operator_task_requested",
+                    Event.payload["learning_change_id"].as_string()
+                    == str(revalidation_change_id),
+                )
+            ) == 1
             assert len(rejection_events) == 1
             assert len(terminal_events) == 1
             assert terminal_events[0].type == "task_completed"
