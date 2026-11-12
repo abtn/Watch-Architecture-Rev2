@@ -2325,6 +2325,274 @@ def test_operator_commits_supported_revalidation_without_changing_content(
     assert replay.knowledge_item_id == created.knowledge_item_id
 
 
+
+def test_operator_revalidation_decision_recovers_after_commit_before_finalization(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    monkeypatch,
+):
+    fixture = distillation_fixture(
+        2, include_contrary=False, review_interval_days=1
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    create_proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=create_proposal.learning_change_id,
+        )
+    )
+    create_task_id, create_attempt, create_principal = _create_admitted_approval_task(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        create_proposal.learning_change_id,
+    )
+    created = LearningCommitService(session_factory, snapshot_store).decide(
+        create_task_id, create_attempt, create_principal
+    )
+    assert created.knowledge_item_id is not None
+    runtime.finalize(
+        TerminalObservation(
+            task_id=create_task_id,
+            attempt=create_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=created.committed_at,
+            learning_change_id=created.learning_change_id,
+        )
+    )
+
+    _, revalidation_change_id = _create_revalidation_proposal(
+        session_factory,
+        snapshot_store,
+        fixture,
+        created.knowledge_item_id,
+    )
+    assessment_task_id = KnowledgeRevalidationAssessmentService(
+        session_factory, snapshot_store
+    ).create_task(revalidation_change_id)
+    assessment_result = KnowledgeRevalidationAssessmentTaskRunner(
+        session_factory,
+        snapshot_store,
+        _FakeKnowledgeRevalidationProvider(),
+    ).run(assessment_task_id)
+    assert assessment_result.status == "done"
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, created.knowledge_item_id)
+        assert item is not None and item.status == "needs_review"
+        original_state = knowledge_item_state(item)
+        original_content_hash = knowledge_item_content_hash(item)
+        original_review_after = item.review_after
+        assert original_review_after is not None
+
+    principal = _approval_principal(fixture.team_id)
+    request = LearningChangeDecisionRequest(
+        learning_change_id=revalidation_change_id,
+        decision="accept",
+        idempotency_key=uuid4(),
+    )
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    request_result = adapter.request_learning_change_decision(principal, request)
+    captured: list[TerminalObservation] = []
+
+    import core.learning_commit as learning_commit
+
+    review_commit_at = original_review_after + timedelta(seconds=3)
+
+    class ReviewCommitDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is not None:
+                return review_commit_at
+            return review_commit_at.replace(tzinfo=None)
+
+    def crash_before_finalize(
+        task_runtime: TaskRuntime, observation: TerminalObservation
+    ):
+        captured.append(observation)
+        raise RuntimeError("simulated process loss after revalidation commit")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            learning_commit,
+            "datetime",
+            SimpleNamespace(
+                datetime=ReviewCommitDateTime,
+                timezone=timezone,
+                timedelta=timedelta,
+            ),
+        )
+        patch.setattr(TaskRuntime, "finalize", crash_before_finalize)
+        with pytest.raises(RuntimeError, match="simulated process loss"):
+            adapter.decide_learning_change(principal, request)
+
+    assert len(captured) == 1
+    assert captured[0].task_id == request_result.task_id
+    assert captured[0].learning_change_id == revalidation_change_id
+    assert captured[0].result_category == "success_learning_change_accepted"
+
+    with session_factory() as session:
+        task = session.get(Task, request_result.task_id)
+        change = session.get(LearningChange, revalidation_change_id)
+        item = session.get(KnowledgeItem, created.knowledge_item_id)
+        request_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == request_result.task_id,
+                    Event.type == "operator_task_requested",
+                )
+            )
+        )
+        decision_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == request_result.task_id,
+                    Event.type == "learning_change_accepted",
+                )
+            )
+        )
+        outcomes = list(
+            session.scalars(
+                select(Outcome).where(
+                    Outcome.recorded_by_task_id == request_result.task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+        )
+        assert task is not None and task.status == "running"
+        assert change is not None and change.status == "accepted"
+        assert change.committed_by_task_id == request_result.task_id
+        assert item is not None and item.status == "active"
+        assert item.current_learning_change_id == revalidation_change_id
+        assert item.version == original_state["version"]
+        assert knowledge_item_content_hash(item) == original_content_hash
+        assert len(request_events) == 1
+        assert len(decision_events) == 1
+        assert decision_events[0].payload["knowledge_revalidation_assessment_id"]
+        assert decision_events[0].payload["knowledge_revalidation_assessment_hash"]
+        assert outcomes == []
+        original_request_payload = dict(request_events[0].payload)
+        original_decision_payload = dict(decision_events[0].payload)
+        committed_item_state = knowledge_item_state(item)
+        committed_at = change.committed_at
+        assert committed_at == review_commit_at
+        assert committed_item_state["current_learning_change_id"] == str(
+            revalidation_change_id
+        )
+
+    now = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        start = session.scalar(
+            select(Event).where(
+                Event.task_id == request_result.task_id,
+                Event.type == "task_started",
+            )
+        )
+        assert start is not None
+        start.created_at = now - timedelta(seconds=61)
+
+    recovery = runtime.recover_interrupted(now=now)
+    assert recovery.completed == (request_result.task_id,)
+    assert recovery.retried == ()
+    assert recovery.failed == ()
+
+    with session_factory() as session:
+        task = session.get(Task, request_result.task_id)
+        change = session.get(LearningChange, revalidation_change_id)
+        item = session.get(KnowledgeItem, created.knowledge_item_id)
+        request_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == request_result.task_id,
+                    Event.type == "operator_task_requested",
+                )
+            )
+        )
+        decision_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == request_result.task_id,
+                    Event.type == "learning_change_accepted",
+                )
+            )
+        )
+        terminal_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == request_result.task_id,
+                    Event.type.in_({"task_completed", "task_failed"}),
+                )
+            )
+        )
+        outcomes = list(
+            session.scalars(
+                select(Outcome).where(
+                    Outcome.recorded_by_task_id == request_result.task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+        )
+        assert task is not None and task.status == "done"
+        assert task.attempt_count == 1
+        assert change is not None and change.status == "accepted"
+        assert change.committed_by_task_id == request_result.task_id
+        assert item is not None
+        assert knowledge_item_state(item) == committed_item_state
+        assert len(request_events) == 1
+        assert request_events[0].payload == original_request_payload
+        assert len(decision_events) == 1
+        assert decision_events[0].payload == original_decision_payload
+        assert len(terminal_events) == 1
+        assert terminal_events[0].type == "task_completed"
+        assert len(outcomes) == 1
+        outcome = outcomes[0]
+        assert outcome.observation_snapshot_ref is not None
+        assert outcome.observation_hash is not None
+        snapshot = snapshot_store.read(outcome.observation_snapshot_ref)
+        assert snapshot
+
+    repeated_recovery = runtime.recover_interrupted(
+        now=now + timedelta(seconds=61)
+    )
+    assert repeated_recovery.completed == ()
+    assert repeated_recovery.retried == ()
+    assert repeated_recovery.failed == ()
+
+    replay = runtime.finalize(captured[0])
+    assert replay.replayed is True
+    with session_factory() as session:
+        assert session.scalar(
+            select(func.count()).select_from(Outcome).where(
+                Outcome.recorded_by_task_id == request_result.task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count()).select_from(Event).where(
+                Event.task_id == request_result.task_id,
+                Event.type == "learning_change_accepted",
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count()).select_from(Event).where(
+                Event.task_id == request_result.task_id,
+                Event.type == "task_completed",
+            )
+        ) == 1
+
+    _cleanup_operator_decision_task(session_factory, request_result.task_id)
+
+
 def test_concurrent_revise_approvals_advance_one_knowledge_item_once(
     session_factory,
     snapshot_store,
