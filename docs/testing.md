@@ -928,7 +928,7 @@ The regression `test_operator_commits_and_recovers_revalidation_after_finalize_c
 **Operator-local exact-head verification:** the same SHA passed migration/single-head at `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), `git diff --check`, and full pytest (**953 passed, 113 warnings in 286.09s**). The worktree was clean; `DATABASE_URL` and `TEST_DATABASE_URL` were restored; the disposable container was removed.
 
 
-### B4.4 G3 — Revalidation approval replay after a later history transition (verified on open PR #107)
+### B4.4 G3 — Revalidation approval replay after a later history transition (PR #107 merged 2026-11-12)
 
 The focused regression `test_original_revalidation_approval_replays_after_later_history_transition` in `tests/test_experience_distiller.py` proves replay of the original accepted revalidation approval after a later accepted revise on the same KnowledgeItem. It uses the existing fixtures/helpers and trusted `OperatorApplicationAdapter` canonical path. The original request and idempotency key are replayed only after the later revision is current. The test verifies the original approval Task, LearningChange, commit time, and persisted Outcome identity; unchanged later KnowledgeItem state/current pointer; exactly one terminal Event across `task_completed`/`task_failed`; and no duplicate request, decision Event, or Outcome. It is test-only: no manual canonical-row fabrication, production correction, schema/migration, runtime, lock, or approval-scope change.
 
