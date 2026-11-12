@@ -17,6 +17,12 @@ from uuid import UUID
 APPROVAL_ACTION = "approve_learning_change"
 SUPPORTED_LEARNING_CHANGE_TARGET_KIND = "knowledge_item"
 Decision = Literal["accept", "reject"]
+_STALE_OPERATOR_APPROVAL_REASONS = frozenset(
+    {
+        "knowledge_quality_revision_target_stale",
+        "knowledge_revalidation_target_stale",
+    }
+)
 
 
 class OperatorApprovalValidationError(ValueError):

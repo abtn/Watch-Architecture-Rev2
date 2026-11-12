@@ -60,6 +60,32 @@ _TASK_TYPE = "approve_learning_change"
 _ALLOWED_WRITES = ["LearningChange", "KnowledgeItem"]
 
 
+def _knowledge_item_cas_statement(
+    *,
+    item_id: uuid.UUID,
+    team_id: uuid.UUID,
+    expected_pointer: uuid.UUID,
+    expected_version: int,
+    values: dict[str, typing.Any],
+    require_needs_review: bool = False,
+) -> typing.Any:
+    """Build the conditional KnowledgeItem update used by commits and CAS tests."""
+    predicates: list[typing.Any] = [
+        KnowledgeItem.id == item_id,
+        KnowledgeItem.team_id == team_id,
+        KnowledgeItem.current_learning_change_id == expected_pointer,
+        KnowledgeItem.version == expected_version,
+    ]
+    if require_needs_review:
+        predicates.append(KnowledgeItem.status == "needs_review")
+    return (
+        update(KnowledgeItem)
+        .where(*predicates)
+        .values(**values)
+        .returning(KnowledgeItem.id)
+    )
+
+
 class LearningCommitError(ValueError):
     """A canonical learning decision failed validation or conflicted."""
 
@@ -568,35 +594,34 @@ class LearningCommitService:
                     }
                     committed_state = encode_state_snapshot(committed_values)
                     cas_id = session.execute(
-                        update(KnowledgeItem)
-                        .where(
-                            KnowledgeItem.id == target.id,
-                            KnowledgeItem.team_id == target.team_id,
-                            KnowledgeItem.current_learning_change_id
-                            == uuid.UUID(previous_state["current_learning_change_id"]),
-                            KnowledgeItem.version == previous_state["version"],
-                        )
-                        .values(
-                            kind=draft.kind,
-                            title=draft.title,
-                            statement=draft.statement,
-                            body=draft.body,
-                            applicability=applicability,
-                            preconditions=draft.preconditions,
-                            assumptions=draft.assumptions,
-                            limitations=draft.limitations,
-                            non_applicability=draft.non_applicability,
-                            failure_modes=draft.failure_modes,
-                            known_counterexamples=draft.known_counterexamples,
-                            missing_information=draft.missing_information,
-                            uncertainty=draft.uncertainty,
-                            confidence=confidence,
-                            version=next_version,
-                            last_validated_at=None,
-                            review_after=review_after,
-                            current_learning_change_id=learning_change.id,
-                        )
-                        .returning(KnowledgeItem.id),
+                        _knowledge_item_cas_statement(
+                            item_id=target.id,
+                            team_id=target.team_id,
+                            expected_pointer=uuid.UUID(
+                                previous_state["current_learning_change_id"]
+                            ),
+                            expected_version=previous_state["version"],
+                            values={
+                                "kind": draft.kind,
+                                "title": draft.title,
+                                "statement": draft.statement,
+                                "body": draft.body,
+                                "applicability": applicability,
+                                "preconditions": draft.preconditions,
+                                "assumptions": draft.assumptions,
+                                "limitations": draft.limitations,
+                                "non_applicability": draft.non_applicability,
+                                "failure_modes": draft.failure_modes,
+                                "known_counterexamples": draft.known_counterexamples,
+                                "missing_information": draft.missing_information,
+                                "uncertainty": draft.uncertainty,
+                                "confidence": confidence,
+                                "version": next_version,
+                                "last_validated_at": None,
+                                "review_after": review_after,
+                                "current_learning_change_id": learning_change.id,
+                            },
+                        ),
                         execution_options={"synchronize_session": False},
                     ).scalar_one_or_none()
                     if cas_id != target.id:
@@ -665,21 +690,19 @@ class LearningCommitService:
                     )
                     committed_state = encode_state_snapshot(committed_values)
                     cas_id = session.execute(
-                        update(KnowledgeItem)
-                        .where(
-                            KnowledgeItem.id == target.id,
-                            KnowledgeItem.team_id == target.team_id,
-                            KnowledgeItem.status == "needs_review",
-                            KnowledgeItem.current_learning_change_id == pointer,
-                            KnowledgeItem.version == previous_state["version"],
-                        )
-                        .values(
-                            status="active",
-                            last_validated_at=committed_at,
-                            review_after=review_after,
-                            current_learning_change_id=learning_change.id,
-                        )
-                        .returning(KnowledgeItem.id),
+                        _knowledge_item_cas_statement(
+                            item_id=target.id,
+                            team_id=target.team_id,
+                            expected_pointer=pointer,
+                            expected_version=previous_state["version"],
+                            require_needs_review=True,
+                            values={
+                                "status": "active",
+                                "last_validated_at": committed_at,
+                                "review_after": review_after,
+                                "current_learning_change_id": learning_change.id,
+                            },
+                        ),
                         execution_options={"synchronize_session": False},
                     ).scalar_one_or_none()
                     if cas_id != target.id:
