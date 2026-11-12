@@ -2446,8 +2446,6 @@ def test_operator_commits_and_recovers_revalidation_after_finalize_crash(
         ) == 1
 
 
-
-
 def test_concurrent_revise_approvals_advance_one_knowledge_item_once(
     session_factory,
     snapshot_store,
