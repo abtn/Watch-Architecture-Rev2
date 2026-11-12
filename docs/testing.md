@@ -893,7 +893,7 @@ No migration, new Task type, second runtime, dispatcher, scheduler, API, authent
 
 ## R7-B B4.4 — integrated regression audit (IN PROGRESS — G1/G2/G3 COMPLETE AND MERGED; G4 PLAN DOCUMENTED ONLY)
 
-The initial read-only source/test audit is recorded in [the B4.4 audit](development/r7-b-b4-4-integrated-regression-audit.md), against exact merged main SHA 5f37927ff33d9e740c0ff56512d261dace36ab67. It identified six regression-proof gaps. G1 (concurrent revise/revalidate application and PostgreSQL CAS proofs) and G2 (accepted-revalidation approval recovery after canonical decision commit) are complete and merged. G3 (revalidation replay after a later accepted revision) is verified on open PR #107. G4–G6 remain evidence gaps, not confirmed implementation defects; they remain unauthorized.
+The initial read-only source/test audit is recorded in [the B4.4 audit](development/r7-b-b4-4-integrated-regression-audit.md), against exact merged main SHA 5f37927ff33d9e740c0ff56512d261dace36ab67. It identified six regression-proof gaps. G1 (concurrent revise/revalidate application and PostgreSQL CAS proofs), G2 (accepted-revalidation approval recovery after canonical decision commit), and G3 (revalidation replay after a later accepted revision) are complete and merged. G4–G6 remain evidence gaps, not confirmed implementation defects. G4 is authorized for documentation planning only; its extracted plan is [here](development/r7-b-b4-4-g4-revise-revalidate-sequence-plan.md), and implementation awaits separate explicit authorization. G5 and G6 remain unauthorized.
 
 ### Supplemental B4.3 Operator-local verification on exact merged-main tree
 
