@@ -95,7 +95,7 @@ The sole changed file was tests/test_experience_distiller.py; no production sour
 **Disposition:** G4 is complete and merged. It does not close B4.4; G5 and G6 remain separate proof gates.
 
 ### G5 — Revalidation rejection replay and decision-record idempotency
-**Status: PLAN DOCUMENTED ONLY — documentation planning authorized 2026-11-12; implementation not authorized.** See the extracted G5 plan for the bounded sequence, exact replay identity assertions, Event/Outcome count checks, canonical-state invariants, likely test surfaces, and exclusions.
+**Status: PLAN DOCUMENTED ONLY — documentation planning authorized 2026-11-12; implementation not authorized.** See [the extracted G5 plan](r7-b-b4-4-g5-rejected-revalidation-replay-plan.md) for the bounded sequence, exact replay identity assertions, Event/Outcome count checks, canonical-state invariants, likely test surfaces, and exclusions.
 
 The existing test_rejected_revalidation_does_not_mutate_the_knowledge_item proves that rejection leaves the KnowledgeItem unchanged and finalizes the approval Task. It does not visibly assert replay of the rejected Operator approval through the trusted OperatorApplicationAdapter or unchanged request/decision/terminal Event and Outcome counts after replay.
 
