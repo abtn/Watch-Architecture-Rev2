@@ -3405,36 +3405,111 @@ def test_rejected_revalidation_does_not_mutate_the_knowledge_item(
         original_state = knowledge_item_state(item)
         original_content_hash = knowledge_item_content_hash(item)
 
-    approval_task_id, approval_attempt, principal = _create_admitted_approval_task(
-        session_factory,
-        snapshot_store,
-        fixture.team_id,
-        revalidation_change_id,
+    principal = _approval_principal(fixture.team_id)
+    rejection_reason = (
+        "The current evidence does not justify restoring active status."
+    )
+    request = LearningChangeDecisionRequest(
+        learning_change_id=revalidation_change_id,
         decision="reject",
-        reason="The current evidence does not justify restoring active status.",
+        idempotency_key=uuid4(),
+        rejection_reason=rejection_reason,
     )
-    committed = LearningCommitService(session_factory, snapshot_store).decide(
-        approval_task_id, approval_attempt, principal
-    )
-    assert committed.knowledge_item_id is None
-    runtime.finalize(
-        TerminalObservation(
-            task_id=approval_task_id,
-            attempt=approval_attempt,
-            result_category="success_learning_change_rejected",
-            observed_at=committed.committed_at,
-            learning_change_id=revalidation_change_id,
-        )
-    )
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    original = adapter.decide_learning_change(principal, request)
 
-    with session_factory() as session:
-        item = session.get(KnowledgeItem, created.knowledge_item_id)
-        change = session.get(LearningChange, revalidation_change_id)
-        assert item is not None and change is not None
-        assert knowledge_item_state(item) == original_state
-        assert knowledge_item_content_hash(item) == original_content_hash
-        assert change.status == "rejected"
-        assert change.committed_state is None
+    assert original.decision == "reject"
+    assert original.learning_change_status == "rejected"
+    assert original.task_status == "done"
+    assert original.knowledge_item_id is None
+    assert original.outcome_id is not None
+    assert not original.replayed
+
+    def assert_durable_rejection():
+        with session_factory() as session:
+            item = session.get(KnowledgeItem, created.knowledge_item_id)
+            change = session.get(LearningChange, revalidation_change_id)
+            assert item is not None and change is not None
+            assert knowledge_item_state(item) == original_state
+            assert knowledge_item_content_hash(item) == original_content_hash
+            assert change.status == "rejected"
+            assert change.committed_state is None
+            assert change.rejection_reason == rejection_reason
+            assert change.committed_by_task_id == original.task_id
+            assert change.operator_id == original.operator_id
+            assert change.committed_at == original.committed_at
+
+            request_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == original.task_id,
+                        Event.type == "operator_task_requested",
+                    )
+                )
+            )
+            rejection_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == original.task_id,
+                        Event.type == "learning_change_rejected",
+                    )
+                )
+            )
+            terminal_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == original.task_id,
+                        Event.type.in_({"task_completed", "task_failed"}),
+                    )
+                )
+            )
+            outcomes = list(
+                session.scalars(
+                    select(Outcome).where(
+                        Outcome.recorded_by_task_id == original.task_id,
+                        Outcome.outcome_type == "task_execution",
+                    )
+                )
+            )
+            assert len(request_events) == 1
+            assert len(rejection_events) == 1
+            assert len(terminal_events) == 1
+            assert terminal_events[0].type == "task_completed"
+            assert len(outcomes) == 1
+            assert outcomes[0].id == original.outcome_id
+
+            payload = rejection_events[0].payload
+            assert payload["learning_change_id"] == str(revalidation_change_id)
+            assert payload["decision"] == "reject"
+            assert payload["operator_id"] == original.operator_id
+            assert payload["approval_task_id"] == str(original.task_id)
+            assert payload["reason"] == rejection_reason
+            assert payload["committed_at"] == original.committed_at.isoformat()
+
+            assert session.scalar(
+                select(func.count(Event.id)).where(
+                    Event.task_id == original.task_id,
+                    Event.type == "learning_change_accepted",
+                )
+            ) == 0
+
+    assert_durable_rejection()
+
+    replay = adapter.decide_learning_change(principal, request)
+    assert replay.replayed
+    assert replay.task_id == original.task_id
+    assert replay.learning_change_id == original.learning_change_id
+    assert replay.decision == original.decision
+    assert replay.learning_change_status == original.learning_change_status
+    assert replay.task_status == original.task_status
+    assert replay.operator_id == original.operator_id
+    assert replay.committed_at == original.committed_at
+    assert replay.outcome_id == original.outcome_id
+
+    # Re-reading the durable state after replay proves that the retry added no
+    # request, decision, terminal Event, Outcome, or canonical KnowledgeItem write.
+    assert_durable_rejection()
+
 
 
 @pytest.mark.parametrize(
