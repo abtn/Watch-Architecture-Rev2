@@ -1,8 +1,8 @@
 # R7-B B4.4 — Integrated Regression Audit
-**Status: IN PROGRESS — G1 and G2 complete and merged; G3 authorized 2026-11-12; G4–G6 remain unauthorized (updated 2026-11-12).**
+**Status: IN PROGRESS — G1 and G2 complete and merged; G3 regression proof verified on open PR #107 (merge pending); G4–G6 remain unauthorized (updated 2026-11-12).**
 **Baseline:** exact merged main commit 5f37927ff33d9e740c0ff56512d261dace36ab67.
 **Implementation parent:** B4.3 merge commit f9c585c174799cf26fc0d7bf8ed57a8396e2b5aa.
-**Scope:** B4.4 only. This document records the audit and the G1/G2 regression-proof outcomes; implementation changes are limited to their separately reviewed PRs. It does not authorize B5, B6, or R7-C.
+**Scope:** B4.4 only. This document records the audit and G1–G3 regression-proof outcomes; implementation changes are limited to their separately reviewed PRs. It does not authorize B5, B6, or R7-C.
 ## 1. Purpose and authority
 B4.4 is the integrated regression and closeout phase defined by the accepted B4.0 architecture decision §6. It must verify the combined B4.1 proposal/assessment contracts, B4.2 revise commit, and B4.3 revalidate commit across lifecycle invariants, concurrency, stale assessments, retries/recovery, projection visibility, exact-head hosted CI, and Operator source/diff review.
 This audit began as a read-only review of the exact merged main tree named above. G1 and G2 have since been implemented as bounded regression proofs, reviewed, verified, and merged. B4.4 remains in progress; no B4.4 closeout is claimed.
@@ -71,20 +71,16 @@ The interruption is deterministic exception injection at the exact boundary, not
 
 **Disposition:** G2 is complete. No production correction was required. G3–G6 remain unauthorized; B5, B6, and R7-C remain unauthorized.
 ### G3 — Revalidation approval replay after a later history transition
-**Status: AUTHORIZED 2026-11-12 — implementation in progress on branch r7b-b4-4-g3-revalidation-replay.**
+**Status: VERIFIED — PR #107 OPEN; merge pending explicit Operator approval.**
 
-The inspected revalidation commit test proves immediate replay. The explicit replay-after-later-transition test currently covers create; the revise regression covers a revise replay after a later accepted competing revise. No equivalent revalidation approval replay after a later accepted transition was identified.
+The regression `test_original_revalidation_approval_replays_after_later_history_transition` was added in `tests/test_experience_distiller.py`. It uses the existing fixture and helpers, accepts the revalidation and later revise through the trusted `OperatorApplicationAdapter` and canonical commit path, then replays the original revalidation request with its original idempotency key after the later revision is current.
 
-**Required proof:** commit and finalize revalidation, apply a later accepted history transition to the same item through the existing canonical path/fixture, then replay the original revalidation approval. It must return the original result without changing the later current state or duplicating Events/Outcomes.
+The test verifies that replay returns the original approval Task, LearningChange, commit time, and Outcome identity; the later revision remains the current pointer and the complete KnowledgeItem state is unchanged; and original request/decision/terminal Events and Outcomes are not duplicated. No production source, schema, migration, lock, runtime, or approval-scope changes were made. The change is test-only.
 
-**Extracted execution plan:**
-1. Build a KnowledgeItem using the existing create proposal, assessment, approval, and TaskRuntime flow.
-2. Propose and assess revalidation, then accept it through OperatorApplicationAdapter; retain the original immutable request and idempotency key.
-3. Create a later revision for the same item with the existing revision helper, record its quality assessment, and accept it through the same trusted Operator adapter.
-4. Replay the original revalidation request after the revision is current. Assert the replay returns the original approval Task, LearningChange, commit time, and Outcome identity.
-5. Assert the later revision remains the current pointer and complete KnowledgeItem state; original request/decision/terminal Events and Outcome remain exactly one each, with no duplicate later decision or Outcome.
+G3 is complete as a regression proof on the open PR #107 branch (merge pending). Exact PR head `24591c2e5a3597d36506ca5f5926d540e87f3dee` passed hosted CI run [#43188355825](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43188355825): fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, full pytest (**954 passed, 113 warnings in 111.28s**), and disposable PostgreSQL cleanup. Operator-local verification on the same exact SHA passed migration/single-head at `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), the focused G3 test (**1 passed in 6.27s**), and the full suite (**954 passed, 113 warnings in 303.61s**). The disposable container was confirmed absent after the run; the worktree remained clean at the exact SHA. The script's final `DATABASE_URL` restoration assertion raised. Follow-up inspection showed `DATABASE_URL`, `TEST_DATABASE_URL`, and `PGPASSWORD` present with empty values; because the script did not print an independent pre-run snapshot, environment restoration is recorded as **not independently verified**, not as a passing check. The test/static/migration results are valid; the environment assertion does not indicate a test failure.
 
-**Implementation boundary:** one focused regression in tests/test_experience_distiller.py, reusing existing fixtures/helpers and canonical application paths. No manual canonical-row fabrication, schema/migration, new runtime, lock or approval-scope change. Production correction is permitted only if the regression proves a defect, and must be the smallest correction inside the existing path.
+**Disposition:** G3's regression proof is complete and verified. PR #107 remains open and unmerged pending explicit Operator approval. G4–G6 remain unauthorized; B5, B6, and R7-C remain unauthorized.
+
 ### G4 — One integrated revise → revalidate sequence on the same item
 The identified revise and revalidate commit tests establish each operation in separate fixtures. The audit did not identify a single end-to-end regression that exercises both operation paths sequentially on the same canonical item, including assessment freshness across the pointer/version change.
 **Required proof:** revise an item, then obtain a fresh revalidation assessment against the resulting current state after the item enters needs_review; prove the old assessment/target binding cannot be reused, then revalidate and verify both transitions in reconstructed history and projection eligibility. Keep this test bounded to B4 operations.
@@ -109,4 +105,4 @@ The revise approval-binding test uses a needs_review target, and the history uni
 ## 7. Verification evidence available at start
 B4.3 PR #100 final PR head 2f4135a7affe38cf1b564409e5b1b077ba4cb3ae passed exact-head hosted CI run #932 and was merged to main at f9c585c174799cf26fc0d7bf8ed57a8396e2b5aa.
 The Operator additionally ran local verification on the exact merged-main documentation tree 5f37927ff33d9e740c0ff56512d261dace36ab67: fresh migration/single-head checks, 232 focused B4.3 tests, Ruff, Mypy (38 source files), and the full suite (949 passed, 113 warnings in 211.03s). Pytest exit code was 0; the disposable PostgreSQL container was removed. This is supplemental B4.3 verification evidence, not B4.4 hosted exact-head evidence.
-**B4.4 remains in progress.** G1 is complete and merged by PR #103; G2 is complete and merged by PR #105 at `ac01836b8548c147690f33cffdd66fd7b7c5af74`. G2 exact-head hosted CI and Operator-local verification both passed on `60790c6e4ec19393f0c236238ab290c8df60fb05` (953 passed, 113 warnings). G3 is authorized and in progress; G4–G6 remain unauthorized. No B4.4 closeout is claimed.
+**B4.4 remains in progress.** G1 is complete and merged by PR #103; G2 is complete and merged by PR #105 at `ac01836b8548c147690f33cffdd66fd7b7c5af74`. G3's regression proof is verified on exact PR head `24591c2e5a3597d36506ca5f5926d540e87f3dee` in open PR #107; hosted and Operator-local full suites both passed (954 passed, 113 warnings). The local environment-restoration assertion remains unverified as recorded in `docs/testing.md`. G4–G6 remain unauthorized. No B4.4 closeout is claimed.
