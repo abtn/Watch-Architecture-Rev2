@@ -142,6 +142,14 @@ _OPERATOR_TASK_TYPE = "approve_learning_change"
 _OPERATOR_REQUEST_EVENT_TYPE = "operator_task_requested"
 _OPERATOR_ALLOWED_WRITES = ["LearningChange", "KnowledgeItem"]
 _OPERATOR_MAX_ATTEMPTS = 3
+_STALE_OPERATOR_APPROVAL_REASONS = frozenset(
+    {
+        "knowledge_quality_revision_target_stale",
+        "knowledge_revalidation_target_stale",
+        "revision_target_compare_and_set_failed",
+        "revalidation_target_compare_and_set_failed",
+    }
+)
 
 _EVALUATION_TASK_TYPE = "evaluate_outcome"
 _EVALUATION_REQUEST_EVENT_TYPE = "evaluation_task_requested"
@@ -1608,16 +1616,16 @@ class TaskRuntime:
     def _committed_operator_decision_observation(
         self, session: Session, task: Task
     ) -> TerminalObservation | None:
-        """Reconcile a committed Operator decision for its owner or a loser.
+        """Reconcile an Operator decision or a stale-target approval failure.
 
-        The LearningChange row lock permits only one approval Task to win.
-        The winning Task receives its typed success observation. A different
-        Task targeting the already-decided LearningChange receives a stable,
-        attempt-fenced terminal failure that can be committed by the ordinary
-        TaskRuntime finalizer or reconstructed during interrupted recovery.
+        A losing decision against an already-decided LearningChange fails
+        deterministically. A proposal whose pinned target has since advanced
+        also fails deterministically; both observations are reconstructed from
+        durable request state and the current attempt's start Event.
         """
         if task.task_type != _OPERATOR_TASK_TYPE:
             return None
+        stale_failure_reason: str | None = None
         try:
             self._validate_operator_admission(
                 session,
@@ -1626,9 +1634,14 @@ class TaskRuntime:
                 session_factory=self._session_factory,
             )
         except TaskNotEligible as error:
-            raise TaskNotFinalizable(
-                "operator_task_request_event_invalid"
-            ) from error
+            if (
+                str(error) not in _STALE_OPERATOR_APPROVAL_REASONS
+                or task.status not in {"running", "failed"}
+            ):
+                raise TaskNotFinalizable(
+                    "operator_task_request_event_invalid"
+                ) from error
+            stale_failure_reason = str(error)
 
         request_events = list(
             session.scalars(
@@ -1678,6 +1691,17 @@ class TaskRuntime:
                 or learning_change.committed_state is not None
             ):
                 raise TaskNotFinalizable("learning_change_decision_state_mismatch")
+            if stale_failure_reason is not None:
+                started_at = self._current_attempt_start(session, task)
+                if started_at is None:
+                    raise TaskNotFinalizable("approval_task_start_event_invalid")
+                return TerminalObservation(
+                    task_id=task.id,
+                    attempt=task.attempt_count,
+                    result_category="terminal_failure",
+                    observed_at=started_at,
+                    failure_reason=stale_failure_reason,
+                )
             return None
         if learning_change.status not in {"accepted", "rejected"}:
             raise TaskNotFinalizable("learning_change_decision_state_mismatch")

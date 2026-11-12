@@ -38,14 +38,6 @@ _REQUEST_EVENT_TYPE = "operator_task_requested"
 _ALLOWED_WRITES = ["LearningChange", "KnowledgeItem"]
 _TASK_BUDGET = {"max_tool_calls": 0, "max_cost_usd": 0.0}
 _TASK_MAX_ATTEMPTS = 3
-_STALE_APPROVAL_CONFLICTS = frozenset(
-    {
-        "knowledge_quality_revision_target_stale",
-        "knowledge_revalidation_target_stale",
-        "revision_target_compare_and_set_failed",
-        "revalidation_target_compare_and_set_failed",
-    }
-)
 
 # Fixed namespace: the same host request key maps to the same Task after restart.
 _TASK_ID_NAMESPACE = UUID("a0ad72d4-3d4c-4a32-8d1e-61c4b36d0ec2")
@@ -412,7 +404,12 @@ class OperatorApplicationAdapter:
             LearningCommitError,
             LearningCommitService,
         )
-        from core.task_runtime import TaskNotEligible, TaskRuntime, TerminalObservation
+        from core.task_runtime import (
+            TaskNotEligible,
+            TaskRuntime,
+            TerminalObservation,
+            _STALE_OPERATOR_APPROVAL_REASONS,
+        )
 
         task_runtime = TaskRuntime(self._session_factory, self._snapshot_store)
         with self._session_factory() as session:
@@ -458,11 +455,18 @@ class OperatorApplicationAdapter:
                         session, task
                     )
                 )
+            failure_reason = (
+                conflict_observation.failure_reason
+                if conflict_observation is not None
+                else None
+            )
             if (
                 conflict_observation is None
                 or conflict_observation.result_category != "terminal_failure"
-                or conflict_observation.failure_reason
-                != "learning_change_already_decided"
+                or (
+                    failure_reason != "learning_change_already_decided"
+                    and failure_reason not in _STALE_OPERATOR_APPROVAL_REASONS
+                )
             ):
                 raise OperatorApplicationError("approval_task_not_executable")
             replayed_failure = task_runtime.finalize(conflict_observation)
@@ -470,7 +474,7 @@ class OperatorApplicationAdapter:
                 raise OperatorApplicationError(
                     "approval_task_conflict_failure_not_replayed"
                 )
-            raise OperatorTaskRequestConflict("learning_change_already_decided")
+            raise OperatorTaskRequestConflict(failure_reason)
         elif task_status not in {"running", "done"}:
             raise OperatorApplicationError("approval_task_not_executable")
 

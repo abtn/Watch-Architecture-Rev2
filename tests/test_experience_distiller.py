@@ -1829,7 +1829,7 @@ def _assert_concurrent_transition_has_one_winner(
 
     with pytest.raises(
         OperatorTaskRequestConflict,
-        match="idempotency_key_reused_with_different_request",
+        match=stale_reason,
     ):
         OperatorApplicationAdapter(
             session_factory, snapshot_store
@@ -1861,6 +1861,8 @@ def _assert_concurrent_transition_has_one_winner(
                 Event.payload["failure_reason"].as_string() == stale_reason,
             )
         ) == 1
+        loser_task = session.get(Task, loser_task_id)
+        assert loser_task is not None and loser_task.status == "failed"
         assert session.scalar(
             select(func.count(LearningChange.id)).where(
                 LearningChange.id.in_(proposal_ids),
