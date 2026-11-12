@@ -1,8 +1,8 @@
 # R7-B B4.4 — Integrated Regression Audit
-**Status: IN PROGRESS — G1, G2, and G3 complete and merged; G4 documentation plan authorized and recorded; G4 implementation not started; G5–G6 remain unauthorized (updated 2026-11-12).**
+**Status: IN PROGRESS — G1–G4 complete and merged; G5 plan documented only (implementation not authorized); G6 remains unauthorized (updated 2026-11-12).**
 **Baseline:** exact merged main commit 5f37927ff33d9e740c0ff56512d261dace36ab67.
 **Implementation parent:** B4.3 merge commit f9c585c174799cf26fc0d7bf8ed57a8396e2b5aa.
-**Scope:** B4.4 only. This document records the audit and G1–G3 regression-proof outcomes and identifies G4–G6. G4 currently has documentation-planning authorization only; implementation changes remain separately gated. It does not authorize B5, B6, or R7-C.
+**Scope:** B4.4 only. This document records the audit and G1–G4 regression-proof outcomes and identifies G5–G6. G5 currently has documentation-planning authorization only; implementation remains separately gated. G6 is not authorized. It does not authorize B5, B6, or R7-C.
 ## 1. Purpose and authority
 B4.4 is the integrated regression and closeout phase defined by the accepted B4.0 architecture decision §6. It must verify the combined B4.1 proposal/assessment contracts, B4.2 revise commit, and B4.3 revalidate commit across lifecycle invariants, concurrency, stale assessments, retries/recovery, projection visibility, exact-head hosted CI, and Operator source/diff review.
 This audit began as a read-only review of the exact merged main tree named above. G1 and G2 have since been implemented as bounded regression proofs, reviewed, verified, and merged. B4.4 remains in progress; no B4.4 closeout is claimed.
@@ -45,7 +45,7 @@ This audit began as a read-only review of the exact merged main tree named above
 | Create compatibility | test_original_create_approval_replays_after_later_history_transition and existing create proposal/approval tests | Existing coverage |
 | Generic competing approval requests | test_competing_approval_tasks_terminalize_the_losing_request covers competing approval Tasks and recovery of the losing Task | Existing coverage; the tested fixture is create-oriented |
 ## 4. Regression-proof items and dispositions
-The initial audit identified six gaps in test evidence, not confirmed implementation defects. G1, G2, and G3 are complete and merged. G4 is the next identified evidence gap and is authorized for documentation planning only; its extracted plan is recorded separately. G4 implementation awaits explicit authorization. G5 and G6 remain identified evidence gaps and unauthorized. No infrastructure or authority expansion is implied.
+The initial audit identified six gaps in test evidence, not confirmed implementation defects. G1–G4 are complete and merged. G5 and G6 remain evidence gaps, not confirmed implementation defects. G5 is authorized for documentation planning only; its extracted plan is recorded separately. G5 implementation awaits a separate explicit Operator decision. G6 remains unauthorized. No infrastructure or authority expansion is implied.
 ### G1 — True concurrent compare-and-set race on one KnowledgeItem
 The revise regression constructs competing proposals and commits the winner before attempting the stale loser. The competing approval test likewise sequences the winner and loser. The inspected test inventory does not establish two concurrently executing PostgreSQL approval transactions racing on the same target.
 **Required proof:** use separate sessions/transactions against disposable PostgreSQL with controlled synchronization. Exactly one canonical transition wins; the loser fails closed; no partial state, duplicate decision Event, duplicate version/pointer advance, or terminal success for the loser is persisted. Cover the shared compare-and-set boundary for revise and revalidate, or demonstrate why one parameterized common test proves both.
@@ -86,13 +86,25 @@ The test has since been strengthened to assert exactly one terminal Event across
 **Disposition:** G3 is complete and merged through PR #107 at `647526c44d26e61069c23ddd2bc4ceaf2c15b713`. G4 documentation planning is authorized and recorded in [the extracted G4 plan](r7-b-b4-4-g4-revise-revalidate-sequence-plan.md); G4 implementation has not started and awaits explicit authorization. G5 and G6 remain unauthorized; B5, B6, and R7-C remain unauthorized.
 
 ### G4 — One integrated revise → revalidate sequence on the same item
-**Status: PLAN DOCUMENTED ONLY — documentation planning authorized 2026-11-12; implementation not started.** See [the extracted G4 plan](r7-b-b4-4-g4-revise-revalidate-sequence-plan.md) for the bounded sequence, stale-assessment proof, history reconstruction, projection eligibility, acceptance criteria, and exclusions.
-The identified revise and revalidate commit tests establish each operation in separate fixtures. The audit did not identify a single end-to-end regression that exercises both operation paths sequentially on the same canonical item, including assessment freshness across the pointer/version change.
-**Required proof:** revise an item, then obtain a fresh revalidation assessment against the resulting current state after the item enters needs_review; prove the old assessment/target binding cannot be reused, then revalidate and verify both transitions in reconstructed history and projection eligibility. Keep this test bounded to B4 operations.
+**Status: COMPLETE — PR #109 MERGED (2026-11-12).**
+
+PR #109 adds test_revise_then_revalidate_rejects_stale_pre_revision_assessment in tests/test_experience_distiller.py. The regression exercises the same canonical KnowledgeItem through accepted revise, stale pre-revise revalidation rejection, fresh post-revise assessment, accepted revalidation, history reconstruction, and projection eligibility.
+
+The sole changed file was tests/test_experience_distiller.py; no production source, schema, migration, dependency, runtime, or approval-scope changes were made. Exact PR head 5a510305bdddc287ba69ce12a699445ed341239c passed hosted CI run #43255646691 and Operator-local verification: focused test (1 passed), Ruff, Mypy, full suite (955 passed, 113 warnings), disposable PostgreSQL cleanup, and database environment restoration. PR #109 was squash-merged at 15d565956cde44a7bd3d124e0bb62d188063846f.
+
+**Disposition:** G4 is complete and merged. It does not close B4.4; G5 and G6 remain separate proof gates.
+
 ### G5 — Revalidation rejection replay and decision-record idempotency
-The revalidation rejection test proves no KnowledgeItem mutation and TaskRuntime rejection finalization. Unlike the accepted revalidation test, it does not visibly assert replay of the rejected Operator approval and unchanged decision/Event/Outcome counts.
-**Required proof:** replay the original rejected revalidation approval and assert the original rejection is returned with no duplicate decision Event, Outcome, or canonical mutation.
+**Status: PLAN DOCUMENTED ONLY — documentation planning authorized 2026-11-12; implementation not authorized.** See the extracted G5 plan for the bounded sequence, exact replay identity assertions, Event/Outcome count checks, canonical-state invariants, likely test surfaces, and exclusions.
+
+The existing test_rejected_revalidation_does_not_mutate_the_knowledge_item proves that rejection leaves the KnowledgeItem unchanged and finalizes the approval Task. It does not visibly assert replay of the rejected Operator approval through the trusted OperatorApplicationAdapter or unchanged request/decision/terminal Event and Outcome counts after replay.
+
+**Required proof:** execute one rejected revalidation approval through the ordinary trusted Operator path, then replay the exact original principal/request/idempotency key. The replay must return the original rejected decision, approval Task, commit timestamp, and Outcome identity. Assert exactly one request Event, one rejection decision Event, one successful terminal Event/Outcome, and no canonical KnowledgeItem mutation or duplicate durable record. Rejection remains a successful Operator decision; the approval Task must finish done, not as a failed Task.
+
+**Authority boundary:** this PR records the plan only. G5 implementation and test changes require a separate explicit Operator decision. No production correction is presumed.
+
 ### G6 — Accepted revise commit from needs_review
+**Status: OUTSTANDING — implementation not authorized.**
 The revise approval-binding test uses a needs_review target, and the history unit test proves the transition validator preserves that status. The identified end-to-end canonical revise test starts from an active item; no accepted revise commit starting from a needs_review KnowledgeItem was identified.
 **Required proof:** commit a valid revise against a current needs_review item and verify the status remains needs_review, content/version/pointer/date semantics follow the revise contract, history reconstructs, and the current projection remains ineligible while status is needs_review.
 ## 5. Scope and stop conditions
@@ -103,11 +115,11 @@ The revise approval-binding test uses a needs_review target, and the history uni
 - If a required proof cannot be established without changing frozen B0/B1/B2 semantics, schema, or authority boundaries, stop and report the smallest blocker.
 ## 6. B4.4 sequence
 1. **Audit baseline — recorded here:** inspect exact merged main and map existing source/tests to the frozen B4 requirements.
-2. **Close regression gaps G1–G6 in separately authorized slices:** G1–G3 are complete; G4 currently has documentation-planning authorization only; do not begin G4 implementation until separately authorized; G5 and G6 remain unauthorized.
+2. **Close regression gaps G1–G6 in separately authorized slices:** G1–G4 are complete and merged; G5 has documentation-planning authorization only and its implementation requires a separate explicit decision; G6 remains unauthorized.
 3. **Run exact-head hosted CI:** fresh disposable PostgreSQL migration/single-head, Ruff, Mypy, git diff --check origin/${GITHUB_BASE_REF}...HEAD, full pytest, and hosted disposable-service cleanup. Record exact PR head and workflow run.
 4. **Operator source/diff review:** review the complete final source/test diff and the frozen B4.1 contract matrices. CI does not replace this review.
 5. **Documentation closeout:** reconcile PLAN, CHANGE_MAP, this implementation plan, and docs/testing; record B4 exit only after all required evidence and explicit Operator acceptance.
 ## 7. Verification evidence available at start
 B4.3 PR #100 final PR head 2f4135a7affe38cf1b564409e5b1b077ba4cb3ae passed exact-head hosted CI run #932 and was merged to main at f9c585c174799cf26fc0d7bf8ed57a8396e2b5aa.
 The Operator additionally ran local verification on the exact merged-main documentation tree 5f37927ff33d9e740c0ff56512d261dace36ab67: fresh migration/single-head checks, 232 focused B4.3 tests, Ruff, Mypy (38 source files), and the full suite (949 passed, 113 warnings in 211.03s). Pytest exit code was 0; the disposable PostgreSQL container was removed. This is supplemental B4.3 verification evidence, not B4.4 hosted exact-head evidence.
-**B4.4 remains in progress.** G1 is complete and merged by PR #103; G2 is complete and merged by PR #105; G3 is complete and merged by PR #107 at `647526c44d26e61069c23ddd2bc4ceaf2c15b713`. G3's corrected code/test head `97fc75afff7d6e349bcfef167d93b4f82a8f7c86` passed hosted CI run [#43246996445](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43246996445) and Operator-local exact-head verification (954 passed, 113 warnings); final docs head `a6a76631a5cc4211b22084580f7768d67ee36cab` passed hosted CI run [#43249090515](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43249090515) and local documentation-only verification. G4's extracted plan is recorded in [the G4 plan](r7-b-b4-4-g4-revise-revalidate-sequence-plan.md); implementation is not started and awaits explicit authorization. G5 and G6 remain unauthorized. No B4.4 closeout is claimed.
+**B4.4 remains in progress.** G1–G3 are complete and merged by PRs #103, #105, and #107. G4 is complete and merged by PR #109 at 15d565956cde44a7bd3d124e0bb62d188063846f; exact PR head 5a510305bdddc287ba69ce12a699445ed341239c passed hosted CI run #43255646691 and Operator-local verification (focused test, Ruff, Mypy, 955 full-suite tests, disposable database cleanup, and environment restoration). G5 is documented only; implementation awaits separate explicit authorization. G6 remains unauthorized. B5, B6, and R7-C remain unauthorized. No B4.4 closeout is claimed.
