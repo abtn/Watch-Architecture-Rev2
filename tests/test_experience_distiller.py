@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from threading import Barrier, Lock
+from threading import Barrier
 from types import SimpleNamespace
 from typing import Any, Callable, Iterator, Literal
 from uuid import UUID, uuid4
@@ -59,7 +59,6 @@ from core.knowledge_revalidation import (
 )
 from core.knowledge_revalidation_tasks import KnowledgeRevalidationAssessmentTaskRunner
 from core.learning_commit import (
-    LearningCommitConflict,
     LearningCommitCorrupt,
     LearningCommitError,
     LearningCommitService,
@@ -1645,56 +1644,26 @@ def _create_revision_proposal(
 
 
 def _run_concurrent_approval_decisions(
-    database_engine,
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
     principal: TrustedOperatorPrincipal,
     requests: list[LearningChangeDecisionRequest],
-) -> tuple[list[object], set[int]]:
+) -> list[object]:
     adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
     barrier = Barrier(2)
-    lock = Lock()
-    backend_pids: set[int] = set()
 
-    def synchronize_compare_and_set(
-        connection, cursor, statement, parameters, context, executemany
-    ):
-        normalized = statement.lower()
-        if "for update" in normalized:
-            # Drop test-only SELECT locks so both readers race at the real CAS UPDATE.
-            statement = statement[: normalized.rfind(" for update")]
-        if "update knowledge_items" in normalized:
-            backend_pid = connection.exec_driver_sql(
-                "SELECT pg_backend_pid()"
-            ).scalar_one()
-            with lock:
-                backend_pids.add(backend_pid)
-            barrier.wait(timeout=15)
-        return statement, parameters
+    def decide_concurrently(request: LearningChangeDecisionRequest) -> object:
+        barrier.wait(timeout=30)
+        try:
+            return adapter.decide_learning_change(principal, request)
+        except LearningCommitError as error:
+            return error
 
-    event.listen(
-        database_engine,
-        "before_cursor_execute",
-        synchronize_compare_and_set,
-        retval=True,
-    )
-    try:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = [
-                executor.submit(adapter.decide_learning_change, principal, request)
-                for request in requests
-            ]
-            results: list[object] = []
-            for future in futures:
-                try:
-                    results.append(future.result(timeout=30))
-                except LearningCommitConflict as error:
-                    results.append(error)
-    finally:
-        event.remove(
-            database_engine, "before_cursor_execute", synchronize_compare_and_set
-        )
-    return results, backend_pids
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(decide_concurrently, request) for request in requests
+        ]
+        return [future.result(timeout=60) for future in futures]
 
 
 def _assert_concurrent_transition_has_one_winner(
@@ -1709,30 +1678,28 @@ def _assert_concurrent_transition_has_one_winner(
     requests: list[LearningChangeDecisionRequest],
     initial_state: dict[str, Any],
     results: list[object],
-    backend_pids: set[int],
 ) -> None:
     assert len(set(proposal_ids)) == 2
-    assert len(backend_pids) == 2
     winners = [
         result
         for result in results
-        if not isinstance(result, LearningCommitConflict)
+        if not isinstance(result, LearningCommitError)
     ]
-    conflicts = [
+    errors = [
         result
         for result in results
-        if isinstance(result, LearningCommitConflict)
+        if isinstance(result, LearningCommitError)
     ]
-    conflict_reason = (
-        "revision_target_compare_and_set_failed"
+    stale_reason = (
+        "knowledge_quality_revision_target_stale"
         if operation == "revise"
-        else "revalidation_target_compare_and_set_failed"
+        else "knowledge_revalidation_target_stale"
     )
-    assert len(winners) == len(conflicts) == 1
+    assert len(winners) == len(errors) == 1
     winner = winners[0]
     assert winner.task_status == "done"
     assert winner.learning_change_id in proposal_ids
-    assert str(conflicts[0]) == conflict_reason
+    assert str(errors[0]) == stale_reason
 
     winner_index = proposal_ids.index(winner.learning_change_id)
     loser_index = 1 - winner_index
@@ -1867,6 +1834,218 @@ def _assert_concurrent_transition_has_one_winner(
                 Outcome.outcome_type == "task_execution",
             )
         ) == 1
+        assert session.scalar(
+            select(func.count(LearningChange.id)).where(
+                LearningChange.id.in_(proposal_ids),
+                LearningChange.committed_state.is_not(None),
+            )
+        ) == 1
+
+
+def _create_knowledge_item_cas_fixture(
+    session_factory: sessionmaker[Session],
+    operation: Literal["revise", "revalidate"],
+) -> tuple[UUID, UUID, UUID, tuple[UUID, UUID], int, str]:
+    team_id, policy_id, task_id, item_id, origin_change_id = (
+        uuid4() for _ in range(5)
+    )
+    change_ids = (uuid4(), uuid4())
+    now = datetime.now(timezone.utc)
+    status = "active" if operation == "revise" else "needs_review"
+    initial_version = 4
+    with session_factory.begin() as session:
+        session.add(Team(id=team_id, domain="knowledge_item_cas_test", status="active"))
+        session.flush()
+        session.add(
+            TeamPolicy(
+                id=policy_id,
+                team_id=team_id,
+                version=1,
+                schema_version=1,
+                rules={"unchanged": True},
+            )
+        )
+        session.flush()
+        session.add(
+            Task(
+                id=task_id,
+                team_id=team_id,
+                task_type="propose_learning_change",
+                status="done",
+                attempt_count=1,
+                policy_version=1,
+                allowed_writes=["LearningChange"],
+                budget={"max_tool_calls": 0, "max_cost_usd": 0.0},
+            )
+        )
+        session.flush()
+        session.add(
+            LearningChange(
+                id=origin_change_id,
+                team_id=team_id,
+                target_kind="knowledge_item",
+                target_id=None,
+                operation="create",
+                proposed_state={},
+                previous_state=None,
+                committed_state={},
+                evidence_basis=[],
+                evidence_basis_hash="sha256:" + ("0" * 64),
+                status="accepted",
+                idempotency_key=f"cas-origin-{origin_change_id}",
+                proposed_by_task_id=task_id,
+                committed_by_task_id=task_id,
+                operator_id="https://host.example/identity#cas-test",
+                decision_reason=None,
+                committed_at=now,
+            )
+        )
+        session.flush()
+        session.add(
+            KnowledgeItem(
+                id=item_id,
+                team_id=team_id,
+                kind="practice",
+                title="CAS test item",
+                statement="Preserve the expected state during concurrent updates.",
+                body="Initial state",
+                applicability={},
+                preconditions=[],
+                assumptions=[],
+                limitations=[],
+                non_applicability=[],
+                failure_modes=[],
+                known_counterexamples=[],
+                missing_information=[],
+                uncertainty=[],
+                confidence=Decimal("0.8"),
+                status=status,
+                version=initial_version,
+                last_validated_at=None,
+                review_after=now if status == "needs_review" else None,
+                origin_learning_change_id=origin_change_id,
+                current_learning_change_id=origin_change_id,
+                supersedes_item_id=None,
+                superseded_by_id=None,
+            )
+        )
+        session.add_all(
+            [
+                LearningChange(
+                    id=change_id,
+                    team_id=team_id,
+                    target_kind="knowledge_item",
+                    target_id=item_id,
+                    operation=operation,
+                    proposed_state={},
+                    previous_state={"state": {"version": initial_version}},
+                    committed_state=None,
+                    evidence_basis=[],
+                    evidence_basis_hash="sha256:" + ("0" * 64),
+                    status="proposed",
+                    idempotency_key=f"cas-{operation}-{change_id}",
+                    proposed_by_task_id=task_id,
+                )
+                for change_id in change_ids
+            ]
+        )
+    return team_id, item_id, origin_change_id, change_ids, initial_version, status
+
+
+def _run_knowledge_item_cas_race(
+    database_engine,
+    session_factory: sessionmaker[Session],
+    operation: Literal["revise", "revalidate"],
+) -> None:
+    team_id, item_id, initial_pointer, change_ids, version, status = (
+        _create_knowledge_item_cas_fixture(session_factory, operation)
+    )
+    barrier = Barrier(2)
+    committed_at = datetime.now(timezone.utc)
+
+    def update_item(
+        change_id: UUID,
+    ) -> tuple[int, UUID, UUID | None, UUID, int, str]:
+        with database_engine.connect() as connection, connection.begin():
+            backend_pid = connection.exec_driver_sql(
+                "SELECT pg_backend_pid()"
+            ).scalar_one()
+            initial = connection.execute(
+                select(
+                    KnowledgeItem.current_learning_change_id,
+                    KnowledgeItem.version,
+                    KnowledgeItem.status,
+                ).where(KnowledgeItem.id == item_id)
+            ).one()
+            assert initial == (initial_pointer, version, status)
+
+            # Keep this predicate aligned with LearningCommitService's production CAS.
+            predicate = [
+                KnowledgeItem.id == item_id,
+                KnowledgeItem.team_id == team_id,
+                KnowledgeItem.current_learning_change_id == initial_pointer,
+                KnowledgeItem.version == version,
+            ]
+            values: dict[str, Any] = {"current_learning_change_id": change_id}
+            if operation == "revise":
+                values.update(version=version + 1, body=f"Revision {change_id}")
+            else:
+                predicate.append(KnowledgeItem.status == "needs_review")
+                values.update(status="active", last_validated_at=committed_at)
+
+            barrier.wait(timeout=30)
+            updated_id = connection.execute(
+                update(KnowledgeItem)
+                .where(*predicate)
+                .values(**values)
+                .returning(KnowledgeItem.id)
+            ).scalar_one_or_none()
+            return (
+                backend_pid,
+                change_id,
+                updated_id,
+                initial.current_learning_change_id,
+                initial.version,
+                initial.status,
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(update_item, change_id) for change_id in change_ids]
+        results = [future.result(timeout=60) for future in futures]
+
+    assert len({result[0] for result in results}) == 2
+    assert all(
+        result[3:] == (initial_pointer, version, status) for result in results
+    )
+    winners = [result for result in results if result[2] is not None]
+    losers = [result for result in results if result[2] is None]
+    assert len(winners) == len(losers) == 1
+    assert winners[0][2] == item_id
+    winner_id = winners[0][1]
+    assert winner_id in change_ids
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, item_id)
+        assert item is not None
+        assert item.current_learning_change_id == winner_id
+        assert item.version == (version + 1 if operation == "revise" else version)
+        assert item.status == ("active" if operation == "revalidate" else status)
+        assert item.body == (
+            f"Revision {winner_id}" if operation == "revise" else "Initial state"
+        )
+        if operation == "revalidate":
+            assert item.last_validated_at == committed_at
+
+
+def test_concurrent_revise_knowledge_item_cas_allows_one_update(
+    database_engine, session_factory
+):
+    _run_knowledge_item_cas_race(database_engine, session_factory, "revise")
+
+
+def test_concurrent_revalidate_knowledge_item_cas_allows_one_update(
+    database_engine, session_factory
+):
+    _run_knowledge_item_cas_race(database_engine, session_factory, "revalidate")
 
 
 def test_revalidation_proposal_replays_after_task_completion(
@@ -2123,7 +2302,6 @@ def test_operator_commits_supported_revalidation_without_changing_content(
 
 
 def test_concurrent_revise_approvals_advance_one_knowledge_item_once(
-    database_engine,
     session_factory,
     snapshot_store,
     distillation_fixture,
@@ -2241,8 +2419,7 @@ def test_concurrent_revise_approvals_advance_one_knowledge_item_once(
                 == assessment.assessment_payload_hash
             )
 
-    results, backend_pids = _run_concurrent_approval_decisions(
-        database_engine,
+    results = _run_concurrent_approval_decisions(
         session_factory,
         snapshot_store,
         principal,
@@ -2259,12 +2436,10 @@ def test_concurrent_revise_approvals_advance_one_knowledge_item_once(
         requests=requests,
         initial_state=initial_state,
         results=results,
-        backend_pids=backend_pids,
     )
 
 
 def test_concurrent_revalidate_approvals_advance_one_knowledge_item_once(
-    database_engine,
     session_factory,
     snapshot_store,
     distillation_fixture,
@@ -2418,8 +2593,7 @@ def test_concurrent_revalidate_approvals_advance_one_knowledge_item_once(
                 timedelta=timedelta,
             ),
         )
-        results, backend_pids = _run_concurrent_approval_decisions(
-            database_engine,
+        results = _run_concurrent_approval_decisions(
             session_factory,
             snapshot_store,
             principal,
@@ -2436,7 +2610,6 @@ def test_concurrent_revalidate_approvals_advance_one_knowledge_item_once(
         requests=requests,
         initial_state=initial_state,
         results=results,
-        backend_pids=backend_pids,
     )
 
 
