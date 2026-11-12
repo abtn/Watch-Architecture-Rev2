@@ -2604,7 +2604,8 @@ def test_original_revalidation_approval_replays_after_later_history_transition(
         item = session.get(KnowledgeItem, created.knowledge_item_id)
         original_change = session.get(LearningChange, revalidation_id)
         later_change = session.get(LearningChange, revision_id)
-        assert item is not None and original_change is not None and later_change is not None
+        assert item is not None and original_change is not None
+        assert later_change is not None
         assert knowledge_item_state(item) == later_state
         assert item.current_learning_change_id == revision_id
         assert original_change.status == later_change.status == "accepted"
