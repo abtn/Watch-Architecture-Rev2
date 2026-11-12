@@ -2242,10 +2242,7 @@ def test_operator_commits_and_recovers_revalidation_after_finalize_crash(
     with session_factory() as session:
         item = session.get(KnowledgeItem, created.knowledge_item_id)
         assert item is not None and item.status == "needs_review"
-        original_state = knowledge_item_state(item)
         original_content_hash = knowledge_item_content_hash(item)
-        original_status = item.status
-        original_last_validated_at = item.last_validated_at
         original_review_after = item.review_after
         assert original_review_after is not None
 
@@ -2447,15 +2444,8 @@ def test_operator_commits_and_recovers_revalidation_after_finalize_crash(
             )
         ) == 1
 
-    with session_factory.begin() as session:
-        item = session.get(KnowledgeItem, created.knowledge_item_id)
-        assert item is not None
-        item.status = original_status
-        item.last_validated_at = original_last_validated_at
-        item.review_after = original_review_after
-        item.current_learning_change_id = created.learning_change_id
-
-    _cleanup_operator_decision_task(session_factory, request_result.task_id)
+    # distillation_fixture owns cleanup for the complete fixture, including
+    # immutable revalidation assessments and their approval records.
 
 def test_concurrent_revise_approvals_advance_one_knowledge_item_once(
     session_factory,
@@ -5819,11 +5809,6 @@ def _cleanup_operator_decision_task(
             session.execute(
                 delete(KnowledgeQualityAssessment).where(
                     KnowledgeQualityAssessment.learning_change_id.in_(change_ids)
-                )
-            )
-            session.execute(
-                delete(KnowledgeRevalidationAssessment).where(
-                    KnowledgeRevalidationAssessment.learning_change_id.in_(change_ids)
                 )
             )
             session.execute(
