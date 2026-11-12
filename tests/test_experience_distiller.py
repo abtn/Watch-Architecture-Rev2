@@ -3434,7 +3434,7 @@ def test_rejected_revalidation_does_not_mutate_the_knowledge_item(
             assert knowledge_item_content_hash(item) == original_content_hash
             assert change.status == "rejected"
             assert change.committed_state is None
-            assert change.rejection_reason == rejection_reason
+            assert change.decision_reason == rejection_reason
             assert change.committed_by_task_id == original.task_id
             assert change.operator_id == original.operator_id
             assert change.committed_at == original.committed_at
