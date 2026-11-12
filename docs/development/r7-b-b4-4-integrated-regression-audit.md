@@ -69,7 +69,7 @@ The interruption is deterministic exception injection at the exact boundary, not
 
 **Review and merge:** the final PR diff contained exactly one changed file (`tests/test_experience_distiller.py`), with 171 additions and 50 deletions. No production source, schema, migration, lock, Task type, runtime, dispatcher, scheduler, API/authentication, provider/evaluator, or approval-scope changes were made. Fixture teardown owns cleanup; the test does not manually restore canonical state or delete immutable assessment records. Final review found no blocking issue. PR #105 was squash-merged on 2026-11-12 at `ac01836b8548c147690f33cffdd66fd7b7c5af74`.
 
-**Disposition:** G2 is complete. No production correction was required. G4–G6 remain unauthorized; B5, B6, and R7-C remain unauthorized.
+**Disposition:** G2 is complete. No production correction was required. G3 is also complete and merged. G4 is authorized for documentation planning only; its implementation is not yet authorized. G5 and G6 remain unauthorized; B5, B6, and R7-C remain unauthorized.
 ### G3 — Revalidation approval replay after a later history transition
 **Status: COMPLETE — PR #107 MERGED (2026-11-12).
 
