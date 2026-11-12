@@ -196,9 +196,54 @@ class OperatorApplicationAdapter:
                         session_factory=self._session_factory,
                     )
                 except KnowledgeApprovalBindingError as error:
-                    raise OperatorTaskRequestConflict(
-                        "idempotency_key_reused_with_different_request"
-                    ) from error
+                    if (
+                        str(error) not in _STALE_OPERATOR_APPROVAL_REASONS
+                        or existing_task.status != "failed"
+                    ):
+                        raise OperatorTaskRequestConflict(
+                            "idempotency_key_reused_with_different_request"
+                        ) from error
+                    request_events = list(
+                        session.scalars(
+                            select(Event).where(
+                                Event.task_id == existing_task.id,
+                                Event.type == _REQUEST_EVENT_TYPE,
+                            )
+                        )
+                    )
+                    if (
+                        len(request_events) != 1
+                        or not isinstance(request_events[0].payload, dict)
+                    ):
+                        raise OperatorTaskRequestCorrupt(
+                            "approval_request_event_count_invalid"
+                        )
+                    try:
+                        stored_request = parse_request_event_payload(
+                            request_events[0].payload,
+                            team_id=team_id,
+                            policy_version=existing_task.policy_version,
+                        )
+                    except OperatorApprovalValidationError as parse_error:
+                        raise OperatorTaskRequestCorrupt(
+                            parse_error.reason
+                        ) from parse_error
+                    if stored_request.approval_binding is None:
+                        raise OperatorTaskRequestCorrupt(
+                            "approval_request_binding_missing"
+                        )
+                    return _verify_existing_request(
+                        session=session,
+                        task=existing_task,
+                        team_id=team_id,
+                        request=request,
+                        rejection_reason=rejection_reason,
+                        operator_id=canonical_operator_id,
+                        idempotency_key_hash=idempotency_key_hash,
+                        approval_binding=stored_request.approval_binding,
+                        quality_assessment_id=stored_request.quality_assessment_id,
+                        quality_assessment_hash=stored_request.quality_assessment_hash,
+                    )
                 quality_assessment_id = (
                     UUID(approval_binding["assessment_id"])
                     if approval_binding["assessment_type"] == "knowledge_quality"
@@ -437,11 +482,9 @@ class OperatorApplicationAdapter:
                     task_status = task.status
                     attempt = task.attempt_count
         elif task_status == "failed":
-            # A distinct approval Task may lose a race to another Task that
-            # already committed this LearningChange. Recovery terminalizes
-            # that loser as a deterministic failure; replay the same outcome
-            # and return the same typed conflict rather than treating it as an
-            # unexplained non-executable Task.
+            # A stale target or an already-decided LearningChange may have
+            # terminalized this Task. Reconstruct and replay that same durable
+            # failure rather than treating it as a non-executable Task.
             with self._session_factory.begin() as session:
                 task = session.scalar(
                     select(Task)
