@@ -916,4 +916,4 @@ Commands and results:
 - `uv run mypy core` — passed, 38 source files.
 - `git diff --check` — passed.
 
-No migration, production code change, lock change, CAS change, arbitrary sleep, or event listener was introduced. Full-suite and exact-head hosted CI results are not included in this local G1 record.
+No migration, production code change, lock change, CAS change, arbitrary sleep, or G1 event listener was introduced. A local full-suite run is not included. Exact-head hosted CI run [#43171591606](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43171591606) passed on `06f409dec708da4820518e92be8fa98f254e4afe`, including fresh PostgreSQL migration/head verification, Ruff, Mypy, patch whitespace, the full test step, and disposable-container cleanup. The hosted job reported the test step passed; no test count is asserted here.
