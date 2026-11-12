@@ -62,6 +62,7 @@ from core.learning_commit import (
     LearningCommitCorrupt,
     LearningCommitError,
     LearningCommitService,
+    _knowledge_item_cas_statement,
 )
 from core.learning_history import (
     encode_state_snapshot,
@@ -1741,7 +1742,8 @@ def _assert_concurrent_transition_has_one_winner(
         assert loser_change.committed_by_task_id is None
         assert loser_change.committed_state is None
         assert winner_task.status == "done"
-        assert loser_task.status == "running"
+        assert loser_task.status == "failed"
+        assert loser_task.completed_at is None
         assert item.current_learning_change_id == winner_change.id
         assert item.current_learning_change_id != UUID(
             initial_state["current_learning_change_id"]
@@ -1798,14 +1800,32 @@ def _assert_concurrent_transition_has_one_winner(
                 )
             )
         )
-        assert len(outcomes) == 1
-        assert outcomes[0].recorded_by_task_id == winner_task.id
-        assert session.scalar(
-            select(func.count(Event.id)).where(
-                Event.task_id == loser_task_id,
-                Event.type.in_(("task_completed", "task_failed")),
+        assert {outcome.recorded_by_task_id for outcome in outcomes} == set(
+            approval_task_ids
+        )
+        loser_outcome = next(
+            outcome for outcome in outcomes
+            if outcome.recorded_by_task_id == loser_task_id
+        )
+        assert loser_outcome.observed_at is not None
+        loser_failure_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == loser_task_id,
+                    Event.type.in_(("task_attempt_failed", "task_failed")),
+                )
             )
-        ) == 0
+        )
+        assert {event.type for event in loser_failure_events} == {
+            "task_attempt_failed",
+            "task_failed",
+        }
+        assert all(
+            event.payload["result_category"] == "terminal_failure"
+            and event.payload["failure_reason"] == stale_reason
+            and event.payload["outcome_id"] == str(loser_outcome.id)
+            for event in loser_failure_events
+        )
 
     with pytest.raises(
         OperatorTaskRequestConflict,
@@ -1832,6 +1852,13 @@ def _assert_concurrent_transition_has_one_winner(
             select(func.count(Outcome.id)).where(
                 Outcome.recorded_by_task_id.in_(approval_task_ids),
                 Outcome.outcome_type == "task_execution",
+            )
+        ) == 2
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == loser_task_id,
+                Event.type == "task_failed",
+                Event.payload["failure_reason"].as_string() == stale_reason,
             )
         ) == 1
         assert session.scalar(
@@ -1979,27 +2006,22 @@ def _run_knowledge_item_cas_race(
             ).one()
             assert initial == (initial_pointer, version, status)
 
-            # Keep this predicate aligned with LearningCommitService's production CAS.
-            predicate = [
-                KnowledgeItem.id == item_id,
-                KnowledgeItem.team_id == team_id,
-                KnowledgeItem.current_learning_change_id == initial_pointer,
-                KnowledgeItem.version == version,
-            ]
             values: dict[str, Any] = {"current_learning_change_id": change_id}
             if operation == "revise":
                 values.update(version=version + 1, body=f"Revision {change_id}")
             else:
-                predicate.append(KnowledgeItem.status == "needs_review")
                 values.update(status="active", last_validated_at=committed_at)
 
+            statement = _knowledge_item_cas_statement(
+                item_id=item_id,
+                team_id=team_id,
+                expected_pointer=initial_pointer,
+                expected_version=version,
+                values=values,
+                require_needs_review=operation == "revalidate",
+            )
             barrier.wait(timeout=30)
-            updated_id = connection.execute(
-                update(KnowledgeItem)
-                .where(*predicate)
-                .values(**values)
-                .returning(KnowledgeItem.id)
-            ).scalar_one_or_none()
+            updated_id = connection.execute(statement).scalar_one_or_none()
             return (
                 backend_pid,
                 change_id,

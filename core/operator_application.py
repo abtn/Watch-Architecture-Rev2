@@ -38,6 +38,14 @@ _REQUEST_EVENT_TYPE = "operator_task_requested"
 _ALLOWED_WRITES = ["LearningChange", "KnowledgeItem"]
 _TASK_BUDGET = {"max_tool_calls": 0, "max_cost_usd": 0.0}
 _TASK_MAX_ATTEMPTS = 3
+_STALE_APPROVAL_CONFLICTS = frozenset(
+    {
+        "knowledge_quality_revision_target_stale",
+        "knowledge_revalidation_target_stale",
+        "revision_target_compare_and_set_failed",
+        "revalidation_target_compare_and_set_failed",
+    }
+)
 
 # Fixed namespace: the same host request key maps to the same Task after restart.
 _TASK_ID_NAMESPACE = UUID("a0ad72d4-3d4c-4a32-8d1e-61c4b36d0ec2")
@@ -399,7 +407,11 @@ class OperatorApplicationAdapter:
 
         # Import at call time to keep the application boundary below the
         # learning-commit module without creating a module-import cycle.
-        from core.learning_commit import LearningCommitConflict, LearningCommitService
+        from core.learning_commit import (
+            LearningCommitConflict,
+            LearningCommitError,
+            LearningCommitService,
+        )
         from core.task_runtime import TaskNotEligible, TaskRuntime, TerminalObservation
 
         task_runtime = TaskRuntime(self._session_factory, self._snapshot_store)
@@ -466,8 +478,41 @@ class OperatorApplicationAdapter:
             commit = LearningCommitService(
                 self._session_factory, self._snapshot_store
             ).decide(request_result.task_id, attempt, principal)
-        except LearningCommitConflict as error:
-            if str(error) != "learning_change_already_decided":
+        except LearningCommitError as error:
+            if str(error) in _STALE_APPROVAL_CONFLICTS:
+                with self._session_factory() as session:
+                    task = session.get(Task, request_result.task_id)
+                    if (
+                        task is None
+                        or task.status != "running"
+                        or task.attempt_count != attempt
+                    ):
+                        raise OperatorApplicationError(
+                            "stale_approval_task_not_running"
+                        ) from error
+                    started_at = TaskRuntime._current_attempt_start(session, task)
+                if started_at is None:
+                    raise OperatorApplicationError(
+                        "stale_approval_task_start_event_missing"
+                    ) from error
+                finalization = task_runtime.finalize(
+                    TerminalObservation(
+                        task_id=request_result.task_id,
+                        attempt=attempt,
+                        result_category="terminal_failure",
+                        observed_at=started_at,
+                        failure_reason=str(error),
+                    )
+                )
+                if finalization.status != "failed":
+                    raise OperatorApplicationError(
+                        "stale_approval_task_failure_not_recorded"
+                    ) from error
+                raise
+            if (
+                not isinstance(error, LearningCommitConflict)
+                or str(error) != "learning_change_already_decided"
+            ):
                 raise
             # The LearningChange row lock serializes distinct approval Tasks.
             # Once another Task wins, this Task must become terminal through
