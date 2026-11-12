@@ -1,7 +1,7 @@
 # R7-B B4.4 G4 — Same-item revise → revalidate sequence plan
 
-**Status: DOCUMENTATION PLAN ONLY — G4 scope authorized on 2026-11-12; implementation not started.**  
-**Base:** G3 closeout merge commit `647526c44d26e61069c23ddd2bc4ceaf2c15b713`.  
+**Status: DOCUMENTATION PLAN ONLY — G4 scope authorized on 2026-11-12; implementation not started.**
+**Base:** G3 closeout merge commit `647526c44d26e61069c23ddd2bc4ceaf2c15b713`.
 **Parent gate:** B4.4. G1, G2, and G3 are complete; G4 is the next bounded regression proof. G5 and G6 remain unauthorized.
 
 ## 1. Purpose
