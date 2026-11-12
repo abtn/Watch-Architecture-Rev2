@@ -917,15 +917,6 @@ The stale loser is now terminalized through the existing `TaskRuntime` path. The
 
 PR [#103](https://github.com/abtn/Watch-Architecture-Rev2/pull/103) was squash-merged to `main` on 2026-11-12 at `313f379e75f3ab40d0805de371caa8745b998add` from exact PR head `81b3b8a40fda49e8c398cacdd1b9010e9dad5814`. The final exact-head hosted CI run [#43175397785](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43175397785) passed with 953 tests and 113 warnings. The Operator's local run on the same exact head also passed fresh disposable PostgreSQL migration/single-head checks, Ruff, Mypy, and **953 passed, 113 warnings in 306.89s**. The local script removed the disposable container and restored `DATABASE_URL` and `TEST_DATABASE_URL`. G1 is complete and merged.
 
-### B4.4 G2 — Revalidation approval crash/recovery plan (authorized 2026-11-12)
-
-This is a planned proof, not a completed test or verification result. The audit found no revalidation-specific proof of process loss after the canonical revalidation decision commits but before the Operator approval Task is finalized; the existing recovery crash test is create-oriented, while the revalidation recovery test concerns the assessment Task.
-
-The authorized scope is to exercise that exact boundary through the existing `TaskRuntime`: commit an accepted revalidation, inject a one-shot interruption before approval Task finalization, recover the same Task using its original request and identity, and prove exactly one terminal Outcome/Snapshot/Event set with no duplicate KnowledgeItem transition or decision Event. Verify repeated recovery is idempotent. Add rejected-revalidation interrupted recovery only if the common typed-failure path is not already covered by direct operation-specific evidence.
-
-Use the smallest deterministic test and existing test infrastructure. A production correction is permitted only if the regression demonstrates a defect. No migration, schema, lock, Task type, runtime, dispatcher, scheduler, API/authentication, provider/evaluator, or approval-scope change is authorized. G3–G6 remain unauthorized; B5, B6, and R7-C remain unauthorized.
-
-
 ### B4.4 G2 — Accepted-revalidation approval crash/recovery (PR #105 merged 2026-11-12)
 
 PR [#105](https://github.com/abtn/Watch-Architecture-Rev2/pull/105) was squash-merged at `ac01836b8548c147690f33cffdd66fd7b7c5af74` from exact PR head `60790c6e4ec19393f0c236238ab290c8df60fb05`. Its sole changed file is `tests/test_experience_distiller.py`; no production source, schema, or migration changed.
