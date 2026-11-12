@@ -891,7 +891,7 @@ The initial implementation and pre-reconciliation PR heads are historical eviden
 No migration, new Task type, second runtime, dispatcher, scheduler, API, authentication subsystem, production evaluator/provider, B5 lifecycle commit, B6, or R7-C work is included. B5, B6, and R7-C remain unauthorized.
 
 
-## R7-B B4.4 — integrated regression audit (IN PROGRESS — G1/G2/G3 PROOFS VERIFIED; G3 MERGE PENDING)
+## R7-B B4.4 — integrated regression audit (IN PROGRESS — G1/G2/G3 COMPLETE AND MERGED; G4 PLAN DOCUMENTED ONLY)
 
 The initial read-only source/test audit is recorded in [the B4.4 audit](development/r7-b-b4-4-integrated-regression-audit.md), against exact merged main SHA 5f37927ff33d9e740c0ff56512d261dace36ab67. It identified six regression-proof gaps. G1 (concurrent revise/revalidate application and PostgreSQL CAS proofs) and G2 (accepted-revalidation approval recovery after canonical decision commit) are complete and merged. G3 (revalidation replay after a later accepted revision) is verified on open PR #107. G4–G6 remain evidence gaps, not confirmed implementation defects; they remain unauthorized.
 
