@@ -1,5 +1,5 @@
 # R7-B B4.4 — Integrated Regression Audit
-**Status: IN PROGRESS — G1 and G2 complete and merged; G3–G6 remain unauthorized (updated 2026-11-12).**
+**Status: IN PROGRESS — G1 and G2 complete and merged; G3 authorized 2026-11-12; G4–G6 remain unauthorized (updated 2026-11-12).**
 **Baseline:** exact merged main commit 5f37927ff33d9e740c0ff56512d261dace36ab67.
 **Implementation parent:** B4.3 merge commit f9c585c174799cf26fc0d7bf8ed57a8396e2b5aa.
 **Scope:** B4.4 only. This document records the audit and the G1/G2 regression-proof outcomes; implementation changes are limited to their separately reviewed PRs. It does not authorize B5, B6, or R7-C.
@@ -45,7 +45,7 @@ This audit began as a read-only review of the exact merged main tree named above
 | Create compatibility | test_original_create_approval_replays_after_later_history_transition and existing create proposal/approval tests | Existing coverage |
 | Generic competing approval requests | test_competing_approval_tasks_terminalize_the_losing_request covers competing approval Tasks and recovery of the losing Task | Existing coverage; the tested fixture is create-oriented |
 ## 4. Regression-proof items and dispositions
-The initial audit identified six gaps in test evidence, not confirmed implementation defects. G1 and G2 are now complete and merged. G3–G6 remain identified evidence gaps and are not authorized for implementation by this record. No infrastructure or authority expansion is implied.
+The initial audit identified six gaps in test evidence, not confirmed implementation defects. G1 and G2 are now complete and merged. G3 is authorized as the next bounded regression proof; G4–G6 remain identified evidence gaps and unauthorized. No infrastructure or authority expansion is implied.
 ### G1 — True concurrent compare-and-set race on one KnowledgeItem
 The revise regression constructs competing proposals and commits the winner before attempting the stale loser. The competing approval test likewise sequences the winner and loser. The inspected test inventory does not establish two concurrently executing PostgreSQL approval transactions racing on the same target.
 **Required proof:** use separate sessions/transactions against disposable PostgreSQL with controlled synchronization. Exactly one canonical transition wins; the loser fails closed; no partial state, duplicate decision Event, duplicate version/pointer advance, or terminal success for the loser is persisted. Cover the shared compare-and-set boundary for revise and revalidate, or demonstrate why one parameterized common test proves both.
@@ -71,8 +71,20 @@ The interruption is deterministic exception injection at the exact boundary, not
 
 **Disposition:** G2 is complete. No production correction was required. G3–G6 remain unauthorized; B5, B6, and R7-C remain unauthorized.
 ### G3 — Revalidation approval replay after a later history transition
+**Status: AUTHORIZED 2026-11-12 — implementation in progress on branch r7b-b4-4-g3-revalidation-replay.**
+
 The inspected revalidation commit test proves immediate replay. The explicit replay-after-later-transition test currently covers create; the revise regression covers a revise replay after a later accepted competing revise. No equivalent revalidation approval replay after a later accepted transition was identified.
+
 **Required proof:** commit and finalize revalidation, apply a later accepted history transition to the same item through the existing canonical path/fixture, then replay the original revalidation approval. It must return the original result without changing the later current state or duplicating Events/Outcomes.
+
+**Extracted execution plan:**
+1. Build a KnowledgeItem using the existing create proposal, assessment, approval, and TaskRuntime flow.
+2. Propose and assess revalidation, then accept it through OperatorApplicationAdapter; retain the original immutable request and idempotency key.
+3. Create a later revision for the same item with the existing revision helper, record its quality assessment, and accept it through the same trusted Operator adapter.
+4. Replay the original revalidation request after the revision is current. Assert the replay returns the original approval Task, LearningChange, commit time, and Outcome identity.
+5. Assert the later revision remains the current pointer and complete KnowledgeItem state; original request/decision/terminal Events and Outcome remain exactly one each, with no duplicate later decision or Outcome.
+
+**Implementation boundary:** one focused regression in tests/test_experience_distiller.py, reusing existing fixtures/helpers and canonical application paths. No manual canonical-row fabrication, schema/migration, new runtime, lock or approval-scope change. Production correction is permitted only if the regression proves a defect, and must be the smallest correction inside the existing path.
 ### G4 — One integrated revise → revalidate sequence on the same item
 The identified revise and revalidate commit tests establish each operation in separate fixtures. The audit did not identify a single end-to-end regression that exercises both operation paths sequentially on the same canonical item, including assessment freshness across the pointer/version change.
 **Required proof:** revise an item, then obtain a fresh revalidation assessment against the resulting current state after the item enters needs_review; prove the old assessment/target binding cannot be reused, then revalidate and verify both transitions in reconstructed history and projection eligibility. Keep this test bounded to B4 operations.
@@ -97,4 +109,4 @@ The revise approval-binding test uses a needs_review target, and the history uni
 ## 7. Verification evidence available at start
 B4.3 PR #100 final PR head 2f4135a7affe38cf1b564409e5b1b077ba4cb3ae passed exact-head hosted CI run #932 and was merged to main at f9c585c174799cf26fc0d7bf8ed57a8396e2b5aa.
 The Operator additionally ran local verification on the exact merged-main documentation tree 5f37927ff33d9e740c0ff56512d261dace36ab67: fresh migration/single-head checks, 232 focused B4.3 tests, Ruff, Mypy (38 source files), and the full suite (949 passed, 113 warnings in 211.03s). Pytest exit code was 0; the disposable PostgreSQL container was removed. This is supplemental B4.3 verification evidence, not B4.4 hosted exact-head evidence.
-**B4.4 remains in progress.** G1 is complete and merged by PR #103; G2 is complete and merged by PR #105 at `ac01836b8548c147690f33cffdd66fd7b7c5af74`. G2 exact-head hosted CI and Operator-local verification both passed on `60790c6e4ec19393f0c236238ab290c8df60fb05` (953 passed, 113 warnings). G3–G6 remain unauthorized. No B4.4 closeout is claimed.
+**B4.4 remains in progress.** G1 is complete and merged by PR #103; G2 is complete and merged by PR #105 at `ac01836b8548c147690f33cffdd66fd7b7c5af74`. G2 exact-head hosted CI and Operator-local verification both passed on `60790c6e4ec19393f0c236238ab290c8df60fb05` (953 passed, 113 warnings). G3 is authorized and in progress; G4–G6 remain unauthorized. No B4.4 closeout is claimed.
