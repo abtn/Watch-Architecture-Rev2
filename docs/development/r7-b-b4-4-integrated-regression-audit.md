@@ -86,6 +86,7 @@ The test has since been strengthened to assert exactly one terminal Event across
 **Disposition:** G3 is complete and merged through PR #107 at `647526c44d26e61069c23ddd2bc4ceaf2c15b713`. G4 documentation planning is authorized and recorded in [the extracted G4 plan](r7-b-b4-4-g4-revise-revalidate-sequence-plan.md); G4 implementation has not started and awaits explicit authorization. G5 and G6 remain unauthorized; B5, B6, and R7-C remain unauthorized.
 
 ### G4 — One integrated revise → revalidate sequence on the same item
+**Status: PLAN DOCUMENTED ONLY — documentation planning authorized 2026-11-12; implementation not started.** See [the extracted G4 plan](r7-b-b4-4-g4-revise-revalidate-sequence-plan.md) for the bounded sequence, stale-assessment proof, history reconstruction, projection eligibility, acceptance criteria, and exclusions.
 The identified revise and revalidate commit tests establish each operation in separate fixtures. The audit did not identify a single end-to-end regression that exercises both operation paths sequentially on the same canonical item, including assessment freshness across the pointer/version change.
 **Required proof:** revise an item, then obtain a fresh revalidation assessment against the resulting current state after the item enters needs_review; prove the old assessment/target binding cannot be reused, then revalidate and verify both transitions in reconstructed history and projection eligibility. Keep this test bounded to B4 operations.
 ### G5 — Revalidation rejection replay and decision-record idempotency
