@@ -2598,6 +2598,7 @@ def test_original_revalidation_approval_replays_after_later_history_transition(
     assert replay.learning_change_id == original.learning_change_id
     assert replay.knowledge_item_id == original.knowledge_item_id
     assert replay.committed_at == original.committed_at
+    assert original.outcome_id is not None
     assert replay.outcome_id == original.outcome_id
 
     with session_factory() as session:
@@ -2623,18 +2624,27 @@ def test_original_revalidation_approval_replays_after_later_history_transition(
                 Event.type == "learning_change_accepted",
             )
         ) == 1
-        assert session.scalar(
-            select(func.count(Event.id)).where(
-                Event.task_id == original.task_id,
-                Event.type == "task_completed",
+        terminal_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == original.task_id,
+                    Event.type.in_({"task_completed", "task_failed"}),
+                )
             )
-        ) == 1
-        assert session.scalar(
-            select(func.count(Outcome.id)).where(
-                Outcome.recorded_by_task_id == original.task_id,
-                Outcome.outcome_type == "task_execution",
+        )
+        assert len(terminal_events) == 1
+        assert terminal_events[0].type == "task_completed"
+
+        original_outcomes = list(
+            session.scalars(
+                select(Outcome).where(
+                    Outcome.recorded_by_task_id == original.task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
             )
-        ) == 1
+        )
+        assert len(original_outcomes) == 1
+        assert original_outcomes[0].id == original.outcome_id == replay.outcome_id
         assert session.scalar(
             select(func.count(Event.id)).where(
                 Event.task_id == later.task_id,
