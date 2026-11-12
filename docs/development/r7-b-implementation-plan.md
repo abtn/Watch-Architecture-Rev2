@@ -819,7 +819,7 @@ See the [B4.0 architecture decision](r7-b-b4-0-architecture-decision.md) for the
 
 ### B4.4 — Integrated regression and closeout
 
-**Status: IN PROGRESS — G1 and G2 complete and merged; G3–G6 unauthorized.** The audit began from exact merged-main SHA `5f37927ff33d9e740c0ff56512d261dace36ab67`; see [the B4.4 audit record](r7-b-b4-4-integrated-regression-audit.md). G1 is merged in PR #103 at `313f379e75f3ab40d0805de371caa8745b998add`. G2 is merged in PR #105 at `ac01836b8548c147690f33cffdd66fd7b7c5af74` from exact PR head `60790c6e4ec19393f0c236238ab290c8df60fb05`; hosted CI run #43182375964 and Operator-local exact-head verification both passed (953 passed, 113 warnings).
+**Status: IN PROGRESS — G1 and G2 complete and merged; G3 authorized and in implementation; G4–G6 unauthorized.** The audit began from exact merged-main SHA `5f37927ff33d9e740c0ff56512d261dace36ab67`; see [the B4.4 audit record](r7-b-b4-4-integrated-regression-audit.md). G1 is merged in PR #103 at `313f379e75f3ab40d0805de371caa8745b998add`. G2 is merged in PR #105 at `ac01836b8548c147690f33cffdd66fd7b7c5af74` from exact PR head `60790c6e4ec19393f0c236238ab290c8df60fb05`; hosted CI run #43182375964 and Operator-local exact-head verification both passed (953 passed, 113 warnings).
 
 **Goal:** prove the combined B4.1/B4.2/B4.3 contracts and commits across lifecycle invariants, true concurrency, stale assessments, TaskRuntime retry/recovery/replay, projection visibility, and exact-head hosted CI; then complete the Operator source/diff review.
 
