@@ -103,7 +103,7 @@ The revise approval-binding test uses a needs_review target, and the history uni
 - If a required proof cannot be established without changing frozen B0/B1/B2 semantics, schema, or authority boundaries, stop and report the smallest blocker.
 ## 6. B4.4 sequence
 1. **Audit baseline — recorded here:** inspect exact merged main and map existing source/tests to the frozen B4 requirements.
-2. **Close regression gaps G1–G6:** implement only missing deterministic tests and minimal demonstrated corrections.
+2. **Close regression gaps G1–G6 in separately authorized slices:** G1–G3 are complete; G4 currently has documentation-planning authorization only; do not begin G4 implementation until separately authorized; G5 and G6 remain unauthorized.
 3. **Run exact-head hosted CI:** fresh disposable PostgreSQL migration/single-head, Ruff, Mypy, git diff --check origin/${GITHUB_BASE_REF}...HEAD, full pytest, and hosted disposable-service cleanup. Record exact PR head and workflow run.
 4. **Operator source/diff review:** review the complete final source/test diff and the frozen B4.1 contract matrices. CI does not replace this review.
 5. **Documentation closeout:** reconcile PLAN, CHANGE_MAP, this implementation plan, and docs/testing; record B4 exit only after all required evidence and explicit Operator acceptance.
