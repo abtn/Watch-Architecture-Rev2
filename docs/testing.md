@@ -891,9 +891,9 @@ The initial implementation and pre-reconciliation PR heads are historical eviden
 No migration, new Task type, second runtime, dispatcher, scheduler, API, authentication subsystem, production evaluator/provider, B5 lifecycle commit, B6, or R7-C work is included. B5, B6, and R7-C remain unauthorized.
 
 
-## R7-B B4.4 — integrated regression audit (STARTED — 2026-11-11)
+## R7-B B4.4 — integrated regression audit (IN PROGRESS — G1/G2 COMPLETE)
 
-The initial read-only source/test audit is recorded in [the B4.4 audit](development/r7-b-b4-4-integrated-regression-audit.md), against exact merged main SHA 5f37927ff33d9e740c0ff56512d261dace36ab67. The audit maps existing B4.1/B4.2/B4.3 tests and records six remaining regression-proof gaps: simultaneous PostgreSQL compare-and-set race; revalidation approval recovery after canonical decision commit; revalidation approval replay after a later history transition; one same-item revise→revalidate sequence with fresh assessment binding; and rejected-revalidation approval replay/idempotency counts; and accepted revise from a needs_review item. These are evidence gaps, not confirmed implementation defects. No B4.4 test implementation or hosted run is claimed at this start record.
+The initial read-only source/test audit is recorded in [the B4.4 audit](development/r7-b-b4-4-integrated-regression-audit.md), against exact merged main SHA 5f37927ff33d9e740c0ff56512d261dace36ab67. It identified six regression-proof gaps. G1 (concurrent revise/revalidate application and PostgreSQL CAS proofs) and G2 (accepted-revalidation approval recovery after canonical decision commit) are complete and merged. G3–G6 remain evidence gaps, not confirmed implementation defects, and remain unauthorized.
 
 ### Supplemental B4.3 Operator-local verification on exact merged-main tree
 
@@ -924,3 +924,14 @@ This is a planned proof, not a completed test or verification result. The audit 
 The authorized scope is to exercise that exact boundary through the existing `TaskRuntime`: commit an accepted revalidation, inject a one-shot interruption before approval Task finalization, recover the same Task using its original request and identity, and prove exactly one terminal Outcome/Snapshot/Event set with no duplicate KnowledgeItem transition or decision Event. Verify repeated recovery is idempotent. Add rejected-revalidation interrupted recovery only if the common typed-failure path is not already covered by direct operation-specific evidence.
 
 Use the smallest deterministic test and existing test infrastructure. A production correction is permitted only if the regression demonstrates a defect. No migration, schema, lock, Task type, runtime, dispatcher, scheduler, API/authentication, provider/evaluator, or approval-scope change is authorized. G3–G6 remain unauthorized; B5, B6, and R7-C remain unauthorized.
+
+
+### B4.4 G2 — Accepted-revalidation approval crash/recovery (PR #105 merged 2026-11-12)
+
+PR [#105](https://github.com/abtn/Watch-Architecture-Rev2/pull/105) was squash-merged at `ac01836b8548c147690f33cffdd66fd7b7c5af74` from exact PR head `60790c6e4ec19393f0c236238ab290c8df60fb05`. Its sole changed file is `tests/test_experience_distiller.py`; no production source, schema, or migration changed.
+
+The regression `test_operator_commits_and_recovers_revalidation_after_finalize_crash` uses the real trusted Operator approval path and injects a deterministic one-shot interruption after the accepted revalidation decision commits but before TaskRuntime finalization. It verifies recovery of the same approval Task through `TaskRuntime.recover_interrupted`, preservation of the immutable approval request and assessment provenance, exactly one terminal Outcome/Snapshot/Event set, no duplicate KnowledgeItem transition or decision Event, and idempotent repeated recovery/replay. The interruption is simulated at the commit/finalization boundary; it is not an OS process kill. The proof covers accepted revalidation only and does not claim G5 rejected-approval replay.
+
+**Hosted exact-head CI:** run [#43182375964](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43182375964) passed on `60790c6e4ec19393f0c236238ab290c8df60fb05`: fresh PostgreSQL migration/single-head, locked dependency install, Ruff, Mypy, patch whitespace, full suite (**953 passed, 113 warnings**), and disposable-container cleanup.
+
+**Operator-local exact-head verification:** the same SHA passed migration/single-head at `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), `git diff --check`, and full pytest (**953 passed, 113 warnings in 286.09s**). The worktree was clean; `DATABASE_URL` and `TEST_DATABASE_URL` were restored; the disposable container was removed.
