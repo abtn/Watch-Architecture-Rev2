@@ -23,6 +23,7 @@ from core.knowledge_approval import (
 )
 from core.models import Event, LearningChange, Task, Team, TeamPolicy
 from core.operator_approval import (
+    _STALE_OPERATOR_APPROVAL_REASONS,
     OperatorApprovalValidationError,
     build_request_fingerprint,
     canonical_operator_identity,
@@ -38,13 +39,6 @@ _REQUEST_EVENT_TYPE = "operator_task_requested"
 _ALLOWED_WRITES = ["LearningChange", "KnowledgeItem"]
 _TASK_BUDGET = {"max_tool_calls": 0, "max_cost_usd": 0.0}
 _TASK_MAX_ATTEMPTS = 3
-_STALE_OPERATOR_APPROVAL_REASONS = frozenset(
-    {
-        "knowledge_quality_revision_target_stale",
-        "knowledge_revalidation_target_stale",
-    }
-)
-
 # Fixed namespace: the same host request key maps to the same Task after restart.
 _TASK_ID_NAMESPACE = UUID("a0ad72d4-3d4c-4a32-8d1e-61c4b36d0ec2")
 

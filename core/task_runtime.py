@@ -36,6 +36,7 @@ from core.models import (
 )
 from core.objectives import ObjectiveService, TaskNotFound
 from core.operator_approval import (
+    _STALE_OPERATOR_APPROVAL_REASONS,
     OperatorApprovalValidationError,
     is_supported_learning_change,
     parse_request_event_payload,
@@ -1626,7 +1627,7 @@ class TaskRuntime:
             )
         except TaskNotEligible as error:
             if (
-                str(error) not in core.operator_application._STALE_OPERATOR_APPROVAL_REASONS
+                str(error) not in _STALE_OPERATOR_APPROVAL_REASONS
                 or task.status not in {"running", "failed"}
             ):
                 raise TaskNotFinalizable(
