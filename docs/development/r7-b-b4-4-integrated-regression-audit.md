@@ -71,7 +71,7 @@ The interruption is deterministic exception injection at the exact boundary, not
 
 **Disposition:** G2 is complete. No production correction was required. G4–G6 remain unauthorized; B5, B6, and R7-C remain unauthorized.
 ### G3 — Revalidation approval replay after a later history transition
-**Status: VERIFIED — PR #107 OPEN; merge pending explicit Operator approval.**
+**Status: COMPLETE — PR #107 MERGED (2026-11-12).
 
 The regression `test_original_revalidation_approval_replays_after_later_history_transition` was added in `tests/test_experience_distiller.py`. It uses the existing fixture and helpers, accepts the revalidation and later revise through the trusted `OperatorApplicationAdapter` and canonical commit path, then replays the original revalidation request with its original idempotency key after the later revision is current.
 
