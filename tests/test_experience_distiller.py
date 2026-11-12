@@ -2177,156 +2177,7 @@ def test_revalidation_proposal_replays_after_task_completion(
         ) == before_events
 
 
-def test_operator_commits_supported_revalidation_without_changing_content(
-    session_factory,
-    snapshot_store,
-    distillation_fixture,
-    monkeypatch,
-):
-    fixture = distillation_fixture(
-        2, include_contrary=False, review_interval_days=1
-    )
-    runtime = TaskRuntime(session_factory, snapshot_store)
-    create_proposal = _distiller(
-        session_factory, snapshot_store, _provider()
-    ).propose(
-        fixture.distillation_task_id,
-        [case.evaluation_id for case in fixture.cases],
-    )
-    runtime.finalize(
-        TerminalObservation(
-            task_id=fixture.distillation_task_id,
-            attempt=1,
-            result_category="success_learning_change_proposed",
-            observed_at=datetime.now(timezone.utc),
-            learning_change_id=create_proposal.learning_change_id,
-        )
-    )
-    create_task_id, create_attempt, create_principal = _create_admitted_approval_task(
-        session_factory,
-        snapshot_store,
-        fixture.team_id,
-        create_proposal.learning_change_id,
-    )
-    created = LearningCommitService(session_factory, snapshot_store).decide(
-        create_task_id, create_attempt, create_principal
-    )
-    assert created.knowledge_item_id is not None
-    runtime.finalize(
-        TerminalObservation(
-            task_id=create_task_id,
-            attempt=create_attempt,
-            result_category="success_learning_change_accepted",
-            observed_at=created.committed_at,
-            learning_change_id=created.learning_change_id,
-        )
-    )
-
-    _, revalidation_change_id = _create_revalidation_proposal(
-        session_factory,
-        snapshot_store,
-        fixture,
-        created.knowledge_item_id,
-    )
-    assessment_service = KnowledgeRevalidationAssessmentService(
-        session_factory, snapshot_store
-    )
-    assessment_task_id = assessment_service.create_task(revalidation_change_id)
-    assessment_runner = KnowledgeRevalidationAssessmentTaskRunner(
-        session_factory,
-        snapshot_store,
-        _FakeKnowledgeRevalidationProvider(),
-    )
-    assessment_result = assessment_runner.run(assessment_task_id)
-    assert assessment_result.status == "done"
-
-    with session_factory() as session:
-        item = session.get(KnowledgeItem, created.knowledge_item_id)
-        assert item is not None
-        original_state = knowledge_item_state(item)
-        original_content_hash = knowledge_item_content_hash(item)
-        original_review_after = item.review_after
-        assert original_review_after is not None
-        assert item.status == "needs_review"
-
-    approval_task_id, approval_attempt, principal = _create_admitted_approval_task(
-        session_factory,
-        snapshot_store,
-        fixture.team_id,
-        revalidation_change_id,
-    )
-    import core.learning_commit as learning_commit
-
-    review_commit_at = original_review_after + timedelta(seconds=3)
-
-    class ReviewCommitDateTime(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            if tz is not None:
-                return review_commit_at
-            return review_commit_at.replace(tzinfo=None)
-
-    with monkeypatch.context() as patch:
-        patch.setattr(
-            learning_commit,
-            "datetime",
-            SimpleNamespace(
-                datetime=ReviewCommitDateTime,
-                timezone=timezone,
-                timedelta=timedelta,
-            ),
-        )
-        committed = LearningCommitService(
-            session_factory, snapshot_store
-        ).decide(approval_task_id, approval_attempt, principal)
-    assert committed.knowledge_item_id == created.knowledge_item_id
-
-    runtime.finalize(
-        TerminalObservation(
-            task_id=approval_task_id,
-            attempt=approval_attempt,
-            result_category="success_learning_change_accepted",
-            observed_at=committed.committed_at,
-            learning_change_id=revalidation_change_id,
-        )
-    )
-
-    with session_factory() as session:
-        item = session.get(KnowledgeItem, created.knowledge_item_id)
-        change = session.get(LearningChange, revalidation_change_id)
-        decision_event = session.scalar(
-            select(Event).where(
-                Event.task_id == approval_task_id,
-                Event.type == "learning_change_accepted",
-            )
-        )
-        assert item is not None and change is not None and decision_event is not None
-        committed_item_state = knowledge_item_state(item)
-        assert item.status == "active"
-        assert item.version == original_state["version"]
-        assert item.current_learning_change_id == revalidation_change_id
-        assert item.origin_learning_change_id == UUID(
-            original_state["origin_learning_change_id"]
-        )
-        assert item.last_validated_at == committed.committed_at
-        assert item.review_after == committed.committed_at + timedelta(days=1)
-        assert knowledge_item_content_hash(item) == original_content_hash
-        assert committed_item_state["status"] == "active"
-        assert committed_item_state["version"] == original_state["version"]
-        assert change.status == "accepted"
-        assert change.committed_state is not None
-        assert decision_event.payload["knowledge_revalidation_assessment_id"]
-        assert decision_event.payload["knowledge_revalidation_assessment_hash"]
-
-    replay = LearningCommitService(session_factory, snapshot_store).decide(
-        approval_task_id, approval_attempt, principal
-    )
-    assert replay.replayed is True
-    assert replay.knowledge_item_id == created.knowledge_item_id
-
-
-
-def test_operator_revalidation_decision_recovers_after_commit_before_finalization(
+def test_operator_commits_and_recovers_revalidation_after_finalize_crash(
     session_factory,
     snapshot_store,
     distillation_fixture,
@@ -2478,28 +2329,32 @@ def test_operator_revalidation_decision_recovers_after_commit_before_finalizatio
         assert knowledge_item_content_hash(item) == original_content_hash
         assert len(request_events) == 1
         assert len(decision_events) == 1
-        assert decision_events[0].payload["knowledge_revalidation_assessment_id"]
-        assert decision_events[0].payload["knowledge_revalidation_assessment_hash"]
         assert outcomes == []
         original_request_payload = dict(request_events[0].payload)
         original_decision_payload = dict(decision_events[0].payload)
+        binding = original_request_payload["approval_binding"]
+        assert decision_events[0].payload["knowledge_revalidation_assessment_id"] == (
+            binding["assessment_id"]
+        )
+        assert decision_events[0].payload["knowledge_revalidation_assessment_hash"] == (
+            binding["assessment_payload_hash"]
+        )
         committed_item_state = knowledge_item_state(item)
         committed_at = change.committed_at
         assert committed_at == review_commit_at
-        assert committed_item_state["current_learning_change_id"] == str(
-            revalidation_change_id
-        )
+        assert item.last_validated_at == committed_at
+        assert item.review_after == committed_at + timedelta(days=1)
 
     now = datetime.now(timezone.utc)
     with session_factory.begin() as session:
-        start = session.scalar(
+        start_event = session.scalar(
             select(Event).where(
                 Event.task_id == request_result.task_id,
                 Event.type == "task_started",
             )
         )
-        assert start is not None
-        start.created_at = now - timedelta(seconds=61)
+        assert start_event is not None
+        start_event.created_at = now - timedelta(seconds=61)
 
     recovery = runtime.recover_interrupted(now=now)
     assert recovery.completed == (request_result.task_id,)
@@ -2558,8 +2413,7 @@ def test_operator_revalidation_decision_recovers_after_commit_before_finalizatio
         outcome = outcomes[0]
         assert outcome.observation_snapshot_ref is not None
         assert outcome.observation_hash is not None
-        snapshot = snapshot_store.read(outcome.observation_snapshot_ref)
-        assert snapshot
+        assert snapshot_store.read(outcome.observation_snapshot_ref)
 
     repeated_recovery = runtime.recover_interrupted(
         now=now + timedelta(seconds=61)
@@ -2591,7 +2445,6 @@ def test_operator_revalidation_decision_recovers_after_commit_before_finalizatio
         ) == 1
 
     _cleanup_operator_decision_task(session_factory, request_result.task_id)
-
 
 def test_concurrent_revise_approvals_advance_one_knowledge_item_once(
     session_factory,
