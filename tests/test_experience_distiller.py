@@ -2231,6 +2231,7 @@ def test_operator_commits_and_recovers_revalidation_after_finalize_crash(
     assessment_task_id = KnowledgeRevalidationAssessmentService(
         session_factory, snapshot_store
     ).create_task(revalidation_change_id)
+    fixture.extra_task_ids.append(assessment_task_id)
     assessment_result = KnowledgeRevalidationAssessmentTaskRunner(
         session_factory,
         snapshot_store,
