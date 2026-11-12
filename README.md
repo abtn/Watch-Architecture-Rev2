@@ -27,11 +27,11 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** B3 is formally closed. B4.1 proposal/assessment contracts, B4.2 revise commit, and B4.3 revalidate commit are merged. B4.4 is in progress: G1 concurrent approval/CAS proofs, G2 accepted-revalidation crash/recovery proof, and G3 later-history replay proof are complete and merged (PRs [#103](https://github.com/abtn/Watch-Architecture-Rev2/pull/103), [#105](https://github.com/abtn/Watch-Architecture-Rev2/pull/105), and [#107](https://github.com/abtn/Watch-Architecture-Rev2/pull/107)). G4 has documentation-planning authorization only; implementation awaits separate explicit authorization. G5 and G6 remain unauthorized. B5, B6, and R7-C remain unauthorized. See [PLAN.md](PLAN.md), [the B4.0 architecture decision](docs/development/r7-b-b4-0-architecture-decision.md), [the B4.4 regression audit](docs/development/r7-b-b4-4-integrated-regression-audit.md), [the extracted G4 plan](docs/development/r7-b-b4-4-g4-revise-revalidate-sequence-plan.md), and [testing evidence](docs/testing.md).
+- **R7:** B3 is formally closed. B4.1 proposal/assessment contracts, B4.2 revise commit, and B4.3 revalidate commit are merged. B4.4 G1–G4 are complete and merged (PRs [#103](https://github.com/abtn/Watch-Architecture-Rev2/pull/103), [#105](https://github.com/abtn/Watch-Architecture-Rev2/pull/105), [#107](https://github.com/abtn/Watch-Architecture-Rev2/pull/107), and [#109](https://github.com/abtn/Watch-Architecture-Rev2/pull/109)). G5 has documentation-planning authorization only; implementation requires a separate explicit decision. G6 remains unauthorized. B5, B6, and R7-C remain unauthorized. See [PLAN.md](PLAN.md), [the B4.4 regression audit](docs/development/r7-b-b4-4-integrated-regression-audit.md), [the G5 plan](docs/development/r7-b-b4-4-g5-rejected-revalidation-replay-plan.md), and [testing evidence](docs/testing.md).
 
 ## Future plan
 
-- **R8:** test the same approach across different kinds of teams and work.
+- **R8 (target: November 23, 2026):** test the same shared architecture across newsroom, development-team, and generalist scenarios. Entry is gated by B4.4 closure and the November 15 acceptance gate; see the [R8 delivery plan](docs/development/r8-delivery-plan.md).
 - **R9:** make the development and review process more repeatable and reliable.
 
 ## Project documentation
