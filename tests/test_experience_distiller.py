@@ -5822,6 +5822,11 @@ def _cleanup_operator_decision_task(
                 )
             )
             session.execute(
+                delete(KnowledgeRevalidationAssessment).where(
+                    KnowledgeRevalidationAssessment.learning_change_id.in_(change_ids)
+                )
+            )
+            session.execute(
                 delete(KnowledgeItem).where(
                     KnowledgeItem.origin_learning_change_id.in_(change_ids)
                 )
