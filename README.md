@@ -27,7 +27,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** B3 is formally closed. B4.1 is merged in PR #97; B4.2 revise canonical commit is merged in PR #99 at `1c69073990b8ccd7a1ee29a806faf04c066d95ad` after exact-head CI run #897 passed (951 tests, 113 warnings). B4.3 revalidate canonical commit is implemented on [PR #100](https://github.com/abtn/Watch-Architecture-Rev2/pull/100); exact-head hosted CI run #923 passed (949 tests, 113 warnings). Operator review/merge is pending. B5, B6, and R7-C remain unauthorized. See [PLAN.md](PLAN.md), [the B4.0 architecture decision](docs/development/r7-b-b4-0-architecture-decision.md), and [testing evidence](docs/testing.md).
+- **R7:** B3 is formally closed. B4.1 proposal/assessment contracts, B4.2 revise commit, and B4.3 revalidate commit are merged. B4.4 is in progress: G1 concurrent approval/CAS regression proofs and G2 accepted-revalidation crash/recovery proof are complete and merged (PRs [#103](https://github.com/abtn/Watch-Architecture-Rev2/pull/103) and [#105](https://github.com/abtn/Watch-Architecture-Rev2/pull/105)). G3–G6 remain separate regression-proof gates; G3 is the next authorized task. B5, B6, and R7-C remain unauthorized. See [PLAN.md](PLAN.md), [the B4.0 architecture decision](docs/development/r7-b-b4-0-architecture-decision.md), [the B4.4 regression audit](docs/development/r7-b-b4-4-integrated-regression-audit.md), and [testing evidence](docs/testing.md).
 
 ## Future plan
 
