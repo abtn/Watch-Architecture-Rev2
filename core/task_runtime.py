@@ -142,13 +142,6 @@ _OPERATOR_TASK_TYPE = "approve_learning_change"
 _OPERATOR_REQUEST_EVENT_TYPE = "operator_task_requested"
 _OPERATOR_ALLOWED_WRITES = ["LearningChange", "KnowledgeItem"]
 _OPERATOR_MAX_ATTEMPTS = 3
-_STALE_OPERATOR_APPROVAL_REASONS = frozenset(
-    {
-        "knowledge_quality_revision_target_stale",
-        "knowledge_revalidation_target_stale",
-    }
-)
-
 _EVALUATION_TASK_TYPE = "evaluate_outcome"
 _EVALUATION_REQUEST_EVENT_TYPE = "evaluation_task_requested"
 _EVALUATION_ALLOWED_WRITES = ["Evaluation", "EvidenceLink"]
@@ -1633,7 +1626,7 @@ class TaskRuntime:
             )
         except TaskNotEligible as error:
             if (
-                str(error) not in _STALE_OPERATOR_APPROVAL_REASONS
+                str(error) not in core.operator_application._STALE_OPERATOR_APPROVAL_REASONS
                 or task.status not in {"running", "failed"}
             ):
                 raise TaskNotFinalizable(
