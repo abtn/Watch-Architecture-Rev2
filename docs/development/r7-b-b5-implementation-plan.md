@@ -1,11 +1,13 @@
 # R7-B B5 — Candidate Creation, Supersession, and Retirement Plan
 
-**Status:** Accepted by Operator on 2026-11-13; B5.1 implementation authorized
-**Planning authorization:** Granted 2026-11-13
-**Implementation authorization:** B5.1 only; B5.2–B5.4 require separate checkpoint authorization
-**Baseline:** `main` after PR #114 merge `e21216d1870a1c0f3f2fbf7c895dc20d9c8c2cd6`; migration head `0018_r7b_lifecycle_review_date`
+**Status:** Accepted by Operator on 2026-11-13; B5.1 implementation complete; B5.2 documentation checkpoint in progress
+**Planning authorization:** Granted 2026-11-13 for the B5 sequence and its checkpoint plans
+**Implementation authorization:** B5.1 only; completed and merged. B5.2–B5.4 require separate checkpoint authorization
+**Baseline:** `main` after PR #116 squash merge `d946342907dc1c384c73de18216a5c018dd48e2f`; migration head `0018_r7b_lifecycle_review_date`
 
-**B5.1 implementation status (2026-11-13):** Draft implementation PR [#116](https://github.com/abtn/Watch-Architecture-Rev2/pull/116) is open. It extends the existing create proposal/approval path, binds the predecessor snapshot, enforces D7 scheduling and Team-scoped graph locking, and adds integrated regression coverage. Hosted CI passed on exact head `56fe206634875ac8b6e80f93d7190c320b80a9e0` in run [#43407484704](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43407484704): fresh PostgreSQL migration/head verification, Ruff, Mypy, patch whitespace, and full suite (**961 passed, 113 warnings in 160.22s**). Local exact-head verification and Operator acceptance are not yet recorded. No B5.1 implementation has been merged.
+**B5.1 implementation closeout (2026-11-13):** PR [#116](https://github.com/abtn/Watch-Architecture-Rev2/pull/116) merged to `main` at `d946342907dc1c384c73de18216a5c018dd48e2f`. Exact PR head `b9fe3ff56347ca456f0db466d07e109a311501ca` passed hosted CI run [#43408281624](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43408281624): fresh PostgreSQL migration/head verification, Ruff, Mypy, patch whitespace, and full suite (**961 passed, 113 warnings in 148.07s**). Operator-local exact-head verification also passed: disposable PostgreSQL migration to `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), and full suite (**961 passed, 113 warnings in 315.33s**); the disposable container was removed, both database environment variables were restored, and the worktree remained clean. B5.1 is complete; this does not authorize B5.2 implementation.
+
+**B5.2 documentation checkpoint (2026-11-13):** The current documentation change records B5.1 closeout and prepares the Retire checkpoint against the already accepted B5 contract. It does not modify application code, tests, schema, migrations, or implementation authorization. B5.2 implementation remains separately gated.
 
 **Scope authority:** Accepted R7-B B0 design and B4.0 architecture decision; this plan sequences the already accepted B5 design and does not replace it.
 
@@ -201,7 +203,7 @@ Do not weaken an acceptance criterion to preserve schedule.
 
 This document authorizes planning and review of B5 only. It does not authorize production implementation, schema changes, migrations, or any B6/R7-C/R8 work.
 
-This plan was explicitly accepted by the Operator on 2026-11-13, with implementation authorization limited to B5.1. B5.2–B5.4 remain gated by separate checkpoint authorization. Each slice requires its own review and verification.
+This plan was explicitly accepted by the Operator on 2026-11-13. B5.1 implementation was separately authorized, verified, and merged. The B5.2 documentation checkpoint may refine the existing Retire scope and its verification sequence, but does not authorize production implementation, schema changes, or migrations. B5.2 implementation requires a separate explicit checkpoint authorization. B5.3 and B5.4 remain separately gated. B6 and R7-C remain unauthorized.
 
 ## 8. Source authority
 
