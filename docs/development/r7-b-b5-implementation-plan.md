@@ -1,8 +1,8 @@
 # R7-B B5 — Candidate Creation, Supersession, and Retirement Plan
 
-**Status:** Accepted by Operator on 2026-11-13; B5.1 implementation authorized  
-**Planning authorization:** Granted 2026-11-13  
-**Implementation authorization:** B5.1 only; B5.2–B5.4 require separate checkpoint authorization  
+**Status:** Accepted by Operator on 2026-11-13; B5.1 implementation authorized
+**Planning authorization:** Granted 2026-11-13
+**Implementation authorization:** B5.1 only; B5.2–B5.4 require separate checkpoint authorization
 **Baseline:** `main` after PR #114 merge `e21216d1870a1c0f3f2fbf7c895dc20d9c8c2cd6`; migration head `0018_r7b_lifecycle_review_date`
 **Scope authority:** Accepted R7-B B0 design and B4.0 architecture decision; this plan sequences the already accepted B5 design and does not replace it.
 
