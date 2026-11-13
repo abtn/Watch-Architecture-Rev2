@@ -4149,8 +4149,8 @@ class TaskRuntime:
                 or "supersedes_target_binding" in proposal_state
             )
             if has_successor:
-                from core.experience_distiller import DistilledExperienceDraft
                 from core.evaluations import _sha256_json as _proposal_sha256_json
+                from core.experience_distiller import DistilledExperienceDraft
 
                 expected_keys = set(DistilledExperienceDraft.model_fields) | {
                     "evidence_basis_hash",
