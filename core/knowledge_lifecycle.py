@@ -743,6 +743,16 @@ def _proposal_context(
         KNOWLEDGE_CONTENT_HASH_SCHEME,
         {field: target_state[field] for field in CONTENT_FIELDS},
     )
+    if require_current:
+        team = session.scalar(
+            select(Team)
+            .where(Team.id == learning_change.team_id)
+            .with_for_update()
+        )
+        if team is None or team.status != "active":
+            raise KnowledgeLifecycleAssessmentError(
+                "knowledge_lifecycle_team_not_active"
+            )
     target = session.scalar(
         select(KnowledgeItem).where(
             KnowledgeItem.id == learning_change.target_id,
