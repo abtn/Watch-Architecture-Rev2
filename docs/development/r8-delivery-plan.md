@@ -48,7 +48,7 @@ Completed:
 6. Squash-merged PR #111 to main at 09cb8e6dfae078662e55631ae2f79e31fa8fb8cf.
 7. Merged the G6 documentation plan in PR #112, then received separate Operator authorization and opened the test-only implementation PR #113.
 
-Expected result: G5 complete; G6 scope and execution sequence documented. G6 implementation authorization was subsequently granted; PR #113 is in progress.
+Expected result: G5 complete; G6 scope and execution sequence documented. Separate G6 implementation authorization was subsequently granted, and its bounded test-only proof is complete in PR #113.
 
 ### November 13–14 — G6 implementation and verification (complete; B4.4 closeout pending)
 
