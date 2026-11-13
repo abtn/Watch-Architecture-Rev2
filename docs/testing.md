@@ -949,10 +949,6 @@ The regression test_revise_then_revalidate_rejects_stale_pre_revision_assessment
 
 **G4 disposition:** complete and merged. G5 is complete and merged by PR #111; its exact-head local and hosted verification is recorded below.
 
-## R7-B B4.4 G5 — Rejected revalidation approval replay
-
-**Status: PLAN DOCUMENTED ONLY — implementation not authorized.** The G5 plan specifies a focused regression through the trusted OperatorApplicationAdapter. It must replay the exact original rejected request and prove the original decision, Task, Event and Outcome identities are returned without duplicate records or KnowledgeItem mutation. G5 is not complete until its separately authorized implementation, focused/full verification, exact-head hosted CI, and Operator acceptance are recorded.
-
 ## R7-B B4.4 G5 — Rejected revalidation approval replay (PR #111 merged 2026-11-13)
 
 PR [#111](https://github.com/abtn/Watch-Architecture-Rev2/pull/111) was squash-merged to `main` at `09cb8e6dfae078662e55631ae2f79e31fa8fb8cf` from exact PR head `89710b033d5c2d7025c18ba84e901f6fb09ad87c`. The sole changed file was `tests/test_experience_distiller.py`; no production source, schema, migration, dependency, runtime, or approval-scope change was made.
