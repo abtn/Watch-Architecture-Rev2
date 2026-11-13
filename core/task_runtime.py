@@ -4004,15 +4004,18 @@ class TaskRuntime:
             expected_supersedes_id = learning_change.proposed_state.get(
                 "supersedes_item_id"
             )
-            if expected_supersedes_id is None:
-                successor_link_valid = item.supersedes_item_id is None
-            else:
+            root_state = history.states[0]
+            successor_link_valid = (
+                root_state["supersedes_item_id"] == expected_supersedes_id
+            )
+            if expected_supersedes_id is not None:
                 try:
-                    successor_link_valid = (
-                        item.supersedes_item_id == UUID(expected_supersedes_id)
-                        and item.superseded_by_id is None
-                        and item.review_after is not None
-                        and item.review_after > learning_change.committed_at
+                    root_review_after = root_state["review_after"]
+                    successor_link_valid = successor_link_valid and (
+                        isinstance(root_review_after, str)
+                        and datetime.fromisoformat(
+                            root_review_after.replace("Z", "+00:00")
+                        ) > learning_change.committed_at
                     )
                 except (TypeError, ValueError):
                     successor_link_valid = False
