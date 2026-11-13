@@ -24,6 +24,7 @@ from core.learning_history import (
     KnowledgeHistoryError,
     decode_state_snapshot,
     encode_state_snapshot,
+    knowledge_item_content_hash,
     knowledge_item_state,
     reconstruct_knowledge_item_history,
 )
@@ -872,22 +873,11 @@ class LearningCommitService:
                         )
                     try:
                         live_state = knowledge_item_state(target)
-                        live_content_hash = (
-                            "sha256:" + hashlib.sha256(
-                                (
-                                    "watch.r7b.knowledge-content.v2"
-                                    + "\\0"
-                                    + self._evidence_validator._canonical_json_for_hash(
-                                        target
-                                    )
-                                ).encode("utf-8")
-                            ).hexdigest()
-                        )
-                    except Exception as error:
+                        live_content_hash = knowledge_item_content_hash(target)
+                    except KnowledgeHistoryError as error:
                         raise LearningCommitConflict(
                             "retirement_target_state_invalid"
                         ) from error
-                    from core.learning_history import knowledge_item_content_hash
 
                     if (
                         target.team_id != team.id
@@ -896,8 +886,7 @@ class LearningCommitService:
                         or live_state != previous_state
                         or target.current_learning_change_id != pointer
                         or target.version != previous_state["version"]
-                        or knowledge_item_content_hash(target)
-                        != learning_change.proposed_state.get("target_content_hash")
+                        or live_content_hash != lifecycle_assessment.target_content_hash
                     ):
                         raise LearningCommitConflict(
                             "retirement_target_compare_and_set_failed"
