@@ -8098,6 +8098,56 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     started_at = datetime.now(timezone.utc)
     completed_at = started_at + timedelta(seconds=2)
     proposal_hash = "sha256:" + ("d" * 64)
+    def mark_needs_review(item_id: UUID) -> None:
+        with session_factory() as session:
+            item = session.get(KnowledgeItem, item_id)
+            assert item is not None and item.status == "active"
+            review_after = item.review_after
+            assert review_after is not None
+        review_task_id = uuid4()
+        fixture.extra_task_ids.append(review_task_id)
+        review_started_at = review_after - timedelta(seconds=1)
+        with session_factory.begin() as session:
+            session.add(
+                Task(
+                    id=review_task_id,
+                    team_id=fixture.team_id,
+                    task_type="review_knowledge",
+                    status="running",
+                    attempt_count=1,
+                    policy_version=1,
+                    allowed_writes=["KnowledgeItem"],
+                    budget={
+                        "max_tool_calls": 0,
+                        "max_cost_usd": 0.0,
+                        "deadline_seconds": 30,
+                    },
+                    created_at=review_started_at,
+                )
+            )
+            session.flush()
+            session.add(
+                Event(
+                    id=uuid4(),
+                    task_id=review_task_id,
+                    type="task_started",
+                    payload={
+                        "from_status": "pending",
+                        "to_status": "running",
+                        "attempt_count": 1,
+                    },
+                    created_at=review_started_at,
+                )
+            )
+        runtime.finalize(
+            TerminalObservation(
+                task_id=review_task_id,
+                attempt=1,
+                result_category="success_knowledge_reviewed",
+                observed_at=review_after,
+            )
+        )
+
     rationale = {
         "schema_version": 1,
         "summary": "The existing procedure is no longer appropriate for this context.",
@@ -10650,6 +10700,39 @@ def test_b5_2_integrated_retirement_candidate_lifecycle_sequences(
                 Outcome.recorded_by_task_id == ordinary_approval_task
             )
         ) == outcome_count_before_replay
+
+    retired_retry_task_id = _create_proposal_task(session_factory, fixture)
+    with pytest.raises(
+        ExperienceDistillerError,
+        match="revision_target_status_invalid",
+    ):
+        adapter.propose_retirement(
+            _approval_principal(fixture.team_id),
+            task_id=retired_retry_task_id,
+            evaluation_ids=evaluation_ids,
+            target_knowledge_item_id=ordinary_item_id,
+            operator_rationale=rationale,
+        )
+    with session_factory() as session:
+        assert session.scalar(
+            select(func.count(LearningChange.id)).where(
+                LearningChange.proposed_by_task_id == retired_retry_task_id
+            )
+        ) == 0
+
+    needs_review_item_id = create_item()
+    mark_needs_review(needs_review_item_id)
+    with session_factory() as session:
+        needs_review_item = session.get(KnowledgeItem, needs_review_item_id)
+        assert needs_review_item is not None
+        assert needs_review_item.status == "needs_review"
+        needs_review_before = knowledge_item_state(needs_review_item)
+        needs_review_hash = knowledge_item_content_hash(needs_review_item)
+    needs_review_retirement, _, _, _ = retire(needs_review_item_id)
+    assert needs_review_retirement.knowledge_item_id == needs_review_item_id
+    assert_retired_without_semantic_mutation(
+        needs_review_item_id, needs_review_before, needs_review_hash
+    )
 
     # Sequence 2: create candidate -> retire candidate -> replace candidate.
     predecessor_id = create_item()
