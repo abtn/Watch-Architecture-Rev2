@@ -158,7 +158,10 @@ def is_supported_learning_change(
         target_kind == SUPPORTED_LEARNING_CHANGE_TARGET_KIND
         and (
             (operation == "create" and target_id is None)
-            or (operation in {"revise", "revalidate"} and target_id is not None)
+            or (
+                operation in {"revise", "revalidate", "retire"}
+                and target_id is not None
+            )
         )
     )
 
