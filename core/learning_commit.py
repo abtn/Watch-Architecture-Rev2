@@ -435,6 +435,34 @@ class LearningCommitService:
             committed_at = datetime.datetime.now(datetime.timezone.utc)
             review_after: datetime.datetime | None = None
             if decision == "accept":
+                raw_predecessor_id = learning_change.proposed_state.get(
+                    "supersedes_item_id"
+                )
+                if learning_change.operation == "create" and raw_predecessor_id is not None:
+                    try:
+                        predecessor_id = uuid.UUID(raw_predecessor_id)
+                    except (TypeError, ValueError) as error:
+                        raise LearningCommitCorrupt(
+                            "successor_predecessor_id_invalid"
+                        ) from error
+                    predecessor = session.scalar(
+                        select(KnowledgeItem)
+                        .where(
+                            KnowledgeItem.id == predecessor_id,
+                            KnowledgeItem.team_id == task.team_id,
+                        )
+                        .with_for_update()
+                    )
+                    if (
+                        predecessor is None
+                        or predecessor.status != "active"
+                        or predecessor.superseded_by_id is not None
+                        or predecessor.review_after is None
+                        or predecessor.review_after <= committed_at
+                    ):
+                        raise LearningCommitError(
+                            "successor_predecessor_not_d7_eligible"
+                        )
                 try:
                     interval_days = knowledge_item_review_interval_days(
                         current_policy.rules, current_policy.schema_version
