@@ -145,7 +145,7 @@ required for CI.
 
 ## R6-F planned verification
 
-R6-F is divided into four checkpoints. Each requires focused tests, applicable full-suite/static checks, and disposable-PostgreSQL verification for migrations, transaction atomicity, constraints, locking, and replay. The detailed acceptance matrix is in [the R6-F implementation plan](development/r6-f-implementation-plan.md).
+R6-F is divided into four checkpoints. Each requires focused tests, applicable full-suite/static checks, and disposable-PostgreSQL verification for migrations, transaction atomicity, constraints, locking, and replay. The detailed acceptance matrix is in [the R6-F implementation plan](development/historical-r6-f-implementation-plan.md).
 
 | Checkpoint | Required proof |
 |---|---|
@@ -766,7 +766,7 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 
 ## R7-B B3.7 — integrated regression matrix (test implementation complete; B3.8 pending)
 
-The acceptance inventory and complete row-to-test mapping are maintained in [the B3.7 integrated regression matrix](development/r7-b-b3-7-integrated-regression-matrix.md). B3.7 test implementation was separately authorized after B3.6 merged. Every frozen matrix ID is now mapped to concrete tests; no omission was accepted or required.
+The acceptance inventory and complete row-to-test mapping are maintained in [the B3.7 integrated regression matrix](development/historical-r7-b-b3-7-integrated-regression-matrix.md). B3.7 test implementation was separately authorized after B3.6 merged. Every frozen matrix ID is now mapped to concrete tests; no omission was accepted or required.
 
 Merged cumulative checkpoints:
 
@@ -789,7 +789,7 @@ PRs #83 and #88 were superseded and closed after their changes were carried forw
 
 **Verification qualification:** The Operator-local B3.8 exact-head run is recorded below. Its cumulative diff-check qualification is explicit: three Markdown hard-break trailing-space findings were reported in the B3.7 matrix metadata; the cumulative check scoped to the changed Python source/test files passed, and the clean-checkout diff check passed. The whole cumulative diff-check is not represented as clean.
 
-**Status:** B3.7 test implementation and matrix mapping are complete. B3.8 exact-head verification passed with the documented Markdown-only qualification. B3.9 documentation closeout and formal B3 exit are recorded in [the B3 closeout record](development/r7-b-b3-9-closeout.md). B3 is formally closed on 2026-11-10; the approval allowlist remains exactly `{"create"}`, and no lifecycle commit authority is enabled.
+**Status:** B3.7 test implementation and matrix mapping are complete. B3.8 exact-head verification passed with the documented Markdown-only qualification. B3.9 documentation closeout and formal B3 exit are recorded in [the B3 closeout record](development/historical-r7-b-b3-9-closeout.md). B3 is formally closed on 2026-11-10; the approval allowlist remains exactly `{"create"}`, and no lifecycle commit authority is enabled.
 
 ## R7-B B3.8 — Operator-local exact-head verification (2026-11-10)
 
@@ -819,11 +819,11 @@ Focused tests, run independently:
 - The disposable container `watch-b38-exact-ae71b1581782` was removed. `DATABASE_URL` and `TEST_DATABASE_URL` were restored. The checkout returned to clean `main` at `0a588bc43ee6bfab8c6fccd86dbb28c5c2c803dc`.
 - The cumulative diff inventory remained the reviewed 12-file B3.7 set. The scoped cumulative `git diff --check` over `core/knowledge_lifecycle.py` and `tests/test_experience_distiller.py` passed; the clean-checkout `git diff --check` passed.
 
-**Diff-check qualification:** the initial whole cumulative diff-check reported trailing spaces on three Markdown metadata lines (lines 3–5) in `docs/development/r7-b-b3-7-integrated-regression-matrix.md`. Those spaces were Markdown hard-break syntax, not Python source/test whitespace. The full cumulative diff-check is therefore recorded as qualified, not passed. B3.9 normalizes the current matrix metadata formatting; this does not retroactively alter the tested SHA.
+**Diff-check qualification:** the initial whole cumulative diff-check reported trailing spaces on three Markdown metadata lines (lines 3–5) in `docs/development/historical-r7-b-b3-7-integrated-regression-matrix.md`. Those spaces were Markdown hard-break syntax, not Python source/test whitespace. The full cumulative diff-check is therefore recorded as qualified, not passed. B3.9 normalizes the current matrix metadata formatting; this does not retroactively alter the tested SHA.
 
 ## R7-B B3.9 — Documentation closeout and formal B3 exit (2026-11-10)
 
-The closeout traceability matrix and formal exit record are in [r7-b-b3-9-closeout.md](development/r7-b-b3-9-closeout.md). The current status is authoritative in `PLAN.md`. The documentation reconciliation updates PLAN, CHANGE_MAP, CONTEXT, README, testing records, Task documentation, the B3.7 matrix, the R7-B implementation plan, the R7 entry gate, ADR-0032, and the ADR index. No implementation, migration, Task registration, approval expansion, or next-phase work is part of B3.9.
+The closeout traceability matrix and formal exit record are in [historical-r7-b-b3-9-closeout.md](development/historical-r7-b-b3-9-closeout.md). The current status is authoritative in `PLAN.md`. The documentation reconciliation updates PLAN, CHANGE_MAP, CONTEXT, README, testing records, Task documentation, the B3.7 matrix, the R7-B implementation plan, the R7 entry gate, ADR-0032, and the ADR index. No implementation, migration, Task registration, approval expansion, or next-phase work is part of B3.9.
 
 **Formal disposition:** B3 is COMPLETE and formally closed on 2026-11-10 following the Operator's explicit instruction to proceed to B3.9 and establish the formal exit status. B4, B5, B6, and R7-C remain NOT AUTHORIZED and require separate written Operator decisions. The approval allowlist remains exactly `{"create"}`.
 
@@ -961,6 +961,6 @@ The extended `test_rejected_revalidation_does_not_mutate_the_knowledge_item` use
 
 ## R7-B B4.4 G6 — Accepted revise from needs_review (implementation and verification complete)
 
-G6 is the final B4.4 regression proof and is implemented and verified in PR #113. The [G6 plan](development/r7-b-b4-4-g6-needs-review-revise-plan.md) records the frozen acceptance contract, pre-edit coverage map, implementation sequence, and exact verification evidence. The regression proves accepted revise preserves `needs_review`, advances canonical pointer/version once, changes semantic content/hash, clears validation time, derives review scheduling from the pinned policy, reconstructs exact history with the D7 overlay, and keeps stale Team Experience projections out of ordinary retrieval.
+G6 is the final B4.4 regression proof and is implemented and verified in PR #113. The [G6 plan](development/historical-r7-b-b4-4-g6-needs-review-revise-plan.md) records the frozen acceptance contract, pre-edit coverage map, implementation sequence, and exact verification evidence. The regression proves accepted revise preserves `needs_review`, advances canonical pointer/version once, changes semantic content/hash, clears validation time, derives review scheduling from the pinned policy, reconstructs exact history with the D7 overlay, and keeps stale Team Experience projections out of ordinary retrieval.
 
 **Status:** G6's bounded test-only regression is implemented and verified in PR #113. Hosted CI run [#43386762345](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43386762345) passed on exact PR head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh PostgreSQL migration/single-head, Ruff, Mypy (38 source files), patch whitespace, full suite (**956 passed, 113 warnings**), and disposable-container cleanup. Operator-local exact-head verification on `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh disposable PostgreSQL migration reached `0018_r7b_lifecycle_review_date`; the full suite, run first and alone against that fresh database, passed **956 tests with 113 Alembic `path_separator` deprecation warnings in 292.91s**. The script restored the original process `DATABASE_URL` and `TEST_DATABASE_URL`, removed only its disposable container, and confirmed the exact branch/HEAD and clean worktree. The earlier 36-failure run did not reproduce in this isolated full-suite run; its cause remains undetermined. Local Ruff/Mypy and focused-only runs are not claimed; those checks passed in hosted CI. No production correction was required. G6's regression proof is complete; B4.4 remains open pending final closeout review and explicit Operator acceptance.

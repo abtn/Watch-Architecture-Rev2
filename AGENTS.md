@@ -6,6 +6,8 @@ Make the smallest justified change that satisfies the requested slice and its ac
 
 ## 2. Read the authority chain
 
+For documentation roles, active reading order, and historical-record handling, see [docs/documentation-guide.md](docs/documentation-guide.md). It supplements this operating contract; it does not override the authority chain below.
+
 At task start, read `PLAN.md`, `CHANGE_MAP.md`, this file, and only the relevant canonical specs/ADRs/tests. `CONTEXT.md` is an orientation page, not a replacement for the authorities below.
 
 - **Current milestone, gate, next step:** `PLAN.md` only.
@@ -80,11 +82,7 @@ Run the full suite when the scope or milestone requires it. Report skipped check
 
 Database tests must use the repository's configured disposable/test database. Never modify the persistent `watch` database to make tests pass. Never use `docker compose down -v` as generic cleanup. Positively identify the target database before running database-backed tests or migrations; an ambiguous target is a stop condition.
 
-## 8. Workflow-validation record
-
-Only when the task explicitly simulates, audits, or tests the human–agent development workflow, append exactly one chronological evidence-based entry to `docs/development/workflow-validation.md`. Preserve older entries. Verify the appended entry exists before reporting. Ordinary code tasks do not require an entry.
-
-## 9. Reporting
+## 8. Reporting
 
 Always report:
 

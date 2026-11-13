@@ -40,6 +40,6 @@ Stop and report rather than guessing when:
 
 Report exact changed files, commands run and results, assumptions, remaining risks, unrun checks, unresolved decisions, and final Git state if relevant. Distinguish code presence, source-recorded evidence, freshly executed verification, and formal milestone closure.
 
-## Workflow-validation record
+## Archived workflow-validation evidence
 
-When a task explicitly simulates, audits, or tests the development process, append one chronological, evidence-based entry to [`workflow-validation.md`](workflow-validation.md). Preserve historical entries and verify that the append exists. Do not add such an entry for an ordinary implementation task.
+The former workflow-validation log is preserved at [`obsolete-workflow-validation.md`](obsolete-workflow-validation.md) as historical evidence only. It is obsolete and must not receive new entries. Current development work follows the verification and reporting rules in `AGENTS.md` and `docs/testing.md`.
