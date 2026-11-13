@@ -417,8 +417,8 @@ class LearningCommitService:
                 revalidation_assessment_id = str(revalidation_assessment.id)
                 revalidation_assessment_hash = revalidation_assessment.payload_hash
             elif decision == "accept" and learning_change.operation == "retire":
+                from core.knowledge_lifecycle import KnowledgeLifecycleAssessmentError
                 from core.knowledge_lifecycle import (
-                    KnowledgeLifecycleAssessmentError,
                     require_recorded_assessment as require_lifecycle_assessment,
                 )
 
@@ -863,7 +863,12 @@ class LearningCommitService:
                             operation="retire",
                             allow_legacy_root=False,
                         )
-                    except (KnowledgeHistoryError, KeyError, TypeError, ValueError) as error:
+                    except (
+                        KnowledgeHistoryError,
+                        KeyError,
+                        TypeError,
+                        ValueError,
+                    ) as error:
                         raise LearningCommitConflict(
                             "retirement_target_snapshot_invalid"
                         ) from error
@@ -1197,8 +1202,8 @@ class LearningCommitService:
             revalidation_assessment_id = str(revalidation_assessment.id)
             revalidation_assessment_hash = revalidation_assessment.payload_hash
         elif recorded_decision == "accept" and learning_change.operation == "retire":
+            from core.knowledge_lifecycle import KnowledgeLifecycleAssessmentError
             from core.knowledge_lifecycle import (
-                KnowledgeLifecycleAssessmentError,
                 require_recorded_assessment as require_lifecycle_assessment,
             )
 
@@ -1288,7 +1293,8 @@ class LearningCommitService:
                     or learning_change.target_id is None
                 )
             )
-            or learning_change.operation not in {"create", "revise", "revalidate", "retire"}
+            or learning_change.operation
+            not in {"create", "revise", "revalidate", "retire"}
         ):
             raise LearningCommitConflict("learning_change_decision_request_conflict")
 
