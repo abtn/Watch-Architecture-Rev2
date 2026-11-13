@@ -979,3 +979,20 @@ PR [#116](https://github.com/abtn/Watch-Architecture-Rev2/pull/116) passed hoste
 - No migration, new LearningChange operation, Task type, runtime, scheduler, dispatcher, or retrieval redesign was added.
 
 New regressions cover successful candidate creation through the existing trusted approval path, candidate invisibility before reciprocal supersession, content-hash separation, one-pending-candidate enforcement, concurrent candidate-commit serialization, stale predecessor rejection after revise, `needs_review`/D7-due predecessor rejection, missing approval-policy review interval rejection, and replay. Hosted verification does not replace the pending local exact-head run; no merge or B5.1 closeout is claimed.
+
+
+## R7-B B5.2 Retire — PR #118 verification (2026-11-13)
+
+PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118), code head `3d102d8e4a9204580bf187018c51da358aa6c121), passed Operator-local verification against a fresh disposable PostgreSQL instance:
+- Alembic upgraded to `0018_r7b_lifecycle_review_date`; one head.
+- Ruff passed.
+- Mypy passed (38 source files).
+- Integrated test `test_b5_2_integrated_retirement_candidate_lifecycle_sequences`: 1 passed.
+- Full suite: **962 passed, 113 warnings in 319.76s**.
+- Disposable container was removed. The verification script completed its final exact-head and clean-worktree checks.
+
+Hosted exact-head GitHub Actions CI run [#43456366139](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43456366139) completed successfully.
+
+The 113 warnings are Alembic `path_separator` deprecation warnings. They did not fail the test run.
+
+This is execution evidence, not formal B5.2 acceptance. The PR's added integrated regression proves the main ordinary-retirement, candidate-cancellation/replacement, predecessor-no-cascade, history, semantic-immutability, and replay sequences. Dedicated retirement concurrency proofs and complete coverage of the B5.2 negative/stale-binding matrix remain open. See the B5 implementation plan and PR #118 review record. No merge or B5.2 closeout is claimed.
