@@ -6226,6 +6226,126 @@ def test_create_with_successor_commits_hidden_candidate_through_existing_path(
     assert second_provider.calls == 0
 
 
+def test_concurrent_create_with_successor_commits_only_one_candidate(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False, review_interval_days=1)
+    evaluation_ids = [fixture.cases[0].evaluation_id]
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    distiller = _distiller(session_factory, snapshot_store, _provider())
+
+    predecessor_proposal = distiller.propose(
+        fixture.distillation_task_id, evaluation_ids
+    )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=predecessor_proposal.learning_change_id,
+        )
+    )
+    predecessor = _accept_learning_change(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        predecessor_proposal.learning_change_id,
+    )
+    assert predecessor.knowledge_item_id is not None
+
+    proposals = []
+    for _ in range(2):
+        task_id = _create_proposal_task(session_factory, fixture)
+        proposal = distiller.propose(
+            task_id,
+            evaluation_ids,
+            supersedes_item_id=predecessor.knowledge_item_id,
+        )
+        runtime.finalize(
+            TerminalObservation(
+                task_id=task_id,
+                attempt=1,
+                result_category="success_learning_change_proposed",
+                observed_at=datetime.now(timezone.utc),
+                learning_change_id=proposal.learning_change_id,
+            )
+        )
+        proposals.append(proposal)
+
+    approvals = [
+        _create_admitted_approval_task(
+            session_factory, snapshot_store, fixture.team_id, proposal.learning_change_id
+        )
+        for proposal in proposals
+    ]
+    def decide(approval):
+        task_id, attempt, principal = approval
+        return LearningCommitService(session_factory, snapshot_store).decide(
+            task_id, attempt, principal
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(decide, approval) for approval in approvals]
+        outcomes = []
+        for future in futures:
+            try:
+                outcomes.append(future.result())
+            except LearningCommitError as error:
+                outcomes.append(error)
+
+    successes = [outcome for outcome in outcomes if not isinstance(outcome, Exception)]
+    failures = [outcome for outcome in outcomes if isinstance(outcome, Exception)]
+    assert len(successes) == 1
+    assert len(failures) == 1
+    assert isinstance(failures[0], LearningCommitError)
+    assert str(failures[0]) == "successor_candidate_already_pending"
+
+    winner = successes[0]
+    winner_index = next(
+        index
+        for index, outcome in enumerate(outcomes)
+        if outcome is winner
+    )
+    winner_task_id, winner_attempt, _ = approvals[winner_index]
+    runtime.finalize(
+        TerminalObservation(
+            task_id=winner_task_id,
+            attempt=winner_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=winner.committed_at,
+            learning_change_id=winner.learning_change_id,
+        )
+    )
+
+    with session_factory() as session:
+        predecessor_item = session.get(KnowledgeItem, predecessor.knowledge_item_id)
+        candidates = list(
+            session.scalars(
+                select(KnowledgeItem).where(
+                    KnowledgeItem.team_id == fixture.team_id,
+                    KnowledgeItem.supersedes_item_id == predecessor.knowledge_item_id,
+                    KnowledgeItem.status != "retired",
+                )
+            )
+        )
+        assert predecessor_item is not None
+        assert predecessor_item.status == "active"
+        assert predecessor_item.superseded_by_id is None
+        assert len(candidates) == 1
+        assert candidates[0].origin_learning_change_id == winner.learning_change_id
+        loser_index = 1 - winner_index
+        loser_task_id, _, _ = approvals[loser_index]
+        loser = session.get(LearningChange, proposals[loser_index].learning_change_id)
+        assert loser is not None and loser.status == "proposed"
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == loser_task_id,
+                Event.type == "learning_change_accepted",
+            )
+        ) is None
+
+
 def test_create_with_successor_rejects_stale_predecessor_after_revision(
     session_factory, snapshot_store, distillation_fixture
 ):
