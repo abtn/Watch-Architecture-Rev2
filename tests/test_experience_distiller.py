@@ -6144,6 +6144,127 @@ def test_create_with_successor_commits_hidden_candidate_through_existing_path(
     assert replay.knowledge_item_id == candidate_result.knowledge_item_id
 
 
+def test_create_with_successor_rejects_missing_pinned_review_interval(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False, review_interval_days=1)
+    distiller = _distiller(session_factory, snapshot_store, _provider())
+    evaluation_ids = [fixture.cases[0].evaluation_id]
+
+    predecessor_proposal = distiller.propose(
+        fixture.distillation_task_id, evaluation_ids
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=predecessor_proposal.learning_change_id,
+        )
+    )
+    predecessor_approval_id, predecessor_attempt, predecessor_principal = (
+        _create_admitted_approval_task(
+            session_factory,
+            snapshot_store,
+            fixture.team_id,
+            predecessor_proposal.learning_change_id,
+        )
+    )
+    predecessor_result = LearningCommitService(
+        session_factory, snapshot_store
+    ).decide(predecessor_approval_id, predecessor_attempt, predecessor_principal)
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=predecessor_approval_id,
+            attempt=predecessor_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=predecessor_result.committed_at,
+            learning_change_id=predecessor_result.learning_change_id,
+        )
+    )
+    assert predecessor_result.knowledge_item_id is not None
+
+    with session_factory.begin() as session:
+        session.add(
+            TeamPolicy(
+                id=uuid4(),
+                team_id=fixture.team_id,
+                version=2,
+                schema_version=1,
+                rules={"unchanged": True},
+            )
+        )
+
+    candidate_task_id = uuid4()
+    fixture.extra_task_ids.append(candidate_task_id)
+    with session_factory.begin() as session:
+        session.add(
+            Task(
+                id=candidate_task_id,
+                team_id=fixture.team_id,
+                task_type="propose_learning_change",
+                status="running",
+                attempt_count=1,
+                policy_version=2,
+                allowed_writes=["LearningChange"],
+                budget={
+                    "max_tool_calls": 0,
+                    "max_cost_usd": 1.0,
+                    "deadline_seconds": 60,
+                },
+            )
+        )
+    candidate_proposal = distiller.propose(
+        candidate_task_id,
+        evaluation_ids,
+        supersedes_item_id=predecessor_result.knowledge_item_id,
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=candidate_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=candidate_proposal.learning_change_id,
+        )
+    )
+    candidate_approval_id, candidate_attempt, candidate_principal = (
+        _create_admitted_approval_task(
+            session_factory,
+            snapshot_store,
+            fixture.team_id,
+            candidate_proposal.learning_change_id,
+        )
+    )
+
+    with pytest.raises(
+        LearningCommitError, match="successor_review_interval_required"
+    ):
+        LearningCommitService(session_factory, snapshot_store).decide(
+            candidate_approval_id, candidate_attempt, candidate_principal
+        )
+
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_result.knowledge_item_id)
+        change = session.get(LearningChange, candidate_proposal.learning_change_id)
+        assert predecessor is not None and change is not None
+        assert predecessor.status == "active"
+        assert predecessor.superseded_by_id is None
+        assert change.status == "proposed"
+        assert session.scalar(
+            select(KnowledgeItem.id).where(
+                KnowledgeItem.origin_learning_change_id == change.id
+            )
+        ) is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == candidate_approval_id,
+                Event.type == "learning_change_accepted",
+            )
+        ) is None
+
+
 def test_learning_commit_accepts_real_create_proposal_atomically(
     session_factory, snapshot_store, distillation_fixture
 ):
