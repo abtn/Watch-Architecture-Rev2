@@ -1,6 +1,6 @@
 # R7-B B4.4 G6 — Accepted revise from needs_review and retrieval ineligibility
 
-**Status: DOCUMENTATION PLAN ONLY — G6 planning authorized 2026-11-13; implementation is not authorized by this plan. A separate explicit Operator decision is required before implementation.**
+**Status: IMPLEMENTATION AUTHORIZED — the Operator explicitly authorized G6 implementation on 2026-11-13 after PR #112 merged. PR #113 carries the bounded regression proof; G6 is not complete until exact-head verification and Operator acceptance.**
 **Planning base:** `09cb8e6dfae078662e55631ae2f79e31fa8fb8cf` (G5 merge commit).
 **Parent gate:** R7-B B4.4. G1–G5 are complete and merged. G6 is the final regression-proof gate. B4.4 remains open until G6, final verification, and explicit Operator acceptance are complete.
 
@@ -61,6 +61,19 @@ G6 is complete only when deterministic regression evidence proves all of the fol
 
 ## 5. Existing test and source surface
 
+### Test-to-acceptance mapping completed before implementation
+
+| G6 criterion | Existing evidence | G6 regression contribution |
+|---|---|---|
+| Revise proposal, exact target binding, recorded quality assessment, and accepted decision | `test_revise_proposal_pins_exact_target_and_records_bound_assessment`; G4 accepted revise path | Isolated `needs_review` revise via the existing proposal/assessment helpers and `OperatorApplicationAdapter.decide_learning_change` |
+| Durable D7 review state | `_create_revalidation_proposal` helper exercises D7, but also creates an unrelated revalidation proposal | G6 records the same ordinary `review_knowledge` TaskRuntime transition directly, without creating a revalidation proposal |
+| Status, pointer, version, semantic hash, validation date, and review schedule | G4 plus the revise contract test | Assert all effects on one item before and after the isolated revise |
+| Approval policy and attribution | Existing revise contract test | Assert approval Task policy pin, accepted decision Event, committed Task identity, and TaskRuntime completion |
+| History and D7 overlay | `tests/test_learning_history.py` review-overlay tests; G4 reconstruction | Assert the create → revise chain, applied review Event, and exact reconstructed/live state equality |
+| Projection invalidation and retrieval exclusion | `test_needs_review_item_is_not_retrievable_even_if_projection_remains`; G4 checks retained projection | Assert stale old-pointer projection remains present after revise but is excluded by ordinary retrieval; then assert ordinary indexing returns ineligible |
+
+G4's stale pre-revision revalidation assessment, rejection, fresh assessment, and subsequent revalidation acceptance are intentionally not repeated.
+
 Inspect these first; confirm exact helpers and assertions rather than assuming names or introducing parallel abstractions:
 
 - `tests/test_experience_distiller.py`: accepted revise through the Operator path, target/assessment binding, and the existing G4 same-item sequence.
@@ -103,4 +116,4 @@ Preferred implementation location is one focused test in `tests/test_experience_
 
 ## 8. Gate status
 
-This document and its documentation-only PR authorize and record G6 planning only. They do not authorize G6 implementation or claim G6 verification. Implementation begins only after the Operator reviews the plan and separately authorizes the implementation step. B5, B6, and R7-C remain unauthorized. B4.4 remains open until G1–G6 are complete, final verification passes, and explicit Operator acceptance is recorded.
+**Implementation authorization (2026-11-13):** The Operator separately authorized G6 implementation after the G6 planning PR #112 merged. PR #113 implements the bounded test-only proof described here. This authorization does not extend to B5, B6, or R7-C. G6 is not complete until focused and related tests, static checks, fresh disposable-PostgreSQL verification, full suite, exact-head hosted CI, documentation reconciliation, and explicit Operator acceptance pass. B4.4 remains open until G1–G6 are complete, final verification passes, and explicit Operator acceptance is recorded.
