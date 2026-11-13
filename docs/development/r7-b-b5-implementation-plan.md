@@ -105,19 +105,183 @@ The following accepted contracts are prerequisites, not design questions to reop
 
 ### B5.2 — Retire
 
-**Purpose:** Provide the terminal no-successor transition and the safe cancellation path for abandoned candidates.
+**Purpose:** Implement the terminal no-successor transition for an ordinary KnowledgeItem and the safe cancellation path for a pending successor candidate. Both operations use the existing lifecycle assessment, trusted Operator approval, canonical commit, and TaskRuntime infrastructure. Retirement is not supersession.
 
-1. Add the retire variant to the existing `KnowledgeLifecycleAssessment` proposal/recording path if not already active.
-2. Bind the exact Team, target item, current LearningChange pointer, content version/hash, full-state hash, proposed state, evidence/reason, and assessment payload hash.
-3. Require the trusted Operator approval path and exact pointer/version validation at commit.
-4. For ordinary retirement, set status to `retired`, leave both successor links NULL, advance the current pointer, and preserve content/version/hash/confidence. The transition is terminal.
-5. For candidate cancellation, retire the candidate while preserving its immutable `supersedes_item_id`. It no longer occupies the pending-candidate slot.
-6. Permit a replacement candidate only after the earlier candidate is retired and the predecessor again passes every candidate-creation guard.
-7. If the predecessor is retired without supersession, any pending candidate remains withheld and must be retired separately; it is never mutated automatically.
+**Implementation boundary:** B5.2 may extend the existing proposal/validation/approval/commit path only as needed to admit retirement. It must not create a second lifecycle write path, new Task type, runtime, scheduler, dispatcher, authentication boundary, or retrieval redesign. The existing schema already represents `retired` and candidate relations; a migration is not presumed. If preflight demonstrates a concrete schema gap, stop and return for a separate decision.
 
-**Required tests:** ordinary active retirement; `needs_review` retirement; rejection of already-retired items; candidate cancellation; immutable predecessor relation; candidate-slot release; replacement candidate; wrong Team; stale assessment; concurrent retire/candidate operations; duplicate/replayed approval; no content/hash/version/confidence mutation.
+#### B5.2.0 — Baseline and code-path preflight
 
-**Exit:** Retire is terminal, replay-safe, and cannot create a successor link or mutate semantic content.
+No source edits in this checkpoint.
+
+1. Start only after the B5.2 implementation checkpoint receives separate, explicit Operator authorization and the B5.2 documentation PR is merged.
+2. Record the exact post-documentation `main` merge commit. Create the implementation branch from that commit; do not use a floating branch name as the baseline.
+3. Verify repository root, current branch, HEAD, origin, clean worktree, remote SHA, and Alembic head. Confirm the expected migration head before local tests.
+4. Inspect the existing implementations and tests for:
+   - `KnowledgeLifecycleAssessment` retire evidence and TaskRuntime recording.
+   - LearningChange proposal construction, deterministic validation, and proposal/proposed-state hashing.
+   - Approval binding, trusted Operator identity, operation allowlist, and canonical commit transaction.
+   - Team-first lifecycle locking, deterministic KnowledgeItem row-lock order, and current-pointer compare-and-set.
+   - Lifecycle Events/Outcomes, immutable snapshots, history reconstruction, idempotency, and replay.
+   - The B5.1 pending-candidate partial unique index and reciprocal retrieval/Context publication gate.
+5. Map each frozen requirement below to the actual function, model, transaction, and existing test. Distinguish existing behavior from the minimum missing behavior.
+6. Confirm whether the current retire assessment variant is already usable. Reuse it if so; do not add a duplicate variant or Task.
+7. Confirm the schema can represent both ordinary retirement and candidate cancellation. Do not add a migration merely for convenience.
+
+**Exit:** A reviewed code-path map, exact implementation baseline, focused test plan, and no unresolved contract ambiguity. If any frozen B0/B4 invariant or schema contract must change, stop and return to the Operator before source edits.
+
+#### B5.2.1 — Retirement proposal and exact state binding
+
+Extend the existing LearningChange proposal and deterministic validation path for retirement with the smallest operation-specific change.
+
+Bind the proposal to:
+
+- Exact Team and target KnowledgeItem IDs.
+- Current LearningChange pointer and expected current status.
+- Content version, semantic content hash, and full-state snapshot/hash.
+- Exact proposed transition to `retired`.
+- Operation kind distinguishing ordinary retirement from pending-candidate cancellation where the existing model requires it.
+- Immutable candidate predecessor relation (`supersedes_item_id`) when the target is a candidate.
+- Lifecycle assessment identity and payload hash.
+- A bounded reason/evidence reference consistent with the existing assessment contract.
+
+Validation must establish:
+
+1. The target exists and belongs to the stated Team.
+2. The target is currently `active` or `needs_review`; already-retired items are rejected and never reopened or rewritten.
+3. The current pointer, content version, semantic content hash, and full-state binding match canonical state.
+4. For candidate cancellation, the target is a real pending candidate with an immutable, same-Team `supersedes_item_id`; its relation is preserved exactly.
+5. The proposal cannot be retargeted to another item, Team, pointer, version, or candidate relation after assessment.
+
+**Required tests:** active item; `needs_review` item; already-retired rejection; wrong Team; missing target; malformed/non-candidate cancellation target; stale pointer; stale version; stale content hash; stale full-state hash; altered predecessor relation; proposal-hash mismatch.
+
+**Exit:** A retirement proposal is deterministic and bound to the exact canonical item state. No canonical write occurs at proposal or validation time.
+
+#### B5.2.2 — Lifecycle assessment integration
+
+1. Reuse the existing retire variant of `KnowledgeLifecycleAssessment` if it already satisfies the binding contract. Extend only a demonstrated missing field or validation rule.
+2. Bind the assessment to the exact Team, item, current pointer, version, content hash, full-state hash, proposed retired state, and operation kind.
+3. Record assessment evidence and its attributable Event through the existing TaskRuntime path.
+4. Keep assessment evidence separate from approval authority. An accepted assessment alone must never retire a KnowledgeItem.
+5. Reject missing, mismatched, stale, conflicting, or replay-incompatible assessment bindings.
+6. Preserve immutable assessment records; represent staleness as an application disposition rather than rewriting historical evidence.
+
+**Required tests:** valid ordinary-retire assessment; valid candidate-cancellation assessment; assessment target mismatch; stale pointer/version/hash; changed proposed state; missing assessment; duplicate assessment/task replay; assessment cannot commit without trusted approval.
+
+**Exit:** A valid retirement assessment is durable, attributable evidence, but is not commit authority.
+
+#### B5.2.3 — Trusted approval and canonical retirement commit
+
+Extend the existing trusted Operator approval and canonical commit path only enough to admit the retire operation.
+
+1. Preserve host-authenticated Operator identity and the existing application validation boundary. Do not accept model- or worker-supplied identity as authority.
+2. Bind approval to the exact retirement proposal, assessment, and proposed-state hash. A create/revise/revalidate approval must not be reusable as a retirement approval.
+3. In the canonical transaction, acquire the Team lifecycle lock first, then lock affected KnowledgeItem rows in deterministic ascending UUID order. For a single-target retirement, lock that target after the Team.
+4. Re-read and revalidate Team ownership, current pointer, content version, semantic content hash, full-state hash, expected status, candidate relation, and assessment binding under the lock.
+5. Reject stale or changed state before any canonical writes. The compare-and-set loser must leave no partial Event, Outcome, LearningChange, pointer, or KnowledgeItem mutation.
+6. Commit the terminal `active → retired` or `needs_review → retired` transition and its attributable lifecycle records atomically, advancing the current LearningChange pointer according to the existing history contract.
+7. For an ordinary item, both `supersedes_item_id` and `superseded_by_id` remain NULL.
+8. For candidate cancellation, preserve `supersedes_item_id` exactly and leave `superseded_by_id` NULL. Do not mutate the predecessor.
+9. Preserve semantic content, content version, semantic content hash, and confidence. Retirement changes lifecycle state, not the knowledge claim.
+10. Keep the transition terminal. No operation in B5.2 may reactivate or reopen the retired item.
+
+**Required tests:** successful ordinary retirement from each allowed status; successful candidate cancellation; trusted identity required; wrong operation/approval binding; stale state rejected under lock; concurrent compare-and-set loser; no partial writes; current pointer/history advancement; immutable content/version/hash/confidence; correct NULL/preserved relation fields.
+
+**Exit:** One trusted, atomic canonical commit performs retirement. There is no direct worker write or second commit path.
+
+#### B5.2.4 — Pending-candidate slot release and concurrency
+
+Prove the interaction with B5.1 candidate creation using the existing Team-first lock order and partial unique index.
+
+1. Confirm the pending-candidate uniqueness predicate excludes a candidate only after its canonical status becomes `retired`; proposal, assessment, or rejected approval alone must not release the slot.
+2. Confirm that retiring a pending candidate preserves its immutable `supersedes_item_id` and leaves its predecessor unchanged.
+3. After candidate retirement commits, verify a replacement candidate can be created only if the predecessor still passes every B5.1 guard at the replacement proposal and commit boundaries.
+4. Recheck same-Team ownership, predecessor status `active`, future non-NULL UTC `review_after`, NULL `superseded_by_id`, exact current pointer/version/full state, no other non-retired candidate, and cycle/lineage integrity.
+5. Serialize retire-versus-create and competing candidate operations with the Team row lock first, then item locks in ascending UUID order.
+6. Verify that retiring a predecessor without supersession does not mutate or publish its pending candidate. The candidate remains pending and hidden until separately retired or superseded through B5.3.
+7. Do not create a cascade or implicit candidate cancellation when a predecessor is retired.
+
+**Required tests:** slot remains occupied before retirement commit; slot releases after successful candidate retirement; failed/stale retirement does not release it; replacement candidate succeeds after cancellation when predecessor remains eligible; replacement fails when predecessor is due, unscheduled, `needs_review`, retired, or superseded; concurrent retire versus candidate creation; concurrent replacement attempts; predecessor retirement leaves pending candidate unchanged and hidden.
+
+**Exit:** Candidate cancellation releases exactly one pending slot only after canonical retirement. Replacement creation still enforces all B5.1 guards, and graph races cannot produce duplicate or invalid candidates.
+
+#### B5.2.5 — Idempotency, replay, and history reconstruction
+
+1. Replay the same accepted retirement approval and verify it returns the original committed result without another canonical transition.
+2. Reject conflicting reuse of an idempotency key or approval identity with a different proposal, target, or state binding.
+3. Replay a stale/rejected retirement and verify the original disposition remains stable and does not become accepted after canonical state changes.
+4. Replay the original accepted retirement after later lifecycle activity and verify it does not create duplicate Events, Outcomes, LearningChanges, pointer advances, or graph mutations.
+5. Reconstruct history and verify the exact transition, immutable semantic content, confidence, content version/hash, candidate relation, and current pointer.
+6. Verify a retired candidate remains linked to its predecessor historically but no longer occupies the pending-candidate slot.
+7. Verify a pending candidate remains hidden if its predecessor is retired without supersession; retirement must not manufacture reciprocity.
+
+**Required tests:** same-approval replay; conflicting replay; stale rejection replay; replay after a later transition; no duplicate side effects; snapshot/hash reconstruction; pointer reconstruction; candidate-link preservation; predecessor-retirement/no-implicit-mutation case.
+
+**Exit:** Retirement is replay-safe and canonical history reconstructs the exact lifecycle state without duplicate side effects.
+
+#### B5.2.6 — Integrated regression, verification, and closeout
+
+Run the B5.2 cases together with B5.1 and existing lifecycle behavior.
+
+**Required integrated sequences:**
+
+```text
+create → retire
+```
+
+```text
+create-with-successor → retire candidate → create replacement candidate
+```
+
+```text
+create-with-successor → retire predecessor
+                  → verify candidate remains pending and hidden
+                  → retire candidate separately
+```
+
+Also verify that existing create, revise, revalidate, review, and B5.1 candidate-creation behavior remains unchanged.
+
+**Acceptance matrix:**
+
+| Area | Required proof |
+|---|---|
+| Ordinary retirement | `active` and `needs_review` can retire; already-retired cannot be rewritten |
+| Candidate cancellation | Candidate retires; immutable predecessor relation is preserved |
+| Semantic immutability | Content, content version, content hash, and confidence are unchanged |
+| Candidate slot | Slot releases only after canonical candidate retirement |
+| Replacement candidate | All B5.1 predecessor and candidate guards are rechecked |
+| Predecessor retirement | Pending candidate remains unchanged and hidden; no implicit cascade |
+| Isolation | Wrong Team/target/relation and malformed lineage are rejected |
+| Stale state | Pointer, version, content hash, full-state hash, and assessment drift are rejected |
+| Concurrency | Retire/retire, retire/create, and competing candidate races serialize safely |
+| Replay | Original result is returned; no duplicate canonical side effects |
+| History | Current pointer and immutable snapshots reconstruct the retirement chain |
+| Authority | Assessment is evidence; only trusted Operator approval can commit |
+| Regression | Existing B5.1 and create/revise/revalidate/review behavior remains intact |
+
+**Agent coding-side handoff (only after explicit B5.2 implementation authorization):**
+
+1. Create one B5.2 implementation branch from the verified post-documentation `main` merge commit.
+2. Implement the checkpoints above in order, with focused tests accompanying each behavior.
+3. Keep the implementation in one reviewable PR unless a concrete dependency requires a separately reviewed change.
+4. Do not add a migration unless preflight proves the existing schema cannot represent the accepted contract. Stop and report the evidence before changing schema or frozen architecture.
+5. Open a draft PR with exact base/head SHAs, changed-file scope, test evidence, and unresolved risks.
+
+**Programmer/local verification-side handoff:**
+
+1. Verify repository root, branch, exact base/head, origin, and clean worktree before synchronization.
+2. Review the actual diff and test configuration before executing commands.
+3. Run focused B5.2 tests, then the B5.1/lifecycle regression set.
+4. Run migrations and the full suite only against a uniquely named disposable PostgreSQL container bound to a dynamic localhost port.
+5. Set and restore both `DATABASE_URL` and `TEST_DATABASE_URL`; clean up only the container created by the test.
+6. Run Ruff and Mypy using the repository's configured scope.
+7. Verify one Alembic head, exact-head hosted CI, clean worktree, restored environment, and disposable-container removal.
+8. Report exact commit SHA, test count, warnings, migration revision, and cleanup evidence. Do not claim success from a partial or misconfigured run.
+
+**Stop conditions:** Stop and return to the Operator if any B0/B4 invariant must change; the existing schema cannot represent retirement; a second write path/runtime/dispatcher/authentication boundary is required; retirement changes semantic content or candidate links; predecessor retirement implicitly mutates a candidate; candidate-slot release is premature or incorrect; stale assessment can commit; graph locks cannot serialize races; replay duplicates side effects; or history cannot be reconstructed. Do not weaken acceptance criteria to preserve schedule.
+
+**Definition of done:** B5.2 is complete only when ordinary retirement and candidate cancellation use the existing trusted commit path; retirement is terminal; semantic state is preserved; candidate relation is preserved; pending-slot release and replacement eligibility are proven; predecessor retirement never mutates a pending candidate; stale rejection, concurrency, replay, and history tests pass; B5.1 and wider regression tests remain green; no unapproved migration or architecture expansion exists; exact-head hosted CI and Operator-local full verification pass; documentation is reconciled; and the Operator explicitly accepts the checkpoint.
+
+**Exit:** All B5.2 regression proofs pass, the complete relevant and full suites pass against disposable PostgreSQL, Ruff/Mypy and fresh migration/head checks pass, exact-head hosted CI passes, the diff contains no unauthorized scope expansion, and explicit Operator acceptance is recorded. B5.2 implementation remains separately gated until that authorization is granted.
 
 ### B5.3 — Supersede
 
