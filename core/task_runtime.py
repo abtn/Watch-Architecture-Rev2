@@ -4133,8 +4133,13 @@ class TaskRuntime:
                 history = reconstruct_knowledge_item_history(session, item)
             except KnowledgeHistoryError as error:
                 raise TaskNotFinalizable(str(error)) from error
-            expected_supersedes_id = learning_change.proposed_state.get(
-                "supersedes_item_id"
+            expected_supersedes_id = (
+                learning_change.previous_state.get("state", {}).get(
+                    "supersedes_item_id"
+                )
+                if learning_change.operation == "retire"
+                and isinstance(learning_change.previous_state, dict)
+                else learning_change.proposed_state.get("supersedes_item_id")
             )
             root_state = history.states[0]
             successor_link_valid = (
