@@ -6,6 +6,8 @@ Make the smallest justified change that satisfies the requested slice and its ac
 
 ## 2. Read the authority chain
 
+For documentation roles, active reading order, and historical-record handling, see [docs/documentation-guide.md](docs/documentation-guide.md). It supplements this operating contract; it does not override the authority chain below.
+
 At task start, read `PLAN.md`, `CHANGE_MAP.md`, this file, and only the relevant canonical specs/ADRs/tests. `CONTEXT.md` is an orientation page, not a replacement for the authorities below.
 
 - **Current milestone, gate, next step:** `PLAN.md` only.
