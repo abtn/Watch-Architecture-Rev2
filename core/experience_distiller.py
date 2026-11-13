@@ -242,10 +242,20 @@ class ExperienceDistiller:
             return self._build_pack(session, task, team, normalized_ids)
 
     def propose(
-        self, task_id: UUID, evaluation_ids: Sequence[UUID]
+        self,
+        task_id: UUID,
+        evaluation_ids: Sequence[UUID],
+        *,
+        supersedes_item_id: UUID | None = None,
     ) -> LearningChangeProposalResult:
+        if supersedes_item_id is not None and not isinstance(supersedes_item_id, UUID):
+            raise ExperienceDistillerError("successor_predecessor_id_invalid")
         return self._propose_candidate(
-            task_id, evaluation_ids, operation="create", target_knowledge_item_id=None
+            task_id,
+            evaluation_ids,
+            operation="create",
+            target_knowledge_item_id=None,
+            supersedes_item_id=supersedes_item_id,
         )
 
     def propose_revision(
@@ -405,6 +415,7 @@ class ExperienceDistiller:
         *,
         operation: Literal["create", "revise"],
         target_knowledge_item_id: UUID | None,
+        supersedes_item_id: UUID | None = None,
     ) -> LearningChangeProposalResult:
         normalized_ids = self._normalize_evaluation_ids(evaluation_ids)
 
@@ -441,6 +452,8 @@ class ExperienceDistiller:
                 if (
                     prior.operation != operation
                     or prior.target_id != target_knowledge_item_id
+                    or prior.proposed_state.get("supersedes_item_id")
+                    != (str(supersedes_item_id) if supersedes_item_id else None)
                     or prior_evaluations != normalized_ids
                 ):
                     raise ExperienceDistillerConflict(
@@ -472,6 +485,18 @@ class ExperienceDistiller:
                         target_knowledge_item_id,
                         allowed_statuses={"active", "needs_review"},
                         lock=False,
+                    )
+                )
+            supersedes_target_binding = None
+            supersedes_target_snapshot = None
+            if supersedes_item_id is not None:
+                if operation != "create" or target_knowledge_item_id is not None:
+                    raise ExperienceDistillerError(
+                        "successor_relation_only_valid_for_create"
+                    )
+                _, _, supersedes_target_snapshot, supersedes_target_binding = (
+                    self._capture_successor_predecessor_state(
+                        session, team.id, supersedes_item_id, lock=False
                     )
                 )
             task_attempt = task.attempt_count
@@ -536,14 +561,43 @@ class ExperienceDistiller:
         self._validate_references(draft, pack)
 
         model_payload = draft.model_dump(mode="json")
-        proposal_hash = _sha256_json(model_payload)
+        proposal_hash_payload: dict[str, Any] = model_payload
+        if supersedes_item_id is not None:
+            if supersedes_target_binding is None:
+                raise ExperienceDistillerError(
+                    "successor_predecessor_binding_missing"
+                )
+            proposal_hash_payload = {
+                "draft": model_payload,
+                "supersedes_item_id": str(supersedes_item_id),
+                "supersedes_target_binding": supersedes_target_binding,
+            }
+        proposal_hash = _sha256_json(proposal_hash_payload)
         proposed_state = {
             **model_payload,
             "evidence_basis_hash": pack.basis_hash,
             "evidence_case_count": pack.case_count,
             "proposal_hash": proposal_hash,
         }
-        if operation == "create":
+        if supersedes_item_id is not None:
+            proposed_state.update(
+                {
+                    "supersedes_item_id": str(supersedes_item_id),
+                    "supersedes_target_binding": supersedes_target_binding,
+                }
+            )
+        if operation == "create" and supersedes_item_id is not None:
+            idempotency_key = "r7b-create-successor-v1:" + _sha256_json(
+                {
+                    "team_id": str(pack.team_id),
+                    "task_id": str(task_id),
+                    "evidence_basis_hash": pack.basis_hash,
+                    "proposal_hash": proposal_hash,
+                    "supersedes_item_id": str(supersedes_item_id),
+                    "supersedes_target_binding": supersedes_target_binding,
+                }
+            ).removeprefix("sha256:")
+        elif operation == "create":
             idempotency_key = (
                 (
                     "r6g-distill-v2:"
@@ -568,7 +622,14 @@ class ExperienceDistiller:
             task = ObjectiveService._lock_task(session, task_id)
             if task is None:
                 raise ExperienceDistillerError("task_not_found")
-            team = session.get(Team, task.team_id)
+            if supersedes_item_id is not None:
+                team = session.scalar(
+                    select(Team)
+                    .where(Team.id == task.team_id)
+                    .with_for_update()
+                )
+            else:
+                team = session.get(Team, task.team_id)
             team = self._require_task_scope(task, team)
             if task.attempt_count != task_attempt:
                 raise ExperienceDistillerError("stale_task_attempt")
@@ -595,6 +656,17 @@ class ExperienceDistiller:
                     raise ExperienceDistillerError(
                         "revision_candidate_no_content_change"
                     )
+            if supersedes_item_id is not None:
+                _, _, current_snapshot, current_binding = (
+                    self._capture_successor_predecessor_state(
+                        session, team.id, supersedes_item_id, lock=True
+                    )
+                )
+                if (
+                    current_snapshot != supersedes_target_snapshot
+                    or current_binding != supersedes_target_binding
+                ):
+                    raise ExperienceDistillerError("successor_predecessor_stale")
 
             concurrent_prior = session.scalar(
                 select(LearningChange).where(
@@ -605,6 +677,14 @@ class ExperienceDistiller:
                 if (
                     concurrent_prior.operation != operation
                     or concurrent_prior.target_id != target_knowledge_item_id
+                    or concurrent_prior.proposed_state.get("supersedes_item_id")
+                    != (str(supersedes_item_id) if supersedes_item_id else None)
+                    or (
+                        supersedes_item_id is not None
+                        and concurrent_prior.proposed_state.get(
+                            "supersedes_target_binding"
+                        ) != supersedes_target_binding
+                    )
                     or concurrent_prior.evidence_basis_hash != pack.basis_hash
                     or (
                         operation == "revise"
@@ -664,6 +744,14 @@ class ExperienceDistiller:
                         if target_binding is not None
                         else {}
                     ),
+                    **(
+                        {
+                            "supersedes_item_id": str(supersedes_item_id),
+                            "supersedes_target_binding": supersedes_target_binding,
+                        }
+                        if supersedes_item_id is not None
+                        else {}
+                    ),
                     "attempt_count": task.attempt_count,
                 },
             )
@@ -709,6 +797,53 @@ class ExperienceDistiller:
         if team is None or team.status != "active":
             raise ExperienceDistillerError("team_not_active")
         return team
+
+    def _capture_successor_predecessor_state(
+        self,
+        session: Session,
+        team_id: UUID,
+        predecessor_id: UUID,
+        *,
+        lock: bool,
+    ) -> tuple[KnowledgeItem, dict[str, Any], dict[str, Any], dict[str, Any]]:
+        target, state, snapshot, binding = self._capture_target_state(
+            session,
+            team_id,
+            predecessor_id,
+            allowed_statuses={"active"},
+            lock=lock,
+        )
+        if target.superseded_by_id is not None:
+            raise ExperienceDistillerError("successor_predecessor_already_superseded")
+        review_after_raw = state.get("review_after")
+        if not isinstance(review_after_raw, str):
+            raise ExperienceDistillerError("successor_predecessor_not_d7_eligible")
+        try:
+            review_after = datetime.fromisoformat(
+                review_after_raw.replace("Z", "+00:00")
+            )
+        except ValueError as error:
+            raise ExperienceDistillerError(
+                "successor_predecessor_review_after_invalid"
+            ) from error
+        if review_after.tzinfo is None or review_after.utcoffset() is None:
+            raise ExperienceDistillerError(
+                "successor_predecessor_review_after_invalid"
+            )
+        if review_after.astimezone(timezone.utc) <= datetime.now(timezone.utc):
+            raise ExperienceDistillerError("successor_predecessor_not_d7_eligible")
+        pending = session.scalar(
+            select(KnowledgeItem.id)
+            .where(
+                KnowledgeItem.team_id == team_id,
+                KnowledgeItem.supersedes_item_id == predecessor_id,
+                KnowledgeItem.status != "retired",
+            )
+            .limit(1)
+        )
+        if pending is not None:
+            raise ExperienceDistillerError("successor_candidate_already_pending")
+        return target, state, snapshot, binding
 
     def _capture_target_state(
         self,
@@ -793,12 +928,18 @@ class ExperienceDistiller:
         This method is read-only. It is intentionally usable after the
         proposing Task has completed and does not call a generation provider.
         """
-        expected_state_keys = set(DistilledExperienceDraft.model_fields) | {
+        base_state_keys = set(DistilledExperienceDraft.model_fields) | {
             "evidence_basis_hash",
             "evidence_case_count",
             "proposal_hash",
         }
         state = learning_change.proposed_state
+        has_successor = isinstance(state, dict) and "supersedes_item_id" in state
+        expected_state_keys = base_state_keys | (
+            {"supersedes_item_id", "supersedes_target_binding"}
+            if has_successor
+            else set()
+        )
         if (
             learning_change.target_kind != "knowledge_item"
             or learning_change.operation not in {"create", "revise"}
@@ -920,10 +1061,73 @@ class ExperienceDistiller:
                 "distillation_proposal_schema_invalid"
             ) from error
 
-        proposal_hash = _sha256_json(draft.model_dump(mode="json"))
+        proposal_hash_payload: dict[str, Any] = draft.model_dump(mode="json")
+        successor_predecessor_id: UUID | None = None
+        successor_target_binding: dict[str, Any] | None = None
+        if has_successor:
+            raw_predecessor_id = state.get("supersedes_item_id")
+            if not isinstance(raw_predecessor_id, str):
+                raise ExperienceDistillerError("successor_predecessor_id_invalid")
+            try:
+                successor_predecessor_id = UUID(raw_predecessor_id)
+            except ValueError as error:
+                raise ExperienceDistillerError(
+                    "successor_predecessor_id_invalid"
+                ) from error
+            if str(successor_predecessor_id) != raw_predecessor_id:
+                raise ExperienceDistillerError("successor_predecessor_id_invalid")
+            raw_binding = state.get("supersedes_target_binding")
+            expected_binding_keys = {
+                "target_knowledge_item_id",
+                "target_current_learning_change_id",
+                "target_content_version",
+                "target_content_hash",
+                "target_content_hash_scheme",
+                "target_state_hash",
+            }
+            if (
+                not isinstance(raw_binding, dict)
+                or set(raw_binding) != expected_binding_keys
+            ):
+                raise ExperienceDistillerError(
+                    "successor_predecessor_binding_invalid"
+                )
+            successor_target_binding = raw_binding
+            proposal_hash_payload = {
+                "draft": draft.model_dump(mode="json"),
+                "supersedes_item_id": raw_predecessor_id,
+                "supersedes_target_binding": successor_target_binding,
+            }
+        if learning_change.operation != "create" and has_successor:
+            raise ExperienceDistillerError("successor_relation_only_valid_for_create")
+        proposal_hash = _sha256_json(proposal_hash_payload)
         if state.get("proposal_hash") != proposal_hash:
             raise ExperienceDistillerError("learning_change_proposal_hash_mismatch")
         self._validate_references(draft, pack)
+        if has_successor:
+            assert successor_predecessor_id is not None
+            _, _, _, current_binding = self._capture_successor_predecessor_state(
+                session,
+                learning_change.team_id,
+                successor_predecessor_id,
+                lock=True,
+            )
+            if current_binding != successor_target_binding:
+                raise ExperienceDistillerError("successor_predecessor_stale")
+            expected_key = "r7b-create-successor-v1:" + _sha256_json(
+                {
+                    "team_id": str(learning_change.team_id),
+                    "task_id": str(proposer.id),
+                    "evidence_basis_hash": pack.basis_hash,
+                    "proposal_hash": proposal_hash,
+                    "supersedes_item_id": str(successor_predecessor_id),
+                    "supersedes_target_binding": successor_target_binding,
+                }
+            ).removeprefix("sha256:")
+            if learning_change.idempotency_key != expected_key:
+                raise ExperienceDistillerError(
+                    "successor_proposal_idempotency_mismatch"
+                )
         if learning_change.operation == "revise":
             _, target_state, target_snapshot, target_binding = (
                 self._capture_target_state(

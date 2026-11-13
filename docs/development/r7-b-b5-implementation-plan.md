@@ -4,6 +4,9 @@
 **Planning authorization:** Granted 2026-11-13
 **Implementation authorization:** B5.1 only; B5.2–B5.4 require separate checkpoint authorization
 **Baseline:** `main` after PR #114 merge `e21216d1870a1c0f3f2fbf7c895dc20d9c8c2cd6`; migration head `0018_r7b_lifecycle_review_date`
+
+**B5.1 implementation status (2026-11-13):** Draft implementation PR [#116](https://github.com/abtn/Watch-Architecture-Rev2/pull/116) is open. It extends the existing create proposal/approval path, binds the predecessor snapshot, enforces D7 scheduling and Team-scoped graph locking, and adds integrated regression coverage. Hosted CI passed on exact head `56fe206634875ac8b6e80f93d7190c320b80a9e0` in run [#43407484704](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43407484704): fresh PostgreSQL migration/head verification, Ruff, Mypy, patch whitespace, and full suite (**961 passed, 113 warnings in 160.22s**). Local exact-head verification and Operator acceptance are not yet recorded. No B5.1 implementation has been merged.
+
 **Scope authority:** Accepted R7-B B0 design and B4.0 architecture decision; this plan sequences the already accepted B5 design and does not replace it.
 
 ## 1. Objective

@@ -4001,9 +4001,28 @@ class TaskRuntime:
                 history = reconstruct_knowledge_item_history(session, item)
             except KnowledgeHistoryError as error:
                 raise TaskNotFinalizable(str(error)) from error
+            expected_supersedes_id = learning_change.proposed_state.get(
+                "supersedes_item_id"
+            )
+            root_state = history.states[0]
+            successor_link_valid = (
+                root_state["supersedes_item_id"] == expected_supersedes_id
+            )
+            if expected_supersedes_id is not None:
+                try:
+                    root_review_after = root_state["review_after"]
+                    successor_link_valid = successor_link_valid and (
+                        isinstance(root_review_after, str)
+                        and datetime.fromisoformat(
+                            root_review_after.replace("Z", "+00:00")
+                        ) > learning_change.committed_at
+                    )
+                except (TypeError, ValueError):
+                    successor_link_valid = False
             if (
                 learning_change.decision_reason is not None
                 or item.team_id != task.team_id
+                or not successor_link_valid
                 or learning_change.id not in history.learning_change_ids
                 or (
                     learning_change.operation == "create"
@@ -4118,12 +4137,85 @@ class TaskRuntime:
             raise TaskNotFinalizable("learning_change_proposal_hash_invalid")
 
         target_binding: dict[str, Any] | None = None
+        supersedes_target_binding: dict[str, Any] | None = None
         if learning_change.operation == "create":
             if (
                 learning_change.target_id is not None
                 or learning_change.previous_state is not None
             ):
                 raise TaskNotFinalizable("learning_change_create_shape_invalid")
+            has_successor = (
+                "supersedes_item_id" in proposal_state
+                or "supersedes_target_binding" in proposal_state
+            )
+            if has_successor:
+                from core.evaluations import _sha256_json as _proposal_sha256_json
+                from core.experience_distiller import DistilledExperienceDraft
+
+                expected_keys = set(DistilledExperienceDraft.model_fields) | {
+                    "evidence_basis_hash",
+                    "evidence_case_count",
+                    "proposal_hash",
+                    "supersedes_item_id",
+                    "supersedes_target_binding",
+                }
+                raw_predecessor_id = proposal_state.get("supersedes_item_id")
+                raw_binding = proposal_state.get("supersedes_target_binding")
+                binding_keys = {
+                    "target_knowledge_item_id",
+                    "target_current_learning_change_id",
+                    "target_content_version",
+                    "target_content_hash",
+                    "target_content_hash_scheme",
+                    "target_state_hash",
+                }
+                try:
+                    predecessor_id = UUID(raw_predecessor_id)
+                except (TypeError, ValueError) as error:
+                    raise TaskNotFinalizable(
+                        "learning_change_successor_binding_invalid"
+                    ) from error
+                if (
+                    set(proposal_state) != expected_keys
+                    or not isinstance(raw_predecessor_id, str)
+                    or str(predecessor_id) != raw_predecessor_id
+                    or not isinstance(raw_binding, dict)
+                    or set(raw_binding) != binding_keys
+                ):
+                    raise TaskNotFinalizable(
+                        "learning_change_successor_binding_invalid"
+                    )
+                supersedes_target_binding = raw_binding
+                draft_payload = {
+                    key: proposal_state[key]
+                    for key in DistilledExperienceDraft.model_fields
+                }
+                expected_proposal_hash = _proposal_sha256_json(
+                    {
+                        "draft": draft_payload,
+                        "supersedes_item_id": raw_predecessor_id,
+                        "supersedes_target_binding": raw_binding,
+                    }
+                )
+                expected_idempotency_key = "r7b-create-successor-v1:" + (
+                    _proposal_sha256_json(
+                        {
+                            "team_id": str(learning_change.team_id),
+                            "task_id": str(task.id),
+                            "evidence_basis_hash": learning_change.evidence_basis_hash,
+                            "proposal_hash": expected_proposal_hash,
+                            "supersedes_item_id": raw_predecessor_id,
+                            "supersedes_target_binding": raw_binding,
+                        }
+                    ).removeprefix("sha256:")
+                )
+                if (
+                    expected_proposal_hash != proposal_hash
+                    or learning_change.idempotency_key != expected_idempotency_key
+                ):
+                    raise TaskNotFinalizable(
+                        "learning_change_successor_proposal_binding_invalid"
+                    )
         elif learning_change.operation == "revise":
             if (
                 learning_change.target_id is None
@@ -4408,6 +4500,11 @@ class TaskRuntime:
             expected_event["kind"] = proposal_state.get("kind")
         if learning_change.operation in {"revise", "revalidate"}:
             expected_event["target_binding"] = target_binding
+        if supersedes_target_binding is not None:
+            expected_event["supersedes_item_id"] = proposal_state[
+                "supersedes_item_id"
+            ]
+            expected_event["supersedes_target_binding"] = supersedes_target_binding
         if proposal_events[0].payload != expected_event:
             raise TaskNotFinalizable("learning_change_proposal_event_mismatch")
 
