@@ -8,14 +8,14 @@ This file is the **single source of current milestone status**. Other documents 
 - **R7-0 and R7-A:** complete.
 - **R7-B B0–B3:** complete; B3 was formally closed on 2026-11-10. B2 retains its three accepted residual verification gaps, recorded in `docs/testing.md`.
 - **R7-B B4:** complete and formally closed on 2026-11-13 after all six regression proofs, exact-head CI, documentation reconciliation, and explicit Operator acceptance. G1–G5 were merged in PRs #103, #105, #107, #109, and #111; G6 merged in PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113) at `a1baf018fe1a847b3ed5b23432647b387a72ddbc`. The closeout documentation is PR [#114](https://github.com/abtn/Watch-Architecture-Rev2/pull/114).
-- **R7-B B5/B6 and R7-C:** not authorized.
+- **R7-B B5:** plan accepted 2026-11-13; B5.1 Create-with-successor implementation authorized and active. B5.2–B5.4 remain separately gated. B6 and R7-C are not authorized.
 - **R8:** scheduled for November 23, 2026, with a separate November 15 entry gate. It remains entry-gated and is not authorized for implementation by this schedule.
 
 Detailed historical implementation and verification evidence remains in the relevant milestone records and `docs/testing.md`. This summary is not a substitute for those records.
 
 ## Current gate and next actionable step
 
-**Current milestone: R7-B B4.4 — formally closed 2026-11-13.**
+**Current milestone: R7-B B5.1 — Create-with-successor (authorized 2026-11-13).**
 
 - G1–G5 are merged through PRs #103, #105, #107, #109, and #111.
 - G6's bounded test-only regression is implemented in PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113), which remains open and unmerged.
@@ -25,7 +25,7 @@ Detailed historical implementation and verification evidence remains in the rele
 
 The formal B4.4 technical review found G1–G6 and the bounded architecture/scope sound. The documentation reconciliation passed exact-head hosted CI in PR #114 after PR #113 merged. The Operator explicitly accepted B4.4 closure on 2026-11-13. **B4.4 is formally closed.**
 
-**Next action:** prepare the separately authorized B5 documentation-only plan. B5 implementation remains gated by that plan's review and a distinct implementation authorization; B6 and R7-C remain unauthorized.
+**B5.0:** documentation and contract freeze complete. The accepted B5 plan and implementation baseline are recorded in [the B5 implementation plan](docs/development/r7-b-b5-implementation-plan.md). **B5.1 is authorized and active;** B5.2–B5.4 require separate checkpoint authorization. B6 and R7-C remain unauthorized.
 
 **R8 boundary:** the November 15 entry gate must assess readiness and record explicit authorization. The November 23 target is a schedule, not permission to begin implementation.
 
