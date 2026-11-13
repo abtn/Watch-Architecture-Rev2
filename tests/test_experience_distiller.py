@@ -9645,7 +9645,10 @@ def test_accepted_revise_preserves_needs_review_and_retrieval_ineligibility(
         assert projection_state.status == "published"
         assert projection_state.current_learning_change_id == before_pointer
         assert projection_chunk.current_learning_change_id == before_pointer
-        assert projection_state.current_learning_change_id != item.current_learning_change_id
+        assert (
+            projection_state.current_learning_change_id
+            != item.current_learning_change_id
+        )
         assert projection_chunk.item_content_hash == before_hash
 
     # Retrieval must recheck canonical status and pointer, not trust the old row.
