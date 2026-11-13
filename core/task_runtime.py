@@ -4487,7 +4487,7 @@ class TaskRuntime:
                 raise TaskNotFinalizable(
                     f"learning_change_revise_target_invalid:{error}"
                 ) from error
-        else:
+        elif learning_change.operation == "revalidate":
             expected_state_keys = {
                 "schema_version",
                 "rationale",
