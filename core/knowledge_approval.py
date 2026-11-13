@@ -398,7 +398,7 @@ def build_approval_binding(
         )
         return binding
 
-    if not require_assessment:
+    if not require_assessment and learning_change.operation != "retire":
         raise KnowledgeApprovalBindingError(
             "knowledge_approval_assessment_required_for_operation"
         )
@@ -431,6 +431,43 @@ def build_approval_binding(
         from core.knowledge_lifecycle import (
             require_recorded_assessment as require_lifecycle_assessment,
         )
+
+        if not require_assessment:
+            from core.knowledge_lifecycle import build_lifecycle_task_request
+
+            try:
+                _, lifecycle_request = build_lifecycle_task_request(
+                    session,
+                    session_factory,
+                    snapshot_store,
+                    learning_change,
+                )
+            except KnowledgeLifecycleAssessmentError as error:
+                raise KnowledgeApprovalBindingError(str(error)) from error
+            binding.update(
+                {
+                    "current_learning_change_id": lifecycle_request[
+                        "current_learning_change_id"
+                    ],
+                    "target_content_version": lifecycle_request[
+                        "target_content_version"
+                    ],
+                    "target_content_hash": lifecycle_request["target_content_hash"],
+                    "target_content_hash_scheme": lifecycle_request[
+                        "target_content_hash_scheme"
+                    ],
+                    "target_state_hash": lifecycle_request["target_state_hash"],
+                    "proposal_hash": lifecycle_request["proposal_hash"],
+                    "proposed_state_hash": lifecycle_request["proposed_state_hash"],
+                    "evidence_refs": learning_change.evidence_basis,
+                    "evidence_basis_hash": lifecycle_request["evidence_basis_hash"],
+                    "operator_provenance": {
+                        "issuer": lifecycle_request["operator_issuer"],
+                        "subject": lifecycle_request["operator_subject"],
+                    },
+                }
+            )
+            return binding
 
         try:
             lifecycle_assessment = require_lifecycle_assessment(
