@@ -36,7 +36,11 @@ from core.generation import (
     GenerationUsage,
 )
 from core.generation_cost import TaskGenerationCostService
-from core.knowledge_index import HybridKnowledgeRetriever, TeamExperienceIndexer
+from core.knowledge_index import (
+    HybridKnowledgeRetriever,
+    TeamExperienceIndexer,
+    _supersession_publication_is_visible,
+)
 from core.knowledge_quality import (
     DIMENSIONS as KNOWLEDGE_QUALITY_DIMENSIONS,
 )
@@ -6007,6 +6011,138 @@ def test_recorded_quality_assessment_is_completed_by_interrupted_recovery(
             terminal_events[0].payload["knowledge_quality_assessment_id"]
             == str(assessment_rows[0].id)
         )
+
+def test_create_with_successor_commits_hidden_candidate_through_existing_path(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False, review_interval_days=1)
+    distiller = _distiller(session_factory, snapshot_store, _provider())
+    evaluation_ids = [fixture.cases[0].evaluation_id]
+
+    predecessor_proposal = distiller.propose(
+        fixture.distillation_task_id, evaluation_ids
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=predecessor_proposal.learning_change_id,
+        )
+    )
+    predecessor_approval_id, predecessor_attempt, predecessor_principal = (
+        _create_admitted_approval_task(
+            session_factory,
+            snapshot_store,
+            fixture.team_id,
+            predecessor_proposal.learning_change_id,
+        )
+    )
+    predecessor_result = LearningCommitService(
+        session_factory, snapshot_store
+    ).decide(predecessor_approval_id, predecessor_attempt, predecessor_principal)
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=predecessor_approval_id,
+            attempt=predecessor_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=predecessor_result.committed_at,
+            learning_change_id=predecessor_result.learning_change_id,
+        )
+    )
+    assert predecessor_result.knowledge_item_id is not None
+
+    candidate_task_id = uuid4()
+    fixture.extra_task_ids.append(candidate_task_id)
+    with session_factory.begin() as session:
+        session.add(
+            Task(
+                id=candidate_task_id,
+                team_id=fixture.team_id,
+                task_type="propose_learning_change",
+                status="running",
+                attempt_count=1,
+                policy_version=1,
+                allowed_writes=["LearningChange"],
+                budget={
+                    "max_tool_calls": 0,
+                    "max_cost_usd": 1.0,
+                    "deadline_seconds": 60,
+                },
+            )
+        )
+
+    candidate_proposal = distiller.propose(
+        candidate_task_id,
+        evaluation_ids,
+        supersedes_item_id=predecessor_result.knowledge_item_id,
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=candidate_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=candidate_proposal.learning_change_id,
+        )
+    )
+    candidate_approval_id, candidate_attempt, candidate_principal = (
+        _create_admitted_approval_task(
+            session_factory,
+            snapshot_store,
+            fixture.team_id,
+            candidate_proposal.learning_change_id,
+        )
+    )
+    candidate_result = LearningCommitService(
+        session_factory, snapshot_store
+    ).decide(candidate_approval_id, candidate_attempt, candidate_principal)
+    assert candidate_result.knowledge_item_id is not None
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=candidate_approval_id,
+            attempt=candidate_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=candidate_result.committed_at,
+            learning_change_id=candidate_result.learning_change_id,
+        )
+    )
+
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_result.knowledge_item_id)
+        candidate = session.get(KnowledgeItem, candidate_result.knowledge_item_id)
+        change = session.get(LearningChange, candidate_proposal.learning_change_id)
+        assert predecessor is not None and candidate is not None and change is not None
+        assert change.status == "accepted"
+        assert candidate.status == "active"
+        assert candidate.version == 1
+        assert candidate.supersedes_item_id == predecessor.id
+        assert candidate.superseded_by_id is None
+        assert candidate.review_after is not None
+        assert candidate.review_after > candidate_result.committed_at
+        assert predecessor.status == "active"
+        assert predecessor.superseded_by_id is None
+        assert change.proposed_state["supersedes_item_id"] == str(predecessor.id)
+        assert change.proposed_state["supersedes_target_binding"][
+            "target_current_learning_change_id"
+        ] == str(predecessor.current_learning_change_id)
+        assert knowledge_item_content_hash(candidate) == knowledge_item_content_hash(
+            {
+                **knowledge_item_state(candidate),
+                "supersedes_item_id": None,
+            }
+        )
+        history = reconstruct_knowledge_item_history(session, candidate)
+        assert history.states[0]["supersedes_item_id"] == str(predecessor.id)
+        assert not _supersession_publication_is_visible(session, candidate, {})
+
+    replay = LearningCommitService(session_factory, snapshot_store).decide(
+        candidate_approval_id, candidate_attempt, candidate_principal
+    )
+    assert replay.replayed
+    assert replay.knowledge_item_id == candidate_result.knowledge_item_id
+
 
 def test_learning_commit_accepts_real_create_proposal_atomically(
     session_factory, snapshot_store, distillation_fixture
