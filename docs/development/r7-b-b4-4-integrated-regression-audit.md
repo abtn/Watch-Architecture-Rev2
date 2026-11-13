@@ -1,5 +1,5 @@
 # R7-B B4.4 — Integrated Regression Audit
-**Status: IN PROGRESS — G1–G6 regression proofs complete; formal B4.4 closeout pending (updated 2026-11-13).
+**Status: IN PROGRESS — G1–G6 regression proofs complete; formal B4.4 closeout pending (updated 2026-11-13).**
 **Baseline:** exact merged main commit 5f37927ff33d9e740c0ff56512d261dace36ab67.
 **Implementation parent:** B4.3 merge commit f9c585c174799cf26fc0d7bf8ed57a8396e2b5aa.
 **Scope:** B4.4 only. This document records the audit and G1–G5 regression-proof outcomes and the bounded G6 implementation. G5 is complete and merged. G6 implementation is separately authorized and in progress in PR #113; B5, B6, and R7-C remain unauthorized.
