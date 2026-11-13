@@ -27,7 +27,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** B3 is formally closed. B4.1 proposal/assessment contracts, B4.2 revise commit, and B4.3 revalidate commit are merged. B4.4 G1–G6 regression proofs are complete; G6's accepted revise-from-needs-review test is implemented and verified in PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113). Hosted CI and Operator-local isolated full-suite verification passed on exact head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd` (956 passed, 113 warnings). B4.4 formal closeout remains pending final review and explicit Operator acceptance. B5, B6, and R7-C remain unauthorized. See [PLAN.md](PLAN.md), [the B4.4 regression audit](docs/development/r7-b-b4-4-integrated-regression-audit.md), [the G6 plan](docs/development/r7-b-b4-4-g6-needs-review-revise-plan.md), and [testing evidence](docs/testing.md).
+- **R7:** B3 is formally closed. B4.1–B4.3 are merged. B4.4 G1–G6 regression proofs are complete; G1–G5 are merged and G6 is implemented in open PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113). Latest exact-head hosted CI passed on `44a31cb59588457cbaedc4863046795cea03ca3a` ([run #43394074207](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43394074207)). B4.4 formal closeout remains pending documentation reconciliation and explicit Operator acceptance. B5, B6, and R7-C remain unauthorized. See [PLAN.md](PLAN.md) for current status.
 
 ## Future plan
 
@@ -40,3 +40,4 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 - [Architecture overview](docs/architecture.md) — how the system is structured.
 - [Architecture decisions](docs/decisions.md) — the decisions that guide the project.
 - [Contributor instructions](AGENTS.md) — how to work safely in this repository.
+- [Documentation guide](docs/documentation-guide.md) — document authority, active reading order, and historical-record policy.
