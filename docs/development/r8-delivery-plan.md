@@ -27,9 +27,9 @@ The objective is to demonstrate the existing architecture under different domain
 - B4.4 G1–G5 are complete and merged through PRs #103, #105, #107, #109, and #111.
 - G6's bounded test-only regression is implemented in open PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113), which is not yet merged. Latest exact PR head `44a31cb59588457cbaedc4863046795cea03ca3a` passed hosted CI run [#43394074207](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43394074207). Fresh PostgreSQL migration/single-head, Ruff, Mypy, patch-whitespace, full-test, and disposable-container cleanup workflow steps completed successfully. The available run metadata does not expose the final-head test count.
 - Supplemental Operator-local full-suite verification passed on the earlier implementation head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: 956 passed, 113 Alembic deprecation warnings, 292.91s. The earlier 36-failure run did not reproduce; its cause remains undetermined. Local Ruff/Mypy and focused-only runs are not claimed.
-- All six B4.4 regression proofs are complete. The technical closeout review passed; formal B4.4 closure remains pending documentation reconciliation, review of the reconciled exact head, and explicit Operator acceptance.
+- All six B4.4 regression proofs are complete and merged. The technical closeout review, exact-head documentation verification, and explicit Operator acceptance passed; B4.4 formally closed on 2026-11-13.
 
-**Authority note:** This schedule records target dates, not blanket implementation permission. G6 implementation and verification are complete in open PR #113. The technical B4.4 closeout review has passed, but B4.4 remains formally open until documentation is reconciled, the reconciled exact head is verified, and the Operator explicitly accepts closure. The November 15 R8 entry gate must record a separate explicit decision; it does not automatically authorize implementation. B5, B6, and R7-C remain unauthorized.
+**Authority note:** This schedule records target dates, not blanket implementation permission. B4.4 is formally closed on 2026-11-13 after G1–G6 merge, exact-head CI, documentation reconciliation, and explicit Operator acceptance. The November 15 R8 entry gate must record a separate explicit decision; it does not automatically authorize R8 implementation. B5 planning is a separately authorized documentation phase; B5 implementation requires its own explicit authorization. B6 and R7-C remain unauthorized.
 
 ## 3. Delivery schedule
 
@@ -53,7 +53,7 @@ Completed:
 
 Expected result: G5 complete; G6 scope and execution sequence documented. Separate G6 implementation authorization was subsequently granted, and its bounded test-only proof is complete in PR #113.
 
-### November 13–14 — G6 implementation and verification (complete; B4.4 closeout pending)
+### November 13–14 — G6 implementation and verification (complete; B4.4 closed 2026-11-13)
 
 1. Synchronize to the accepted G6 planning merge commit and create a clean implementation branch from exact `main` baseline `7fea4accf2b862271f31b92287666f495b859d04`.
 2. Inspect the accepted B4.0/B4.1/B4.2 contracts and map existing revise, history, projection, and retrieval tests to the G6 acceptance criteria.
@@ -64,7 +64,7 @@ Expected result: G5 complete; G6 scope and execution sequence documented. Separa
 7. Run focused tests, related lifecycle/retrieval suites, static checks, disposable-PostgreSQL migration/single-head checks, patch whitespace validation, and the full suite.
 8. Review the exact diff and hosted CI on the exact PR head. Stop and report if a production/schema change appears necessary.
 
-**Result:** the bounded test-only regression is implemented and verified in PR #113. Hosted CI run [#43386762345](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43386762345) passed on exact PR head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh PostgreSQL migration/single-head, Ruff, Mypy (38 source files), patch whitespace, full suite (**956 passed, 113 warnings**), and disposable-container cleanup. Operator-local exact-head verification on `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh disposable PostgreSQL migration reached `0018_r7b_lifecycle_review_date`; the full suite, run first and alone against that fresh database, passed **956 tests with 113 Alembic `path_separator` deprecation warnings in 292.91s**. The script restored the original process `DATABASE_URL` and `TEST_DATABASE_URL`, removed only its disposable container, and confirmed the exact branch/HEAD and clean worktree. The earlier 36-failure run did not reproduce in this isolated full-suite run; its cause remains undetermined. Local Ruff/Mypy and focused-only runs are not claimed; those checks passed in hosted CI. The earlier 36-failure run did not reproduce in the isolated full-suite run; its cause remains undetermined. No production correction or unrelated scope expansion was required. G6 is complete as a regression-proof gate; B4.4 is not yet formally closed.
+**Result:** the bounded test-only regression is implemented and verified in PR #113. Hosted CI run [#43386762345](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43386762345) passed on exact PR head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh PostgreSQL migration/single-head, Ruff, Mypy (38 source files), patch whitespace, full suite (**956 passed, 113 warnings**), and disposable-container cleanup. Operator-local exact-head verification on `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh disposable PostgreSQL migration reached `0018_r7b_lifecycle_review_date`; the full suite, run first and alone against that fresh database, passed **956 tests with 113 Alembic `path_separator` deprecation warnings in 292.91s**. The script restored the original process `DATABASE_URL` and `TEST_DATABASE_URL`, removed only its disposable container, and confirmed the exact branch/HEAD and clean worktree. The earlier 36-failure run did not reproduce in this isolated full-suite run; its cause remains undetermined. Local Ruff/Mypy and focused-only runs are not claimed; those checks passed in hosted CI. The earlier 36-failure run did not reproduce in the isolated full-suite run; its cause remains undetermined. No production correction or unrelated scope expansion was required. G6 is complete as a regression-proof gate; B4.4 formally closed on 2026-11-13 after documentation reconciliation and explicit Operator acceptance.
 
 ### November 15 — B4.4 closure and R8 entry gate
 
@@ -79,7 +79,7 @@ Expected result: G5 complete; G6 scope and execution sequence documented. Separa
 7. Reconcile PLAN.md, CHANGE_MAP.md, implementation documentation, and testing evidence.
 8. Obtain explicit Operator acceptance of B4.4 closure.
 
-B4.4 is not closed merely because G1–G6 tests pass; final verification and acceptance are mandatory.
+B4.4 closure was based on G1–G6 evidence, exact-head verification, documentation reconciliation, and explicit Operator acceptance.
 
 **R8 entry gate**
 
