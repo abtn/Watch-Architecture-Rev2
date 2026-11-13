@@ -7,7 +7,7 @@ This file is the **single source of current milestone status**. Other documents 
 - **Completed foundations:** K0–K1 and R0–R6 are complete; R6 was formally closed on 2026-11-04.
 - **R7-0 and R7-A:** complete.
 - **R7-B B0–B3:** complete; B3 was formally closed on 2026-11-10. B2 retains its three accepted residual verification gaps, recorded in `docs/testing.md`.
-- **R7-B B4:** separately authorized. B4.1–B4.3 are merged; B4.4 G1–G6 regression proofs are complete. G1–G5 are merged; G6 is implemented in open PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113). B4.4 formal closeout remains pending.
+- **R7-B B4:** complete and formally closed on 2026-11-13 after all six regression proofs, exact-head CI, documentation reconciliation, and explicit Operator acceptance. G1–G5 were merged in PRs #103, #105, #107, #109, and #111; G6 merged in PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113) at `a1baf018fe1a847b3ed5b23432647b387a72ddbc`. The closeout documentation is PR [#114](https://github.com/abtn/Watch-Architecture-Rev2/pull/114).
 - **R7-B B5/B6 and R7-C:** not authorized.
 - **R8:** scheduled for November 23, 2026, with a separate November 15 entry gate. It remains entry-gated and is not authorized for implementation by this schedule.
 
@@ -15,7 +15,7 @@ Detailed historical implementation and verification evidence remains in the rele
 
 ## Current gate and next actionable step
 
-**Current milestone: R7-B B4.4 — regression proofs complete; formal closeout pending.**
+**Current milestone: R7-B B4.4 — formally closed 2026-11-13.**
 
 - G1–G5 are merged through PRs #103, #105, #107, #109, and #111.
 - G6's bounded test-only regression is implemented in PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113), which remains open and unmerged.
@@ -23,9 +23,9 @@ Detailed historical implementation and verification evidence remains in the rele
 - Exact-head hosted CI: [run #43394074207](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43394074207) completed successfully. Fresh PostgreSQL migration/single-head, Ruff, Mypy, patch-whitespace, full-test, and disposable-container cleanup workflow steps passed. The available run metadata does not expose the full-suite test count for this final documentation-updated head.
 - Supplemental Operator-local full-suite verification passed on the earlier implementation head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: 956 passed, 113 Alembic `path_separator` deprecation warnings, 292.91s. The earlier run with 36 failures did not reproduce; its cause remains undetermined. Local Ruff/Mypy and focused-only runs are not claimed.
 
-The formal B4.4 technical review found G1–G6 and the bounded architecture/scope sound. The documentation and PR #113 description are reconciled in open stacked documentation-only PR [#114](https://github.com/abtn/Watch-Architecture-Rev2/pull/114). Remaining closeout work is review of that diff and its exact-head CI, merging the documentation reconciliation after review, and obtaining explicit Operator acceptance. **B4.4 is not formally closed.**
+The formal B4.4 technical review found G1–G6 and the bounded architecture/scope sound. The documentation reconciliation passed exact-head hosted CI in PR #114 after PR #113 merged. The Operator explicitly accepted B4.4 closure on 2026-11-13. **B4.4 is formally closed.**
 
-**Next action:** review and merge the documentation-only reconciliation PR only after its exact-head checks and review pass. Then record explicit B4.4 closeout acceptance separately. This does not authorize B5, B6, or R7-C.
+**Next action:** prepare the separately authorized B5 documentation-only plan. B5 implementation remains gated by that plan's review and a distinct implementation authorization; B6 and R7-C remain unauthorized.
 
 **R8 boundary:** the November 15 entry gate must assess readiness and record explicit authorization. The November 23 target is a schedule, not permission to begin implementation.
 
@@ -42,7 +42,7 @@ The formal B4.4 technical review found G1–G6 and the bounded architecture/scop
 | R4 | **Complete** (closed 2026-10-20) | StrategyProposal boundary, multi-Vision/Workstream/Action semantics, deterministic validation and reconstruction. |
 | R5 | **Complete — closed 2026-10-24 by explicit operator decision** | Materialize one accepted Strategy as one durable Plan and ordinary Tasks; retain the Task-execution dependency for R6. |
 | R6 | **COMPLETE — G0 through R6-G; formally closed 2026-11-04.** | The integrated three-case source→Evaluation→distillation→Operator→Team Experience path passed the ten-proof technical review and received explicit Operator exit approval. PR #35 merged to `main` at `56745b613b5b77a21a514b4e261d3450f90c0df1`; final PR-head CI passed, and exact implementation-head hosted/local verification is recorded below. D10 remains create-only; R7 implementation remains separately gated. |
-| R7 | **R7-0/R7-A/B0/B1/B2 complete; B3 formally closed; B4.1–B4.3 merged; B4.4 G1–G6 regression proofs complete; formal B4.4 closeout pending; B5, B6, and R7-C unauthorized.** G1–G5 are merged (PRs #103, #105, #107, #109, #111); G6 is implemented in open PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113). Latest exact PR head `44a31cb59588457cbaedc4863046795cea03ca3a` passed hosted CI run [#43394074207](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43394074207). The earlier implementation head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd` passed Operator-local full-suite verification (956 passed, 113 warnings); the earlier 36-failure run did not reproduce and its cause remains undetermined. The final-head CI metadata does not expose a test count. B4.4 is not formally closed; see the integrated audit and `docs/testing.md`. |
+| R7 | **R7-0/R7-A/B0/B1/B2 complete; B3 formally closed; B4.1–B4.3 merged; B4.4 formally closed 2026-11-13; B5 planning authorized, implementation gated; B6 and R7-C unauthorized.** G1–G5 merged in PRs #103, #105, #107, #109, and #111; G6 merged in PR #113 at `a1baf018fe1a847b3ed5b23432647b387a72ddbc`. Exact PR #113 head `44a31cb59588457cbaedc4863046795cea03ca3a` passed hosted CI run [#43394074207](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43394074207). The earlier implementation head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd` passed Operator-local full-suite verification (956 passed, 113 warnings); the earlier 36-failure run did not reproduce and its cause remains undetermined. Documentation reconciliation passed exact-head hosted CI in PR #114, and the Operator accepted closure on 2026-11-13. See the integrated audit and `docs/testing.md`. |
 | R8 | **Scheduled — November 23, 2026 target; November 15 entry gate; implementation remains entry-gated.** | Three-domain pressure test across newsroom, development-team, and generalist scenarios. See [the R8 delivery plan](docs/development/r8-delivery-plan.md). B4.4 closure and explicit Operator acceptance are prerequisites; the schedule does not itself authorize implementation. |
 | R9 | Future | Codified agent-assisted production workflow. |
 
@@ -345,7 +345,7 @@ PR [#39](https://github.com/abtn/Watch-Architecture-Rev2/pull/39) merged on 2026
 
 **Verification:** hosted exact-head CI [41844600681](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41844600681) passed. Operator-local verification on the same tree passed fresh disposable-PostgreSQL migration to the single 0014_knowledge_quality head, Ruff, Mypy (31 source files), and 631 tests in 79.22s. The committed runner restored both database environment variables and removed its temporary container. Full evidence is in docs/testing.md. No production evaluator provider was selected.
 
-### R7-B — Canonical KnowledgeItem lifecycle — B0–B3 complete; B4.1–B4.3 merged; B4.4 regression proofs complete; formal closeout pending
+### R7-B — Canonical KnowledgeItem lifecycle — B0–B3 complete; B4.1–B4.3 merged; B4.4 formally closed
 
 **Status:** B0 was merged by PR #41 on 2026-11-05 at `64d5fb19be541d80b3cb8941ce3359d4b69565c1`. B1 was separately authorized on 2026-11-05, accepted on 2026-11-06, and merged by PR [#43](https://github.com/abtn/Watch-Architecture-Rev2/pull/43) on 2026-11-06 at `d1a8b88fd930207142304fc9b0b7274de5de4992`. The migration rejects create roots unless `version = 1`, `status = active`, and JSON `last_validated_at = null`; live history validation rejects reciprocal predecessor links unless the predecessor is `retired`. Operator-local verification passed at code head `ca498ecd43207e72082332c803a74eb30173d41c` with disposable PostgreSQL migration to `0015_r7b_history`, 33 focused migration tests, Ruff, Mypy (32 files), and 690 full-suite tests. Final PR-head hosted CI [run 42246346103](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/42246346103) passed on `a7c6d4a7de5529ea9fb4faff5c9ab17bbbc51fd8`: fresh PostgreSQL migration/single-head checks, Ruff, Mypy (32 files), 690 tests, and cleanup. Full evidence is in `docs/testing.md`.
 
