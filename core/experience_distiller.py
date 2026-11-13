@@ -1085,7 +1085,10 @@ class ExperienceDistiller:
                 "target_content_hash_scheme",
                 "target_state_hash",
             }
-            if not isinstance(raw_binding, dict) or set(raw_binding) != expected_binding_keys:
+            if (
+                not isinstance(raw_binding, dict)
+                or set(raw_binding) != expected_binding_keys
+            ):
                 raise ExperienceDistillerError(
                     "successor_predecessor_binding_invalid"
                 )
