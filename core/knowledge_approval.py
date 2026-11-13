@@ -476,7 +476,7 @@ def build_approval_binding(
                 snapshot_store,
                 session_factory,
                 require_task_done=True,
-                require_current=True,
+                require_current=learning_change.status == "proposed",
             )
         except KnowledgeLifecycleAssessmentError as error:
             raise KnowledgeApprovalBindingError(str(error)) from error
