@@ -891,9 +891,9 @@ The initial implementation and pre-reconciliation PR heads are historical eviden
 No migration, new Task type, second runtime, dispatcher, scheduler, API, authentication subsystem, production evaluator/provider, B5 lifecycle commit, B6, or R7-C work is included. B5, B6, and R7-C remain unauthorized.
 
 
-## R7-B B4.4 — integrated regression audit (IN PROGRESS — G1/G2/G3 COMPLETE AND MERGED; G4 PLAN DOCUMENTED ONLY)
+## R7-B B4.4 — integrated regression audit (IN PROGRESS — G1–G5 COMPLETE AND MERGED; G6 PLAN DOCUMENTED ONLY)
 
-The initial read-only source/test audit is recorded in [the B4.4 audit](development/r7-b-b4-4-integrated-regression-audit.md), against exact merged main SHA 5f37927ff33d9e740c0ff56512d261dace36ab67. It identified six regression-proof gaps. G1 (concurrent revise/revalidate application and PostgreSQL CAS proofs), G2 (accepted-revalidation approval recovery after canonical decision commit), and G3 (revalidation replay after a later accepted revision) are complete and merged. G4–G6 remain evidence gaps, not confirmed implementation defects. G4 is authorized for documentation planning only; its extracted plan is [here](development/r7-b-b4-4-g4-revise-revalidate-sequence-plan.md), and implementation awaits separate explicit authorization. G5 and G6 remain unauthorized.
+The initial read-only source/test audit is recorded in [the B4.4 audit](development/r7-b-b4-4-integrated-regression-audit.md), against exact merged main SHA 5f37927ff33d9e740c0ff56512d261dace36ab67. It identified six regression-proof gaps. G1–G5 (concurrency/CAS, recovery, replay after later history, integrated same-item revise/revalidate, and rejected-revalidation replay) are complete and merged. G6 is the remaining evidence gap, not a confirmed implementation defect. Its documentation-only plan is [here](development/r7-b-b4-4-g6-needs-review-revise-plan.md); G6 implementation awaits separate explicit Operator authorization.
 
 ### Supplemental B4.3 Operator-local verification on exact merged-main tree
 
@@ -947,8 +947,24 @@ PR #109 was squash-merged to main at 15d565956cde44a7bd3d124e0bb62d188063846f fr
 
 The regression test_revise_then_revalidate_rejects_stale_pre_revision_assessment proves the same-item sequence: accepted revise, stale pre-revise revalidation assessment rejection through the ordinary Operator path, fresh post-revise assessment, accepted revalidation, history reconstruction, and projection eligibility. Hosted exact-head CI run #43255646691 passed. Operator-local exact-head verification passed the focused G4 test (1 passed), Ruff, Mypy, and the full suite (955 passed, 113 warnings); the isolated disposable PostgreSQL containers were removed and DATABASE_URL / TEST_DATABASE_URL were restored. The warnings are existing Alembic path_separator deprecations.
 
-**G4 disposition:** complete and merged. The G5 plan is documentation-only and does not authorize implementation.
+**G4 disposition:** complete and merged. G5 is complete and merged by PR #111; its exact-head local and hosted verification is recorded below.
 
 ## R7-B B4.4 G5 — Rejected revalidation approval replay
 
 **Status: PLAN DOCUMENTED ONLY — implementation not authorized.** The G5 plan specifies a focused regression through the trusted OperatorApplicationAdapter. It must replay the exact original rejected request and prove the original decision, Task, Event and Outcome identities are returned without duplicate records or KnowledgeItem mutation. G5 is not complete until its separately authorized implementation, focused/full verification, exact-head hosted CI, and Operator acceptance are recorded.
+
+## R7-B B4.4 G5 — Rejected revalidation approval replay (PR #111 merged 2026-11-13)
+
+PR [#111](https://github.com/abtn/Watch-Architecture-Rev2/pull/111) was squash-merged to `main` at `09cb8e6dfae078662e55631ae2f79e31fa8fb8cf` from exact PR head `89710b033d5c2d7025c18ba84e901f6fb09ad87c`. The sole changed file was `tests/test_experience_distiller.py`; no production source, schema, migration, dependency, runtime, or approval-scope change was made.
+
+The extended `test_rejected_revalidation_does_not_mutate_the_knowledge_item` uses `OperatorApplicationAdapter.decide_learning_change` for the original rejection and the exact replay. It verifies the same principal/request/idempotency key returns the original Task, LearningChange, rejection, Operator identity, commit timestamp, and Outcome identity. It asserts exactly one request Event, one rejection Event, one terminal `task_completed` Event, and one task-execution Outcome; no failed terminal Event or accepted-decision Event is present. The rejected LearningChange retains its reason and attribution with `committed_state` unset, while the target KnowledgeItem's canonical state and semantic content hash remain unchanged after both calls.
+
+**Hosted exact-head CI:** run [#43309878568](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43309878568) passed on exact PR head `89710b033d5c2d7025c18ba84e901f6fb09ad87c` (fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, full suite, and disposable-container cleanup).
+
+**Operator-local exact-head verification:** the same SHA passed the focused G5 regression (**1 passed in 4.57s**), Ruff, Mypy (38 source files), fresh disposable PostgreSQL migration/single-head at `0018_r7b_lifecycle_review_date`, `git diff --check`, and the full suite (**955 passed, 113 warnings in 331.30s**). The warnings are Alembic `path_separator` deprecations. The disposable container was removed and the original process `DATABASE_URL` / `TEST_DATABASE_URL` values were restored. G5 is complete; no production correction was required.
+
+## R7-B B4.4 G6 — Accepted revise from needs_review (planning only)
+
+G6 is the remaining B4.4 regression proof. Its documentation-only plan is [r7-b-b4-4-g6-needs-review-revise-plan.md](development/r7-b-b4-4-g6-needs-review-revise-plan.md). The plan maps the existing accepted revise, history reconstruction, Team Experience projection, and retrieval contracts into one bounded regression sequence. It requires status preservation, pointer/version/content/date consistency, history equality, and continued retrieval exclusion while the canonical item remains `needs_review`.
+
+**Status:** G6 planning is authorized; implementation is not authorized by the planning PR and requires a separate explicit Operator decision. No G6 implementation or verification is claimed. B4.4 remains open pending G6, final verification, and explicit Operator acceptance.
