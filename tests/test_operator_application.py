@@ -734,7 +734,10 @@ def test_non_proposed_learning_change_cannot_start_a_new_request(
         assert learning_change is not None
         learning_change.status = "rejected"
         learning_change.committed_by_task_id = approval_context.proposer_task_id
-        learning_change.operator_id = '{"iss":"https://host.example/identity","sub":"operator-43"}'
+        learning_change.operator_id = (
+            '{"iss":"https://host.example/identity",'
+            '"sub":"operator-43"}'
+        )
         learning_change.committed_at = datetime.now(timezone.utc)
         learning_change.decision_reason = "already decided"
 
@@ -746,7 +749,6 @@ def test_non_proposed_learning_change_cannot_start_a_new_request(
             _principal(approval_context.team_id),
             _request(approval_context.learning_change_id),
         )
-
 
 
 def test_retirement_request_requires_snapshot_context(
