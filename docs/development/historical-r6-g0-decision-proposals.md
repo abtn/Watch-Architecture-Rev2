@@ -67,6 +67,6 @@ Use static fictional news/science sources, including at least one contradictory 
 
 ## Authorization prerequisite
 
-The operational prerequisite — verify actual local branch, HEAD, status/diff, merge state, migrations, and disposable PostgreSQL database using `AGENTS.md` — is **satisfied 2026-10-25** and recorded in [PLAN.md](../../PLAN.md) and the [R6 entry gate](r6-entry-gate.md). R6-G0 is therefore COMPLETE.
+The operational prerequisite — verify actual local branch, HEAD, status/diff, merge state, migrations, and disposable PostgreSQL database using `AGENTS.md` — is **satisfied 2026-10-25** and recorded in [PLAN.md](../../PLAN.md) and the [R6 entry gate](historical-r6-entry-gate.md). R6-G0 is therefore COMPLETE.
 
 This decision record does not itself authorize R6-A. The operator subsequently gave the separate explicit instruction, and R6-A is now COMPLETE and merged to `main` by PR #12; see `PLAN.md` for the authoritative milestone status.

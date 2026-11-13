@@ -4,7 +4,7 @@
 
 **R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 complete; B1 merged; B2 formally closed with accepted residual verification gaps; B3 COMPLETE and formally closed 2026-11-10. B3.2–B3.6 are implemented and merged, B3.7's matrix is fully mapped, B3.8 exact-head verification passed with the documented Markdown diff-check qualification, and B3.9 documentation closeout/Operator exit acceptance are recorded in `PLAN.md` and `docs/testing.md`.**
 
-- This document records the accepted R7 architecture and separate phase gates. R7-A is complete; R7-B B0/B1 are complete, B2 is formally closed with accepted residuals, and B3 is formally closed on 2026-11-10. The B3.8 evidence and B3.9 closeout are recorded in `PLAN.md`, `docs/testing.md`, and the [B3 closeout record](r7-b-b3-9-closeout.md). The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain separately gated and unauthorized.
+- This document records the accepted R7 architecture and separate phase gates. R7-A is complete; R7-B B0/B1 are complete, B2 is formally closed with accepted residuals, and B3 is formally closed on 2026-11-10. The B3.8 evidence and B3.9 closeout are recorded in `PLAN.md`, `docs/testing.md`, and the [B3 closeout record](historical-r7-b-b3-9-closeout.md). The active approval allowlist remains exactly `create`; B4–B6 and R7-C remain separately gated and unauthorized.
 - ADR-0032 remains **Accepted — 2026-11-04 for the original R7 architecture and R7-A scope**. Its R7-B D1/D5 design extension and B0.3 integrity contracts are separately accepted for design on 2026-11-05; this does not authorize implementation.
 - PLAN.md remains the sole authority for milestone status and next action.
 - R6 is formally complete through R6-G. R6-G approval and merge do not authorize R7.
@@ -37,7 +37,7 @@ R7-0 documentation is complete and merged. ADR-0032's original architecture acce
 
 ### R7-A — Evidence relationships and knowledge-quality assessment
 
-**Status:** COMPLETE — merged through PR #39 on 2026-11-04. Contract and closeout evidence are in [r7-a-implementation-plan.md](r7-a-implementation-plan.md) and docs/testing.md.
+**Status:** COMPLETE — merged through PR #39 on 2026-11-04. Contract and closeout evidence are in [historical-r7-a-implementation-plan.md](historical-r7-a-implementation-plan.md) and docs/testing.md.
 
 **Purpose:** determine whether a proposed abstraction is traceable to canonical evidence and whether its claimed generality is defensible.
 
@@ -114,7 +114,7 @@ Exit requirements:
 
 ## 4. Accepted architecture decisions and phase gates
 
-The normative architecture is [ADR-0032](../decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md). R7-A's completed implementation contract is [r7-a-implementation-plan.md](r7-a-implementation-plan.md). The R7-B plan sequences the accepted B2 work and separately gated B3–B6 work; the B3.7 integrated regression matrix is the controlling acceptance inventory for the currently authorized implementation in PR #69. `PLAN.md` remains the sole source of current milestone status.
+The normative architecture is [ADR-0032](../decisions/ADR-0032-knowledge-quality-evaluation-and-lifecycle.md). R7-A's completed implementation contract is [historical-r7-a-implementation-plan.md](historical-r7-a-implementation-plan.md). The R7-B plan sequences the accepted B2 work and separately gated B3–B6 work; the B3.7 integrated regression matrix is the controlling acceptance inventory for the currently authorized implementation in PR #69. `PLAN.md` remains the sole source of current milestone status.
 
 | Decision | Accepted resolution / phase-specific gate |
 |---|---|
@@ -170,7 +170,7 @@ R7-0 documentation closeout:
 R7-A implementation gate:
 
 - [x] Operator acceptance of ADR-0032 and R7-A implementation authorization recorded.
-- [x] Freeze remaining R7-A schema, evidence-reference, Task completion, retry/idempotency, and failure-injection contracts in [r7-a-implementation-plan.md](r7-a-implementation-plan.md) before source changes.
+- [x] Freeze remaining R7-A schema, evidence-reference, Task completion, retry/idempotency, and failure-injection contracts in [historical-r7-a-implementation-plan.md](historical-r7-a-implementation-plan.md) before source changes.
 - [x] Separate explicit Operator instruction authorizes R7-A only; see §3 R7-A scope.
 - [x] Local preflight and disposable-PostgreSQL verification completed on tested PR head 47ffa532dacbc10b146ac7b0768302761a2a0b1b, whose Git tree is identical to the merge commit.
 - [x] DATABASE_URL and TEST_DATABASE_URL targeted the same fresh disposable PostgreSQL database; runner restored both variables and removed its container.
@@ -200,4 +200,4 @@ No source code, tests, migrations, schema, runtime configuration, provider confi
 
 **R7-A closeout:** PR #39 merged to main at 75122a7b34c15e2445b81a2a719020667b55bf06. Tested head 47ffa532dacbc10b146ac7b0768302761a2a0b1b has identical Git tree. Hosted CI [41844600681](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/41844600681) passed; Operator-local disposable-PostgreSQL verification passed 631 tests in 79.22s, fresh single-head 0014_knowledge_quality migration, Ruff, Mypy and cleanup.
 
-**Current gate (updated 2026-11-10):** R7-0, R7-A, R7-B B0/B1/B2, and B3 are complete/closed as recorded in `PLAN.md`. B3.8 exact-head verification and B3.9 formal exit evidence are recorded in `docs/testing.md` and [the B3 closeout record](r7-b-b3-9-closeout.md). The approval allowlist remains exactly `{"create"}`. B4–B6 and R7-C remain NOT AUTHORIZED and require separate written Operator decisions.
+**Current gate (updated 2026-11-10):** R7-0, R7-A, R7-B B0/B1/B2, and B3 are complete/closed as recorded in `PLAN.md`. B3.8 exact-head verification and B3.9 formal exit evidence are recorded in `docs/testing.md` and [the B3 closeout record](historical-r7-b-b3-9-closeout.md). The approval allowlist remains exactly `{"create"}`. B4–B6 and R7-C remain NOT AUTHORIZED and require separate written Operator decisions.

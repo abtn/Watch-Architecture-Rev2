@@ -188,7 +188,7 @@ D1–D4 were resolved in Checkpoint 1. D5 was resolved in Checkpoint 4 through a
 
 ### R6-G — Integrated vertical slice and formal gate
 
-The implementation and acceptance evidence are recorded in [R6-G Integrated Fixture and Service-Interaction Design](r6g-integrated-fixture-design.md) and [docs/testing.md](../testing.md). The implementation includes one Team/Objective fixture, three configured-source cases (new content, legitimate no-change, terminal failure), atomic source terminalization plus evaluator-Task enqueue, the D9 rule runner, failed-case preservation in a versioned distillation evidence pack, Operator rejection/acceptance, Team Experience publication and later-Task retrieval.
+The implementation and acceptance evidence are recorded in [R6-G Integrated Fixture and Service-Interaction Design](historical-r6g-integrated-fixture-design.md) and [docs/testing.md](../testing.md). The implementation includes one Team/Objective fixture, three configured-source cases (new content, legitimate no-change, terminal failure), atomic source terminalization plus evaluator-Task enqueue, the D9 rule runner, failed-case preservation in a versioned distillation evidence pack, Operator rejection/acceptance, Team Experience publication and later-Task retrieval.
 
 The original integration gaps are implemented: (1) the evaluator request Task/Event is created atomically with the source terminal Outcome; (2) ExperienceDistiller includes a terminal failed source Task as contrary evidence in v2 while preserving historical v1 reconstruction; (3) TaskRuntime recovers an already-recorded Evaluation before retry exhaustion can fail its Task. Typed TaskRuntime terminal results also cover `propose_strategy` and `create_plan`; their committed dispositions are recovered through TaskRuntime rather than by direct Task status writes or ingestion result-category reuse.
 
@@ -234,7 +234,7 @@ Documentation-only closeout. No application code, tests, migrations, schema, Doc
 
 - Branch `R5-rebased`; HEAD `f9207156533b6944d320a6adfff42963f7e1e17c`.
 - HEAD equals `origin/main` (`f920715`, merge of PR #9); no divergence and no local-only commits.
-- The preflight checks were completed while the working tree was clean. The closeout itself introduces six intentional, unstaged documentation modifications (`PLAN.md`, this file, `docs/development/r6-g0-decision-proposals.md`, `CHANGE_MAP.md`, `CONTEXT.md`, `docs/control-model.md`). The working tree is therefore **not** clean at the end of this closeout; nothing is staged, committed, or pushed.
+- The preflight checks were completed while the working tree was clean. The closeout itself introduces six intentional, unstaged documentation modifications (`PLAN.md`, this file, `docs/development/historical-r6-g0-decision-proposals.md`, `CHANGE_MAP.md`, `CONTEXT.md`, `docs/control-model.md`). The working tree is therefore **not** clean at the end of this closeout; nothing is staged, committed, or pushed.
 
 **Migrations:** the source chain is a single lineage `0001` → `0008_plan_lifecycle_state`. During preflight, `uv run alembic upgrade head`, `uv run alembic current`, and `uv run alembic heads` against the isolated disposable database `watch_r6_preflight` reported `0008_plan_lifecycle_state (head)` with exactly one head.
 

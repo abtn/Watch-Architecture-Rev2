@@ -418,7 +418,7 @@ B2 does **not** implement KnowledgeRevalidationAssessment or KnowledgeLifecycleA
 **B2 closeout reference:** B2 is formally closed by explicit Operator instruction on 2026-11-08. The three retained residual verification gaps are recorded in `PLAN.md` and `docs/testing.md`; none is represented as passed. This does not expand B2's create-only authority.
 
 
-**Status:** B3.2–B3.6 are implemented and merged; B3.7's full frozen matrix is mapped to merged tests; B3.8 exact-head verification is complete on `6b624310d4d3ae53153dba1b9f47e949564de079`; B3.9 documentation closeout and formal B3 exit are complete. See [the B3 closeout record](r7-b-b3-9-closeout.md) and `docs/testing.md` for the exact evidence and diff-check qualification. B3 is formally closed on 2026-11-10. The approval allowlist remains exactly `{"create"}`; B4–B6 and R7-C remain separately gated and unauthorized.
+**Status:** B3.2–B3.6 are implemented and merged; B3.7's full frozen matrix is mapped to merged tests; B3.8 exact-head verification is complete on `6b624310d4d3ae53153dba1b9f47e949564de079`; B3.9 documentation closeout and formal B3 exit are complete. See [the B3 closeout record](historical-r7-b-b3-9-closeout.md) and `docs/testing.md` for the exact evidence and diff-check qualification. B3 is formally closed on 2026-11-10. The approval allowlist remains exactly `{"create"}`; B4–B6 and R7-C remain separately gated and unauthorized.
 
 **Goal:** add immutable, operation-specific assessment records and narrow recording Tasks. These assessments supply validated evidence to the existing trusted Operator approval path; they do not authorize or commit lifecycle transitions.
 
@@ -652,7 +652,7 @@ This is exact-merge local evidence, not a result on the PR head or the earlier p
 
 #### B3.7 — Integrated regression matrix
 
-**Implementation and verification status:** B3.7 test implementation is complete and every frozen matrix ID is mapped to merged tests. B3.8 exact-head verification passed on the hosted-tested SHA with the documented Markdown-only cumulative diff-check qualification. B3.9 reconciled the project records and recorded formal B3 exit acceptance. See [the B3 closeout record](r7-b-b3-9-closeout.md) and `docs/testing.md`.
+**Implementation and verification status:** B3.7 test implementation is complete and every frozen matrix ID is mapped to merged tests. B3.8 exact-head verification passed on the hosted-tested SHA with the documented Markdown-only cumulative diff-check qualification. B3.9 reconciled the project records and recorded formal B3 exit acceptance. See [the B3 closeout record](historical-r7-b-b3-9-closeout.md) and `docs/testing.md`.
 
 The merged end-to-end matrix exercises the real persistence, TaskRuntime, Event, assessment, and approval-validation boundaries, including:
 
@@ -678,12 +678,12 @@ Tests must assert both the intended assessment record and the absence of unautho
 
 **Operator-local verification:** exact tested SHA `6b624310d4d3ae53153dba1b9f47e949564de079`; focused groups independently passed (238 tests); Ruff passed; Mypy passed (38 source files); separate fresh focused/full-suite PostgreSQL databases migrated to sole head `0018_r7b_lifecycle_review_date`; full suite passed 946 tests in 192.71s with 113 existing Alembic warnings. The disposable container was removed, `DATABASE_URL` and `TEST_DATABASE_URL` restored, and clean `main` restored at `0a588bc43ee6bfab8c6fccd86dbb28c5c2c803dc`.
 
-**Diff/scope disposition:** the cumulative B3.7 diff inventory matched the reviewed 12-file set. The scoped cumulative diff check on `core/knowledge_lifecycle.py` and `tests/test_experience_distiller.py` passed. The initial whole cumulative `git diff --check` flagged three Markdown hard-break trailing spaces in B3.7 matrix metadata; these are documented, not represented as a clean whole-diff result. The clean-checkout diff check passed. See `docs/testing.md` and [the B3 closeout record](r7-b-b3-9-closeout.md).
+**Diff/scope disposition:** the cumulative B3.7 diff inventory matched the reviewed 12-file set. The scoped cumulative diff check on `core/knowledge_lifecycle.py` and `tests/test_experience_distiller.py` passed. The initial whole cumulative `git diff --check` flagged three Markdown hard-break trailing spaces in B3.7 matrix metadata; these are documented, not represented as a clean whole-diff result. The clean-checkout diff check passed. See `docs/testing.md` and [the B3 closeout record](historical-r7-b-b3-9-closeout.md).
 
 #### B3.9 — Documentation closeout and formal B3 exit — COMPLETE
 
 1. Reconcile `PLAN.md`, `CHANGE_MAP.md`, `CONTEXT.md`, `README.md`, `docs/testing.md`, `docs/tasks.md`, ADR-0032, the ADR index, the R7 entry gate, this implementation plan, and the B3.7 matrix against the verified B3.8 results.
-2. Preserve traceability from each verification result and governance decision to the updated documentation; the consolidated evidence-to-document map is in [the B3 closeout record](r7-b-b3-9-closeout.md).
+2. Preserve traceability from each verification result and governance decision to the updated documentation; the consolidated evidence-to-document map is in [the B3 closeout record](historical-r7-b-b3-9-closeout.md).
 3. Record **B3 EXIT: COMPLETE — FORMALLY CLOSED (2026-11-10)** following the Operator's explicit instruction to proceed to B3.9 and establish the formal exit status. The Markdown diff-check qualification remains explicit.
 4. At the time of the B3.9 closeout decision, B4, B5, B6, and R7-C were **NOT AUTHORIZED**. B3 exit itself granted no subsequent authority. The Operator later issued a separate B4 authorization, recorded in the Phase B4 status below; B5, B6, and R7-C remain unauthorized.
 

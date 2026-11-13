@@ -98,7 +98,7 @@ The current project documents are reconciled as follows:
 - `docs/tasks.md`: implemented assessment Task paths and create-only approval boundary reconciled with B3 closure.
 - `docs/development/r7-b-implementation-plan.md`: B3.8 results and B3.9 closeout recorded; later phases remain separately gated.
 - `docs/development/r7-entry-gate.md`: current R7/B3 status and authority boundary reconciled.
-- `docs/development/r7-b-b3-7-integrated-regression-matrix.md`: B3.7 mapping retained; B3.8 evidence and B3.9 closeout linked.
+- `docs/development/historical-r7-b-b3-7-integrated-regression-matrix.md`: B3.7 mapping retained; B3.8 evidence and B3.9 closeout linked.
 - ADR-0032 and `docs/decisions.md`: implementation progression and B3 exit status updated without changing the accepted normative contract.
 
 ## 5. Formal B3 exit status
