@@ -16,17 +16,17 @@ R8 must demonstrate:
 
 The objective is to demonstrate the existing architecture under different domain conditions, not to add another architectural layer.
 
-## 2. Baseline and dependencies — November 12
+## 2. Baseline and dependencies — November 13
 
 - R7-B B0–B3 are complete.
 - B4.1–B4.3 are implemented and merged.
-- B4.4 G1–G4 are complete and merged. G4 PR #109 is on main at 15d565956cde44a7bd3d124e0bb62d188063846f.
-- G5 rejected-revalidation replay: documentation plan authorized; implementation not authorized.
-- G6 accepted revise from needs_review: outstanding; implementation not authorized.
+- B4.4 G1–G4 are complete and merged.
+- G5 rejected-revalidation approval replay is complete and merged by PR #111 at 09cb8e6dfae078662e55631ae2f79e31fa8fb8cf; hosted CI and Operator-local focused/full verification passed.
+- G6 accepted revise from needs_review is the remaining B4.4 regression proof. Its documentation-only plan is authorized and recorded in [the G6 plan](r7-b-b4-4-g6-needs-review-revise-plan.md); implementation still requires a separate explicit Operator decision.
 
 B5, B6, and R7-C are not automatic R8 prerequisites. They remain unauthorized unless a concrete R8 acceptance blocker is identified and the Operator separately authorizes the work.
 
-**Authority note:** This schedule records target dates, not implementation permission. G5 and G6 implementation each require separate explicit authorization. If either is not authorized and completed in time, record the schedule risk; do not claim B4.4 closure or weaken the R8 entry gate.
+**Authority note:** This schedule records target dates, not implementation permission. G6 implementation requires separate explicit authorization. If it is not authorized and completed in time, record the schedule risk; do not claim B4.4 closure or weaken the R8 entry gate.
 
 ## 3. Delivery schedule
 
@@ -36,29 +36,34 @@ Completed: PR #109 verified and squash-merged; hosted CI and local focused/full 
 
 Result: G4 closed; main baseline 15d565956cde44a7bd3d124e0bb62d188063846f.
 
-### November 13 — Local synchronization and G5
+### November 13 — G5 closure and G6 planning
 
-1. Synchronize local main to the verified G4 merge commit.
-2. Verify repository root, branch, exact HEAD, origin, clean worktree, migration head, and local environment.
-3. Inspect the existing rejected-revalidation and replay paths.
-4. Review and accept the G5 documentation plan.
-5. Only after separate explicit Operator authorization, implement the focused G5 regression.
-6. Replay the exact original rejected revalidation request and verify no duplicate Events, Outcomes, approval Tasks, or canonical writes.
-7. Run focused verification and review the exact diff and hosted CI evidence.
+Completed:
 
-Expected result: G5 regression evidence, with no unrelated production changes. Until separately authorized, only documentation and read-only inspection are permitted.
+1. Verified the exact G5 branch, commit, and clean local worktree.
+2. Ran the focused G5 rejection/replay regression through disposable PostgreSQL.
+3. Ran Ruff, Mypy, migration/single-head checks, patch whitespace validation, and the full suite (955 passed).
+4. Verified disposable database cleanup and restoration of the original process database variables.
+5. Reviewed the exact G5 test-only diff and green hosted CI on the exact PR head.
+6. Squash-merged PR #111 to main at 09cb8e6dfae078662e55631ae2f79e31fa8fb8cf.
+7. Began G6 documentation planning; no G6 implementation changes are authorized by this planning step.
 
-### November 14 — G6 and remaining B4.4 proof
+Expected result: G5 complete; G6 scope and execution sequence documented. G6 implementation remains separately gated.
 
-Subject to separate explicit authorization:
+### November 14 — G6 implementation checkpoint (planned; authorization pending)
 
-1. Inspect the accepted revise path from needs_review.
-2. Verify accepted revise preserves needs_review and does not restore retrieval eligibility.
-3. Verify pointer, version, history, and date consistency.
-4. Verify ordinary retrieval continues to exclude the item while review is required.
-5. Run the focused G6 regression and review interactions with G4 and earlier tests.
+Only after the Operator separately authorizes G6 implementation:
 
-Expected result: G6 evidence. If authorization is absent, record the blocker and schedule risk; do not proceed as if implementation were authorized.
+1. Synchronize to the accepted G6 documentation-plan merge commit and create a clean implementation branch.
+2. Inspect the accepted B4.0/B4.1/B4.2 contracts and map existing revise, history, projection, and retrieval tests to the G6 acceptance criteria.
+3. Add the smallest deterministic regression for an accepted content-changing revise against a current needs_review item, using the trusted Operator path.
+4. Verify status preservation, one pointer/version advance, changed semantic content/hash, cleared last_validated_at, and review_after derived from the pinned approval Task policy.
+5. Verify reconstructed history matches the live canonical state.
+6. Verify the old Team Experience projection is stale/ineligible and ordinary retrieval continues to exclude the item while it remains needs_review; do not add synchronous indexing.
+7. Run focused tests, related lifecycle/retrieval suites, static checks, disposable-PostgreSQL migration/single-head checks, patch whitespace validation, and the full suite.
+8. Review the exact diff and hosted CI on the exact PR head. Stop and report if a production/schema change appears necessary.
+
+Expected result: G6 regression evidence with no unrelated production changes. The schedule does not authorize implementation; if separate authorization is absent, record the blocker and schedule risk.
 
 ### November 15 — B4.4 closure and R8 entry gate
 
