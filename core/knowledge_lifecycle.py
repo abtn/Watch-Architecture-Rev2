@@ -940,13 +940,15 @@ def build_lifecycle_task_request(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
     learning_change: LearningChange,
+    *,
+    require_current: bool = True,
 ) -> tuple[UUID, dict[str, Any]]:
     proposal = _proposal_context(
         session,
         session_factory,
         snapshot_store,
         learning_change,
-        require_current=True,
+        require_current=require_current,
     )
     task_id = _task_id(learning_change.team_id, learning_change.id)
     payload = _common_request_payload(task_id, proposal)
