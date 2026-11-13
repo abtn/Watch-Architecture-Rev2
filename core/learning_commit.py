@@ -208,6 +208,19 @@ class LearningCommitService:
             if learning_change is None:
                 raise LearningCommitCorrupt("learning_change_not_found_for_task_team")
 
+            candidate_team_lock: Team | None = None
+            if (
+                learning_change.operation == "create"
+                and "supersedes_item_id" in learning_change.proposed_state
+            ):
+                candidate_team_lock = session.scalar(
+                    select(Team)
+                    .where(Team.id == task.team_id)
+                    .with_for_update()
+                )
+                if candidate_team_lock is None or candidate_team_lock.status != "active":
+                    raise LearningCommitError("team_not_active")
+
             if approval_request.schema_version == 3:
                 from core.knowledge_approval import (
                     KnowledgeApprovalBindingError,
@@ -280,7 +293,7 @@ class LearningCommitService:
                     "only_knowledge_item_create_revise_or_revalidate_is_supported"
                 )
 
-            team = session.scalar(
+            team = candidate_team_lock or session.scalar(
                 select(Team)
                 .where(Team.id == task.team_id)
                 .with_for_update()
