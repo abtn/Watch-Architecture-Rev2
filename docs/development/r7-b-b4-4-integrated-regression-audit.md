@@ -2,7 +2,7 @@
 **Status: IN PROGRESS — G1–G6 regression proofs complete; formal B4.4 closeout pending (updated 2026-11-13).**
 **Baseline:** exact merged main commit 5f37927ff33d9e740c0ff56512d261dace36ab67.
 **Implementation parent:** B4.3 merge commit f9c585c174799cf26fc0d7bf8ed57a8396e2b5aa.
-**Scope:** B4.4 only. This document records the audit and G1–G5 regression-proof outcomes and the bounded G6 implementation. G5 is complete and merged. G6 implementation is separately authorized and in progress in PR #113; B5, B6, and R7-C remain unauthorized.
+**Scope:** B4.4 only. This document records the audit and G1–G5 regression-proof outcomes and the bounded G6 implementation. G5 is complete and merged. G6 implementation and verification are complete in PR #113; formal B4.4 closeout remains pending. B5, B6, and R7-C remain unauthorized.
 ## 1. Purpose and authority
 B4.4 is the integrated regression and closeout phase defined by the accepted B4.0 architecture decision §6. It must verify the combined B4.1 proposal/assessment contracts, B4.2 revise commit, and B4.3 revalidate commit across lifecycle invariants, concurrency, stale assessments, retries/recovery, projection visibility, exact-head hosted CI, and Operator source/diff review.
 This audit began as a read-only review of the exact merged main tree named above. G1 and G2 have since been implemented as bounded regression proofs, reviewed, verified, and merged. B4.4 remains in progress; no B4.4 closeout is claimed.
