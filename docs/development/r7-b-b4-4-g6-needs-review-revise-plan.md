@@ -1,8 +1,8 @@
 # R7-B B4.4 G6 — Accepted revise from needs_review and retrieval ineligibility
 
-**Status: G6 IMPLEMENTATION AND VERIFICATION COMPLETE — PR #113 contains the bounded test-only regression proof. Exact-head hosted CI and Operator-local isolated full-suite verification passed. G6 is ready for merge/closeout; B4.4 remains open until its final review and explicit Operator acceptance.**
+**Status: G6 IMPLEMENTATION AND REGRESSION PROOF COMPLETE — the bounded test-only change is in open PR #113. Latest exact-head hosted CI passed on `44a31cb59588457cbaedc4863046795cea03ca3a` (run [#43394074207](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43394074207)). The supplemental Operator-local full-suite result is from the earlier implementation head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd` (956 passed, 113 warnings). G6 is complete; B4.4 is not formally closed pending documentation reconciliation and explicit Operator acceptance.**
 **Planning base:** `09cb8e6dfae078662e55631ae2f79e31fa8fb8cf` (G5 merge commit).
-**Parent gate:** R7-B B4.4. G1–G5 are complete and merged. G6 is the final regression-proof gate. B4.4 remains open until G6, final verification, and explicit Operator acceptance are complete.
+**Parent gate:** R7-B B4.4. G1–G5 are complete and merged. G6 is implemented and verified in PR #113. B4.4 remains open until documentary reconciliation, exact-head verification of that reconciliation, and explicit Operator acceptance are complete.
 
 ## 1. Purpose
 
@@ -125,3 +125,11 @@ The local run intentionally executed the full suite first and alone on a fresh d
 ## 9. Gate status
 
 **Implementation and verification disposition:** The Operator separately authorized G6 after PR #112 merged. PR #113 implements the bounded test-only proof described here. Hosted CI run [#43386762345](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43386762345) passed on exact PR head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh PostgreSQL migration/single-head, Ruff, Mypy (38 source files), patch whitespace, full suite (**956 passed, 113 warnings**), and disposable-container cleanup. Operator-local exact-head verification on `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh disposable PostgreSQL migration reached `0018_r7b_lifecycle_review_date`; the full suite, run first and alone against that fresh database, passed **956 tests with 113 Alembic `path_separator` deprecation warnings in 292.91s**. The script restored the original process `DATABASE_URL` and `TEST_DATABASE_URL`, removed only its disposable container, and confirmed the exact branch/HEAD and clean worktree. The earlier 36-failure run did not reproduce in this isolated full-suite run; its cause remains undetermined. Local Ruff/Mypy and focused-only runs are not claimed; those checks passed in hosted CI. G6's regression proof is complete. B4.4 remains open pending the formal closeout review and explicit Operator acceptance. This does not authorize B5, B6, or R7-C.
+
+### Final PR-head verification update — 2026-11-13
+
+PR #113 remains open and unmerged. Its latest head `44a31cb59588457cbaedc4863046795cea03ca3a` passed exact-head hosted CI run [#43394074207](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43394074207). All workflow steps completed successfully, including fresh PostgreSQL migration/single-head, Ruff, Mypy, patch-whitespace, full-test, and disposable-container cleanup. The available run metadata does not expose the final-head test count.
+
+The Operator-local isolated full-suite result remains supplemental evidence from the earlier implementation head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: 956 passed, 113 Alembic deprecation warnings, 292.91s. The earlier 36-failure run did not reproduce; its cause remains undetermined. Do not present the local test count as a result from the later PR head.
+
+**Current disposition:** G6 is complete as a regression-proof gate. B4.4 is not formally closed. The technical closeout review passed; the remaining conditions are final documentation reconciliation, review/verification of the reconciled exact head, and explicit Operator acceptance.
