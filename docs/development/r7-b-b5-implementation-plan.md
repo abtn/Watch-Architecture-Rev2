@@ -1,9 +1,9 @@
 # R7-B B5 — Candidate Creation, Supersession, and Retirement Plan
 
-**Status:** Proposed for Operator review — documentation-only planning phase  
+**Status:** Accepted by Operator on 2026-11-13; B5.1 implementation authorized  
 **Planning authorization:** Granted 2026-11-13  
-**Implementation authorization:** Not granted  
-**Baseline:** R7-B B4.4 closeout, after PR #113; documentation baseline is stacked on PR #114  
+**Implementation authorization:** B5.1 only; B5.2–B5.4 require separate checkpoint authorization  
+**Baseline:** `main` after PR #114 merge `e21216d1870a1c0f3f2fbf7c895dc20d9c8c2cd6`; migration head `0018_r7b_lifecycle_review_date`
 **Scope authority:** Accepted R7-B B0 design and B4.0 architecture decision; this plan sequences the already accepted B5 design and does not replace it.
 
 ## 1. Objective
@@ -59,12 +59,26 @@ The following accepted contracts are prerequisites, not design questions to reop
 
 **Purpose:** Verify that the implementation baseline still matches the accepted design before writing code.
 
-1. Verify repository root, branch, exact HEAD, origin, clean worktree, and migration head.
-2. Read the accepted B0.1 candidate guards, B4.0 decision, current approval/assessment contracts, lifecycle validator, current-pointer history, projection/indexing, retrieval, and Context assembly paths.
-3. Map every B5 invariant to the current implementation and identify the exact missing behavior.
-4. Confirm the existing `KnowledgeLifecycleAssessment` retire/supersede variants and approval path are sufficient; do not infer support from an enum or schema constraint alone.
-5. Freeze proposal payloads, expected pointer/version/hash bindings, assessment bindings, Events/Outcomes, idempotency, and replay behavior for each operation.
-6. Establish focused test locations and a complete acceptance matrix before implementation.
+1. Verify repository identity, exact main baseline, migration head, and local programmer-side clean-tree/remote preflight before local sync or tests.
+2. Read the accepted B0.1 candidate guards, B4.0 decision, ADR-0032, approval/assessment contracts, lifecycle validator, history reconstruction, projection/indexing, retrieval, and Context assembly.
+3. Map each B5 invariant to current code and separate existing mechanisms from missing commit behavior.
+4. Confirm that the lifecycle assessment variants are evidence-only and that the active approval allowlist still excludes lifecycle commits.
+5. Freeze the B5.1 create proposal binding, predecessor snapshot, policy-derived candidate review date, Task/approval binding, canonical Event/Outcome, idempotency, and replay contract.
+6. Establish focused tests and explicit stop conditions before source changes.
+
+**B5.0 findings (verified against main after PR #114):**
+
+| Concern | Existing implementation | B5.1 consequence |
+|---|---|---|
+| Schema | `KnowledgeItem.supersedes_item_id` and `superseded_by_id` already exist with same-Team foreign keys. The partial unique index `uq_knowledge_items_pending_candidate` permits at most one non-retired candidate per predecessor. Migration head is `0018_r7b_lifecycle_review_date`. | No schema change is currently justified. Recheck exact main migration head in programmer preflight. |
+| Assessment | `KnowledgeLifecycleAssessment` already records retire/supersede evidence and successor bindings through its existing Task path. | Reuse it; assessment is not approval authority and B5.1 does not enable retire/supersede writes. |
+| Approval | `core/knowledge_approval.py` builds the typed approval binding. `core/operator_application.py` and `core/learning_commit.py` currently admit create/revise/revalidate only. | Candidate remains a create LearningChange. Do not expand approval operation allowlist to retire/supersede in B5.1. |
+| Create commit | `core/learning_commit.py` currently commits ordinary creates with both supersession fields NULL and computes `review_after` from the approval Task's pinned TeamPolicy; the interval may be absent. | Extend the existing create path with an optional relation, and require a non-NULL future review date only when creating a successor candidate. |
+| Canonical history/hash | `core/learning_history.py` includes both relation fields in full-state snapshots; the semantic content hash is over the content fields, not supersession links. | Bind `supersedes_item_id` in proposal/full-state hash and committed snapshot, but not semantic content hash. Preserve current history format unless tests prove a gap. |
+| Retrieval and Context | `core/knowledge_index.py` has a reciprocal supersession publication gate; `core/context_assembly.py` rechecks it against canonical state. A candidate with no reciprocal predecessor link remains hidden. | Preserve this gate and add tests for actual accepted candidates; do not redesign retrieval. |
+| Serialization | The approval transaction already locks the Team row. Candidate creation does not yet lock and validate the predecessor row under a frozen Team→item order. | B5.1 must acquire the Team lock first, then lock the predecessor row, and validate the complete canonical state before candidate commit. |
+
+**B5.0 exit:** The accepted contract is implementable within the existing schema, assessment, approval, TaskRuntime, history, and retrieval architecture. The concrete B5.1 gap is create-with-successor validation and commit binding. The existing create-only allowlist remains unchanged for this slice. No migration or earlier-contract change is indicated by the current evidence.
 
 **Exit:** A reviewed implementation map with no unresolved contract ambiguity. If the accepted design cannot be implemented without changing a frozen earlier contract, stop and request a separate decision.
 
@@ -72,20 +86,15 @@ The following accepted contracts are prerequisites, not design questions to reop
 
 **Purpose:** Create a separately accepted candidate without prematurely publishing it.
 
-1. Extend the existing create proposal path to accept the optional `supersedes_item_id` relation.
-2. Under the Team-scoped lifecycle lock, validate the predecessor:
-   - Same Team and canonical current state.
-   - `active` and D7-eligible at the creation-time check.
-   - Timezone-aware UTC `review_after` strictly later than the check.
-   - Valid current pointer and content hash.
-   - No committed successor and no other non-retired pending candidate.
-   - No self-link or cycle.
-3. Validate the candidate's own `review_after`: it must be non-NULL and future, computed from the canonical commit time and the approval Task's pinned TeamPolicy. A missing review interval rejects candidate creation.
-4. Bind the predecessor relation into the proposal and proposed-state hash. Do not include it in the semantic content hash.
-5. Commit the candidate through the trusted create approval path. It remains active but withheld from retrieval and Context assembly until the reciprocal predecessor link is committed.
-6. Ensure a stale predecessor or candidate binding fails closed without partial writes.
+1. Extend the existing `create` LearningChange proposal schema and validation to accept optional `supersedes_item_id`; ordinary create remains unchanged when it is absent.
+2. Preserve the existing create-only approval allowlist, trusted Operator identity, assessment binding, TaskRuntime admission/finalization, and canonical commit transaction. Do not add a lifecycle operation or a second write path.
+3. In the approval transaction, lock the Team row first and then lock the predecessor KnowledgeItem row. Validate its same-Team ownership, full canonical snapshot/current pointer, content hash, `status=active`, timezone-aware UTC `review_after` strictly later than the creation-time check, NULL `superseded_by_id`, and absence of another non-retired candidate. Reject self-reference and any detectable cycle/corrupt lineage. A `needs_review`, due, unscheduled, retired, or already-superseded predecessor is not eligible for candidate creation; it must first be revalidated through the existing authorized path where applicable.
+4. Enforce the candidate's own `review_after`: it must be non-NULL and future, computed as canonical commit time plus the interval from the approval Task's pinned TeamPolicy. A missing interval rejects only candidate creation; ordinary create retains existing policy behavior.
+5. Bind the predecessor ID and exact predecessor pointer/version/full-state snapshot into the proposed state and its canonical proposal hash. The relation belongs in the full-state history snapshot, not the semantic content hash.
+6. Commit the new KnowledgeItem with `status=active`, version 1, its immutable `supersedes_item_id`, NULL `superseded_by_id`, and the policy-derived future review date. The predecessor is not mutated by candidate creation.
+7. Preserve the existing reciprocal publication gate: candidate remains accepted but hidden from retrieval and Context until a later accepted supersede commit updates the predecessor. Recheck stale bindings before any canonical writes; failures must leave no partial candidate or LearningChange acceptance.
 
-**Required tests:** eligible candidate; absent/NULL/due review date; due or `needs_review` predecessor; wrong Team; existing pending candidate; committed successor; self-link/cycle; concurrent candidate creation; stale pointer/version/hash; replay.
+**Required tests:** ordinary create remains unchanged; eligible candidate; candidate with NULL TeamPolicy review interval; predecessor NULL/due review date; `needs_review`/retired predecessor; wrong Team; existing pending candidate; committed successor; self-link/corrupt cycle; concurrent candidate creation; stale predecessor pointer/version/hash/full state; approval-time drift; replay; no partial writes; candidate absent from both retrieval and Context before reciprocity.
 
 **Exit:** Candidate creation is atomic and idempotent; all candidate guards pass; candidate remains unpublished until reciprocity is established.
 
@@ -189,7 +198,7 @@ Do not weaken an acceptance criterion to preserve schedule.
 
 This document authorizes planning and review of B5 only. It does not authorize production implementation, schema changes, migrations, or any B6/R7-C/R8 work.
 
-After this plan is reviewed and explicitly accepted, request a separate Operator authorization for B5.1. Each later implementation slice remains subject to its own checkpoint review and verification.
+This plan was explicitly accepted by the Operator on 2026-11-13, with implementation authorization limited to B5.1. B5.2–B5.4 remain gated by separate checkpoint authorization. Each slice requires its own review and verification.
 
 ## 8. Source authority
 
