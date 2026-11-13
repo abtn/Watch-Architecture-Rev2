@@ -10398,6 +10398,7 @@ def test_b5_2_integrated_retirement_candidate_lifecycle_sequences(
     snapshot_store,
     distillation_fixture,
     request,
+    monkeypatch,
 ):
     from core.knowledge_lifecycle_tasks import (
         KnowledgeLifecycleAssessmentTask,
@@ -10565,6 +10566,12 @@ def test_b5_2_integrated_retirement_candidate_lifecycle_sequences(
     }
 
     def retire(target_id: UUID):
+        with session_factory() as session:
+            target = session.get(KnowledgeItem, target_id)
+            assert target is not None
+            target_status = target.status
+            target_review_after = target.review_after
+
         principal = _approval_principal(
             fixture.team_id, subject=f"operator-retire-{target_id}"
         )
@@ -10608,13 +10615,46 @@ def test_b5_2_integrated_retirement_candidate_lifecycle_sequences(
             ),
         )
         admission = runtime.admit(approval_request.task_id)
-        committed = LearningCommitService(
+        commit_service = LearningCommitService(
             session_factory, snapshot_store
-        ).decide(
-            approval_request.task_id,
-            admission.attempt_count,
-            principal,
         )
+        if target_status == "needs_review":
+            assert target_review_after is not None
+            retirement_commit_at = target_review_after + timedelta(seconds=1)
+
+            import core.learning_commit as learning_commit
+
+            class RetirementCommitDateTime(datetime):
+                @classmethod
+                def now(cls, tz=None):
+                    if tz is not None:
+                        return retirement_commit_at
+                    return retirement_commit_at.replace(tzinfo=None)
+
+            # The review helper records its event at the due date. Keep the
+            # canonical retirement commit later than that event instead of
+            # moving the production clock backwards to wall-clock "now".
+            with monkeypatch.context() as patch:
+                patch.setattr(
+                    learning_commit,
+                    "datetime",
+                    SimpleNamespace(
+                        datetime=RetirementCommitDateTime,
+                        timezone=timezone,
+                        timedelta=timedelta,
+                    ),
+                )
+                committed = commit_service.decide(
+                    approval_request.task_id,
+                    admission.attempt_count,
+                    principal,
+                )
+        else:
+            committed = commit_service.decide(
+                approval_request.task_id,
+                admission.attempt_count,
+                principal,
+            )
         runtime.finalize(
             TerminalObservation(
                 task_id=approval_request.task_id,
