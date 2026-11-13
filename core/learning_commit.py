@@ -430,6 +430,12 @@ class LearningCommitService:
                     raise LearningCommitError(str(error)) from error
                 if interval_days is not None:
                     review_after = committed_at + datetime.timedelta(days=interval_days)
+                if learning_change.operation == "create" and learning_change.proposed_state.get(
+                    "supersedes_item_id"
+                ) is not None and (review_after is None or review_after <= committed_at):
+                    raise LearningCommitError(
+                        "successor_review_interval_required"
+                    )
 
             knowledge_item_id: uuid.UUID | None = None
             knowledge_item_version: int | None = None
@@ -460,6 +466,26 @@ class LearningCommitService:
 
                     knowledge_item_id = uuid.uuid4()
                     knowledge_item_version = 1
+                    raw_supersedes_item_id = learning_change.proposed_state.get(
+                        "supersedes_item_id"
+                    )
+                    try:
+                        supersedes_item_id = (
+                            uuid.UUID(raw_supersedes_item_id)
+                            if raw_supersedes_item_id is not None
+                            else None
+                        )
+                    except (TypeError, ValueError) as error:
+                        raise LearningCommitCorrupt(
+                            "successor_predecessor_id_invalid"
+                        ) from error
+                    if (
+                        raw_supersedes_item_id is not None
+                        and str(supersedes_item_id) != raw_supersedes_item_id
+                    ):
+                        raise LearningCommitCorrupt(
+                            "successor_predecessor_id_invalid"
+                        )
                     committed_state = {
                         "id": str(knowledge_item_id),
                         "team_id": str(team.id),
@@ -487,7 +513,11 @@ class LearningCommitService:
                         ),
                         "origin_learning_change_id": str(learning_change.id),
                         "current_learning_change_id": str(learning_change.id),
-                        "supersedes_item_id": None,
+                        "supersedes_item_id": (
+                            str(supersedes_item_id)
+                            if supersedes_item_id is not None
+                            else None
+                        ),
                         "superseded_by_id": None,
                     }
                     committed_state = encode_state_snapshot(committed_state)
@@ -515,7 +545,7 @@ class LearningCommitService:
                             review_after=review_after,
                             origin_learning_change_id=learning_change.id,
                             current_learning_change_id=learning_change.id,
-                            supersedes_item_id=None,
+                            supersedes_item_id=supersedes_item_id,
                             superseded_by_id=None,
                         )
                     )
@@ -1186,8 +1216,30 @@ class LearningCommitService:
                         "committed_knowledge_item_mismatch"
                     ) from error
                 raise LearningCommitCorrupt(str(error)) from error
+            if learning_change.operation == "create":
+                expected_supersedes_id = learning_change.proposed_state.get(
+                    "supersedes_item_id"
+                )
+                root_state = history.states[0]
+                candidate_root_valid = (
+                    root_state["supersedes_item_id"] == expected_supersedes_id
+                )
+                if expected_supersedes_id is not None:
+                    root_review_after = root_state["review_after"]
+                    try:
+                        candidate_root_valid = candidate_root_valid and (
+                            root_review_after is not None
+                            and datetime.datetime.fromisoformat(
+                                root_review_after.replace("Z", "+00:00")
+                            ) > committed_at
+                        )
+                    except (AttributeError, TypeError, ValueError):
+                        candidate_root_valid = False
+            else:
+                candidate_root_valid = True
             if (
                 item.team_id != learning_change.team_id
+                or not candidate_root_valid
                 or expected_history_id not in history.learning_change_ids
                 or (
                     learning_change.operation == "create"
