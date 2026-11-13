@@ -68,6 +68,7 @@ def _knowledge_item_cas_statement(
     expected_version: int,
     values: dict[str, typing.Any],
     require_needs_review: bool = False,
+    expected_status: str | None = None,
 ) -> typing.Any:
     """Build the conditional KnowledgeItem update used by commits and CAS tests."""
     predicates: list[typing.Any] = [
@@ -76,7 +77,9 @@ def _knowledge_item_cas_statement(
         KnowledgeItem.current_learning_change_id == expected_pointer,
         KnowledgeItem.version == expected_version,
     ]
-    if require_needs_review:
+    if expected_status is not None:
+        predicates.append(KnowledgeItem.status == expected_status)
+    elif require_needs_review:
         predicates.append(KnowledgeItem.status == "needs_review")
     return (
         update(KnowledgeItem)
@@ -210,8 +213,11 @@ class LearningCommitService:
 
             candidate_team_lock: Team | None = None
             if (
-                learning_change.operation == "create"
-                and "supersedes_item_id" in learning_change.proposed_state
+                learning_change.operation == "retire"
+                or (
+                    learning_change.operation == "create"
+                    and "supersedes_item_id" in learning_change.proposed_state
+                )
             ):
                 candidate_team_lock = session.scalar(
                     select(Team)
@@ -355,7 +361,7 @@ class LearningCommitService:
 
             draft = None
             pack = None
-            if learning_change.operation == "revalidate":
+            if learning_change.operation in {"revalidate", "retire"}:
                 self._validate_proposer_terminal(
                     session,
                     learning_change,
@@ -376,6 +382,8 @@ class LearningCommitService:
             quality_assessment_hash: str | None = None
             revalidation_assessment_id: str | None = None
             revalidation_assessment_hash: str | None = None
+            lifecycle_assessment_id: str | None = None
+            lifecycle_assessment_hash: str | None = None
             if decision == "accept" and learning_change.operation == "revalidate":
                 from core import knowledge_revalidation as revalidation
 
@@ -407,6 +415,40 @@ class LearningCommitService:
                     )
                 revalidation_assessment_id = str(revalidation_assessment.id)
                 revalidation_assessment_hash = revalidation_assessment.payload_hash
+            elif decision == "accept" and learning_change.operation == "retire":
+                from core.knowledge_lifecycle import (
+                    KnowledgeLifecycleAssessmentError,
+                    require_recorded_assessment as require_lifecycle_assessment,
+                )
+
+                try:
+                    lifecycle_assessment = require_lifecycle_assessment(
+                        session,
+                        learning_change,
+                        self._snapshot_store,
+                        self._session_factory,
+                        require_task_done=True,
+                        require_current=True,
+                    )
+                except KnowledgeLifecycleAssessmentError as error:
+                    raise LearningCommitError(str(error)) from error
+                approval_binding = approval_request.approval_binding
+                if (
+                    approval_binding is None
+                    or approval_binding.get("assessment_type") != "knowledge_lifecycle"
+                    or approval_binding.get("assessment_id")
+                    != str(lifecycle_assessment.id)
+                    or approval_binding.get("assessment_payload_hash")
+                    != lifecycle_assessment.payload_hash
+                    or approval_request.quality_assessment_id is not None
+                    or approval_request.quality_assessment_hash is not None
+                    or lifecycle_assessment.assessment_result != "eligible"
+                ):
+                    raise LearningCommitError(
+                        "operator_lifecycle_assessment_binding_invalid"
+                    )
+                lifecycle_assessment_id = str(lifecycle_assessment.id)
+                lifecycle_assessment_hash = lifecycle_assessment.payload_hash
             elif decision == "accept":
                 try:
                     quality_assessment = require_recorded_assessment(
@@ -437,7 +479,7 @@ class LearningCommitService:
                 )
             committed_at = datetime.datetime.now(datetime.timezone.utc)
             review_after: datetime.datetime | None = None
-            if decision == "accept":
+            if decision == "accept" and learning_change.operation != "retire":
                 raw_predecessor_id = learning_change.proposed_state.get(
                     "supersedes_item_id"
                 )
@@ -792,6 +834,107 @@ class LearningCommitService:
                     session.refresh(target)
                     knowledge_item_id = target.id
                     knowledge_item_version = target.version
+                elif learning_change.operation == "retire":
+                    target = session.scalar(
+                        select(KnowledgeItem)
+                        .where(
+                            KnowledgeItem.id == learning_change.target_id,
+                            KnowledgeItem.team_id == learning_change.team_id,
+                        )
+                        .with_for_update()
+                    )
+                    if target is None:
+                        raise LearningCommitConflict("retirement_target_missing")
+                    previous = learning_change.previous_state
+                    if not isinstance(previous, dict) or not isinstance(
+                        previous.get("state"), dict
+                    ):
+                        raise LearningCommitCorrupt(
+                            "retirement_target_snapshot_invalid"
+                        )
+                    try:
+                        pointer = uuid.UUID(
+                            previous["state"]["current_learning_change_id"]
+                        )
+                        previous_state, reconstructed = decode_state_snapshot(
+                            previous,
+                            learning_change_id=pointer,
+                            operation="retire",
+                            allow_legacy_root=False,
+                        )
+                    except (KnowledgeHistoryError, KeyError, TypeError, ValueError) as error:
+                        raise LearningCommitConflict(
+                            "retirement_target_snapshot_invalid"
+                        ) from error
+                    if reconstructed:
+                        raise LearningCommitConflict(
+                            "retirement_target_legacy_snapshot"
+                        )
+                    try:
+                        live_state = knowledge_item_state(target)
+                        live_content_hash = (
+                            "sha256:" + hashlib.sha256(
+                                (
+                                    "watch.r7b.knowledge-content.v2"
+                                    + "\\0"
+                                    + self._evidence_validator._canonical_json_for_hash(
+                                        target
+                                    )
+                                ).encode("utf-8")
+                            ).hexdigest()
+                        )
+                    except Exception as error:
+                        raise LearningCommitConflict(
+                            "retirement_target_state_invalid"
+                        ) from error
+                    from core.learning_history import knowledge_item_content_hash
+
+                    if (
+                        target.team_id != team.id
+                        or target.status not in {"active", "needs_review"}
+                        or target.superseded_by_id is not None
+                        or live_state != previous_state
+                        or target.current_learning_change_id != pointer
+                        or target.version != previous_state["version"]
+                        or knowledge_item_content_hash(target)
+                        != learning_change.proposed_state.get("target_content_hash")
+                    ):
+                        raise LearningCommitConflict(
+                            "retirement_target_compare_and_set_failed"
+                        )
+                    try:
+                        reconstruct_knowledge_item_history(session, target)
+                    except KnowledgeHistoryError as error:
+                        raise LearningCommitConflict(str(error)) from error
+                    committed_values = dict(live_state)
+                    committed_values.update(
+                        {
+                            "status": "retired",
+                            "current_learning_change_id": str(learning_change.id),
+                        }
+                    )
+                    committed_state = encode_state_snapshot(committed_values)
+                    cas_id = session.execute(
+                        _knowledge_item_cas_statement(
+                            item_id=target.id,
+                            team_id=target.team_id,
+                            expected_pointer=pointer,
+                            expected_version=previous_state["version"],
+                            expected_status=previous_state["status"],
+                            values={
+                                "status": "retired",
+                                "current_learning_change_id": learning_change.id,
+                            },
+                        ),
+                        execution_options={"synchronize_session": False},
+                    ).scalar_one_or_none()
+                    if cas_id != target.id:
+                        raise LearningCommitConflict(
+                            "retirement_target_compare_and_set_failed"
+                        )
+                    session.refresh(target)
+                    knowledge_item_id = target.id
+                    knowledge_item_version = target.version
                 else:
                     raise LearningCommitError("learning_change_operation_not_supported")
 
@@ -843,6 +986,13 @@ class LearningCommitService:
                     )
                     event_payload["knowledge_revalidation_assessment_hash"] = (
                         revalidation_assessment_hash
+                    )
+                elif learning_change.operation == "retire":
+                    event_payload["knowledge_lifecycle_assessment_id"] = (
+                        lifecycle_assessment_id
+                    )
+                    event_payload["knowledge_lifecycle_assessment_hash"] = (
+                        lifecycle_assessment_hash
                     )
                 else:
                     event_payload["knowledge_quality_assessment_id"] = (
