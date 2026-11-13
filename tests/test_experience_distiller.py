@@ -9674,4 +9674,3 @@ def test_accepted_revise_preserves_needs_review_and_retrieval_ineligibility(
         assert projection_state is not None
         assert projection_state.status == "ineligible"
         assert projection_chunks == []
-
