@@ -60,7 +60,7 @@ Accepted ADRs are durable decision records. Do not rewrite their historical acce
 
 ### Historical plans, audits, and closeouts
 
-Completed phase plans, entry gates, implementation audits, regression matrices, workflow simulations, and closeout reports are historical evidence. Examples include the R6 implementation plans, R7-A plan, completed R7-B B0–B3 records, and completed B4 G1–G6 proof plans.
+Completed phase plans, entry gates, implementation audits, regression matrices, workflow simulations, and closeout reports are historical evidence. Examples include the R6 implementation plans, R7-A plan, completed R7-B B0–B3 records, and completed B4 G1–G5 proof plans and the G6 implementation plan (G6 proof complete; B4.4 closeout still separately gated).
 
 Preserve them when they explain a decision, acceptance criterion, verification result, or residual limitation. Do not load them by default. Open only the record relevant to the current invariant or historical question.
 
