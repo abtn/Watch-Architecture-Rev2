@@ -6174,6 +6174,190 @@ def test_create_with_successor_commits_hidden_candidate_through_existing_path(
     assert second_provider.calls == 0
 
 
+def test_create_with_successor_rejects_stale_predecessor_after_revision(
+    session_factory, snapshot_store, distillation_fixture
+):
+    fixture = distillation_fixture(1, False, review_interval_days=1)
+    evaluation_ids = [fixture.cases[0].evaluation_id]
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    distiller = _distiller(session_factory, snapshot_store, _provider())
+
+    predecessor_proposal = distiller.propose(
+        fixture.distillation_task_id, evaluation_ids
+    )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=predecessor_proposal.learning_change_id,
+        )
+    )
+    predecessor_approval_id, predecessor_attempt, predecessor_principal = (
+        _create_admitted_approval_task(
+            session_factory,
+            snapshot_store,
+            fixture.team_id,
+            predecessor_proposal.learning_change_id,
+        )
+    )
+    predecessor_result = LearningCommitService(
+        session_factory, snapshot_store
+    ).decide(predecessor_approval_id, predecessor_attempt, predecessor_principal)
+    runtime.finalize(
+        TerminalObservation(
+            task_id=predecessor_approval_id,
+            attempt=predecessor_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=predecessor_result.committed_at,
+            learning_change_id=predecessor_result.learning_change_id,
+        )
+    )
+    assert predecessor_result.knowledge_item_id is not None
+
+    candidate_task_id = uuid4()
+    fixture.extra_task_ids.append(candidate_task_id)
+    with session_factory.begin() as session:
+        template = session.get(Task, fixture.distillation_task_id)
+        assert template is not None
+        session.add(
+            Task(
+                id=candidate_task_id,
+                team_id=fixture.team_id,
+                task_type="propose_learning_change",
+                status="running",
+                attempt_count=1,
+                policy_version=template.policy_version,
+                allowed_writes=["LearningChange"],
+                budget=dict(template.budget),
+            )
+        )
+    candidate_proposal = distiller.propose(
+        candidate_task_id,
+        evaluation_ids,
+        supersedes_item_id=predecessor_result.knowledge_item_id,
+    )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=candidate_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=candidate_proposal.learning_change_id,
+        )
+    )
+    candidate_approval_id, candidate_attempt, candidate_principal = (
+        _create_admitted_approval_task(
+            session_factory,
+            snapshot_store,
+            fixture.team_id,
+            candidate_proposal.learning_change_id,
+        )
+    )
+
+    revision_task_id = uuid4()
+    fixture.extra_task_ids.append(revision_task_id)
+    started_at = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        template = session.get(Task, fixture.distillation_task_id)
+        assert template is not None
+        session.add(
+            Task(
+                id=revision_task_id,
+                team_id=fixture.team_id,
+                task_type="propose_learning_change",
+                status="running",
+                attempt_count=1,
+                policy_version=template.policy_version,
+                allowed_writes=["LearningChange"],
+                budget=dict(template.budget),
+                created_at=started_at,
+            )
+        )
+        session.flush()
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=revision_task_id,
+                type="task_started",
+                payload={
+                    "from_status": "pending",
+                    "to_status": "running",
+                    "attempt_count": 1,
+                },
+                created_at=started_at,
+            )
+        )
+
+    def revised_content(prompt: str) -> dict[str, Any]:
+        content = _content_from_prompt(prompt)
+        content["body"] = (
+            "A revised practice records a distinct observation before drawing a conclusion."
+        )
+        return content
+
+    revision = _distiller(
+        session_factory,
+        snapshot_store,
+        _FakeDistillationProvider(revised_content),
+    ).propose_revision(
+        revision_task_id,
+        evaluation_ids,
+        predecessor_result.knowledge_item_id,
+    )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=revision_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=revision.learning_change_id,
+        )
+    )
+    revision_approval_id, revision_attempt, revision_principal = (
+        _create_admitted_approval_task(
+            session_factory, snapshot_store, fixture.team_id, revision.learning_change_id
+        )
+    )
+    revision_result = LearningCommitService(
+        session_factory, snapshot_store
+    ).decide(revision_approval_id, revision_attempt, revision_principal)
+    runtime.finalize(
+        TerminalObservation(
+            task_id=revision_approval_id,
+            attempt=revision_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=revision_result.committed_at,
+            learning_change_id=revision_result.learning_change_id,
+        )
+    )
+
+    with pytest.raises(LearningCommitError, match="successor_predecessor_stale"):
+        LearningCommitService(session_factory, snapshot_store).decide(
+            candidate_approval_id, candidate_attempt, candidate_principal
+        )
+
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_result.knowledge_item_id)
+        candidate_change = session.get(LearningChange, candidate_proposal.learning_change_id)
+        assert predecessor is not None and candidate_change is not None
+        assert predecessor.version == 2
+        assert predecessor.current_learning_change_id == revision.learning_change_id
+        assert candidate_change.status == "proposed"
+        assert session.scalar(
+            select(KnowledgeItem.id).where(
+                KnowledgeItem.origin_learning_change_id == candidate_change.id
+            )
+        ) is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == candidate_approval_id,
+                Event.type == "learning_change_accepted",
+            )
+        ) is None
+
+
 def test_create_with_successor_rejects_missing_pinned_review_interval(
     session_factory, snapshot_store, distillation_fixture
 ):
