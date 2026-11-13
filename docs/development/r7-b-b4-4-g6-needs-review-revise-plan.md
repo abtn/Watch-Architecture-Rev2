@@ -1,6 +1,6 @@
 # R7-B B4.4 G6 — Accepted revise from needs_review and retrieval ineligibility
 
-**Status: DOCUMENTATION PLAN ONLY — G6 planning authorized 2026-11-13; implementation is not authorized by this plan. A separate explicit Operator decision is required before implementation.**
+**Status: G6 IMPLEMENTATION AND VERIFICATION COMPLETE — PR #113 contains the bounded test-only regression proof. Exact-head hosted CI and Operator-local isolated full-suite verification passed. G6 is ready for merge/closeout; B4.4 remains open until its final review and explicit Operator acceptance.**
 **Planning base:** `09cb8e6dfae078662e55631ae2f79e31fa8fb8cf` (G5 merge commit).
 **Parent gate:** R7-B B4.4. G1–G5 are complete and merged. G6 is the final regression-proof gate. B4.4 remains open until G6, final verification, and explicit Operator acceptance are complete.
 
@@ -61,6 +61,19 @@ G6 is complete only when deterministic regression evidence proves all of the fol
 
 ## 5. Existing test and source surface
 
+### Test-to-acceptance mapping completed before implementation
+
+| G6 criterion | Existing evidence | G6 regression contribution |
+|---|---|---|
+| Revise proposal, exact target binding, recorded quality assessment, and accepted decision | `test_revise_proposal_pins_exact_target_and_records_bound_assessment`; G4 accepted revise path | Isolated `needs_review` revise via the existing proposal/assessment helpers and `OperatorApplicationAdapter.decide_learning_change` |
+| Durable D7 review state | `_create_revalidation_proposal` helper exercises D7, but also creates an unrelated revalidation proposal | G6 records the same ordinary `review_knowledge` TaskRuntime transition directly, without creating a revalidation proposal |
+| Status, pointer, version, semantic hash, validation date, and review schedule | G4 plus the revise contract test | Assert all effects on one item before and after the isolated revise |
+| Approval policy and attribution | Existing revise contract test | Assert approval Task policy pin, accepted decision Event, committed Task identity, and TaskRuntime completion |
+| History and D7 overlay | `tests/test_learning_history.py` review-overlay tests; G4 reconstruction | Assert the create → revise chain, applied review Event, and exact reconstructed/live state equality |
+| Projection invalidation and retrieval exclusion | `test_needs_review_item_is_not_retrievable_even_if_projection_remains`; G4 checks retained projection | Assert stale old-pointer projection remains present after revise but is excluded by ordinary retrieval; then assert ordinary indexing returns ineligible |
+
+G4's stale pre-revision revalidation assessment, rejection, fresh assessment, and subsequent revalidation acceptance are intentionally not repeated.
+
 Inspect these first; confirm exact helpers and assertions rather than assuming names or introducing parallel abstractions:
 
 - `tests/test_experience_distiller.py`: accepted revise through the Operator path, target/assessment binding, and the existing G4 same-item sequence.
@@ -101,6 +114,14 @@ Preferred implementation location is one focused test in `tests/test_experience_
 8. Run hosted CI on the exact PR head. Record the SHA and workflow result; do not rely on branch name alone.
 9. Reconcile PLAN.md, CHANGE_MAP.md, the B4.4 audit, the R7-B implementation plan, and docs/testing.md. Stop for explicit Operator review and acceptance. G6 completion does not by itself close B4.4.
 
-## 8. Gate status
+## 8. Verification record
 
-This document and its documentation-only PR authorize and record G6 planning only. They do not authorize G6 implementation or claim G6 verification. Implementation begins only after the Operator reviews the plan and separately authorizes the implementation step. B5, B6, and R7-C remain unauthorized. B4.4 remains open until G1–G6 are complete, final verification passes, and explicit Operator acceptance is recorded.
+Hosted CI run [#43386762345](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43386762345) passed on exact PR head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh PostgreSQL migration/single-head, Ruff, Mypy (38 source files), patch whitespace, full suite (**956 passed, 113 warnings**), and disposable-container cleanup.
+
+Operator-local exact-head verification on `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh disposable PostgreSQL migration reached `0018_r7b_lifecycle_review_date`; the full suite, run first and alone against that fresh database, passed **956 tests with 113 Alembic `path_separator` deprecation warnings in 292.91s**. The script restored the original process `DATABASE_URL` and `TEST_DATABASE_URL`, removed only its disposable container, and confirmed the exact branch/HEAD and clean worktree. The earlier 36-failure run did not reproduce in this isolated full-suite run; its cause remains undetermined. Local Ruff/Mypy and focused-only runs are not claimed; those checks passed in hosted CI.
+
+The local run intentionally executed the full suite first and alone on a fresh disposable database to isolate the earlier failure report. It did not repeat focused-only, related-suite-only, Ruff, or Mypy commands locally; those checks passed in hosted CI. The local result therefore establishes isolated full-suite success, not that every CI step was independently repeated on the workstation.
+
+## 9. Gate status
+
+**Implementation and verification disposition:** The Operator separately authorized G6 after PR #112 merged. PR #113 implements the bounded test-only proof described here. Hosted CI run [#43386762345](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43386762345) passed on exact PR head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh PostgreSQL migration/single-head, Ruff, Mypy (38 source files), patch whitespace, full suite (**956 passed, 113 warnings**), and disposable-container cleanup. Operator-local exact-head verification on `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh disposable PostgreSQL migration reached `0018_r7b_lifecycle_review_date`; the full suite, run first and alone against that fresh database, passed **956 tests with 113 Alembic `path_separator` deprecation warnings in 292.91s**. The script restored the original process `DATABASE_URL` and `TEST_DATABASE_URL`, removed only its disposable container, and confirmed the exact branch/HEAD and clean worktree. The earlier 36-failure run did not reproduce in this isolated full-suite run; its cause remains undetermined. Local Ruff/Mypy and focused-only runs are not claimed; those checks passed in hosted CI. G6's regression proof is complete. B4.4 remains open pending the formal closeout review and explicit Operator acceptance. This does not authorize B5, B6, or R7-C.

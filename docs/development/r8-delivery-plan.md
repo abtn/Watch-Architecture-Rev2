@@ -22,11 +22,11 @@ The objective is to demonstrate the existing architecture under different domain
 - B4.1–B4.3 are implemented and merged.
 - B4.4 G1–G4 are complete and merged.
 - G5 rejected-revalidation approval replay is complete and merged by PR #111 at 09cb8e6dfae078662e55631ae2f79e31fa8fb8cf; hosted CI and Operator-local focused/full verification passed.
-- G6 accepted revise from needs_review is the remaining B4.4 regression proof. Its documentation-only plan is authorized and recorded in [the G6 plan](r7-b-b4-4-g6-needs-review-revise-plan.md); implementation still requires a separate explicit Operator decision.
+- G6 accepted revise from needs_review is implemented and verified in PR #113. Hosted CI run [#43386762345](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43386762345) passed on exact PR head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh PostgreSQL migration/single-head, Ruff, Mypy (38 source files), patch whitespace, full suite (**956 passed, 113 warnings**), and disposable-container cleanup. Operator-local exact-head verification on `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh disposable PostgreSQL migration reached `0018_r7b_lifecycle_review_date`; the full suite, run first and alone against that fresh database, passed **956 tests with 113 Alembic `path_separator` deprecation warnings in 292.91s**. The script restored the original process `DATABASE_URL` and `TEST_DATABASE_URL`, removed only its disposable container, and confirmed the exact branch/HEAD and clean worktree. The earlier 36-failure run did not reproduce in this isolated full-suite run; its cause remains undetermined. Local Ruff/Mypy and focused-only runs are not claimed; those checks passed in hosted CI. All six B4.4 regression proofs are complete; formal B4.4 closeout remains pending final integrated review and explicit Operator acceptance. The scope and coverage map are recorded in [the G6 plan](r7-b-b4-4-g6-needs-review-revise-plan.md).
 
 B5, B6, and R7-C are not automatic R8 prerequisites. They remain unauthorized unless a concrete R8 acceptance blocker is identified and the Operator separately authorizes the work.
 
-**Authority note:** This schedule records target dates, not implementation permission. G6 implementation requires separate explicit authorization. If it is not authorized and completed in time, record the schedule risk; do not claim B4.4 closure or weaken the R8 entry gate.
+**Authority note:** This schedule records target dates, not blanket implementation permission. G6 implementation and verification are complete in PR #113. B4.4 remains open pending formal closeout review and explicit Operator acceptance. B5, B6, and R7-C remain unauthorized.
 
 ## 3. Delivery schedule
 
@@ -46,15 +46,13 @@ Completed:
 4. Verified disposable database cleanup and restoration of the original process database variables.
 5. Reviewed the exact G5 test-only diff and green hosted CI on the exact PR head.
 6. Squash-merged PR #111 to main at 09cb8e6dfae078662e55631ae2f79e31fa8fb8cf.
-7. Began G6 documentation planning; no G6 implementation changes are authorized by this planning step.
+7. Merged the G6 documentation plan in PR #112, then received separate Operator authorization and opened the test-only implementation PR #113.
 
-Expected result: G5 complete; G6 scope and execution sequence documented. G6 implementation remains separately gated.
+Expected result: G5 complete; G6 scope and execution sequence documented. Separate G6 implementation authorization was subsequently granted, and its bounded test-only proof is complete in PR #113.
 
-### November 14 — G6 implementation checkpoint (planned; authorization pending)
+### November 13–14 — G6 implementation and verification (complete; B4.4 closeout pending)
 
-Only after the Operator separately authorizes G6 implementation:
-
-1. Synchronize to the accepted G6 documentation-plan merge commit and create a clean implementation branch.
+1. Synchronize to the accepted G6 planning merge commit and create a clean implementation branch from exact `main` baseline `7fea4accf2b862271f31b92287666f495b859d04`.
 2. Inspect the accepted B4.0/B4.1/B4.2 contracts and map existing revise, history, projection, and retrieval tests to the G6 acceptance criteria.
 3. Add the smallest deterministic regression for an accepted content-changing revise against a current needs_review item, using the trusted Operator path.
 4. Verify status preservation, one pointer/version advance, changed semantic content/hash, cleared last_validated_at, and review_after derived from the pinned approval Task policy.
@@ -63,7 +61,7 @@ Only after the Operator separately authorizes G6 implementation:
 7. Run focused tests, related lifecycle/retrieval suites, static checks, disposable-PostgreSQL migration/single-head checks, patch whitespace validation, and the full suite.
 8. Review the exact diff and hosted CI on the exact PR head. Stop and report if a production/schema change appears necessary.
 
-Expected result: G6 regression evidence with no unrelated production changes. The schedule does not authorize implementation; if separate authorization is absent, record the blocker and schedule risk.
+**Result:** the bounded test-only regression is implemented and verified in PR #113. Hosted CI run [#43386762345](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43386762345) passed on exact PR head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh PostgreSQL migration/single-head, Ruff, Mypy (38 source files), patch whitespace, full suite (**956 passed, 113 warnings**), and disposable-container cleanup. Operator-local exact-head verification on `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh disposable PostgreSQL migration reached `0018_r7b_lifecycle_review_date`; the full suite, run first and alone against that fresh database, passed **956 tests with 113 Alembic `path_separator` deprecation warnings in 292.91s**. The script restored the original process `DATABASE_URL` and `TEST_DATABASE_URL`, removed only its disposable container, and confirmed the exact branch/HEAD and clean worktree. The earlier 36-failure run did not reproduce in this isolated full-suite run; its cause remains undetermined. Local Ruff/Mypy and focused-only runs are not claimed; those checks passed in hosted CI. The earlier 36-failure run did not reproduce in the isolated full-suite run; its cause remains undetermined. No production correction or unrelated scope expansion was required. G6 is complete as a regression-proof gate; B4.4 is not yet formally closed.
 
 ### November 15 — B4.4 closure and R8 entry gate
 

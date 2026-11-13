@@ -9365,3 +9365,312 @@ def test_b37_supersede_assessment_round_trips_successor_and_rechecks_approval_bi
         assert candidate.status == "active"
         assert change.status == "proposed"
         assert change.committed_by_task_id is None
+
+def test_accepted_revise_preserves_needs_review_and_retrieval_ineligibility(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    monkeypatch,
+):
+    fixture = distillation_fixture(
+        2, include_contrary=False, review_interval_days=1
+    )
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    create_proposal = _distiller(
+        session_factory, snapshot_store, _provider()
+    ).propose(
+        fixture.distillation_task_id,
+        [case.evaluation_id for case in fixture.cases],
+    )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=create_proposal.learning_change_id,
+        )
+    )
+    create_task_id, create_attempt, principal = _create_admitted_approval_task(
+        session_factory,
+        snapshot_store,
+        fixture.team_id,
+        create_proposal.learning_change_id,
+    )
+    created = LearningCommitService(session_factory, snapshot_store).decide(
+        create_task_id, create_attempt, principal
+    )
+    assert created.knowledge_item_id is not None
+    runtime.finalize(
+        TerminalObservation(
+            task_id=create_task_id,
+            attempt=create_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=created.committed_at,
+            learning_change_id=created.learning_change_id,
+        )
+    )
+
+    class FakeEmbeddingProvider:
+        space = EmbeddingSpace(
+            provider="watch_test",
+            model="g6-deterministic",
+            revision="1",
+            dimensions=3,
+            configuration="g6-regression",
+        )
+
+        def current_space(self):
+            return self.space
+
+        def embed(self, texts):
+            return EmbeddingBatch(
+                space=self.space,
+                vectors=tuple((0.1, 0.2, 0.3) for _ in texts),
+            )
+
+    embedding_provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(session_factory, embedding_provider)
+    retriever = HybridKnowledgeRetriever(
+        session_factory, snapshot_store, embedding_provider
+    )
+    assert indexer.index_knowledge_item(created.knowledge_item_id).outcome == "indexed"
+    assert retriever.retrieve(fixture.team_id, "source evidence")
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, created.knowledge_item_id)
+        template = session.get(Task, fixture.distillation_task_id)
+        assert item is not None and template is not None
+        assert item.status == "active"
+        review_after = item.review_after
+        assert review_after is not None
+        pinned_policy_version = template.policy_version
+
+    # Record the ordinary D7 review transition; do not create a revalidation
+    # proposal or introduce another lifecycle operation into this proof.
+    review_task_id = uuid4()
+    fixture.extra_task_ids.append(review_task_id)
+    review_started_at = review_after - timedelta(seconds=1)
+    with session_factory.begin() as session:
+        session.add(
+            Task(
+                id=review_task_id,
+                team_id=fixture.team_id,
+                task_type="review_knowledge",
+                status="running",
+                attempt_count=1,
+                policy_version=pinned_policy_version,
+                objective_id=None,
+                plan_id=None,
+                plan_action_id=None,
+                allowed_writes=["KnowledgeItem"],
+                budget={
+                    "max_tool_calls": 0,
+                    "max_cost_usd": 0.0,
+                    "deadline_seconds": 30,
+                },
+                created_at=review_started_at,
+                completed_at=None,
+                max_attempts=3,
+            )
+        )
+        session.flush()
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=review_task_id,
+                type="task_started",
+                payload={
+                    "from_status": "pending",
+                    "to_status": "running",
+                    "attempt_count": 1,
+                },
+                created_at=review_started_at,
+            )
+        )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=review_task_id,
+            attempt=1,
+            result_category="success_knowledge_reviewed",
+            observed_at=review_after,
+        )
+    )
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, created.knowledge_item_id)
+        review_event = session.scalar(
+            select(Event).where(
+                Event.task_id == review_task_id,
+                Event.type == "knowledge_items_reviewed",
+            )
+        )
+        assert item is not None and item.status == "needs_review"
+        assert review_event is not None
+        before_state = knowledge_item_state(item)
+        before_pointer = item.current_learning_change_id
+        before_version = item.version
+        before_hash = knowledge_item_content_hash(item)
+        assert before_pointer == created.learning_change_id
+        assert item.last_validated_at is None
+        reviewed_at = review_after
+
+        projection_state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == item.id
+            )
+        )
+        projection_chunk = session.scalar(
+            select(TeamExperienceChunk).where(
+                TeamExperienceChunk.knowledge_item_id == item.id
+            )
+        )
+        assert projection_state is not None and projection_chunk is not None
+        assert projection_state.status == "published"
+        assert projection_state.current_learning_change_id == before_pointer
+        assert projection_chunk.current_learning_change_id == before_pointer
+
+    # The retained pre-review projection is already hidden by canonical D7 state.
+    assert retriever.retrieve(fixture.team_id, "source evidence") == ()
+
+    revision_id = _create_revision_proposal(
+        session_factory,
+        snapshot_store,
+        fixture,
+        created.knowledge_item_id,
+        body=(
+            "The revised practice preserves source evidence and records a "
+            "distinct observation before drawing a conclusion."
+        ),
+    )
+    _run_quality_assessment(session_factory, snapshot_store, revision_id)
+
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    revision_request = LearningChangeDecisionRequest(
+        learning_change_id=revision_id,
+        decision="accept",
+        idempotency_key=uuid4(),
+    )
+
+    import core.learning_commit as learning_commit
+
+    revision_committed_at = reviewed_at + timedelta(seconds=3)
+
+    class RevisionCommitDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return (
+                revision_committed_at
+                if tz is not None
+                else revision_committed_at.replace(tzinfo=None)
+            )
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            learning_commit,
+            "datetime",
+            SimpleNamespace(
+                datetime=RevisionCommitDateTime,
+                timezone=timezone,
+                timedelta=timedelta,
+            ),
+        )
+        revised = adapter.decide_learning_change(principal, revision_request)
+
+    assert revised.learning_change_status == "accepted"
+    assert revised.task_status == "done"
+    assert revised.knowledge_item_id == created.knowledge_item_id
+    assert not revised.replayed
+    assert revised.outcome_id is not None
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, created.knowledge_item_id)
+        revision = session.get(LearningChange, revision_id)
+        approval_task = session.get(Task, revised.task_id)
+        decision_event = session.scalar(
+            select(Event).where(
+                Event.task_id == revised.task_id,
+                Event.type == "learning_change_accepted",
+            )
+        )
+        assert item is not None and revision is not None
+        assert approval_task is not None and approval_task.status == "done"
+        assert decision_event is not None
+        revised_state = knowledge_item_state(item)
+        revised_hash = knowledge_item_content_hash(item)
+
+        assert item.status == "needs_review"
+        assert item.current_learning_change_id == revision_id
+        assert item.current_learning_change_id != before_pointer
+        assert item.version == before_version + 1
+        assert item.body == (
+            "The revised practice preserves source evidence and records a "
+            "distinct observation before drawing a conclusion."
+        )
+        assert revised_hash != before_hash
+        assert item.last_validated_at is None
+        assert approval_task.policy_version == pinned_policy_version
+        assert revision.committed_at == revision_committed_at
+        assert item.review_after == revision_committed_at + timedelta(days=1)
+        assert revision.committed_by_task_id == revised.task_id
+        assert decision_event.payload["operation"] == "revise"
+        assert decision_event.payload["operator_id"] == revised.operator_id
+        assert decision_event.payload["knowledge_item_id"] == str(item.id)
+        assert revision.previous_state is not None
+        assert revision.previous_state["state"] == before_state
+        assert revision.committed_state is not None
+        assert revision.committed_state["state"] == revised_state
+
+        history = reconstruct_knowledge_item_history(session, item)
+        assert history.learning_change_ids == (
+            created.learning_change_id,
+            revision_id,
+        )
+        assert history.applied_review_event_ids == (review_event.id,)
+        assert history.state == revised_state
+        assert history.state["status"] == "needs_review"
+
+        # The old projection remains physically present but is no longer current.
+        projection_state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == item.id
+            )
+        )
+        projection_chunk = session.scalar(
+            select(TeamExperienceChunk).where(
+                TeamExperienceChunk.knowledge_item_id == item.id
+            )
+        )
+        assert projection_state is not None and projection_chunk is not None
+        assert projection_state.status == "published"
+        assert projection_state.current_learning_change_id == before_pointer
+        assert projection_chunk.current_learning_change_id == before_pointer
+        assert (
+            projection_state.current_learning_change_id
+            != item.current_learning_change_id
+        )
+        assert projection_chunk.item_content_hash == before_hash
+
+    # Retrieval must recheck canonical status and pointer, not trust the old row.
+    assert retriever.retrieve(fixture.team_id, "revised practice") == ()
+
+    # The ordinary indexer must not republish a needs_review item.
+    indexed = indexer.index_knowledge_item(created.knowledge_item_id)
+    assert indexed.outcome == "ineligible"
+    assert retriever.retrieve(fixture.team_id, "revised practice") == ()
+    with session_factory() as session:
+        projection_state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == created.knowledge_item_id
+            )
+        )
+        projection_chunks = list(
+            session.scalars(
+                select(TeamExperienceChunk).where(
+                    TeamExperienceChunk.knowledge_item_id == created.knowledge_item_id
+                )
+            )
+        )
+        assert projection_state is not None
+        assert projection_state.status == "ineligible"
+        assert projection_chunks == []
