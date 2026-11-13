@@ -10399,7 +10399,6 @@ def test_b5_2_integrated_retirement_candidate_lifecycle_sequences(
     distillation_fixture,
     request,
 ):
-    from core.knowledge_lifecycle import KnowledgeLifecycleAssessmentError
     from core.knowledge_lifecycle_tasks import (
         KnowledgeLifecycleAssessmentTask,
         KnowledgeLifecycleAssessmentTaskRunner,
