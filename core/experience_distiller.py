@@ -550,6 +550,7 @@ class ExperienceDistiller:
                     "operator_id": operator_id,
                 }
             ).removeprefix("sha256:")
+            proposed_at = datetime.now(timezone.utc)
 
             change = LearningChange(
                 id=uuid4(),
@@ -568,7 +569,7 @@ class ExperienceDistiller:
                 committed_by_task_id=None,
                 operator_id=None,
                 decision_reason=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=proposed_at,
                 committed_at=None,
             )
             session.add(change)
