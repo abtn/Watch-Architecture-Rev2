@@ -27,7 +27,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** B3 is formally closed. B4.1–B4.3 are merged. B4.4 G1–G6 regression proofs are complete; G1–G5 are merged and G6 is implemented in open PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113). Latest exact-head hosted CI passed on `44a31cb59588457cbaedc4863046795cea03ca3a` ([run #43394074207](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43394074207)). B4.4 formal closeout remains pending documentation reconciliation and explicit Operator acceptance. B5, B6, and R7-C remain unauthorized. See [PLAN.md](PLAN.md) for current status.
+- **R7:** B3 is formally closed. B4.1–B4.3 are merged. B4.4 G1–G6 regression proofs are merged and B4.4 formally closed on 2026-11-13 after exact-head CI, documentation reconciliation, and explicit Operator acceptance. G6 merged in PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113) at `a1baf018fe1a847b3ed5b23432647b387a72ddbc`; exact PR-head CI passed ([run #43394074207](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43394074207)). B5 planning is authorized as documentation only; implementation remains separately gated. B6 and R7-C remain unauthorized. See [PLAN.md](PLAN.md) for current status.
 
 ## Future plan
 
