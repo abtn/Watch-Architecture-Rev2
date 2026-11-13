@@ -679,6 +679,12 @@ class ExperienceDistiller:
                     or concurrent_prior.target_id != target_knowledge_item_id
                     or concurrent_prior.proposed_state.get("supersedes_item_id")
                     != (str(supersedes_item_id) if supersedes_item_id else None)
+                    or (
+                        supersedes_item_id is not None
+                        and concurrent_prior.proposed_state.get(
+                            "supersedes_target_binding"
+                        ) != supersedes_target_binding
+                    )
                     or concurrent_prior.evidence_basis_hash != pack.basis_hash
                     or (
                         operation == "revise"
