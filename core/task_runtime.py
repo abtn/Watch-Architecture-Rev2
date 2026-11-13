@@ -3874,6 +3874,8 @@ class TaskRuntime:
             elif learning_change.operation == "retire":
                 from core.knowledge_lifecycle import (
                     KnowledgeLifecycleAssessmentError,
+                )
+                from core.knowledge_lifecycle import (
                     require_recorded_assessment as require_lifecycle_assessment,
                 )
 
@@ -4605,6 +4607,7 @@ class TaskRuntime:
                 or set(proposal_state) != expected_state_keys
             ):
                 raise TaskNotFinalizable("learning_change_retire_shape_invalid")
+            from core.evaluations import _sha256_json as _proposal_sha256_json
             from core.knowledge_lifecycle import (
                 PROPOSED_STATE_HASH_DOMAIN,
                 KnowledgeLifecycleAssessmentError,
@@ -4613,7 +4616,6 @@ class TaskRuntime:
                 validate_operator_rationale,
             )
             from core.learning_history import KNOWLEDGE_CONTENT_HASH_SCHEME
-            from core.evaluations import _sha256_json as _proposal_sha256_json
 
             session.scalar(
                 select(Team).where(Team.id == task.team_id).with_for_update()
