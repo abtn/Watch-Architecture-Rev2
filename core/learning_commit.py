@@ -417,7 +417,9 @@ class LearningCommitService:
                 revalidation_assessment_id = str(revalidation_assessment.id)
                 revalidation_assessment_hash = revalidation_assessment.payload_hash
             elif decision == "accept" and learning_change.operation == "retire":
-                from core.knowledge_lifecycle import KnowledgeLifecycleAssessmentError
+                from core.knowledge_lifecycle import (
+                    KnowledgeLifecycleAssessmentError,
+                )
                 from core.knowledge_lifecycle import (
                     require_recorded_assessment as require_lifecycle_assessment,
                 )
@@ -1202,7 +1204,9 @@ class LearningCommitService:
             revalidation_assessment_id = str(revalidation_assessment.id)
             revalidation_assessment_hash = revalidation_assessment.payload_hash
         elif recorded_decision == "accept" and learning_change.operation == "retire":
-            from core.knowledge_lifecycle import KnowledgeLifecycleAssessmentError
+            from core.knowledge_lifecycle import (
+                KnowledgeLifecycleAssessmentError,
+            )
             from core.knowledge_lifecycle import (
                 require_recorded_assessment as require_lifecycle_assessment,
             )
