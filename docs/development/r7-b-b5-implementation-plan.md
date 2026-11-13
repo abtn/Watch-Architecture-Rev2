@@ -1,6 +1,6 @@
 # R7-B B5 — Candidate Creation, Supersession, and Retirement Plan
 
-**Status:** Accepted by Operator on 2026-11-13; B5.1 implementation complete; B5.2 documentation checkpoint in progress
+**Status:** B5.1 implementation complete; B5.2 implementation in draft PR #118; technical review and Operator acceptance in progress
 **Planning authorization:** Granted 2026-11-13 for the B5 sequence and its checkpoint plans
 **Implementation authorization:** B5.1 only; completed and merged. B5.2–B5.4 require separate checkpoint authorization
 **Baseline:** `main` after PR #116 squash merge `d946342907dc1c384c73de18216a5c018dd48e2f`; migration head `0018_r7b_lifecycle_review_date`
@@ -379,3 +379,22 @@ This plan is subordinate to and must remain consistent with:
 - The R7-B implementation plan, Phase B5 and its legal-transition reference.
 
 If this plan conflicts with those accepted sources, stop and resolve the discrepancy before implementation.
+
+
+## B5.2 implementation review record — 2026-11-13
+
+**Implementation review surface:** PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118), branch `r7b-b5-2-retire-implementation-20261113`, exact reviewed code head `3d102d8e4a9204580bf187018c51da358aa6c121`. The PR changes seven production modules and three test modules. It adds no migration, model/schema change, Task type, runtime, scheduler, dispatcher, authentication boundary, or retrieval redesign.
+
+**Verified on the exact code head:**
+- Operator-local disposable-PostgreSQL migration to `0018_r7b_lifecycle_review_date`; one migration head.
+- Ruff passed; Mypy passed for 38 source files.
+- Integrated retirement/candidate lifecycle regression passed.
+- Full local suite: **962 passed, 113 warnings in 319.76s**. Warnings are Alembic `path_separator` deprecations.
+- Disposable PostgreSQL container removed; the verification script reported its final branch/head/worktree checks as passed.
+- Hosted GitHub Actions CI run [#43456366139](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43456366139) completed successfully on the exact code head.
+
+**Diff review:** The implementation routes retirement through the existing proposal, lifecycle assessment, trusted Operator approval, canonical LearningCommit, and TaskRuntime finalization. The retirement commit checks the recorded target snapshot, Team ownership, eligible status, predecessor/successor relation, current pointer, version, content hash, and lifecycle assessment before a status-only CAS to `retired`. The committed snapshot preserves semantic fields and candidate links. Team locking is acquired before the target KnowledgeItem lock. The test-only clock adjustment for the `needs_review` sequence is scoped to the commit call and does not change production clock behavior.
+
+**Acceptance evidence still incomplete:** The integrated test demonstrates ordinary retirement, `needs_review` retirement, already-retired rejection, candidate cancellation and replacement, predecessor retirement without implicit candidate mutation, history reconstruction, semantic immutability, and replay without duplicate Events or Outcomes. The added PR tests do not provide dedicated concurrency proofs for retire-versus-retire, retire-versus-candidate-creation, or competing replacement-candidate attempts. Nor do the added tests independently demonstrate every negative case in the B5.2.1/B5.2.3 matrix (including wrong-Team/malformed-relation and each stale-binding dimension). Existing generic lifecycle tests may cover shared primitives, but they are not treated here as proof of the new retirement paths.
+
+**Disposition:** B5.2.6 execution and exact-head CI are verified. B5.2 is not formally closed. The remaining acceptance proofs and explicit Operator acceptance are required before merge. B5.3, B5.4, B6, R7-C, and R8 remain outside this PR and are not authorized by this record.
