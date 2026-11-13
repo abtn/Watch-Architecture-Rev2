@@ -8,14 +8,14 @@ This file is the **single source of current milestone status**. Other documents 
 - **R7-0 and R7-A:** complete.
 - **R7-B B0–B3:** complete; B3 was formally closed on 2026-11-10. B2 retains its three accepted residual verification gaps, recorded in `docs/testing.md`.
 - **R7-B B4:** complete and formally closed on 2026-11-13 after all six regression proofs, exact-head CI, documentation reconciliation, and explicit Operator acceptance. G1–G5 were merged in PRs #103, #105, #107, #109, and #111; G6 merged in PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113) at `a1baf018fe1a847b3ed5b23432647b387a72ddbc`. The closeout documentation is PR [#114](https://github.com/abtn/Watch-Architecture-Rev2/pull/114).
-- **R7-B B5:** B5.0 contract freeze complete; B5.1 Create-with-successor completed and merged by PR [#116](https://github.com/abtn/Watch-Architecture-Rev2/pull/116) at `d946342907dc1c384c73de18216a5c018dd48e2f`, with exact-head hosted CI and Operator-local full-suite verification (961 passed in each). B5.2 Retire documentation checkpoint is in progress; B5.2 implementation and B5.3–B5.4 remain separately gated. B6 and R7-C are not authorized.
+- **R7-B B5:** B5.0 contract freeze complete; B5.1 Create-with-successor completed and merged by PR [#116](https://github.com/abtn/Watch-Architecture-Rev2/pull/116) at `d946342907dc1c384c73de18216a5c018dd48e2f`, with exact-head hosted CI and Operator-local full-suite verification (961 passed in each). B5.2 Retire implementation is under review in draft PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118); local full-suite verification and exact-head hosted CI passed, while concurrency/negative-case acceptance proofs and Operator acceptance remain open. B5.3–B5.4 remain separately gated. B6 and R7-C are not authorized.
 - **R8:** scheduled for November 23, 2026, with a separate November 15 entry gate. It remains entry-gated and is not authorized for implementation by this schedule.
 
 Detailed historical implementation and verification evidence remains in the relevant milestone records and `docs/testing.md`. This summary is not a substitute for those records.
 
 ## Current gate and next actionable step
 
-**Current milestone: R7-B B5.2 — Retire (documentation checkpoint; implementation not yet authorized).**
+**Current milestone: R7-B B5.2 — Retire (implementation review and acceptance; PR #118 remains draft).**
 
 - PR [#116](https://github.com/abtn/Watch-Architecture-Rev2/pull/116) completed B5.1 Create-with-successor and was squash-merged into `main` at `d946342907dc1c384c73de18216a5c018dd48e2f`.
 - Exact B5.1 PR-head hosted CI [run #43408281624](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43408281624) passed: **961 tests**, Ruff, Mypy, fresh PostgreSQL migration/head verification, patch whitespace, and disposable database cleanup.
@@ -401,3 +401,10 @@ The first bounded Domain Knowledge Core, Team Experience Core, and controlled di
 ## Change rule
 
 Update this file whenever milestone status or its gate changes. Other documents should link here instead of duplicating a separate current-status table. Changes to the architecture contract require the applicable spec/ADR and `CHANGE_MAP.md` updates as well.
+
+
+### B5.2 current verification and acceptance gate (2026-11-13)
+
+PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118) is open as a draft at code head `3d102d8e4a9204580bf187018c51da358aa6c121`. Operator-local verification passed migration to `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), the integrated retirement regression, and the full suite (**962 passed, 113 Alembic deprecation warnings**). The disposable database was removed and the local verification script completed its final checks. Exact-head hosted CI run [#43456366139](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43456366139) passed.
+
+B5.2 is not formally accepted or closed. Dedicated retire-versus-retire and retire-versus-candidate-creation concurrency proofs, plus the remaining negative/stale-binding acceptance cases, are still required. See [the B5 implementation plan](docs/development/r7-b-b5-implementation-plan.md) and [testing evidence](docs/testing.md). No merge is authorized by this status update.
