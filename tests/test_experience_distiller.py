@@ -1294,6 +1294,58 @@ def _create_admitted_approval_task(
 
 
 
+def _create_proposal_task(
+    session_factory: sessionmaker[Session],
+    fixture: _Fixture,
+    *,
+    policy_version: int | None = None,
+) -> UUID:
+    task_id = uuid4()
+    fixture.extra_task_ids.append(task_id)
+    with session_factory.begin() as session:
+        template = session.get(Task, fixture.distillation_task_id)
+        assert template is not None
+        session.add(
+            Task(
+                id=task_id,
+                team_id=fixture.team_id,
+                task_type="propose_learning_change",
+                status="running",
+                attempt_count=1,
+                policy_version=(
+                    template.policy_version if policy_version is None else policy_version
+                ),
+                allowed_writes=["LearningChange"],
+                budget=dict(template.budget),
+            )
+        )
+    return task_id
+
+
+def _accept_learning_change(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    team_id: UUID,
+    learning_change_id: UUID,
+):
+    task_id, attempt, principal = _create_admitted_approval_task(
+        session_factory, snapshot_store, team_id, learning_change_id
+    )
+    result = LearningCommitService(session_factory, snapshot_store).decide(
+        task_id, attempt, principal
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=task_id,
+            attempt=attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=result.committed_at,
+            learning_change_id=result.learning_change_id,
+        )
+    )
+    return result
+
+
 class _FakeKnowledgeRevalidationProvider:
     evaluator_identity = "r7b-revalidation-test"
     evaluator_revision = "1"
