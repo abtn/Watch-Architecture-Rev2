@@ -891,9 +891,9 @@ The initial implementation and pre-reconciliation PR heads are historical eviden
 No migration, new Task type, second runtime, dispatcher, scheduler, API, authentication subsystem, production evaluator/provider, B5 lifecycle commit, B6, or R7-C work is included. B5, B6, and R7-C remain unauthorized.
 
 
-## R7-B B4.4 — integrated regression audit (IN PROGRESS — G1–G5 COMPLETE AND MERGED; G6 PLAN DOCUMENTED ONLY)
+## R7-B B4.4 — integrated regression audit (IN PROGRESS — G1–G5 COMPLETE AND MERGED; G6 IMPLEMENTATION IN PROGRESS)
 
-The initial read-only source/test audit is recorded in [the B4.4 audit](development/r7-b-b4-4-integrated-regression-audit.md), against exact merged main SHA 5f37927ff33d9e740c0ff56512d261dace36ab67. It identified six regression-proof gaps. G1–G5 (concurrency/CAS, recovery, replay after later history, integrated same-item revise/revalidate, and rejected-revalidation replay) are complete and merged. G6 is the remaining evidence gap, not a confirmed implementation defect. Its documentation-only plan is [here](development/r7-b-b4-4-g6-needs-review-revise-plan.md); G6 implementation awaits separate explicit Operator authorization.
+The initial read-only source/test audit is recorded in [the B4.4 audit](development/r7-b-b4-4-integrated-regression-audit.md), against exact merged main SHA 5f37927ff33d9e740c0ff56512d261dace36ab67. It identified six regression-proof gaps. G1–G5 (concurrency/CAS, recovery, replay after later history, integrated same-item revise/revalidate, and rejected-revalidation replay) are complete and merged. G6 is the remaining evidence gap, not a confirmed implementation defect. Its plan and pre-edit coverage map are [here](development/r7-b-b4-4-g6-needs-review-revise-plan.md). G6 implementation is authorized and in progress in PR #113; hosted CI passed on exact head `e4728757d216aafcdc2f3eb9f1aabbc920818ea3` (956 passed, 113 warnings), while Operator-local exact-head verification remains pending.
 
 ### Supplemental B4.3 Operator-local verification on exact merged-main tree
 
@@ -959,8 +959,8 @@ The extended `test_rejected_revalidation_does_not_mutate_the_knowledge_item` use
 
 **Operator-local exact-head verification:** the same SHA passed the focused G5 regression (**1 passed in 4.57s**), Ruff, Mypy (38 source files), fresh disposable PostgreSQL migration/single-head at `0018_r7b_lifecycle_review_date`, `git diff --check`, and the full suite (**955 passed, 113 warnings in 331.30s**). The warnings are Alembic `path_separator` deprecations. The disposable container was removed and the original process `DATABASE_URL` / `TEST_DATABASE_URL` values were restored. G5 is complete; no production correction was required.
 
-## R7-B B4.4 G6 — Accepted revise from needs_review (planning only)
+## R7-B B4.4 G6 — Accepted revise from needs_review (implementation in progress)
 
 G6 is the remaining B4.4 regression proof. Its documentation-only plan is [r7-b-b4-4-g6-needs-review-revise-plan.md](development/r7-b-b4-4-g6-needs-review-revise-plan.md). The plan maps the existing accepted revise, history reconstruction, Team Experience projection, and retrieval contracts into one bounded regression sequence. It requires status preservation, pointer/version/content/date consistency, history equality, and continued retrieval exclusion while the canonical item remains `needs_review`.
 
-**Status:** G6 planning is authorized; implementation is not authorized by the planning PR and requires a separate explicit Operator decision. No G6 implementation or verification is claimed. B4.4 remains open pending G6, final verification, and explicit Operator acceptance.
+**Status:** G6 implementation is authorized and the test-only regression is open in PR #113. Hosted CI passed on exact head `e4728757d216aafcdc2f3eb9f1aabbc920818ea3` (956 passed, 113 warnings; fresh migration/single-head, Ruff, Mypy, and patch whitespace passed). Operator-local exact-head verification remains pending; no G6 completion or B4.4 closeout is claimed.
