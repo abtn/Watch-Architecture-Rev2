@@ -218,7 +218,10 @@ class LearningCommitService:
                     .where(Team.id == task.team_id)
                     .with_for_update()
                 )
-                if candidate_team_lock is None or candidate_team_lock.status != "active":
+                if (
+                    candidate_team_lock is None
+                    or candidate_team_lock.status != "active"
+                ):
                     raise LearningCommitError("team_not_active")
 
             if approval_request.schema_version == 3:
@@ -438,7 +441,10 @@ class LearningCommitService:
                 raw_predecessor_id = learning_change.proposed_state.get(
                     "supersedes_item_id"
                 )
-                if learning_change.operation == "create" and raw_predecessor_id is not None:
+                if (
+                    learning_change.operation == "create"
+                    and raw_predecessor_id is not None
+                ):
                     try:
                         predecessor_id = uuid.UUID(raw_predecessor_id)
                     except (TypeError, ValueError) as error:
@@ -471,9 +477,12 @@ class LearningCommitService:
                     raise LearningCommitError(str(error)) from error
                 if interval_days is not None:
                     review_after = committed_at + datetime.timedelta(days=interval_days)
-                if learning_change.operation == "create" and learning_change.proposed_state.get(
-                    "supersedes_item_id"
-                ) is not None and (review_after is None or review_after <= committed_at):
+                if (
+                    learning_change.operation == "create"
+                    and learning_change.proposed_state.get("supersedes_item_id")
+                    is not None
+                    and (review_after is None or review_after <= committed_at)
+                ):
                     raise LearningCommitError(
                         "successor_review_interval_required"
                     )
