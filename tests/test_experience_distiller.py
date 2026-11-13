@@ -1313,7 +1313,9 @@ def _create_proposal_task(
                 status="running",
                 attempt_count=1,
                 policy_version=(
-                    template.policy_version if policy_version is None else policy_version
+                    template.policy_version
+                    if policy_version is None
+                    else policy_version
                 ),
                 allowed_writes=["LearningChange"],
                 budget=dict(template.budget),
@@ -6275,7 +6277,10 @@ def test_concurrent_create_with_successor_commits_only_one_candidate(
 
     approvals = [
         _create_admitted_approval_task(
-            session_factory, snapshot_store, fixture.team_id, proposal.learning_change_id
+            session_factory,
+            snapshot_store,
+            fixture.team_id,
+            proposal.learning_change_id
         )
         for proposal in proposals
     ]
@@ -6465,7 +6470,8 @@ def test_create_with_successor_rejects_stale_predecessor_after_revision(
     def revised_content(prompt: str) -> dict[str, Any]:
         content = _content_from_prompt(prompt)
         content["body"] = (
-            "A revised practice records a distinct observation before drawing a conclusion."
+            "A revised practice records a distinct observation "
+            "before drawing a conclusion."
         )
         return content
 
@@ -6489,7 +6495,10 @@ def test_create_with_successor_rejects_stale_predecessor_after_revision(
     )
     revision_approval_id, revision_attempt, revision_principal = (
         _create_admitted_approval_task(
-            session_factory, snapshot_store, fixture.team_id, revision.learning_change_id
+            session_factory,
+            snapshot_store,
+            fixture.team_id,
+            revision.learning_change_id
         )
     )
     revision_result = LearningCommitService(
@@ -6512,7 +6521,9 @@ def test_create_with_successor_rejects_stale_predecessor_after_revision(
 
     with session_factory() as session:
         predecessor = session.get(KnowledgeItem, predecessor_result.knowledge_item_id)
-        candidate_change = session.get(LearningChange, candidate_proposal.learning_change_id)
+        candidate_change = session.get(
+            LearningChange, candidate_proposal.learning_change_id
+        )
         assert predecessor is not None and candidate_change is not None
         assert predecessor.version == 2
         assert predecessor.current_learning_change_id == revision.learning_change_id
@@ -6557,7 +6568,9 @@ def test_create_with_successor_rejects_needs_review_and_due_predecessors(
         assert item is not None
         item.status = "needs_review"
     needs_review_provider = _provider()
-    with pytest.raises(ExperienceDistillerError, match="revision_target_status_invalid"):
+    with pytest.raises(
+        ExperienceDistillerError, match="revision_target_status_invalid"
+    ):
         _distiller(session_factory, snapshot_store, needs_review_provider).propose(
             needs_review_task,
             evaluation_ids,
