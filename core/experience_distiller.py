@@ -363,6 +363,7 @@ class ExperienceDistiller:
                     **unsigned_state,
                 }
             ).removeprefix("sha256:")
+            proposed_at = datetime.now(timezone.utc)
             change = LearningChange(
                 id=uuid4(),
                 team_id=team.id,
@@ -380,7 +381,7 @@ class ExperienceDistiller:
                 committed_by_task_id=None,
                 operator_id=None,
                 decision_reason=None,
-                created_at=datetime.now(timezone.utc),
+                created_at=proposed_at,
                 committed_at=None,
             )
             session.add(change)
@@ -511,7 +512,7 @@ class ExperienceDistiller:
                 )
 
             pack = self._build_pack(session, task, team, normalized_ids)
-            target, target_state, previous_state, target_binding = (
+            target, _, previous_state, target_binding = (
                 self._capture_target_state(
                     session,
                     team.id,
@@ -578,7 +579,7 @@ class ExperienceDistiller:
                     team_id=team.id,
                     issuer=principal.issuer,
                     subject=principal.subject,
-                    recorded_at=datetime.now(timezone.utc),
+                    recorded_at=proposed_at,
                 )
             )
             ObjectiveService._add_event(
