@@ -270,6 +270,7 @@ class LearningCommitService:
                     allow_completed=task.status == "done",
                     snapshot_store=self._snapshot_store,
                     session_factory=self._session_factory,
+                    require_current=task.status != "done",
                 )
             except TaskNotEligible as error:
                 raise LearningCommitCorrupt(str(error)) from error
