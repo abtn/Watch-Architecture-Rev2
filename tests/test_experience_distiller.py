@@ -10390,3 +10390,365 @@ def test_accepted_revise_preserves_needs_review_and_retrieval_ineligibility(
         assert projection_state is not None
         assert projection_state.status == "ineligible"
         assert projection_chunks == []
+
+
+
+def test_b5_2_integrated_retirement_candidate_lifecycle_sequences(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    request,
+):
+    from core.knowledge_lifecycle import KnowledgeLifecycleAssessmentError
+    from core.knowledge_lifecycle_tasks import (
+        KnowledgeLifecycleAssessmentTask,
+        KnowledgeLifecycleAssessmentTaskRunner,
+    )
+    from core.models import (
+        KnowledgeLifecycleAssessment,
+        LearningChangeOperatorProvenance,
+    )
+
+    fixture = distillation_fixture(1, False, review_interval_days=1)
+    evaluation_ids = tuple(case.evaluation_id for case in fixture.cases)
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    lifecycle_task_ids: list[UUID] = []
+    retirement_change_ids: list[UUID] = []
+
+    def cleanup_lifecycle_records():
+        with session_factory.begin() as session:
+            session.execute(
+                text(
+                    "ALTER TABLE knowledge_lifecycle_assessments "
+                    "DISABLE TRIGGER USER"
+                )
+            )
+            if retirement_change_ids:
+                session.execute(
+                    delete(KnowledgeLifecycleAssessment).where(
+                        KnowledgeLifecycleAssessment.learning_change_id.in_(
+                            retirement_change_ids
+                        )
+                    )
+                )
+            session.execute(
+                text(
+                    "ALTER TABLE knowledge_lifecycle_assessments "
+                    "ENABLE TRIGGER USER"
+                )
+            )
+            session.execute(
+                text(
+                    "ALTER TABLE learning_change_operator_provenance "
+                    "DISABLE TRIGGER USER"
+                )
+            )
+            if retirement_change_ids:
+                session.execute(
+                    delete(LearningChangeOperatorProvenance).where(
+                        LearningChangeOperatorProvenance.learning_change_id.in_(
+                            retirement_change_ids
+                        )
+                    )
+                )
+            session.execute(
+                text(
+                    "ALTER TABLE learning_change_operator_provenance "
+                    "ENABLE TRIGGER USER"
+                )
+            )
+            if lifecycle_task_ids:
+                session.execute(
+                    delete(Outcome).where(
+                        Outcome.recorded_by_task_id.in_(lifecycle_task_ids)
+                    )
+                )
+                session.execute(
+                    delete(Event).where(Event.task_id.in_(lifecycle_task_ids))
+                )
+                session.execute(
+                    delete(Task).where(Task.id.in_(lifecycle_task_ids))
+                )
+
+    request.addfinalizer(cleanup_lifecycle_records)
+
+    def create_item(supersedes_item_id: UUID | None = None) -> UUID:
+        task_id = _create_proposal_task(session_factory, fixture)
+        proposal = _distiller(
+            session_factory, snapshot_store, _provider()
+        ).propose(
+            task_id,
+            evaluation_ids,
+            supersedes_item_id=supersedes_item_id,
+        )
+        runtime.finalize(
+            TerminalObservation(
+                task_id=task_id,
+                attempt=1,
+                result_category="success_learning_change_proposed",
+                observed_at=datetime.now(timezone.utc),
+                learning_change_id=proposal.learning_change_id,
+            )
+        )
+        committed = _accept_learning_change(
+            session_factory,
+            snapshot_store,
+            fixture.team_id,
+            proposal.learning_change_id,
+        )
+        assert committed.knowledge_item_id is not None
+        return committed.knowledge_item_id
+
+    rationale = {
+        "schema_version": 1,
+        "summary": "The supporting evidence no longer justifies continued use.",
+        "reasons": [
+            {
+                "category": "evidence_no_longer_reliable",
+                "statement": "The primary supporting source has been superseded.",
+            },
+            {
+                "category": "applicability_changed",
+                "statement": "The original applicability conditions no longer hold.",
+            },
+        ],
+    }
+
+    def retire(target_id: UUID):
+        principal = _approval_principal(
+            fixture.team_id, subject=f"operator-retire-{target_id}"
+        )
+        proposal_task_id = _create_proposal_task(session_factory, fixture)
+        proposal = adapter.propose_retirement(
+            principal,
+            task_id=proposal_task_id,
+            evaluation_ids=evaluation_ids,
+            target_knowledge_item_id=target_id,
+            operator_rationale=rationale,
+        )
+        retirement_change_ids.append(proposal.learning_change_id)
+        runtime.finalize(
+            TerminalObservation(
+                task_id=proposal_task_id,
+                attempt=1,
+                result_category="success_learning_change_proposed",
+                observed_at=datetime.now(timezone.utc),
+                learning_change_id=proposal.learning_change_id,
+            )
+        )
+
+        lifecycle_adapter = KnowledgeLifecycleAssessmentTask(
+            session_factory, snapshot_store
+        )
+        lifecycle_task_id = lifecycle_adapter.create(proposal.learning_change_id)
+        lifecycle_task_ids.append(lifecycle_task_id)
+        assessment = KnowledgeLifecycleAssessmentTaskRunner(
+            session_factory, snapshot_store
+        ).run(lifecycle_task_id)
+        assert assessment.status == "done"
+        assert assessment.assessment_id is not None
+        assert assessment.assessment_result == "eligible"
+
+        approval_request = adapter.request_learning_change_decision(
+            principal,
+            LearningChangeDecisionRequest(
+                learning_change_id=proposal.learning_change_id,
+                decision="accept",
+                idempotency_key=uuid4(),
+            ),
+        )
+        admission = runtime.admit(approval_request.task_id)
+        committed = LearningCommitService(
+            session_factory, snapshot_store
+        ).decide(
+            approval_request.task_id,
+            admission.attempt_count,
+            principal,
+        )
+        runtime.finalize(
+            TerminalObservation(
+                task_id=approval_request.task_id,
+                attempt=admission.attempt_count,
+                result_category="success_learning_change_accepted",
+                observed_at=committed.committed_at,
+                learning_change_id=committed.learning_change_id,
+            )
+        )
+        return (
+            committed,
+            approval_request.task_id,
+            admission.attempt_count,
+            principal,
+        )
+
+    def assert_retired_without_semantic_mutation(
+        item_id: UUID,
+        before_state: dict[str, Any],
+        before_hash: str,
+    ) -> None:
+        with session_factory() as session:
+            item = session.get(KnowledgeItem, item_id)
+            assert item is not None
+            after_state = knowledge_item_state(item)
+            assert item.status == "retired"
+            assert item.version == before_state["version"]
+            assert knowledge_item_content_hash(item) == before_hash
+            immutable_keys = set(before_state) - {
+                "status",
+                "current_learning_change_id",
+            }
+            assert {
+                key: after_state[key] for key in immutable_keys
+            } == {key: before_state[key] for key in immutable_keys}
+            history = reconstruct_knowledge_item_history(session, item)
+            assert history.states[-1]["status"] == "retired"
+            assert history.states[-1]["current_learning_change_id"] == str(
+                item.current_learning_change_id
+            )
+
+    # Sequence 1: ordinary create -> retire.
+    ordinary_item_id = create_item()
+    with session_factory() as session:
+        ordinary_item = session.get(KnowledgeItem, ordinary_item_id)
+        assert ordinary_item is not None
+        ordinary_before = knowledge_item_state(ordinary_item)
+        ordinary_hash = knowledge_item_content_hash(ordinary_item)
+
+    ordinary_retirement, ordinary_approval_task, ordinary_attempt, ordinary_principal = (
+        retire(ordinary_item_id)
+    )
+    assert ordinary_retirement.decision == "accept"
+    assert ordinary_retirement.knowledge_item_id == ordinary_item_id
+    assert_retired_without_semantic_mutation(
+        ordinary_item_id, ordinary_before, ordinary_hash
+    )
+
+    with session_factory() as session:
+        event_count_before_replay = session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == ordinary_approval_task
+            )
+        )
+        outcome_count_before_replay = session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == ordinary_approval_task
+            )
+        )
+    replay = LearningCommitService(session_factory, snapshot_store).decide(
+        ordinary_approval_task, ordinary_attempt, ordinary_principal
+    )
+    assert replay.replayed
+    assert replay.learning_change_id == ordinary_retirement.learning_change_id
+    with session_factory() as session:
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == ordinary_approval_task
+            )
+        ) == event_count_before_replay
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == ordinary_approval_task
+            )
+        ) == outcome_count_before_replay
+
+    # Sequence 2: create candidate -> retire candidate -> replace candidate.
+    predecessor_id = create_item()
+    candidate_id = create_item(predecessor_id)
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        candidate = session.get(KnowledgeItem, candidate_id)
+        assert predecessor is not None and candidate is not None
+        assert predecessor.status == "active"
+        assert candidate.status == "active"
+        assert candidate.supersedes_item_id == predecessor_id
+        assert candidate.superseded_by_id is None
+        assert not _supersession_publication_is_visible(session, candidate, {})
+
+    blocked_task_id = _create_proposal_task(session_factory, fixture)
+    with pytest.raises(
+        ExperienceDistillerError,
+        match="successor_candidate_already_pending",
+    ):
+        _distiller(
+            session_factory, snapshot_store, _provider()
+        ).propose(
+            blocked_task_id,
+            evaluation_ids,
+            supersedes_item_id=predecessor_id,
+        )
+
+    with session_factory() as session:
+        candidate = session.get(KnowledgeItem, candidate_id)
+        assert candidate is not None
+        candidate_before = knowledge_item_state(candidate)
+        candidate_hash = knowledge_item_content_hash(candidate)
+
+    candidate_retirement, _, _, _ = retire(candidate_id)
+    assert candidate_retirement.knowledge_item_id == candidate_id
+    assert_retired_without_semantic_mutation(
+        candidate_id, candidate_before, candidate_hash
+    )
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        candidate = session.get(KnowledgeItem, candidate_id)
+        assert predecessor is not None and candidate is not None
+        assert predecessor.status == "active"
+        assert predecessor.superseded_by_id is None
+        assert candidate.status == "retired"
+        assert candidate.supersedes_item_id == predecessor_id
+        assert candidate.superseded_by_id is None
+
+    replacement_id = create_item(predecessor_id)
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        replacement = session.get(KnowledgeItem, replacement_id)
+        assert predecessor is not None and replacement is not None
+        assert predecessor.status == "active"
+        assert predecessor.superseded_by_id is None
+        assert replacement.status == "active"
+        assert replacement.supersedes_item_id == predecessor_id
+        assert replacement.superseded_by_id is None
+        assert not _supersession_publication_is_visible(session, replacement, {})
+
+    # Sequence 3: retiring a predecessor never implicitly mutates its candidate.
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        replacement = session.get(KnowledgeItem, replacement_id)
+        assert predecessor is not None and replacement is not None
+        predecessor_before = knowledge_item_state(predecessor)
+        predecessor_hash = knowledge_item_content_hash(predecessor)
+        replacement_before = knowledge_item_state(replacement)
+
+    predecessor_retirement, _, _, _ = retire(predecessor_id)
+    assert predecessor_retirement.knowledge_item_id == predecessor_id
+    assert_retired_without_semantic_mutation(
+        predecessor_id, predecessor_before, predecessor_hash
+    )
+    with session_factory() as session:
+        replacement = session.get(KnowledgeItem, replacement_id)
+        assert replacement is not None
+        assert knowledge_item_state(replacement) == replacement_before
+        assert replacement.status == "active"
+        assert replacement.supersedes_item_id == predecessor_id
+        assert replacement.superseded_by_id is None
+        assert not _supersession_publication_is_visible(session, replacement, {})
+
+    with session_factory() as session:
+        replacement = session.get(KnowledgeItem, replacement_id)
+        assert replacement is not None
+        replacement_before_retirement = knowledge_item_state(replacement)
+        replacement_hash = knowledge_item_content_hash(replacement)
+    replacement_retirement, _, _, _ = retire(replacement_id)
+    assert replacement_retirement.knowledge_item_id == replacement_id
+    assert_retired_without_semantic_mutation(
+        replacement_id, replacement_before_retirement, replacement_hash
+    )
+    with session_factory() as session:
+        replacement = session.get(KnowledgeItem, replacement_id)
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        assert replacement is not None and predecessor is not None
+        assert replacement.status == "retired"
+        assert replacement.supersedes_item_id == predecessor_id
+        assert predecessor.status == "retired"
+        assert predecessor.superseded_by_id is None
