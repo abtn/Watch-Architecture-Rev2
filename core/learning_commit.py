@@ -1164,6 +1164,8 @@ class LearningCommitService:
         quality_assessment_hash = approval_request.quality_assessment_hash
         revalidation_assessment_id: str | None = None
         revalidation_assessment_hash: str | None = None
+        lifecycle_assessment_id: str | None = None
+        lifecycle_assessment_hash: str | None = None
         if recorded_decision == "accept" and learning_change.operation == "revalidate":
             from core import knowledge_revalidation as revalidation
 
@@ -1194,6 +1196,39 @@ class LearningCommitService:
                 )
             revalidation_assessment_id = str(revalidation_assessment.id)
             revalidation_assessment_hash = revalidation_assessment.payload_hash
+        elif recorded_decision == "accept" and learning_change.operation == "retire":
+            from core.knowledge_lifecycle import (
+                KnowledgeLifecycleAssessmentError,
+                require_recorded_assessment as require_lifecycle_assessment,
+            )
+
+            try:
+                lifecycle_assessment = require_lifecycle_assessment(
+                    session,
+                    learning_change,
+                    self._snapshot_store,
+                    self._session_factory,
+                    require_task_done=True,
+                    require_current=False,
+                )
+            except KnowledgeLifecycleAssessmentError as error:
+                raise LearningCommitCorrupt(str(error)) from error
+            approval_binding = approval_request.approval_binding
+            if (
+                approval_binding is None
+                or approval_binding.get("assessment_type") != "knowledge_lifecycle"
+                or approval_binding.get("assessment_id") != str(lifecycle_assessment.id)
+                or approval_binding.get("assessment_payload_hash")
+                != lifecycle_assessment.payload_hash
+                or quality_assessment_id is not None
+                or quality_assessment_hash is not None
+                or lifecycle_assessment.assessment_result != "eligible"
+            ):
+                raise LearningCommitCorrupt(
+                    "operator_lifecycle_assessment_binding_invalid"
+                )
+            lifecycle_assessment_id = str(lifecycle_assessment.id)
+            lifecycle_assessment_hash = lifecycle_assessment.payload_hash
         elif recorded_decision == "accept":
             try:
                 quality_assessment = require_recorded_assessment(
@@ -1253,7 +1288,7 @@ class LearningCommitService:
                     or learning_change.target_id is None
                 )
             )
-            or learning_change.operation not in {"create", "revise", "revalidate"}
+            or learning_change.operation not in {"create", "revise", "revalidate", "retire"}
         ):
             raise LearningCommitConflict("learning_change_decision_request_conflict")
 
@@ -1389,6 +1424,13 @@ class LearningCommitService:
                 )
                 expected_payload["knowledge_revalidation_assessment_hash"] = (
                     revalidation_assessment_hash
+                )
+            elif learning_change.operation == "retire":
+                expected_payload["knowledge_lifecycle_assessment_id"] = (
+                    lifecycle_assessment_id
+                )
+                expected_payload["knowledge_lifecycle_assessment_hash"] = (
+                    lifecycle_assessment_hash
                 )
             else:
                 expected_payload["knowledge_quality_assessment_id"] = (
