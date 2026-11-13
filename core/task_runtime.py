@@ -4561,7 +4561,11 @@ class TaskRuntime:
                 validate_operator_rationale,
             )
             from core.learning_history import KNOWLEDGE_CONTENT_HASH_SCHEME
+            from core.evaluations import _sha256_json as _proposal_sha256_json
 
+            session.scalar(
+                select(Team).where(Team.id == task.team_id).with_for_update()
+            )
             try:
                 rationale = validate_operator_rationale(
                     proposal_state.get("operator_rationale")
