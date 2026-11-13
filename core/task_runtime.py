@@ -699,7 +699,10 @@ class TaskRuntime:
             )
         ):
             raise TaskNotEligible("operator_task_request_target_invalid")
-        if decision == "accept" and learning_change.operation != "revalidate":
+        if (
+            decision == "accept"
+            and learning_change.operation not in {"revalidate", "retire"}
+        ):
             from core.knowledge_quality import (
                 KnowledgeQualityAssessmentError,
                 require_recorded_assessment,
@@ -716,6 +719,43 @@ class TaskRuntime:
                 or assessment.assessment_payload_hash != quality_assessment_hash
             ):
                 raise TaskNotEligible("operator_quality_assessment_binding_invalid")
+        elif decision == "accept" and learning_change.operation == "retire":
+            from core.knowledge_lifecycle import (
+                KnowledgeLifecycleAssessmentError,
+            )
+            from core.knowledge_lifecycle import (
+                require_recorded_assessment as require_lifecycle_assessment,
+            )
+
+            if snapshot_store is None or session_factory is None:
+                raise TaskNotEligible(
+                    "operator_lifecycle_snapshot_context_missing"
+                )
+            try:
+                lifecycle_assessment = require_lifecycle_assessment(
+                    session,
+                    learning_change,
+                    snapshot_store,
+                    session_factory,
+                    require_task_done=True,
+                    require_current=True,
+                )
+            except KnowledgeLifecycleAssessmentError as error:
+                raise TaskNotEligible(str(error)) from error
+            approval_binding = request_payload.approval_binding
+            if (
+                quality_assessment_id_value is not None
+                or quality_assessment_hash is not None
+                or not isinstance(approval_binding, dict)
+                or approval_binding.get("assessment_type") != "knowledge_lifecycle"
+                or approval_binding.get("assessment_id")
+                != str(lifecycle_assessment.id)
+                or approval_binding.get("assessment_payload_hash")
+                != lifecycle_assessment.payload_hash
+            ):
+                raise TaskNotEligible(
+                    "operator_lifecycle_assessment_binding_invalid"
+                )
 
         if request_payload.schema_version == 3:
             from core.knowledge_approval import (
