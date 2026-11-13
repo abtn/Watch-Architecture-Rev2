@@ -45,7 +45,7 @@ This audit began as a read-only review of the exact merged main tree named above
 | Create compatibility | test_original_create_approval_replays_after_later_history_transition and existing create proposal/approval tests | Existing coverage |
 | Generic competing approval requests | test_competing_approval_tasks_terminalize_the_losing_request covers competing approval Tasks and recovery of the losing Task | Existing coverage; the tested fixture is create-oriented |
 ## 4. Regression-proof items and dispositions
-The initial audit identified six gaps in test evidence, not confirmed implementation defects. G1–G4 are complete and merged. G5 and G6 remain evidence gaps, not confirmed implementation defects. G5 is authorized for documentation planning only; its extracted plan is recorded separately. G5 implementation awaits a separate explicit Operator decision. G6 remains unauthorized. No infrastructure or authority expansion is implied.
+The initial audit identified six gaps in test evidence, not confirmed implementation defects. G1–G5 are complete and merged. G6 is the remaining evidence gap, not a confirmed implementation defect. G6 documentation planning is authorized and its extracted plan is recorded separately; implementation awaits a separate explicit Operator decision. No infrastructure or authority expansion is implied.
 ### G1 — True concurrent compare-and-set race on one KnowledgeItem
 The revise regression constructs competing proposals and commits the winner before attempting the stale loser. The competing approval test likewise sequences the winner and loser. The inspected test inventory does not establish two concurrently executing PostgreSQL approval transactions racing on the same target.
 **Required proof:** use separate sessions/transactions against disposable PostgreSQL with controlled synchronization. Exactly one canonical transition wins; the loser fails closed; no partial state, duplicate decision Event, duplicate version/pointer advance, or terminal success for the loser is persisted. Cover the shared compare-and-set boundary for revise and revalidate, or demonstrate why one parameterized common test proves both.
@@ -107,10 +107,7 @@ The revise approval-binding test uses a needs_review target, and the history uni
 
 **Authority boundary:** this PR records the G6 plan only. G6 implementation and test changes require a separate explicit Operator decision.
 
-### G6 — Accepted revise commit from needs_review
-**Status: OUTSTANDING — implementation not authorized.**
-The revise approval-binding test uses a needs_review target, and the history unit test proves the transition validator preserves that status. The identified end-to-end canonical revise test starts from an active item; no accepted revise commit starting from a needs_review KnowledgeItem was identified.
-**Required proof:** commit a valid revise against a current needs_review item and verify the status remains needs_review, content/version/pointer/date semantics follow the revise contract, history reconstructs, and the current projection remains ineligible while status is needs_review.
+**Historical initial finding (superseded by G4):** the first audit found no accepted revise commit starting from a needs_review KnowledgeItem. G4 later added an integrated revise/revalidate sequence that does revise a needs_review item. G6 isolates the accepted revise and explicitly verifies the canonical revise contract and retrieval-ineligibility boundary; see the G6 plan.
 ## 5. Scope and stop conditions
 - Keep the supported B4 operations exactly create, revise, and revalidate.
 - Keep the existing propose_learning_change Task, LearningCommitService, trusted Operator path, and single TaskRuntime.
