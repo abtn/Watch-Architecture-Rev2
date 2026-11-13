@@ -22,11 +22,14 @@ The objective is to demonstrate the existing architecture under different domain
 - B4.1–B4.3 are implemented and merged.
 - B4.4 G1–G4 are complete and merged.
 - G5 rejected-revalidation approval replay is complete and merged by PR #111 at 09cb8e6dfae078662e55631ae2f79e31fa8fb8cf; hosted CI and Operator-local focused/full verification passed.
-- G6 accepted revise from needs_review is implemented and verified in PR #113. Hosted CI run [#43386762345](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43386762345) passed on exact PR head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh PostgreSQL migration/single-head, Ruff, Mypy (38 source files), patch whitespace, full suite (**956 passed, 113 warnings**), and disposable-container cleanup. Operator-local exact-head verification on `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: fresh disposable PostgreSQL migration reached `0018_r7b_lifecycle_review_date`; the full suite, run first and alone against that fresh database, passed **956 tests with 113 Alembic `path_separator` deprecation warnings in 292.91s**. The script restored the original process `DATABASE_URL` and `TEST_DATABASE_URL`, removed only its disposable container, and confirmed the exact branch/HEAD and clean worktree. The earlier 36-failure run did not reproduce in this isolated full-suite run; its cause remains undetermined. Local Ruff/Mypy and focused-only runs are not claimed; those checks passed in hosted CI. All six B4.4 regression proofs are complete; formal B4.4 closeout remains pending final integrated review and explicit Operator acceptance. The scope and coverage map are recorded in [the G6 plan](r7-b-b4-4-g6-needs-review-revise-plan.md).
+- R7-B B0–B3 are complete; B3 is formally closed.
+- B4.1–B4.3 are implemented and merged.
+- B4.4 G1–G5 are complete and merged through PRs #103, #105, #107, #109, and #111.
+- G6's bounded test-only regression is implemented in open PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113), which is not yet merged. Latest exact PR head `44a31cb59588457cbaedc4863046795cea03ca3a` passed hosted CI run [#43394074207](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43394074207). Fresh PostgreSQL migration/single-head, Ruff, Mypy, patch-whitespace, full-test, and disposable-container cleanup workflow steps completed successfully. The available run metadata does not expose the final-head test count.
+- Supplemental Operator-local full-suite verification passed on the earlier implementation head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd`: 956 passed, 113 Alembic deprecation warnings, 292.91s. The earlier 36-failure run did not reproduce; its cause remains undetermined. Local Ruff/Mypy and focused-only runs are not claimed.
+- All six B4.4 regression proofs are complete. The technical closeout review passed; formal B4.4 closure remains pending documentation reconciliation, review of the reconciled exact head, and explicit Operator acceptance.
 
-B5, B6, and R7-C are not automatic R8 prerequisites. They remain unauthorized unless a concrete R8 acceptance blocker is identified and the Operator separately authorizes the work.
-
-**Authority note:** This schedule records target dates, not blanket implementation permission. G6 implementation and verification are complete in PR #113. B4.4 remains open pending formal closeout review and explicit Operator acceptance. B5, B6, and R7-C remain unauthorized.
+**Authority note:** This schedule records target dates, not blanket implementation permission. G6 implementation and verification are complete in open PR #113. The technical B4.4 closeout review has passed, but B4.4 remains formally open until documentation is reconciled, the reconciled exact head is verified, and the Operator explicitly accepts closure. The November 15 R8 entry gate must record a separate explicit decision; it does not automatically authorize implementation. B5, B6, and R7-C remain unauthorized.
 
 ## 3. Delivery schedule
 
@@ -67,20 +70,20 @@ Expected result: G5 complete; G6 scope and execution sequence documented. Separa
 
 **B4.4 final verification**
 
-1. Run the complete relevant regression suite and full test suite.
+1. Confirm G1–G6 regression evidence and run any remaining closeout verification required by the Operator; do not assume the historical test run is a fresh run on the reconciled documentation head.
 2. Run Ruff and Mypy.
 3. Verify Alembic migration consistency and the single expected head.
 4. Run hosted CI on the exact final commit.
 5. Review the complete source diff against the frozen B4 contracts.
 6. Confirm no unauthorized scope expansion.
 7. Reconcile PLAN.md, CHANGE_MAP.md, implementation documentation, and testing evidence.
-8. Obtain explicit Operator acceptance.
+8. Obtain explicit Operator acceptance of B4.4 closure.
 
 B4.4 is not closed merely because G1–G6 tests pass; final verification and acceptance are mandatory.
 
 **R8 entry gate**
 
-Freeze the three domain scenarios, common Control/Task path, domain-knowledge boundaries, experience retention/reuse requirements, cross-domain transfer restrictions, failure/abstention behavior, required evidence, exclusions, and dependencies.
+After B4.4 is formally closed, freeze the three domain scenarios, common Control/Task path, domain-knowledge boundaries, experience retention/reuse requirements, cross-domain transfer restrictions, failure/abstention behavior, required evidence, exclusions, and dependencies. Record explicit R8 implementation authorization separately.
 
 B5, B6, and R7-C remain excluded unless an actual R8 blocker is identified and separately authorized.
 
