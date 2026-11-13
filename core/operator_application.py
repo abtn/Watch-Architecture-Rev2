@@ -147,6 +147,31 @@ class OperatorApplicationAdapter:
         self._session_factory = session_factory
         self._snapshot_store = snapshot_store
 
+    def propose_retirement(
+        self,
+        principal: TrustedOperatorPrincipal,
+        *,
+        task_id: UUID,
+        evaluation_ids: tuple[UUID, ...],
+        target_knowledge_item_id: UUID,
+        operator_rationale: dict[str, object],
+    ):
+        """Create a retirement proposal using host-authenticated Operator context."""
+        if self._snapshot_store is None:
+            raise OperatorApplicationError("retirement_snapshot_store_required")
+        _canonical_operator_identity(principal)
+        from core.experience_distiller import ExperienceDistiller
+
+        return ExperienceDistiller(
+            self._session_factory, self._snapshot_store, provider=None
+        ).propose_retirement(
+            task_id,
+            evaluation_ids,
+            target_knowledge_item_id,
+            operator_rationale,
+            principal,
+        )
+
     def request_learning_change_decision(
         self,
         principal: TrustedOperatorPrincipal,
