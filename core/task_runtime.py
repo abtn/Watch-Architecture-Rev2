@@ -3871,6 +3871,42 @@ class TaskRuntime:
                     raise TaskNotFinalizable(
                         "operator_revalidation_assessment_binding_invalid"
                     )
+            elif learning_change.operation == "retire":
+                from core.knowledge_lifecycle import (
+                    KnowledgeLifecycleAssessmentError,
+                    require_recorded_assessment as require_lifecycle_assessment,
+                )
+
+                if self._snapshot_store is None:
+                    raise TaskNotFinalizable(
+                        "operator_lifecycle_snapshot_context_missing"
+                    )
+                try:
+                    lifecycle_assessment = require_lifecycle_assessment(
+                        session,
+                        learning_change,
+                        self._snapshot_store,
+                        self._session_factory,
+                        require_task_done=True,
+                        require_current=False,
+                    )
+                except KnowledgeLifecycleAssessmentError as error:
+                    raise TaskNotFinalizable(str(error)) from error
+                approval_binding = request_payload.get("approval_binding")
+                if (
+                    quality_assessment_id_value is not None
+                    or quality_assessment_hash is not None
+                    or not isinstance(approval_binding, dict)
+                    or approval_binding.get("assessment_type")
+                    != "knowledge_lifecycle"
+                    or approval_binding.get("assessment_id")
+                    != str(lifecycle_assessment.id)
+                    or approval_binding.get("assessment_payload_hash")
+                    != lifecycle_assessment.payload_hash
+                ):
+                    raise TaskNotFinalizable(
+                        "operator_lifecycle_assessment_binding_invalid"
+                    )
             else:
                 from core.knowledge_quality import (
                     KnowledgeQualityAssessmentError,
@@ -3923,13 +3959,13 @@ class TaskRuntime:
                 )
             )
             or (
-                learning_change.operation in {"revise", "revalidate"}
+                learning_change.operation in {"revise", "revalidate", "retire"}
                 and (
                     learning_change.previous_state is None
                     or learning_change.target_id is None
                 )
             )
-            or learning_change.operation not in {"create", "revise", "revalidate"}
+            or learning_change.operation not in {"create", "revise", "revalidate", "retire"}
             or not isinstance(learning_change.proposed_state, dict)
             or learning_change.committed_at is None
             or learning_change.committed_at != observation.observed_at
@@ -4033,6 +4069,16 @@ class TaskRuntime:
                 expected_payload["knowledge_revalidation_assessment_hash"] = (
                     approval_binding.get("assessment_payload_hash")
                 )
+            elif learning_change.operation == "retire":
+                approval_binding = request_payload.get("approval_binding")
+                if not isinstance(approval_binding, dict):
+                    raise TaskNotFinalizable("operator_approval_binding_invalid")
+                expected_payload["knowledge_lifecycle_assessment_id"] = (
+                    approval_binding.get("assessment_id")
+                )
+                expected_payload["knowledge_lifecycle_assessment_hash"] = (
+                    approval_binding.get("assessment_payload_hash")
+                )
             else:
                 expected_payload["knowledge_quality_assessment_id"] = (
                     quality_assessment_id_value
@@ -4115,7 +4161,7 @@ class TaskRuntime:
                     and history.learning_change_ids[0] != learning_change.id
                 )
                 or (
-                    learning_change.operation in {"revise", "revalidate"}
+                    learning_change.operation in {"revise", "revalidate", "retire"}
                     and (
                         committed_state is None
                         or history.states[
