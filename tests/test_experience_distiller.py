@@ -10664,7 +10664,12 @@ def test_b5_2_integrated_retirement_candidate_lifecycle_sequences(
         ordinary_before = knowledge_item_state(ordinary_item)
         ordinary_hash = knowledge_item_content_hash(ordinary_item)
 
-    ordinary_retirement, ordinary_approval_task, ordinary_attempt, ordinary_principal = (
+    (
+        ordinary_retirement,
+        ordinary_approval_task,
+        ordinary_attempt,
+        ordinary_principal,
+    ) = (
         retire(ordinary_item_id)
     )
     assert ordinary_retirement.decision == "accept"
