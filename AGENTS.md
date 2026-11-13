@@ -82,10 +82,6 @@ Run the full suite when the scope or milestone requires it. Report skipped check
 
 Database tests must use the repository's configured disposable/test database. Never modify the persistent `watch` database to make tests pass. Never use `docker compose down -v` as generic cleanup. Positively identify the target database before running database-backed tests or migrations; an ambiguous target is a stop condition.
 
-## 8. Workflow-validation record
-
-Only when the task explicitly simulates, audits, or tests the human–agent development workflow, append exactly one chronological evidence-based entry to `docs/development/obsolete-workflow-validation.md`. Preserve older entries. Verify the appended entry exists before reporting. Ordinary code tasks do not require an entry.
-
 ## 8. Reporting
 
 Always report:
