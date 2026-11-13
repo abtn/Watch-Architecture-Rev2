@@ -3965,7 +3965,8 @@ class TaskRuntime:
                     or learning_change.target_id is None
                 )
             )
-            or learning_change.operation not in {"create", "revise", "revalidate", "retire"}
+            or learning_change.operation
+            not in {"create", "revise", "revalidate", "retire"}
             or not isinstance(learning_change.proposed_state, dict)
             or learning_change.committed_at is None
             or learning_change.committed_at != observation.observed_at
