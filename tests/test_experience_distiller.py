@@ -6143,6 +6143,36 @@ def test_create_with_successor_commits_hidden_candidate_through_existing_path(
     assert replay.replayed
     assert replay.knowledge_item_id == candidate_result.knowledge_item_id
 
+    second_task_id = uuid4()
+    fixture.extra_task_ids.append(second_task_id)
+    with session_factory.begin() as session:
+        session.add(
+            Task(
+                id=second_task_id,
+                team_id=fixture.team_id,
+                task_type="propose_learning_change",
+                status="running",
+                attempt_count=1,
+                policy_version=1,
+                allowed_writes=["LearningChange"],
+                budget={
+                    "max_tool_calls": 0,
+                    "max_cost_usd": 1.0,
+                    "deadline_seconds": 60,
+                },
+            )
+        )
+    second_provider = _provider()
+    with pytest.raises(
+        ExperienceDistillerError, match="successor_candidate_already_pending"
+    ):
+        _distiller(session_factory, snapshot_store, second_provider).propose(
+            second_task_id,
+            evaluation_ids,
+            supersedes_item_id=predecessor_result.knowledge_item_id,
+        )
+    assert second_provider.calls == 0
+
 
 def test_create_with_successor_rejects_missing_pinned_review_interval(
     session_factory, snapshot_store, distillation_fixture
