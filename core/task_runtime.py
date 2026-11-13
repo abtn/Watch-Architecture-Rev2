@@ -622,6 +622,7 @@ class TaskRuntime:
         allow_completed: bool = False,
         snapshot_store: SnapshotStore | None = None,
         session_factory: sessionmaker[Session] | None = None,
+        require_current: bool = True,
     ) -> None:
         """Fail closed unless this is an intact, no-deadline approval Task."""
         if (
@@ -738,7 +739,7 @@ class TaskRuntime:
                     snapshot_store,
                     session_factory,
                     require_task_done=True,
-                    require_current=True,
+                    require_current=require_current,
                 )
             except KnowledgeLifecycleAssessmentError as error:
                 raise TaskNotEligible(str(error)) from error
@@ -3809,6 +3810,7 @@ class TaskRuntime:
                 allow_completed=allow_completed,
                 snapshot_store=self._snapshot_store,
                 session_factory=self._session_factory,
+                require_current=False,
             )
         except TaskNotEligible as error:
             raise TaskNotFinalizable(
