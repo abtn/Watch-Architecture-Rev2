@@ -6530,6 +6530,66 @@ def test_create_with_successor_rejects_stale_predecessor_after_revision(
         ) is None
 
 
+def test_create_with_successor_rejects_needs_review_and_due_predecessors(
+    session_factory, snapshot_store, distillation_fixture, monkeypatch
+):
+    fixture = distillation_fixture(1, False, review_interval_days=1)
+    evaluation_ids = [fixture.cases[0].evaluation_id]
+    distiller = _distiller(session_factory, snapshot_store, _provider())
+    proposal = distiller.propose(fixture.distillation_task_id, evaluation_ids)
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=fixture.distillation_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    predecessor = _accept_learning_change(
+        session_factory, snapshot_store, fixture.team_id, proposal.learning_change_id
+    )
+    assert predecessor.knowledge_item_id is not None
+
+    needs_review_task = _create_proposal_task(session_factory, fixture)
+    with session_factory.begin() as session:
+        item = session.get(KnowledgeItem, predecessor.knowledge_item_id)
+        assert item is not None
+        item.status = "needs_review"
+    needs_review_provider = _provider()
+    with pytest.raises(ExperienceDistillerError, match="revision_target_status_invalid"):
+        _distiller(session_factory, snapshot_store, needs_review_provider).propose(
+            needs_review_task,
+            evaluation_ids,
+            supersedes_item_id=predecessor.knowledge_item_id,
+        )
+    assert needs_review_provider.calls == 0
+    with session_factory.begin() as session:
+        item = session.get(KnowledgeItem, predecessor.knowledge_item_id)
+        assert item is not None
+        item.status = "active"
+
+    due_task = _create_proposal_task(session_factory, fixture)
+    original_datetime = datetime
+
+    class _FutureDatetime(original_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return original_datetime.now(tz) + timedelta(days=2)
+
+    monkeypatch.setattr("core.experience_distiller.datetime", _FutureDatetime)
+    due_provider = _provider()
+    with pytest.raises(
+        ExperienceDistillerError, match="successor_predecessor_not_d7_eligible"
+    ):
+        _distiller(session_factory, snapshot_store, due_provider).propose(
+            due_task,
+            evaluation_ids,
+            supersedes_item_id=predecessor.knowledge_item_id,
+        )
+    assert due_provider.calls == 0
+
+
 def test_create_with_successor_rejects_missing_pinned_review_interval(
     session_factory, snapshot_store, distillation_fixture
 ):
