@@ -1014,7 +1014,7 @@ def test_request_creation_rejects_unsupported_lifecycle_operation(
 
     with pytest.raises(
         LearningChangeNotApprovable,
-        match="only_knowledge_item_create_revise_or_revalidate_is_supported",
+        match="only_knowledge_item_create_revise_revalidate_or_retire_is_supported",
     ):
         OperatorApplicationAdapter(session_factory).request_learning_change_decision(
             _principal(approval_context.team_id),
