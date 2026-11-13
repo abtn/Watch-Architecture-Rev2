@@ -41,5 +41,5 @@ a.txt
 Project2text.txt
 
 # Large append-only history: open explicitly only when the task needs it.
-docs/development/workflow-validation.md
+docs/development/obsolete-workflow-validation.md
 docs/decisions/architecture decision records (ADR-0001 - ADR-0019).md

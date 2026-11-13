@@ -84,9 +84,9 @@ Database tests must use the repository's configured disposable/test database. Ne
 
 ## 8. Workflow-validation record
 
-Only when the task explicitly simulates, audits, or tests the human–agent development workflow, append exactly one chronological evidence-based entry to `docs/development/workflow-validation.md`. Preserve older entries. Verify the appended entry exists before reporting. Ordinary code tasks do not require an entry.
+Only when the task explicitly simulates, audits, or tests the human–agent development workflow, append exactly one chronological evidence-based entry to `docs/development/obsolete-workflow-validation.md`. Preserve older entries. Verify the appended entry exists before reporting. Ordinary code tasks do not require an entry.
 
-## 9. Reporting
+## 8. Reporting
 
 Always report:
 

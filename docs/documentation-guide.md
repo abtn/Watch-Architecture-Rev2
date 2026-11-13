@@ -64,7 +64,7 @@ Completed phase plans, entry gates, implementation audits, regression matrices, 
 
 Preserve them when they explain a decision, acceptance criterion, verification result, or residual limitation. Do not load them by default. Open only the record relevant to the current invariant or historical question.
 
-A completed plan should state its final disposition and point to PLAN.md for current status. Historical checkpoints must remain clearly labelled as historical; do not rewrite old statements as though they were current when written.
+A completed plan should state its final disposition and point to PLAN.md for current status. Use the `historical-` filename prefix for completed R6/R7 plans, audits, regression matrices, and closeout records. Use `obsolete-` for retained records that are no longer part of the active workflow. Historical checkpoints must remain clearly labelled as historical; do not rewrite old statements as though they were current when written.
 
 ### Testing and verification
 
