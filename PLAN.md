@@ -25,7 +25,7 @@ Detailed historical implementation and verification evidence remains in the rele
 
 The formal B4.4 technical review found G1–G6 and the bounded architecture/scope sound. The documentation reconciliation passed exact-head hosted CI in PR #114 after PR #113 merged. The Operator explicitly accepted B4.4 closure on 2026-11-13. **B4.4 is formally closed.**
 
-**Next action:** prepare the separately authorized B5 documentation-only plan. B5 implementation remains gated by that plan's review and a distinct implementation authorization; B6 and R7-C remain unauthorized.
+**Next action:** review the B5 documentation-only plan in PR [#115](https://github.com/abtn/Watch-Architecture-Rev2/pull/115). B5 implementation remains gated by explicit acceptance of that plan and a separate implementation authorization; B6 and R7-C remain unauthorized.
 
 **R8 boundary:** the November 15 entry gate must assess readiness and record explicit authorization. The November 23 target is a schedule, not permission to begin implementation.
 
