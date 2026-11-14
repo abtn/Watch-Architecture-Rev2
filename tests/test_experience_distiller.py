@@ -13908,6 +13908,7 @@ def test_b5_3_5_rejected_supersede_replay_survives_later_acceptance_and_conflict
 
 
 def test_b5_3_5_stale_supersede_replay_preserves_disposition_after_candidate_restore(
+    database_engine,
     session_factory,
     snapshot_store,
     distillation_fixture,
@@ -13963,42 +13964,64 @@ def test_b5_3_5_stale_supersede_replay_preserves_disposition_after_candidate_res
         original_assessment_hash = assessment.payload_hash
 
     stale_review_after = original_review_after + timedelta(days=1)
-    with session_factory.begin() as session:
-        successor = session.get(KnowledgeItem, successor_id)
-        assert successor is not None
-        successor.review_after = stale_review_after
+    team_lock_count = 0
+    drift_applied = False
+    drift_injected = ThreadEvent()
+
+    def inject_candidate_drift_after_commit_team_lock(
+        connection, cursor, statement, parameters, context, executemany
+    ):
+        nonlocal team_lock_count, drift_applied
+        normalized = statement.lower()
+        if "teams" not in normalized or "for update" not in normalized:
+            return
+        team_lock_count += 1
+        if team_lock_count == 2:
+            with session_factory.begin() as session:
+                result = session.execute(
+                    update(KnowledgeItem)
+                    .where(
+                        KnowledgeItem.id == successor_id,
+                        KnowledgeItem.review_after == original_review_after,
+                    )
+                    .values(review_after=stale_review_after)
+                )
+                assert result.rowcount == 1
+            drift_applied = True
+            drift_injected.set()
 
     stale_error: LearningCommitError | None = None
+    event.listen(
+        database_engine,
+        "after_cursor_execute",
+        inject_candidate_drift_after_commit_team_lock,
+    )
     try:
-        LearningCommitService(session_factory, snapshot_store).decide(
-            approval.task_id, admission.attempt_count, principal
+        try:
+            adapter.decide_learning_change(principal, request)
+        except LearningCommitError as error:
+            stale_error = error
+        assert drift_injected.is_set()
+    finally:
+        event.remove(
+            database_engine,
+            "after_cursor_execute",
+            inject_candidate_drift_after_commit_team_lock,
         )
-    except LearningCommitError as error:
-        stale_error = error
+        if drift_applied:
+            with session_factory.begin() as session:
+                result = session.execute(
+                    update(KnowledgeItem)
+                    .where(
+                        KnowledgeItem.id == successor_id,
+                        KnowledgeItem.review_after == stale_review_after,
+                    )
+                    .values(review_after=original_review_after)
+                )
+                assert result.rowcount == 1
+
     assert stale_error is not None
     assert str(stale_error) == "knowledge_lifecycle_successor_stale"
-
-    runtime = TaskRuntime(session_factory, snapshot_store)
-    with session_factory() as session:
-        task = session.get(Task, approval.task_id)
-        assert task is not None and task.status == "running"
-        started_at = TaskRuntime._current_attempt_start(session, task)
-        assert started_at is not None
-    failed = runtime.finalize(
-        TerminalObservation(
-            task_id=approval.task_id,
-            attempt=admission.attempt_count,
-            result_category="terminal_failure",
-            observed_at=started_at,
-            failure_reason=str(stale_error),
-        )
-    )
-    assert failed.status == "failed"
-
-    with session_factory.begin() as session:
-        successor = session.get(KnowledgeItem, successor_id)
-        assert successor is not None
-        successor.review_after = original_review_after
 
     with session_factory() as session:
         predecessor = session.get(KnowledgeItem, predecessor_id)
