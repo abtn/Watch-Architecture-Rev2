@@ -1058,3 +1058,17 @@ The integrated run exposed and corrected three issues before the passing head: r
 **Test-isolation correction included before this final head:** distillation assertions for absent LearningChange records now scope to the test's `distillation_task_id`; ingestion Event-count assertions now scope to the proposal's `task_id`. These test-only scopes prevent unrelated stale records in a reused local test database from affecting results. Production recovery and lifecycle safeguards were not weakened.
 
 **Closeout boundary:** B5.3 implementation, exact-head hosted/local verification, and final implementation/scope review are complete. The Operator has not yet given the separate explicit B5.3 technical-acceptance decision. PR #120 remains a draft and has not been merged. B5.4 remains gated; B6 and R7-C remain unauthorized.
+
+
+## R7-B B5.3 Supersede — formal closure (2026-11-14)
+
+B5.3 was explicitly closed by the Operator and squash-merged in PR [#120](https://github.com/abtn/Watch-Architecture-Rev2/pull/120) at `7fbac0656f9eda9983a73dfe84fae859fd7e98f9`.
+
+- Exact implementation/test head: `6821dba35da3fecd1540483f2e30cbff7aebcf15`; Operator-local fresh disposable-PostgreSQL verification passed (**996 passed, 113 warnings in 407.23s**), Ruff, Mypy (38 source files), migration single-head checks, cleanup, environment restoration, and exact branch/HEAD/worktree checks.
+- Hosted CI run [#1146](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43618529970) passed on the exact implementation/test head.
+- Documentation-inclusive PR head `2aa6cb09419feb2342dbc1d1ba38b4c1fc1394c1` passed hosted CI run [#1150](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43622220433).
+- The 113 warnings are Alembic `path_separator` deprecations.
+- Final implementation/scope review found no blocking code findings. The canonical supersede path changes only the predecessor; the accepted candidate row remains unchanged. Reciprocal publication and D7 eligibility remain enforced.
+- Test-isolation assertions are scoped to records owned by each test Task; no production lifecycle/recovery safeguards were weakened.
+
+**Disposition:** B5.3 is formally closed. B5.4 is the next planned integrated-regression/closeout phase, but its implementation remains separately gated pending explicit Operator authorization. See [the B5.4 plan](development/r7-b-b5-4-integrated-regression-plan.md).
