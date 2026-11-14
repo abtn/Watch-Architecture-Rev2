@@ -1,8 +1,8 @@
 # R7-B B5.4 — Integrated Lifecycle Regression and Closeout Plan
 
-**Status:** Planning document only. B5.3 is formally closed. B5.4 implementation has not yet been authorized.
+**Status:** B5.3 is formally closed. B5.4.0 read-only baseline/coverage audit was explicitly authorized by the Operator on 2026-11-14 and is active. No source/test, migration, schema, model, or runtime change is authorized at this checkpoint; B5.4.1–B5.4.5 remain separately gated.
 **Planning baseline:** `main` at B5.3 squash merge `7fbac0656f9eda9983a73dfe84fae859fd7e98f9`.
-**Implementation baseline requirement:** When separately authorized, create the implementation branch from the then-current verified `main`, not from this planning branch.
+**Implementation baseline requirement:** Create the implementation branch from the exact then-current verified `main` after documentation PR #121 is merged; record the verified base SHA in the B5.4.0 audit record. Do not branch from this planning branch.
 **Scope:** Integrated regression evidence for the already implemented B5.1 Create-with-successor, B5.2 Retire, and B5.3 Supersede lifecycle paths. Prefer test-only changes and existing fixtures/entry points.
 
 ## 1. Objective
@@ -31,7 +31,7 @@ The work is an integration/regression and closeout phase. It must not redesign t
 
 ### B5.4.0 — Baseline and coverage audit
 
-1. Start from the exact current `main` commit after this planning PR is merged and B5.4 implementation is separately authorized.
+1. Start from the exact current verified `main` commit after planning PR #121 is merged. The Operator's 2026-11-14 authorization covers this B5.4.0 audit only.
 2. Verify repository, branch, origin, exact HEAD, clean worktree, migration head, and test database configuration.
 3. Read the accepted B5 plan, B0/B4 lifecycle invariants, and the B5.1–B5.3 closeout evidence.
 4. Inventory existing tests and fixtures for create, review, revise, revalidate, create-with-successor, supersede, retirement, history reconstruction, retrieval, Context, and approval replay.
@@ -156,6 +156,6 @@ Do not weaken an acceptance criterion to preserve schedule.
 
 ## 6. Authorization boundary
 
-This document is a B5.4 planning artifact only. It does not authorize implementation. After this documentation PR is reviewed/merged, request a separate explicit Operator decision before creating an implementation branch or changing source/tests. If authorized, begin at B5.4.0 from verified current `main`.
+The Operator explicitly authorized B5.4.0 on 2026-11-14. This authorization permits creating the implementation branch from verified current `main`, performing the read-only baseline and coverage audit, and recording the audit documentation. It does not authorize source/test, migration, schema, model, or runtime changes. B5.4.1–B5.4.5 remain gated and require a separate checkpoint decision after B5.4.0 review. If the audit demonstrates a production defect or architecture change is necessary, stop and return for authorization.
 
-B5.3 is formally closed by the Operator's explicit instruction to close and squash-merge PR #120. B5.4 remains separately gated until implementation authorization. B6 and R7-C remain unauthorized. R8 remains governed by its separate entry gate and delivery plan.
+B5.3 is formally closed by the Operator's explicit instruction to close and squash-merge PR #120. The B5.4.0 audit does not make B5.4 an automatic R8 prerequisite. B6 and R7-C remain unauthorized. R8 remains governed by its separate entry gate and delivery plan.
