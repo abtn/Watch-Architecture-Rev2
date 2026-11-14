@@ -400,4 +400,3 @@ The first bounded Domain Knowledge Core, Team Experience Core, and controlled di
 ## Change rule
 
 Update this file whenever milestone status or its gate changes. Other documents should link here instead of duplicating a separate current-status table. Changes to the architecture contract require the applicable spec/ADR and `CHANGE_MAP.md` updates as well.
-
