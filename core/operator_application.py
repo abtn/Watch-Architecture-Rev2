@@ -242,6 +242,7 @@ class OperatorApplicationAdapter:
                         require_assessment=request.decision == "accept",
                         snapshot_store=self._snapshot_store,
                         session_factory=self._session_factory,
+                        require_current=existing_task.status not in {"done", "failed"},
                     )
                 except KnowledgeApprovalBindingError as error:
                     if (
@@ -427,6 +428,7 @@ class OperatorApplicationAdapter:
                         require_assessment=request.decision == "accept",
                         snapshot_store=self._snapshot_store,
                         session_factory=self._session_factory,
+                        require_current=concurrent_task.status not in {"done", "failed"},
                     )
                 except KnowledgeApprovalBindingError as error:
                     raise LearningChangeNotApprovable(str(error)) from error
