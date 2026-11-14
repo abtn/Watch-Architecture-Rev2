@@ -1690,10 +1690,12 @@ class TaskRuntime:
             if (
                 stale_failure is not None
                 and stale_failure.failure_reason
-                == (
+                in {
                     "knowledge_lifecycle_predecessor_reconstructed_history_"
-                    "does_not_match_live_item"
-                )
+                    "does_not_match_live_item",
+                    "knowledge_lifecycle_successor_reconstructed_history_"
+                    "does_not_match_live_item",
+                }
             ):
                 self._validate_operator_admission(
                     session,
