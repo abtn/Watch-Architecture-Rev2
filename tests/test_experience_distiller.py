@@ -1515,7 +1515,7 @@ def _prepare_retirement_approval(
             idempotency_key=idempotency_key or uuid4(),
         ),
     )
-    admission = TaskRuntime(session_factory, snapshot_store).admit(approval.task_id)
+    TaskRuntime(session_factory, snapshot_store).admit(approval.task_id)
     return (
         learning_change_id,
         approval.task_id,
