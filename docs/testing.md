@@ -1072,3 +1072,12 @@ B5.3 was explicitly closed by the Operator and squash-merged in PR [#120](https:
 - Test-isolation assertions are scoped to records owned by each test Task; no production lifecycle/recovery safeguards were weakened.
 
 **Disposition:** B5.3 is formally closed. B5.4.0 read-only baseline/coverage audit was explicitly authorized on 2026-11-14; B5.4.1–B5.4.5 remain separately gated. The B5.4 planning PR [#121](https://github.com/abtn/Watch-Architecture-Rev2/pull/121) passed hosted CI run [#1153](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43623117784) on exact documentation head `7c0dfb141e5f52dbabf532433d9de18d919f2545`. See [the B5.4 plan](development/r7-b-b5-4-integrated-regression-plan.md).
+
+
+## R7-B B5.4.0 — read-only baseline and coverage audit (2026-11-14)
+
+The remote B5.4.0 inventory is recorded in [the baseline/coverage audit](development/r7-b-b5-4-baseline-audit.md), against the exact implementation-branch base `eef7815db922984c798e95ebd91d6d5c6c87e3b0`. The documentation-only planning PR #121 was squash-merged at that SHA; hosted CI [#1155](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43634784291) passed on reconciled docs head `64682393320b3f66f7fdde1392498c9cf31ab60b`.
+
+The audit found substantial existing B5.2/B5.3 coverage for candidate retirement/replacement, terminal retirement, supersede publication, concurrency and replay. Two bounded test-only gaps remain for a later, separately authorized checkpoint: a cohesive full `create → review → revise → revalidate → create-with-successor → supersede` history, and replay of an accepted revise approval after a subsequent lifecycle transition. The create-with-successor interpretation in the B5.4.4 generic “Create” replay row is recorded for Operator decision. No production, schema, migration, model, TaskRuntime or other architectural gap was identified by the read-only inventory.
+
+This audit did not access the Operator's local Windows checkout, local Docker daemon, environment variables or database. No local test/clean-worktree result is claimed. Source/test implementation remains gated pending a separate Operator decision.
