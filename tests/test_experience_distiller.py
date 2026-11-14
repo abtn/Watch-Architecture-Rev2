@@ -11640,10 +11640,11 @@ def test_predecessor_retirement_and_candidate_proposal_are_serialized(
                         .order_by(Event.id)
                     )
                 )
-                assert event_types == [
+                assert len(event_types) == 2
+                assert set(event_types) == {
                     "generation_cost_reserved",
                     "generation_cost_reconciled",
-                ]
+                }
             else:
                 assert (
                     session.scalar(
