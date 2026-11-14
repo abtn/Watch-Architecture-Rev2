@@ -13263,7 +13263,12 @@ def test_b5_3_4_reciprocal_publication_is_shared_by_projection_retrieval_and_con
             .order_by(TeamExperienceChunk.chunk_index)
             .limit(1)
         )
-        index_state = session.get(TeamExperienceIndexState, successor_id)
+        index_state = session.scalar(
+            select(TeamExperienceIndexState).where(
+                TeamExperienceIndexState.knowledge_item_id == successor_id,
+                TeamExperienceIndexState.team_id == fixture.team_id,
+            )
+        )
         assert chunk is not None and index_state is not None
         candidate_passage = RetrievedPassage(
             signal_id=None,
@@ -14046,7 +14051,9 @@ def test_b5_3_5_stale_supersede_replay_preserves_disposition_after_candidate_res
             set_successor_review_after(stale_review_after, original_review_after)
 
     assert stale_error is not None
-    assert str(stale_error) == "knowledge_lifecycle_successor_stale"
+    assert str(stale_error) == (
+        "knowledge_lifecycle_successor_reconstructed_history_does_not_match_live_item"
+    )
 
     with session_factory() as session:
         predecessor = session.get(KnowledgeItem, predecessor_id)
@@ -14087,7 +14094,7 @@ def test_b5_3_5_stale_supersede_replay_preserves_disposition_after_candidate_res
 
     with pytest.raises(
         OperatorTaskRequestConflict,
-        match="knowledge_lifecycle_successor_stale",
+        match="knowledge_lifecycle_successor_reconstructed_history_does_not_match_live_item",
     ):
         adapter.decide_learning_change(principal, request)
 
