@@ -27,7 +27,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **R7:** B3 is formally closed. B4.1–B4.3 are merged; B4.4 G1–G6 regression proofs are merged and B4.4 formally closed on 2026-11-13. B5.1 Create-with-successor and B5.2 Retire are complete and merged in PRs #116 and #118. B5.3 Supersede is formally accepted and closed by squash-merged PR [#120](https://github.com/abtn/Watch-Architecture-Rev2/pull/120) at `7fbac0656f9eda9983a73dfe84fae859fd7e98f9`; exact implementation/test head passed hosted CI #1146 and Operator-local full suite (996 passed), and documentation-inclusive head passed hosted CI #1150. B5.4 is in documentation-only planning; implementation remains separately gated. B6 and R7-C remain unauthorized. See [PLAN.md](PLAN.md) for current status.
+- **R7:** B3 is formally closed. B4.1–B4.3 are merged; B4.4 G1–G6 regression proofs are merged and B4.4 formally closed on 2026-11-13. B5.1 Create-with-successor and B5.2 Retire are complete and merged in PRs #116 and #118. B5.3 Supersede is formally accepted and closed by squash-merged PR [#120](https://github.com/abtn/Watch-Architecture-Rev2/pull/120) at `7fbac0656f9eda9983a73dfe84fae859fd7e98f9`; exact implementation/test head passed hosted CI #1146 and Operator-local full suite (996 passed), and documentation-inclusive head passed hosted CI #1150. B5.4 is in documentation-only planning in draft PR [#121](https://github.com/abtn/Watch-Architecture-Rev2/pull/121); implementation remains separately gated. B6 and R7-C remain unauthorized. See [PLAN.md](PLAN.md) for current status.
 
 ## Future plan
 
