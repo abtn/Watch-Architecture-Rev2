@@ -1,13 +1,13 @@
 # R7-B B5 — Candidate Creation, Supersession, and Retirement Plan
 
-**Status:** B5.1 and B5.2 implementation complete; B5.2 technically accepted and delivered through PR #118
+**Status:** B5.1 and B5.2 complete; B5.3 Supersede separately authorized on 2026-11-14; B5.4 remains gated
 **Planning authorization:** Granted 2026-11-13 for the B5 sequence and its checkpoint plans
-**Implementation authorization:** B5.1 and B5.2 separately authorized and complete. B5.3–B5.4 require separate checkpoint authorization
+**Implementation authorization:** B5.1 and B5.2 separately authorized and complete. B5.3 was explicitly authorized on 2026-11-14. B5.4 requires separate checkpoint authorization
 **Baseline:** `main` after PR #116 squash merge `d946342907dc1c384c73de18216a5c018dd48e2f`; migration head `0018_r7b_lifecycle_review_date`
 
 **B5.1 implementation closeout (2026-11-13):** PR [#116](https://github.com/abtn/Watch-Architecture-Rev2/pull/116) merged to `main` at `d946342907dc1c384c73de18216a5c018dd48e2f`. Exact PR head `b9fe3ff56347ca456f0db466d07e109a311501ca` passed hosted CI run [#43408281624](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43408281624): fresh PostgreSQL migration/head verification, Ruff, Mypy, patch whitespace, and full suite (**961 passed, 113 warnings in 148.07s**). Operator-local exact-head verification also passed: disposable PostgreSQL migration to `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), and full suite (**961 passed, 113 warnings in 315.33s**); the disposable container was removed, both database environment variables were restored, and the worktree remained clean. B5.1 is complete; this does not authorize B5.2 implementation.
 
-**B5.2 implementation and acceptance closeout (2026-11-14):** B5.2 was separately authorized and implemented in PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118). The final implementation/test head is `dca48969f5f104eb306092906e12aeb39a2c5352`. The Operator accepted the D1–D3 concurrency, stale-binding, and replay proofs, the D4 verification/review gate, and the D5 scope boundary. Operator-local verification on that exact head passed fresh disposable PostgreSQL migration and single-head checks at `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), `git diff --check`, and the full suite (**985 passed, 113 warnings in 359.40s**). The runner confirmed environment restoration, disposable-container cleanup, exact branch/HEAD, and a clean worktree. Exact-head hosted CI passed on the same SHA in [run #43597709449](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43597709449) (run #1081). No migration, schema change, frozen-invariant change, second write path, or lock-order change was introduced. B5.2 is technically accepted; B5.3 and B5.4 remain separately gated.
+**B5.2 implementation and acceptance closeout (2026-11-14):** B5.2 was separately authorized and implemented in PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118). The final implementation/test head is `dca48969f5f104eb306092906e12aeb39a2c5352`. The Operator accepted the D1–D3 concurrency, stale-binding, and replay proofs, the D4 verification/review gate, and the D5 scope boundary. Operator-local verification on that exact head passed fresh disposable PostgreSQL migration and single-head checks at `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), `git diff --check`, and the full suite (**985 passed, 113 warnings in 359.40s**). The runner confirmed environment restoration, disposable-container cleanup, exact branch/HEAD, and a clean worktree. Exact implementation-head hosted CI passed on the same SHA in [run #43597709449](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43597709449) (run #1081). The final documentation-inclusive PR head was `c7061d73350d458338611cd9a6aa1426ae476739`; its exact-head hosted CI passed in [run #43601002645](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43601002645) (run #1085). PR #118 was squash-merged at `dcc77b350985facdcc3ec840f499efd959f2d7bd`. No migration, schema change, frozen-invariant change, second write path, or lock-order change was introduced. B5.2 is technically accepted. The earlier documentation-inclusive head `d715a868a95a3d8e4856e0428ab678445637cf14` and run #43599132517 (#1083) are historical intermediate verification, superseded by the final head/run above.
 
 **Scope authority:** Accepted R7-B B0 design and B4.0 architecture decision; this plan sequences the already accepted B5 design and does not replace it.
 
@@ -285,24 +285,92 @@ Also verify that existing create, revise, revalidate, review, and B5.1 candidate
 
 ### B5.3 — Supersede
 
-**Purpose:** Atomically retire the predecessor and activate the already accepted candidate through reciprocal-link validation.
+**Purpose:** Atomically retire the predecessor and publish the already accepted candidate through reciprocal-link validation. Supersede changes the predecessor only; the candidate row and its immutable `supersedes_item_id` remain untouched.
 
-1. Create a supersede proposal targeting the predecessor only.
-2. Under the Team-scoped lifecycle lock, validate the predecessor's exact current pointer, content version, status, and full state. The predecessor may be `active` or `needs_review`; supersede does not revalidate it.
-3. Validate the successor:
-   - Same Team, accepted, canonical, and active.
-   - `supersedes_item_id` equals the predecessor ID.
-   - Non-NULL future UTC `review_after` at commit.
-   - Exact current pointer, content version, content hash, and full-state binding match the proposal and lifecycle assessment.
-   - No self-link, cycle, or conflicting committed successor.
-4. Require the supersede-variant `KnowledgeLifecycleAssessment` and trusted Operator approval.
-5. In one transaction, set the predecessor to `retired`, set its `superseded_by_id`, and advance its current LearningChange pointer. Do not modify the successor row.
-6. Recheck the reciprocal relationship and D7 eligibility in ordinary retrieval and Context assembly. The successor becomes eligible through reciprocity validation; the predecessor is no longer eligible.
-7. A successor in `needs_review`, with NULL/due review date, or with stale binding blocks the operation and leaves the predecessor unchanged.
+**Authorization:** The Operator separately authorized B5.3 implementation on 2026-11-14. The implementation branch must be created from verified `main` only after the documentation reconciliation PR containing this sequence has merged. This authorization does not include B5.4, B6, R7-C, or R8.
 
-**Required tests:** successful supersede; active and `needs_review` predecessor; successor review-state/date ineligibility; wrong Team; stale successor pointer/version/hash/full state; stale predecessor binding; self-link/cycle; already superseded predecessor; concurrency and CAS loser; replay after later transitions; projection and Context visibility.
+#### B5.3.0 — Baseline and path preflight
 
-**Exit:** The predecessor transition is atomic; the successor is untouched; reciprocity and D7 gates prevent simultaneous or invalid publication.
+1. Verify repository identity, `main` branch, exact remote/local HEAD, clean worktree, origin, and the single Alembic head. Do not sync over a dirty tree or use destructive Git operations.
+2. Confirm the merged B5.2 baseline and inspect the existing create-with-successor, retire, supersede-assessment, approval, commit, TaskRuntime, history, projection, retrieval, and Context paths.
+3. Map the existing code and tests against every B5.3 invariant. Identify only the missing supersede commit behavior; do not redesign accepted B0/B4 contracts.
+4. Confirm that supersede assessment is evidence only, the trusted host Operator remains the approval authority, and no second lifecycle write path is needed.
+5. Stop and return if a migration, schema change, new Task/runtime/dispatcher/authentication boundary, or frozen-invariant change appears necessary.
+
+**Exit:** A written code/test coverage map identifies the smallest missing implementation surface and confirms the accepted architecture can support it.
+
+#### B5.3.1 — Supersede proposal and immutable binding
+
+1. Create a supersede proposal targeting the predecessor only. The proposal must identify the already accepted candidate explicitly; it must not create, revise, or mutate that candidate.
+2. Bind the exact Team, predecessor current LearningChange pointer, version, semantic content hash, full-state hash, lifecycle state, and proposed reciprocal successor ID.
+3. Bind the candidate's exact Team, current pointer, version, semantic content hash, full-state hash, immutable `supersedes_item_id`, and review date.
+4. Require the predecessor to be same-Team, not already retired or superseded, and in the allowed `active` or `needs_review` state. Supersede does not revalidate a predecessor in `needs_review`.
+5. Require the candidate to be same-Team, accepted/canonical, active, linked to this exact predecessor, and to have a non-NULL future UTC `review_after` at the commit boundary.
+6. Reject self-links, cycles, conflicting committed successors, and any proposal whose predecessor or candidate binding is stale.
+
+**Required tests:** eligible candidate; wrong Team; wrong or missing reciprocal candidate link; ineligible predecessor; `needs_review` predecessor; due/NULL candidate review date; stale pointer/version/content hash/full-state hash on either item; self-link/cycle; already-superseded predecessor; proposal replay; no writes during proposal/validation.
+
+**Exit:** The proposal is deterministic and pins both sides of the relationship without changing canonical state.
+
+#### B5.3.2 — Lifecycle assessment
+
+1. Reuse the existing supersede variant of `KnowledgeLifecycleAssessment`; add only a demonstrated missing binding or validation rule.
+2. Bind the immutable assessment to the exact proposal, Team, predecessor snapshot, candidate snapshot, reciprocal relationship, review-date eligibility, and proposed retired predecessor state.
+3. Keep assessment read-only with respect to canonical KnowledgeItems. Assessment acceptance is not commit authority.
+4. Verify duplicate Task/assessment replay and stale-evidence rejection.
+
+**Required tests:** valid supersede assessment; predecessor/candidate/Team mismatch; changed pointer/version/hash/full state; changed candidate relation or review date; missing assessment; duplicate assessment replay; assessment cannot commit without trusted approval.
+
+**Exit:** Durable assessment evidence is complete and exact, but no canonical write has occurred.
+
+#### B5.3.3 — Trusted approval and atomic predecessor commit
+
+1. Extend the existing trusted Operator approval and canonical commit path only enough to admit `supersede`; do not add a direct worker or model write.
+2. Bind approval to the exact proposal, assessment, Operator identity, predecessor and candidate snapshots, and idempotency identity. Create/revise/revalidate/retire approvals must not be reusable as supersede approval.
+3. In the canonical transaction, acquire the Team lifecycle lock first, then lock affected KnowledgeItem rows in ascending UUID order.
+4. Recheck both snapshots, Team ownership, candidate relation, review-date eligibility, current pointers, and assessment binding under the lock.
+5. Atomically set only the predecessor to `retired`, set its `superseded_by_id` to the candidate ID, and advance its current LearningChange pointer with the required immutable lifecycle records.
+6. Do not update the candidate row, its status, content, version, hash, review date, or `supersedes_item_id`.
+7. A stale or competing operation must reject without partial pointer, Event, Outcome, or graph writes.
+
+**Required tests:** trusted identity; wrong operation/approval binding; exact CAS success; stale predecessor or candidate at approval/commit; concurrent CAS loser; retire-versus-supersede race; atomic rollback at meaningful write boundaries; predecessor-only mutation; immutable candidate fields.
+
+**Exit:** One trusted, atomic canonical commit retires and links the predecessor; the candidate is unchanged.
+
+#### B5.3.4 — Reciprocal publication and consumer checks
+
+1. Verify the candidate becomes eligible only when its immutable `supersedes_item_id` and the predecessor's committed `superseded_by_id` agree in the same Team.
+2. Verify the predecessor is excluded after supersession and the candidate is excluded before reciprocity is committed.
+3. Recheck D7 review eligibility at projection/indexing, ordinary retrieval, and Context assembly. A due or `needs_review` candidate must not be published.
+4. Preserve the existing projection and Context contracts; do not introduce synchronous indexing, a new retrieval path, or a redesign.
+
+**Required tests:** before-commit candidate hidden; after-commit candidate eligible; predecessor excluded; wrong-Team/non-reciprocal/corrupt links fail closed; due/NULL review date excluded; projection and Context observe the same canonical relationship.
+
+**Exit:** There is no state in which both predecessor and candidate are exposed, and no invalid candidate is published.
+
+#### B5.3.5 — Concurrency, replay, and history
+
+1. Test competing supersede approvals for one predecessor and verify exactly one canonical winner.
+2. Test supersede against concurrent retirement and other graph-changing operations under the Team-first, ascending-item lock order.
+3. Replay accepted approval after later lifecycle activity; return the original result without another pointer advance, Event, Outcome, LearningChange, or graph mutation.
+4. Replay stale/rejected and conflicting requests; preserve the original disposition and reject identity/target/binding conflicts.
+5. Reconstruct the predecessor's immutable lifecycle history and candidate's unchanged history after restart/reload.
+
+**Required tests:** same-request replay; conflicting request identity/target; rejected/stale replay; replay after later transitions; duplicate-side-effect absence; concurrent graph race; current-pointer and snapshot reconstruction.
+
+**Exit:** Concurrency has one valid winner, replay is stable, and both histories reconstruct without fabrication or repair.
+
+#### B5.3.6 — Integrated regression and verification
+
+1. Run B5.3 focused tests, then B5.1/B5.2 lifecycle tests, then the relevant R7-B regression set.
+2. Run the full suite against a fresh disposable PostgreSQL database; verify fresh migrations and exactly one Alembic head. No persistent database may be used.
+3. Run Ruff, Mypy, and `git diff --check`; verify environment restoration and disposable-container cleanup.
+4. Review the complete diff for scope, lock order, exact predecessor-only mutation, and absence of a second commit path or unauthorized schema change.
+5. Require hosted CI to pass on the exact final PR head.
+6. Reconcile PLAN.md, this plan, CHANGE_MAP.md, README.md, and docs/testing.md with the actual implementation and evidence.
+7. Obtain explicit B5.3 technical acceptance before planning or implementing B5.4.
+
+**Exit:** Exact-head hosted CI and Operator-local verification pass; candidate publication, predecessor history, replay, concurrency, and consumer eligibility are proven; no scope expansion remains; and the Operator explicitly accepts B5.3. B5.4 remains a separate gate.
 
 ### B5.4 — Integrated regression and closeout
 
@@ -365,9 +433,9 @@ Do not weaken an acceptance criterion to preserve schedule.
 
 ## 7. Authorization boundary
 
-This document authorizes planning and review of B5 only. It does not authorize production implementation, schema changes, migrations, or any B6/R7-C/R8 work.
+This document records the accepted B5 planning contract. Production implementation requires separate checkpoint authorization. As of 2026-11-14, B5.1, B5.2, and B5.3 have each been separately authorized; B5.4 remains gated. This plan does not authorize a schema change or migration; any concrete need is a stop-and-return decision. B6, R7-C, and R8 remain outside B5 authority.
 
-This plan was explicitly accepted by the Operator on 2026-11-13. B5.1 implementation was separately authorized, verified, and merged. B5.2 Retire implementation was subsequently authorized as a separate checkpoint, implemented and technically accepted in PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118); its final verification and acceptance record appears below. This plan does not authorize B5.3 or B5.4 implementation. B5.3 and B5.4 remain separately gated. B6 and R7-C remain unauthorized.
+This plan was explicitly accepted by the Operator on 2026-11-13. B5.1 implementation was separately authorized, verified, and merged. B5.2 Retire was separately authorized, implemented, technically accepted, and merged in PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118); its final verification and acceptance record appears below. The Operator separately authorized B5.3 Supersede on 2026-11-14. Its implementation sequence is defined above and begins from verified `main` after the documentation reconciliation PR merges. B5.4 remains separately gated. B6 and R7-C remain unauthorized.
 
 ## 8. Source authority
 
