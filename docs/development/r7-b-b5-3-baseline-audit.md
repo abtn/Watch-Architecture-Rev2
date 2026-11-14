@@ -1,8 +1,8 @@
 # R7-B B5.3.0 — Baseline and Code-Path Audit
 
-**Audit date:** 2026-11-14  
-**Status:** Remote source audit complete; Operator-local preflight remains pending.  
-**Implementation PR:** Draft, based on the merged documentation checkpoint.  
+**Audit date:** 2026-11-14
+**Status:** Remote source audit complete; Operator-local preflight remains pending.
+**Implementation PR:** Draft, based on the merged documentation checkpoint.
 **Scope:** B5.3 Supersede only. No B5.4, B6, R7-C, or R8 work.
 
 ## 1. Exact baseline
