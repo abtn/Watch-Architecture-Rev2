@@ -11,8 +11,8 @@ from threading import Barrier, Lock, local
 from threading import Event as ThreadEvent
 from time import monotonic
 from types import SimpleNamespace
-from unittest.mock import patch
 from typing import Any, Callable, Iterator, Literal
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 import pytest
