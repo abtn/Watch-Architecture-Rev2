@@ -11516,13 +11516,6 @@ def test_predecessor_retirement_and_candidate_proposal_are_serialized(
     def team_lock_query(statement: str) -> bool:
         return "teams" in statement and "for update" in statement
 
-    def predecessor_query(statement: str) -> bool:
-        return (
-            "from knowledge_items" in statement
-            and "knowledge_items.id =" in statement
-            and "for update" not in statement
-        )
-
     first_operation, second_operation = (
         (retire_predecessor, propose_candidate)
         if ordering == "retirement_first"
@@ -11533,8 +11526,13 @@ def test_predecessor_retirement_and_candidate_proposal_are_serialized(
         session_factory,
         first_operation,
         second_operation,
+        # When retirement owns the Team lock first, the second proposal must
+        # actually block on that lock. The helper observes pg_blocking_pids()
+        # before releasing the first transaction. In the reverse ordering,
+        # gate the second retirement at its Team-lock statement until the
+        # proposal transaction has committed.
         second_after_first_commit=(
-            predecessor_query if ordering == "retirement_first" else team_lock_query
+            None if ordering == "retirement_first" else team_lock_query
         ),
     )
     assert first_pid != second_pid
@@ -11731,33 +11729,30 @@ def test_retiring_pending_candidate_and_replacement_proposal_are_serialized(
         except ExperienceDistillerError as error:
             return error
 
+    def team_lock_query(statement: str) -> bool:
+        return "teams" in statement and "for update" in statement
+
     if ordering == "replacement_first":
-        first_result, second_result, first_pid, second_pid = (
+        # The replacement proposal checks the still-pending candidate first;
+        # retirement is held at its Team lock until that rejection commits.
+        replacement_result, retirement_result, first_pid, second_pid = (
             _run_team_lock_ordered_race(
                 database_engine,
                 session_factory,
-                retire_candidate,
                 propose_replacement,
-                second_must_finish_before_first_commit=True,
+                retire_candidate,
+                second_after_first_commit=team_lock_query,
             )
         )
-        retirement_result = first_result
-        replacement_result = second_result
     else:
-        def predecessor_query(statement: str) -> bool:
-            return (
-                "from knowledge_items" in statement
-                and "knowledge_items.id =" in statement
-                and "for update" not in statement
-            )
-
+        # Retirement owns the Team lock first. The replacement proposal must
+        # be observed blocked on that row lock before retirement is released.
         retirement_result, replacement_result, first_pid, second_pid = (
             _run_team_lock_ordered_race(
                 database_engine,
                 session_factory,
                 retire_candidate,
                 propose_replacement,
-                second_after_first_commit=predecessor_query,
             )
         )
     assert first_pid != second_pid
