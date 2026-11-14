@@ -8,24 +8,23 @@ This file is the **single source of current milestone status**. Other documents 
 - **R7-0 and R7-A:** complete.
 - **R7-B B0–B3:** complete; B3 was formally closed on 2026-11-10. B2 retains its three accepted residual verification gaps, recorded in `docs/testing.md`.
 - **R7-B B4:** complete and formally closed on 2026-11-13 after all six regression proofs, exact-head CI, documentation reconciliation, and explicit Operator acceptance. G1–G5 were merged in PRs #103, #105, #107, #109, and #111; G6 merged in PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113) at `a1baf018fe1a847b3ed5b23432647b387a72ddbc`. The closeout documentation is PR [#114](https://github.com/abtn/Watch-Architecture-Rev2/pull/114).
-- **R7-B B5:** B5.0 contract freeze complete; B5.1 Create-with-successor completed and merged by PR [#116](https://github.com/abtn/Watch-Architecture-Rev2/pull/116) at `d946342907dc1c384c73de18216a5c018dd48e2f`, with exact-head hosted CI and Operator-local full-suite verification (961 passed in each). B5.2 Retire implementation is under review in draft PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118); local full-suite verification and exact-head hosted CI passed, while concurrency/negative-case acceptance proofs and Operator acceptance remain open. B5.3–B5.4 remain separately gated. B6 and R7-C are not authorized.
+- **R7-B B5:** B5.0 contract freeze and B5.1 Create-with-successor are complete; B5.1 merged in PR [#116](https://github.com/abtn/Watch-Architecture-Rev2/pull/116) at `d946342907dc1c384c73de18216a5c018dd48e2f`. B5.2 Retire implementation and technical acceptance are complete in PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118); exact-head hosted CI and Operator-local full disposable-PostgreSQL verification passed, with **985 tests passed**. B5.3 Supersede and B5.4 integrated closeout remain separately gated. B6 and R7-C are not authorized.
 - **R8:** scheduled for November 23, 2026, with a separate November 15 entry gate. It remains entry-gated and is not authorized for implementation by this schedule.
 
 Detailed historical implementation and verification evidence remains in the relevant milestone records and `docs/testing.md`. This summary is not a substitute for those records.
 
 ## Current gate and next actionable step
 
-**Current milestone: R7-B B5.2 — Retire (implementation review and acceptance; PR #118 remains draft).**
+**Current milestone: R7-B B5.2 — Retire complete; B5.3 remains separately gated.**
 
-- PR [#116](https://github.com/abtn/Watch-Architecture-Rev2/pull/116) completed B5.1 Create-with-successor and was squash-merged into `main` at `d946342907dc1c384c73de18216a5c018dd48e2f`.
-- Exact B5.1 PR-head hosted CI [run #43408281624](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43408281624) passed: **961 tests**, Ruff, Mypy, fresh PostgreSQL migration/head verification, patch whitespace, and disposable database cleanup.
-- Operator-local verification on the exact B5.1 head passed: **961 tests**, Ruff, Mypy (38 source files), and disposable PostgreSQL migration to `0018_r7b_lifecycle_review_date`. The local runner removed its disposable container, restored `DATABASE_URL` and `TEST_DATABASE_URL`, and confirmed a clean worktree.
-- The remote `main` ref was verified at the B5.1 merge commit. The authoritative implementation baseline for B5.2 documentation is therefore `d946342907dc1c384c73de18216a5c018dd48e2f`.
-- B5.2 is the Retire checkpoint defined in [the B5 implementation plan](docs/development/r7-b-b5-implementation-plan.md). Its existing contract covers ordinary terminal retirement and pending-candidate cancellation through the existing assessment, trusted Operator approval, and TaskRuntime path.
-- This documentation checkpoint reconciles B5.1 closeout and prepares the B5.2 review boundary only. **It does not authorize B5.2 production implementation, schema changes, or migrations.** A separate explicit checkpoint authorization is required before code changes.
-- B5.3 Supersede and B5.4 integrated closeout remain gated. B6 and R7-C remain unauthorized. B5 is not an automatic R8 prerequisite.
+- B5.2 was implemented through the existing LearningChange proposal, lifecycle assessment, trusted Operator approval, canonical commit, and TaskRuntime paths. No second lifecycle write path, schema change, or migration was introduced.
+- The final implementation/test head is `dca48969f5f104eb306092906e12aeb39a2c5352`. Operator-local verification passed fresh disposable PostgreSQL migration and single-head checks at `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), `git diff --check`, and the full suite (**985 passed, 113 warnings in 359.40s**). The script confirmed environment restoration, disposable-container cleanup, exact branch/HEAD, and a clean worktree.
+- Exact-head hosted CI passed on the same SHA: [run #43597709449](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43597709449) (run #1081).
+- The Operator accepted the D1–D3 concurrency, stale-binding, and replay proofs; D4 verification and review gate; and D5 scope boundary. The acceptance review found no blocking code findings.
+- PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118) is the implementation and acceptance record. B5.3 Supersede requires its own explicit checkpoint authorization. B5.4 remains gated until B5.3 is separately completed and reviewed.
+- B6 and R7-C remain unauthorized. B5 is not an automatic R8 prerequisite.
 
-**Next actionable step:** Review and merge the B5.2 documentation-only PR. Then perform a separate B5.2 implementation preflight and obtain explicit authorization before touching application code.
+**Next actionable step:** Do not begin B5.3 or B5.4 without a separate, explicit Operator checkpoint authorization.
 
 ## Milestone overview
 
