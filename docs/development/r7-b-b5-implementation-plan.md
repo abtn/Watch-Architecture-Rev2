@@ -1,6 +1,6 @@
 # R7-B B5 — Candidate Creation, Supersession, and Retirement Plan
 
-**Status:** B5.1–B5.3 complete; B5.3 formally closed by PR #120 squash merge `7fbac0656f9eda9983a73dfe84fae859fd7e98f9`; B5.4 integrated regression plan documented; B5.4 implementation authorization pending; B6 and R7-C remain unauthorized
+**Status:** B5.1–B5.3 complete; B5.3 formally closed by PR #120 squash merge `7fbac0656f9eda9983a73dfe84fae859fd7e98f9`; B5.4 integrated regression plan documented in draft PR [#121](https://github.com/abtn/Watch-Architecture-Rev2/pull/121); B5.4 implementation authorization pending; B6 and R7-C remain unauthorized
 **Planning authorization:** Granted 2026-11-13 for the B5 sequence and its checkpoint plans
 **Implementation authorization:** B5.1, B5.2, and B5.3 separately authorized, implemented, verified, and closed. B5.4 has planning documentation only; source/test implementation requires a separate explicit Operator authorization. B6 and R7-C are not authorized
 **B5.3 implementation baseline:** `main` after documentation PR #119 squash merge `cde40b2c9edb17a693eff43e7e1158515302cd69`; expected migration head `0018_r7b_lifecycle_review_date`
