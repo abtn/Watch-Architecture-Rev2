@@ -733,28 +733,44 @@ class ExperienceDistiller:
                 raise ExperienceDistillerError("supersede_predecessor_already_linked")
             if successor.supersedes_item_id != predecessor.id:
                 raise ExperienceDistillerError("supersede_successor_relation_invalid")
-            if successor.review_after is None or successor.review_after <= datetime.now(timezone.utc):
+            if (
+                successor.review_after is None
+                or successor.review_after <= datetime.now(timezone.utc)
+            ):
                 raise ExperienceDistillerError("supersede_successor_not_d7_eligible")
             origin = session.get(LearningChange, successor.origin_learning_change_id)
-            if origin is None or origin.team_id != team.id or origin.operation != "create" or origin.status != "accepted":
+            if (
+                origin is None
+                or origin.team_id != team.id
+                or origin.operation != "create"
+                or origin.status != "accepted"
+            ):
                 raise ExperienceDistillerError("supersede_successor_not_accepted")
-            candidates = list(session.scalars(
-                select(KnowledgeItem.id).where(
+            candidates = list(
+                session.scalars(
+                    select(KnowledgeItem.id).where(
                     KnowledgeItem.team_id == team.id,
                     KnowledgeItem.supersedes_item_id == predecessor.id,
                     KnowledgeItem.status != "retired",
+                    )
                 )
-            ))
+            )
             if candidates != [successor.id]:
                 raise ExperienceDistillerError("supersede_successor_not_unique")
 
             successor_binding = {
                 "successor_knowledge_item_id": str(successor.id),
                 "successor_team_id": str(successor.team_id),
-                "successor_current_learning_change_id": successor_target["target_current_learning_change_id"],
-                "successor_content_version": successor_target["target_content_version"],
+                "successor_current_learning_change_id": successor_target[
+                    "target_current_learning_change_id"
+                ],
+                "successor_content_version": successor_target[
+                    "target_content_version"
+                ],
                 "successor_content_hash": successor_target["target_content_hash"],
-                "successor_content_hash_scheme": successor_target["target_content_hash_scheme"],
+                "successor_content_hash_scheme": successor_target[
+                    "target_content_hash_scheme"
+                ],
                 "successor_status": successor.status,
                 "successor_review_after": successor_state["review_after"],
                 "successor_state_hash": successor_snapshot["snapshot_hash"],

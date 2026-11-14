@@ -13056,8 +13056,13 @@ def test_b5_3_supersede_proposal_assessment_and_atomic_predecessor_commit(
         )
         successor_history = reconstruct_knowledge_item_history(session, successor)
         assert predecessor_history.states[-1]["status"] == "retired"
-        assert predecessor_history.states[-1]["superseded_by_id"] == str(successor_id)
-        assert predecessor_history.learning_change_ids[-1] == proposal.learning_change_id
+        assert (
+            predecessor_history.states[-1]["superseded_by_id"] == str(successor_id)
+        )
+        assert (
+            predecessor_history.learning_change_ids[-1]
+            == proposal.learning_change_id
+        )
         assert proposal.learning_change_id not in successor_history.learning_change_ids
         assert change.committed_state is not None
 

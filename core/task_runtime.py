@@ -720,7 +720,10 @@ class TaskRuntime:
                 or assessment.assessment_payload_hash != quality_assessment_hash
             ):
                 raise TaskNotEligible("operator_quality_assessment_binding_invalid")
-        elif decision == "accept" and learning_change.operation in {"retire", "supersede"}:
+        elif (
+            decision == "accept"
+            and learning_change.operation in {"retire", "supersede"}
+        ):
             from core.knowledge_lifecycle import (
                 KnowledgeLifecycleAssessmentError,
             )
@@ -4092,7 +4095,8 @@ class TaskRuntime:
                 )
             )
             or (
-                learning_change.operation in {"revise", "revalidate", "retire", "supersede"}
+                learning_change.operation
+                in {"revise", "revalidate", "retire", "supersede"}
                 and (
                     learning_change.previous_state is None
                     or learning_change.target_id is None
@@ -4310,7 +4314,12 @@ class TaskRuntime:
                             "committed_supersede_reciprocal_link_invalid"
                         )
                     reconstruct_knowledge_item_history(session, successor)
-                except (KeyError, TypeError, ValueError, KnowledgeHistoryError) as error:
+                except (
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                    KnowledgeHistoryError,
+                ) as error:
                     raise TaskNotFinalizable(
                         "committed_supersede_candidate_history_invalid"
                     ) from error
@@ -4324,7 +4333,8 @@ class TaskRuntime:
                     and history.learning_change_ids[0] != learning_change.id
                 )
                 or (
-                    learning_change.operation in {"revise", "revalidate", "retire", "supersede"}
+                    learning_change.operation
+                in {"revise", "revalidate", "retire", "supersede"}
                     and (
                         committed_state is None
                         or history.states[

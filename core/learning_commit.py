@@ -449,7 +449,10 @@ class LearningCommitService:
                     )
                 revalidation_assessment_id = str(revalidation_assessment.id)
                 revalidation_assessment_hash = revalidation_assessment.payload_hash
-            elif decision == "accept" and learning_change.operation in {"retire", "supersede"}:
+            elif (
+                decision == "accept"
+                and learning_change.operation in {"retire", "supersede"}
+            ):
                 from core.knowledge_lifecycle import (
                     KnowledgeLifecycleAssessmentError,
                 )
@@ -515,7 +518,10 @@ class LearningCommitService:
                 )
             committed_at = datetime.datetime.now(datetime.timezone.utc)
             review_after: datetime.datetime | None = None
-            if decision == "accept" and learning_change.operation not in {"retire", "supersede"}:
+            if (
+                decision == "accept"
+                and learning_change.operation not in {"retire", "supersede"}
+            ):
                 raw_predecessor_id = learning_change.proposed_state.get(
                     "supersedes_item_id"
                 )
@@ -1002,7 +1008,12 @@ class LearningCommitService:
                         successor_content_hash = knowledge_item_content_hash(successor)
                         reconstruct_knowledge_item_history(session, target)
                         reconstruct_knowledge_item_history(session, successor)
-                    except (KnowledgeHistoryError, KeyError, TypeError, ValueError) as error:
+                    except (
+                        KnowledgeHistoryError,
+                        KeyError,
+                        TypeError,
+                        ValueError,
+                    ) as error:
                         raise LearningCommitConflict(
                             "supersede_snapshot_or_history_invalid"
                         ) from error
@@ -1015,7 +1026,9 @@ class LearningCommitService:
                         ),
                         "successor_content_version": successor.version,
                         "successor_content_hash": successor_content_hash,
-                        "successor_content_hash_scheme": "watch.r7b.knowledge-content.v2",
+                        "successor_content_hash_scheme": (
+                            "watch.r7b.knowledge-content.v2"
+                        ),
                         "successor_status": successor.status,
                         "successor_review_after": successor_state["review_after"],
                         "successor_state_hash": successor_snapshot["snapshot_hash"],
@@ -1364,7 +1377,10 @@ class LearningCommitService:
                 )
             revalidation_assessment_id = str(revalidation_assessment.id)
             revalidation_assessment_hash = revalidation_assessment.payload_hash
-        elif recorded_decision == "accept" and learning_change.operation in {"retire", "supersede"}:
+        elif (
+            recorded_decision == "accept"
+            and learning_change.operation in {"retire", "supersede"}
+        ):
             from core.knowledge_lifecycle import (
                 KnowledgeLifecycleAssessmentError,
             )
