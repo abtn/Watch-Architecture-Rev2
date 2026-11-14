@@ -96,13 +96,14 @@ def build_approval_binding(
     operator_id: str,
     approval_policy_version: int,
     require_assessment: bool,
+    require_current: bool | None = None,
     snapshot_store: SnapshotStore | None = None,
     session_factory: sessionmaker[Session] | None = None,
 ) -> dict[str, Any]:
     """Rebuild the complete approval fingerprint input from canonical rows.
 
     For B3 operations this independently revalidates the recorded assessment,
-    its Task/Event chain, current target state, evidence basis, and (for
+    its Task/Event chain, target state when required, evidence basis, and (for
     supersede) the full successor snapshot. It intentionally does not grant
     those operations commit eligibility.
     """
@@ -125,6 +126,8 @@ def build_approval_binding(
         raise KnowledgeApprovalBindingError(
             "knowledge_approval_learning_change_invalid"
         )
+    if require_current is None:
+        require_current = learning_change.status == "proposed"
 
     quality_count, revalidation_count, lifecycle_count = _assessment_counts(
         session, learning_change
@@ -223,7 +226,7 @@ def build_approval_binding(
             target_binding = _revision_target_binding(
                 session,
                 learning_change,
-                require_current=learning_change.status == "proposed",
+                require_current=require_current,
             )
         except KnowledgeQualityAssessmentError as error:
             raise KnowledgeApprovalBindingError(str(error)) from error
@@ -358,7 +361,7 @@ def build_approval_binding(
                 snapshot_store,
                 session_factory,
                 require_task_done=True,
-                require_current=learning_change.status == "proposed",
+                require_current=require_current,
             )
         except KnowledgeRevalidationAssessmentError as error:
             raise KnowledgeApprovalBindingError(str(error)) from error
@@ -398,7 +401,7 @@ def build_approval_binding(
         )
         return binding
 
-    if not require_assessment:
+    if not require_assessment and learning_change.operation != "retire":
         raise KnowledgeApprovalBindingError(
             "knowledge_approval_assessment_required_for_operation"
         )
@@ -432,6 +435,44 @@ def build_approval_binding(
             require_recorded_assessment as require_lifecycle_assessment,
         )
 
+        if not require_assessment:
+            from core.knowledge_lifecycle import build_lifecycle_task_request
+
+            try:
+                _, lifecycle_request = build_lifecycle_task_request(
+                    session,
+                    session_factory,
+                    snapshot_store,
+                    learning_change,
+                    require_current=False,
+                )
+            except KnowledgeLifecycleAssessmentError as error:
+                raise KnowledgeApprovalBindingError(str(error)) from error
+            binding.update(
+                {
+                    "current_learning_change_id": lifecycle_request[
+                        "current_learning_change_id"
+                    ],
+                    "target_content_version": lifecycle_request[
+                        "target_content_version"
+                    ],
+                    "target_content_hash": lifecycle_request["target_content_hash"],
+                    "target_content_hash_scheme": lifecycle_request[
+                        "target_content_hash_scheme"
+                    ],
+                    "target_state_hash": lifecycle_request["target_state_hash"],
+                    "proposal_hash": lifecycle_request["proposal_hash"],
+                    "proposed_state_hash": lifecycle_request["proposed_state_hash"],
+                    "evidence_refs": learning_change.evidence_basis,
+                    "evidence_basis_hash": lifecycle_request["evidence_basis_hash"],
+                    "operator_provenance": {
+                        "issuer": lifecycle_request["operator_issuer"],
+                        "subject": lifecycle_request["operator_subject"],
+                    },
+                }
+            )
+            return binding
+
         try:
             lifecycle_assessment = require_lifecycle_assessment(
                 session,
@@ -439,7 +480,7 @@ def build_approval_binding(
                 snapshot_store,
                 session_factory,
                 require_task_done=True,
-                require_current=True,
+                require_current=require_current,
             )
         except KnowledgeLifecycleAssessmentError as error:
             raise KnowledgeApprovalBindingError(str(error)) from error

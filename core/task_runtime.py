@@ -26,6 +26,7 @@ from core.models import (
     KnowledgeQualityAssessment,
     KnowledgeRevalidationAssessment,
     LearningChange,
+    LearningChangeOperatorProvenance,
     Outcome,
     Plan,
     PlanAction,
@@ -291,6 +292,19 @@ class RecoveryResult:
     skipped: tuple[UUID, ...] = ()
     inconsistent: tuple[UUID, ...] = ()
     completed: tuple[UUID, ...] = ()
+
+
+def _canonical_retirement_operator_id(
+    session: Session, learning_change: LearningChange
+) -> str:
+    provenance = session.get(
+        LearningChangeOperatorProvenance, learning_change.id
+    )
+    if provenance is None:
+        raise KnowledgeHistoryError("retirement_operator_provenance_missing")
+    from core.operator_approval import canonical_operator_identity
+
+    return canonical_operator_identity(provenance.issuer, provenance.subject)
 
 
 class TaskRuntime:
@@ -608,6 +622,7 @@ class TaskRuntime:
         allow_completed: bool = False,
         snapshot_store: SnapshotStore | None = None,
         session_factory: sessionmaker[Session] | None = None,
+        require_current: bool = True,
     ) -> None:
         """Fail closed unless this is an intact, no-deadline approval Task."""
         if (
@@ -685,7 +700,10 @@ class TaskRuntime:
             )
         ):
             raise TaskNotEligible("operator_task_request_target_invalid")
-        if decision == "accept" and learning_change.operation != "revalidate":
+        if (
+            decision == "accept"
+            and learning_change.operation not in {"revalidate", "retire"}
+        ):
             from core.knowledge_quality import (
                 KnowledgeQualityAssessmentError,
                 require_recorded_assessment,
@@ -702,6 +720,43 @@ class TaskRuntime:
                 or assessment.assessment_payload_hash != quality_assessment_hash
             ):
                 raise TaskNotEligible("operator_quality_assessment_binding_invalid")
+        elif decision == "accept" and learning_change.operation == "retire":
+            from core.knowledge_lifecycle import (
+                KnowledgeLifecycleAssessmentError,
+            )
+            from core.knowledge_lifecycle import (
+                require_recorded_assessment as require_lifecycle_assessment,
+            )
+
+            if snapshot_store is None or session_factory is None:
+                raise TaskNotEligible(
+                    "operator_lifecycle_snapshot_context_missing"
+                )
+            try:
+                lifecycle_assessment = require_lifecycle_assessment(
+                    session,
+                    learning_change,
+                    snapshot_store,
+                    session_factory,
+                    require_task_done=True,
+                    require_current=require_current,
+                )
+            except KnowledgeLifecycleAssessmentError as error:
+                raise TaskNotEligible(str(error)) from error
+            approval_binding = request_payload.approval_binding
+            if (
+                quality_assessment_id_value is not None
+                or quality_assessment_hash is not None
+                or not isinstance(approval_binding, dict)
+                or approval_binding.get("assessment_type") != "knowledge_lifecycle"
+                or approval_binding.get("assessment_id")
+                != str(lifecycle_assessment.id)
+                or approval_binding.get("assessment_payload_hash")
+                != lifecycle_assessment.payload_hash
+            ):
+                raise TaskNotEligible(
+                    "operator_lifecycle_assessment_binding_invalid"
+                )
 
         if request_payload.schema_version == 3:
             from core.knowledge_approval import (
@@ -716,6 +771,9 @@ class TaskRuntime:
                     operator_id=request_payload.operator_id,
                     approval_policy_version=task.policy_version,
                     require_assessment=decision == "accept",
+                    require_current=(
+                        require_current and learning_change.status == "proposed"
+                    ),
                     snapshot_store=snapshot_store,
                     session_factory=session_factory,
                 )
@@ -1089,6 +1147,10 @@ class TaskRuntime:
                     )
                 if learning_change.operation == "revalidate":
                     self._create_knowledge_revalidation_task_request(
+                        session, task, learning_change
+                    )
+                elif learning_change.operation == "retire":
+                    self._create_knowledge_lifecycle_task_request(
                         session, task, learning_change
                     )
                 else:
@@ -1617,6 +1679,26 @@ class TaskRuntime:
         """
         if task.task_type != _OPERATOR_TASK_TYPE:
             return None
+        if task.status == "failed":
+            stale_failure = self._committed_operator_stale_failure_observation(
+                session, task
+            )
+            if (
+                stale_failure is not None
+                and stale_failure.failure_reason
+                == (
+                    "knowledge_lifecycle_predecessor_reconstructed_history_"
+                    "does_not_match_live_item"
+                )
+            ):
+                self._validate_operator_admission(
+                    session,
+                    task,
+                    snapshot_store=self._snapshot_store,
+                    session_factory=self._session_factory,
+                    require_current=False,
+                )
+                return stale_failure
         stale_failure_reason: str | None = None
         try:
             self._validate_operator_admission(
@@ -1758,6 +1840,72 @@ class TaskRuntime:
             result_category="terminal_failure",
             observed_at=losing_started_at,
             failure_reason="learning_change_already_decided",
+        )
+
+    @staticmethod
+    def _committed_operator_stale_failure_observation(
+        session: Session, task: Task
+    ) -> TerminalObservation | None:
+        outcome = TaskRuntime._prior_terminal(session, task.id)
+        if outcome is None:
+            return None
+        events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type.in_(("task_attempt_failed", "task_failed")),
+                    Event.payload["attempt_count"].as_integer()
+                    == task.attempt_count,
+                )
+            )
+        )
+        by_type = {item.type: item for item in events}
+        if len(events) != 2 or set(by_type) != {
+            "task_attempt_failed",
+            "task_failed",
+        }:
+            raise TaskNotFinalizable("operator_stale_failure_events_invalid")
+        payload = by_type["task_failed"].payload
+        if not isinstance(payload, dict):
+            raise TaskNotFinalizable("operator_stale_failure_event_invalid")
+        failure_reason = payload.get("failure_reason")
+        if (
+            not isinstance(failure_reason, str)
+            or failure_reason not in _STALE_OPERATOR_APPROVAL_REASONS
+        ):
+            return None
+        if (
+            outcome.subject_kind != "task"
+            or outcome.subject_id != task.id
+            or outcome.recorded_by_task_id != task.id
+            or outcome.outcome_type != "task_execution"
+            or outcome.expected is not None
+            or outcome.observation_snapshot_ref is None
+            or outcome.observation_hash is None
+            or outcome.observed_at is None
+        ):
+            raise TaskNotFinalizable("operator_stale_failure_outcome_invalid")
+        for item in events:
+            event_payload = item.payload
+            if (
+                not isinstance(event_payload, dict)
+                or event_payload.get("from_status") != "running"
+                or event_payload.get("to_status") != "failed"
+                or event_payload.get("attempt_count") != task.attempt_count
+                or event_payload.get("result_category") != "terminal_failure"
+                or event_payload.get("failure_reason") != failure_reason
+                or event_payload.get("outcome_id") != str(outcome.id)
+                or event_payload.get("observation_snapshot_ref")
+                != outcome.observation_snapshot_ref
+                or event_payload.get("observation_hash") != outcome.observation_hash
+            ):
+                raise TaskNotFinalizable("operator_stale_failure_event_invalid")
+        return TerminalObservation(
+            task_id=task.id,
+            attempt=task.attempt_count,
+            result_category="terminal_failure",
+            observed_at=outcome.observed_at,
+            failure_reason=failure_reason,
         )
 
     @staticmethod
@@ -2769,6 +2917,74 @@ class TaskRuntime:
         session.flush()
         return task
 
+    def _create_knowledge_lifecycle_task_request(
+        self,
+        session: Session,
+        source_task: Task,
+        learning_change: LearningChange,
+    ) -> Task:
+        from core.knowledge_lifecycle import (
+            ALLOWED_WRITES,
+            REQUEST_EVENT_TYPE,
+            TASK_BUDGET,
+            TASK_MAX_ATTEMPTS,
+            TASK_TYPE,
+            KnowledgeLifecycleAssessmentError,
+            build_lifecycle_task_request,
+            validate_lifecycle_task_request,
+        )
+
+        if self._snapshot_store is None:
+            raise TaskNotFinalizable("knowledge_lifecycle_snapshot_store_required")
+        try:
+            task_id, payload = build_lifecycle_task_request(
+                session,
+                self._session_factory,
+                self._snapshot_store,
+                learning_change,
+            )
+            existing = session.get(Task, task_id)
+            if existing is not None:
+                validate_lifecycle_task_request(
+                    session,
+                    existing,
+                    self._session_factory,
+                    self._snapshot_store,
+                    require_proposed=True,
+                )
+                return existing
+        except KnowledgeLifecycleAssessmentError as error:
+            raise TaskNotFinalizable(error.reason) from error
+
+        task = Task(
+            id=task_id,
+            team_id=source_task.team_id,
+            task_type=TASK_TYPE,
+            status="pending",
+            attempt_count=0,
+            policy_version=payload["policy_version"],
+            objective_id=None,
+            plan_id=None,
+            plan_action_id=None,
+            allowed_writes=list(ALLOWED_WRITES),
+            budget=dict(TASK_BUDGET),
+            completed_at=None,
+            max_attempts=TASK_MAX_ATTEMPTS,
+        )
+        session.add(task)
+        session.flush()
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=task.id,
+                type=REQUEST_EVENT_TYPE,
+                payload=payload,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        session.flush()
+        return task
+
     @staticmethod
     def _source_action_for_evaluation(
         session: Session, source_task: Task
@@ -3683,6 +3899,7 @@ class TaskRuntime:
                 allow_completed=allow_completed,
                 snapshot_store=self._snapshot_store,
                 session_factory=self._session_factory,
+                require_current=False,
             )
         except TaskNotEligible as error:
             raise TaskNotFinalizable(
@@ -3785,6 +4002,44 @@ class TaskRuntime:
                     raise TaskNotFinalizable(
                         "operator_revalidation_assessment_binding_invalid"
                     )
+            elif learning_change.operation == "retire":
+                from core.knowledge_lifecycle import (
+                    KnowledgeLifecycleAssessmentError,
+                )
+                from core.knowledge_lifecycle import (
+                    require_recorded_assessment as require_lifecycle_assessment,
+                )
+
+                if self._snapshot_store is None:
+                    raise TaskNotFinalizable(
+                        "operator_lifecycle_snapshot_context_missing"
+                    )
+                try:
+                    lifecycle_assessment = require_lifecycle_assessment(
+                        session,
+                        learning_change,
+                        self._snapshot_store,
+                        self._session_factory,
+                        require_task_done=True,
+                        require_current=False,
+                    )
+                except KnowledgeLifecycleAssessmentError as error:
+                    raise TaskNotFinalizable(str(error)) from error
+                approval_binding = request_payload.get("approval_binding")
+                if (
+                    quality_assessment_id_value is not None
+                    or quality_assessment_hash is not None
+                    or not isinstance(approval_binding, dict)
+                    or approval_binding.get("assessment_type")
+                    != "knowledge_lifecycle"
+                    or approval_binding.get("assessment_id")
+                    != str(lifecycle_assessment.id)
+                    or approval_binding.get("assessment_payload_hash")
+                    != lifecycle_assessment.payload_hash
+                ):
+                    raise TaskNotFinalizable(
+                        "operator_lifecycle_assessment_binding_invalid"
+                    )
             else:
                 from core.knowledge_quality import (
                     KnowledgeQualityAssessmentError,
@@ -3837,13 +4092,14 @@ class TaskRuntime:
                 )
             )
             or (
-                learning_change.operation in {"revise", "revalidate"}
+                learning_change.operation in {"revise", "revalidate", "retire"}
                 and (
                     learning_change.previous_state is None
                     or learning_change.target_id is None
                 )
             )
-            or learning_change.operation not in {"create", "revise", "revalidate"}
+            or learning_change.operation
+            not in {"create", "revise", "revalidate", "retire"}
             or not isinstance(learning_change.proposed_state, dict)
             or learning_change.committed_at is None
             or learning_change.committed_at != observation.observed_at
@@ -3947,6 +4203,16 @@ class TaskRuntime:
                 expected_payload["knowledge_revalidation_assessment_hash"] = (
                     approval_binding.get("assessment_payload_hash")
                 )
+            elif learning_change.operation == "retire":
+                approval_binding = request_payload.get("approval_binding")
+                if not isinstance(approval_binding, dict):
+                    raise TaskNotFinalizable("operator_approval_binding_invalid")
+                expected_payload["knowledge_lifecycle_assessment_id"] = (
+                    approval_binding.get("assessment_id")
+                )
+                expected_payload["knowledge_lifecycle_assessment_hash"] = (
+                    approval_binding.get("assessment_payload_hash")
+                )
             else:
                 expected_payload["knowledge_quality_assessment_id"] = (
                     quality_assessment_id_value
@@ -4001,8 +4267,13 @@ class TaskRuntime:
                 history = reconstruct_knowledge_item_history(session, item)
             except KnowledgeHistoryError as error:
                 raise TaskNotFinalizable(str(error)) from error
-            expected_supersedes_id = learning_change.proposed_state.get(
-                "supersedes_item_id"
+            expected_supersedes_id = (
+                learning_change.previous_state.get("state", {}).get(
+                    "supersedes_item_id"
+                )
+                if learning_change.operation == "retire"
+                and isinstance(learning_change.previous_state, dict)
+                else learning_change.proposed_state.get("supersedes_item_id")
             )
             root_state = history.states[0]
             successor_link_valid = (
@@ -4029,7 +4300,7 @@ class TaskRuntime:
                     and history.learning_change_ids[0] != learning_change.id
                 )
                 or (
-                    learning_change.operation in {"revise", "revalidate"}
+                    learning_change.operation in {"revise", "revalidate", "retire"}
                     and (
                         committed_state is None
                         or history.states[
@@ -4117,13 +4388,18 @@ class TaskRuntime:
             or learning_change.proposed_by_task_id != task.id
             or learning_change.status != "proposed"
             or learning_change.target_kind != "knowledge_item"
-            or learning_change.operation not in {"create", "revise", "revalidate"}
+            or learning_change.operation not in {
+                "create", "revise", "revalidate", "retire"
+            }
             or learning_change.evidence_basis_hash
             != learning_change.proposed_state.get("evidence_basis_hash")
             or not isinstance(learning_change.evidence_basis, list)
             or not 1 <= len(learning_change.evidence_basis) <= 8
-            or learning_change.proposed_state.get("evidence_case_count")
-            != len(learning_change.evidence_basis)
+            or (
+                learning_change.operation != "retire"
+                and learning_change.proposed_state.get("evidence_case_count")
+                != len(learning_change.evidence_basis)
+            )
         ):
             raise TaskNotFinalizable("learning_change_not_proposed")
 
@@ -4345,7 +4621,7 @@ class TaskRuntime:
                 raise TaskNotFinalizable(
                     f"learning_change_revise_target_invalid:{error}"
                 ) from error
-        else:
+        elif learning_change.operation == "revalidate":
             expected_state_keys = {
                 "schema_version",
                 "rationale",
@@ -4449,6 +4725,129 @@ class TaskRuntime:
                     f"learning_change_revalidate_target_invalid:{error}"
                 ) from error
 
+        elif learning_change.operation == "retire":
+            expected_state_keys = {
+                "proposal_hash",
+                "evidence_basis_hash",
+                "operator_rationale",
+            }
+            if (
+                learning_change.target_id is None
+                or not isinstance(learning_change.previous_state, dict)
+                or not isinstance(proposal_state, dict)
+                or set(proposal_state) != expected_state_keys
+            ):
+                raise TaskNotFinalizable("learning_change_retire_shape_invalid")
+            from core.evaluations import _sha256_json as _proposal_sha256_json
+            from core.knowledge_lifecycle import (
+                PROPOSED_STATE_HASH_DOMAIN,
+                KnowledgeLifecycleAssessmentError,
+                _domain_hash,
+                _normalize_json,
+                validate_operator_rationale,
+            )
+            from core.learning_history import KNOWLEDGE_CONTENT_HASH_SCHEME
+
+            session.scalar(
+                select(Team).where(Team.id == task.team_id).with_for_update()
+            )
+            try:
+                rationale = validate_operator_rationale(
+                    proposal_state.get("operator_rationale")
+                )
+                raw_state = learning_change.previous_state.get("state")
+                if not isinstance(raw_state, dict):
+                    raise KnowledgeHistoryError("snapshot_state_invalid")
+                pointer = UUID(raw_state.get("current_learning_change_id"))
+                previous_state, reconstructed = decode_state_snapshot(
+                    learning_change.previous_state,
+                    learning_change_id=pointer,
+                    operation="retire",
+                    allow_legacy_root=False,
+                )
+                target = session.scalar(
+                    select(KnowledgeItem)
+                    .where(
+                        KnowledgeItem.id == learning_change.target_id,
+                        KnowledgeItem.team_id == learning_change.team_id,
+                    )
+                    .with_for_update()
+                )
+                if target is None or reconstructed:
+                    raise KnowledgeHistoryError("retirement_target_missing_or_legacy")
+                live_state = knowledge_item_state(target)
+                content_hash = knowledge_item_content_hash(target)
+                if (
+                    previous_state["id"] != str(target.id)
+                    or previous_state["team_id"] != str(target.team_id)
+                    or previous_state["status"] not in {"active", "needs_review"}
+                    or target.status not in {"active", "needs_review"}
+                    or previous_state["superseded_by_id"] is not None
+                    or target.superseded_by_id is not None
+                    or live_state != previous_state
+                    or target.version != previous_state["version"]
+                    or target.current_learning_change_id != pointer
+                ):
+                    raise KnowledgeHistoryError("retirement_target_stale")
+                reconstruct_knowledge_item_history(session, target)
+                target_binding = {
+                    "target_knowledge_item_id": str(target.id),
+                    "target_current_learning_change_id": previous_state[
+                        "current_learning_change_id"
+                    ],
+                    "target_content_version": previous_state["version"],
+                    "target_content_hash": content_hash,
+                    "target_content_hash_scheme": KNOWLEDGE_CONTENT_HASH_SCHEME,
+                    "target_state_hash": learning_change.previous_state[
+                        "snapshot_hash"
+                    ],
+                }
+                unsigned_state = {
+                    "target_binding": target_binding,
+                    "evidence_basis_hash": learning_change.evidence_basis_hash,
+                    "operator_rationale": rationale,
+                }
+                expected_proposal_hash = _proposal_sha256_json(unsigned_state)
+                expected_idempotency_key = "r7b-retire-v1:" + _proposal_sha256_json(
+                    {
+                        "team_id": str(learning_change.team_id),
+                        "task_id": str(task.id),
+                        "target_binding": target_binding,
+                        "evidence_basis_hash": learning_change.evidence_basis_hash,
+                        "operator_rationale": rationale,
+                        "operator_id": _canonical_retirement_operator_id(
+                            session, learning_change
+                        ),
+                    }
+                ).removeprefix("sha256:")
+                proposed_state_hash = _domain_hash(
+                    PROPOSED_STATE_HASH_DOMAIN, _normalize_json(proposal_state)
+                )
+                provenance = session.get(
+                    LearningChangeOperatorProvenance, learning_change.id
+                )
+                if (
+                    provenance is None
+                    or provenance.team_id != learning_change.team_id
+                    or not provenance.issuer.strip()
+                    or not provenance.subject.strip()
+                    or proposal_state.get("proposal_hash") != expected_proposal_hash
+                    or proposal_state.get("evidence_basis_hash")
+                    != learning_change.evidence_basis_hash
+                    or learning_change.idempotency_key != expected_idempotency_key
+                ):
+                    raise KnowledgeHistoryError("retirement_proposal_binding_invalid")
+            except (
+                KnowledgeHistoryError,
+                KnowledgeLifecycleAssessmentError,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as error:
+                raise TaskNotFinalizable(
+                    f"learning_change_retire_target_invalid:{error}"
+                ) from error
+
         if learning_change.operation in {"create", "revise"}:
             charge = session.scalar(
                 select(TaskGenerationCharge).where(
@@ -4498,8 +4897,10 @@ class TaskRuntime:
         }
         if learning_change.operation in {"create", "revise"}:
             expected_event["kind"] = proposal_state.get("kind")
-        if learning_change.operation in {"revise", "revalidate"}:
+        if learning_change.operation in {"revise", "revalidate", "retire"}:
             expected_event["target_binding"] = target_binding
+        if learning_change.operation == "retire":
+            expected_event["proposed_state_hash"] = proposed_state_hash
         if supersedes_target_binding is not None:
             expected_event["supersedes_item_id"] = proposal_state[
                 "supersedes_item_id"

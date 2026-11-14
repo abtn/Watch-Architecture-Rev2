@@ -21,6 +21,7 @@ _STALE_OPERATOR_APPROVAL_REASONS = frozenset(
     {
         "knowledge_quality_revision_target_stale",
         "knowledge_revalidation_target_stale",
+        "knowledge_lifecycle_predecessor_reconstructed_history_does_not_match_live_item",
     }
 )
 
@@ -158,7 +159,10 @@ def is_supported_learning_change(
         target_kind == SUPPORTED_LEARNING_CHANGE_TARGET_KIND
         and (
             (operation == "create" and target_id is None)
-            or (operation in {"revise", "revalidate"} and target_id is not None)
+            or (
+                operation in {"revise", "revalidate", "retire"}
+                and target_id is not None
+            )
         )
     )
 

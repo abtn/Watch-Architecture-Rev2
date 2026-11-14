@@ -196,8 +196,9 @@ def test_decision_reason_is_canonicalized(
         ("knowledge_item", "revise", uuid4(), True),
         ("knowledge_item", "revise", None, False),
         ("knowledge_item", "revalidate", uuid4(), True),
+        ("knowledge_item", "retire", uuid4(), True),
+        ("knowledge_item", "retire", None, False),
         ("knowledge_item", "supersede", uuid4(), False),
-        ("knowledge_item", "retire", uuid4(), False),
         ("other", "create", None, False),
     ],
 )

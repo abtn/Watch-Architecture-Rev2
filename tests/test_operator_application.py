@@ -732,17 +732,86 @@ def test_non_proposed_learning_change_cannot_start_a_new_request(
             LearningChange, approval_context.learning_change_id
         )
         assert learning_change is not None
-        learning_change.operation = "retire"
-        learning_change.target_id = uuid4()
+        learning_change.status = "rejected"
+        learning_change.committed_by_task_id = approval_context.proposer_task_id
+        learning_change.operator_id = (
+            '{"iss":"https://host.example/identity",'
+            '"sub":"operator-43"}'
+        )
+        learning_change.committed_at = datetime.now(timezone.utc)
+        learning_change.decision_reason = "already decided"
 
     with pytest.raises(
         LearningChangeNotApprovable,
-        match="only_knowledge_item_create_revise_or_revalidate_is_supported",
+        match="learning_change_not_proposed",
     ):
         OperatorApplicationAdapter(session_factory).request_learning_change_decision(
             _principal(approval_context.team_id),
             _request(approval_context.learning_change_id),
         )
+
+
+def test_retirement_request_requires_snapshot_context(
+    session_factory: sessionmaker[Session],
+    approval_context: ApprovalContext,
+) -> None:
+    with session_factory.begin() as session:
+        learning_change = session.get(
+            LearningChange, approval_context.learning_change_id
+        )
+        assert learning_change is not None
+        learning_change.operation = "retire"
+        learning_change.target_id = uuid4()
+
+    with pytest.raises(
+        LearningChangeNotApprovable,
+        match="knowledge_approval_snapshot_context_required",
+    ):
+        OperatorApplicationAdapter(session_factory).request_learning_change_decision(
+            _principal(approval_context.team_id),
+            _request(approval_context.learning_change_id),
+        )
+
+    with session_factory() as session:
+        assert session.scalar(
+            select(func.count(Task.id)).where(
+                Task.team_id == approval_context.team_id,
+                Task.task_type == "approve_learning_change",
+            )
+        ) == 0
+
+
+def test_retirement_request_rejects_missing_target_snapshot(
+    session_factory: sessionmaker[Session],
+    snapshot_store,
+    approval_context: ApprovalContext,
+) -> None:
+    with session_factory.begin() as session:
+        learning_change = session.get(
+            LearningChange, approval_context.learning_change_id
+        )
+        assert learning_change is not None
+        learning_change.operation = "retire"
+        learning_change.target_id = uuid4()
+
+    with pytest.raises(
+        LearningChangeNotApprovable,
+        match="knowledge_approval_target_snapshot_missing",
+    ):
+        OperatorApplicationAdapter(
+            session_factory, snapshot_store
+        ).request_learning_change_decision(
+            _principal(approval_context.team_id),
+            _request(approval_context.learning_change_id),
+        )
+
+    with session_factory() as session:
+        assert session.scalar(
+            select(func.count(Task.id)).where(
+                Task.team_id == approval_context.team_id,
+                Task.task_type == "approve_learning_change",
+            )
+        ) == 0
 
 
 def test_inactive_team_cannot_create_new_approval_task(
@@ -930,9 +999,9 @@ def test_task_runtime_rejects_operator_request_event_identity_tampering(
 
 @pytest.mark.parametrize(
     "operation",
-    ["supersede", "retire"],
+    ["supersede"],
 )
-def test_request_creation_rejects_every_unauthorized_lifecycle_operation(
+def test_request_creation_rejects_unsupported_lifecycle_operation(
     session_factory: sessionmaker[Session],
     approval_context: ApprovalContext,
     operation: str,
@@ -947,7 +1016,7 @@ def test_request_creation_rejects_every_unauthorized_lifecycle_operation(
 
     with pytest.raises(
         LearningChangeNotApprovable,
-        match="only_knowledge_item_create_revise_or_revalidate_is_supported",
+        match="only_knowledge_item_create_revise_revalidate_or_retire_is_supported",
     ):
         OperatorApplicationAdapter(session_factory).request_learning_change_decision(
             _principal(approval_context.team_id),
@@ -996,9 +1065,9 @@ def test_request_creation_rejects_revise_without_target_snapshot(
 
 @pytest.mark.parametrize(
     "operation",
-    ["supersede", "retire"],
+    ["supersede"],
 )
-def test_task_runtime_rejects_every_unauthorized_lifecycle_operation(
+def test_task_runtime_rejects_unsupported_lifecycle_operation(
     session_factory: sessionmaker[Session],
     approval_context: ApprovalContext,
     operation: str,
@@ -1037,9 +1106,9 @@ def test_task_runtime_rejects_every_unauthorized_lifecycle_operation(
 
 @pytest.mark.parametrize(
     "operation",
-    ["supersede", "retire"],
+    ["supersede"],
 )
-def test_learning_commit_rechecks_supported_operation_eligibility(
+def test_learning_commit_rechecks_unsupported_operation_eligibility(
     session_factory: sessionmaker[Session],
     snapshot_store,
     approval_context: ApprovalContext,
