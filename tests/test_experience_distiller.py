@@ -1515,7 +1515,7 @@ def _prepare_retirement_approval(
             idempotency_key=idempotency_key or uuid4(),
         ),
     )
-    TaskRuntime(session_factory, snapshot_store).admit(approval.task_id)
+    admission = TaskRuntime(session_factory, snapshot_store).admit(approval.task_id)
     return (
         learning_change_id,
         approval.task_id,
@@ -13964,7 +13964,7 @@ def test_b5_3_5_stale_supersede_replay_preserves_disposition_after_candidate_res
     )
     adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
     approval = adapter.request_learning_change_decision(principal, request)
-    admission = TaskRuntime(session_factory, snapshot_store).admit(approval.task_id)
+    TaskRuntime(session_factory, snapshot_store).admit(approval.task_id)
 
     with session_factory() as session:
         predecessor = session.get(KnowledgeItem, predecessor_id)
