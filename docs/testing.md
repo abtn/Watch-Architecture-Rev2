@@ -981,7 +981,7 @@ PR [#116](https://github.com/abtn/Watch-Architecture-Rev2/pull/116) passed hoste
 New regressions cover successful candidate creation through the existing trusted approval path, candidate invisibility before reciprocal supersession, content-hash separation, one-pending-candidate enforcement, concurrent candidate-commit serialization, stale predecessor rejection after revise, `needs_review`/D7-due predecessor rejection, missing approval-policy review interval rejection, and replay. Hosted verification does not replace the pending local exact-head run; no merge or B5.1 closeout is claimed.
 
 
-## R7-B B5.2 Retire — PR #118 verification (2026-11-13)
+## R7-B B5.2 Retire — initial implementation verification (historical snapshot; superseded)
 
 PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118), code head `3d102d8e4a9204580bf187018c51da358aa6c121), passed Operator-local verification against a fresh disposable PostgreSQL instance:
 - Alembic upgraded to `0018_r7b_lifecycle_review_date`; one head.
@@ -1007,4 +1007,4 @@ The initial PR regression proves the main ordinary-retirement, candidate-cancell
 
 On that exact test commit, focused B5.2 verification passed **19 tests, 100 deselected**. The full `scripts/test-disposable-postgres.ps1` run passed: Alembic upgrade and single-head check (`0018_r7b_lifecycle_review_date`), Ruff, Mypy (38 source files), and **980 tests, 113 warnings in 306.14s**. The disposable container was removed. The warnings are Alembic `path_separator` deprecations.
 
-This is execution evidence, not formal B5.2 acceptance. Hosted CI must still pass on the final PR head, and explicit Operator review and acceptance remain required. PR #118 remains open and draft; no merge or B5.2 closeout is claimed.
+At the time of this initial 2026-11-13 record, supplemental concurrency, stale-binding, and replay proofs and final Operator acceptance were still pending. Those requirements were subsequently completed and accepted; the authoritative final-head evidence and disposition are recorded in the following B5.2 final verification section.
