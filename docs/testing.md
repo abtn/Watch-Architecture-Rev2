@@ -1035,7 +1035,7 @@ The B5.3.5 regressions cover competing supersede approvals, supersede-versus-ret
 
 The integrated run exposed and corrected three issues before the passing head: rejected supersede requests must preserve their lifecycle-assessment binding; stale successor-history failures must use the same durable replay path as predecessor-history failures; and the D7 Context test must use a refreshed passage after the projection is rebuilt. These corrections are included in `d39834548cfe6d1b96246e3108bd48ded103e7ff`.
 
-**Historical remaining-work note at the earlier `d398345` checkpoint (superseded):**
+**Historical remaining-work note at the earlier `d398345` checkpoint (superseded):** At that checkpoint, Operator-local sync/test, final review, and documentation closeout were still pending. The final exact-head evidence below supersedes that status.
 
 
 ## R7-B B5.3.6 — final exact-head verification and implementation review (2026-11-14)
