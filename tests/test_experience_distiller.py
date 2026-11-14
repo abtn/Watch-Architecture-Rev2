@@ -13141,7 +13141,9 @@ def _prepare_supersede_assessment(
                 },
                 {
                     "category": "applicability_changed",
-                    "statement": "The predecessor's original conditions no longer apply.",
+                    "statement": (
+                        "The predecessor's original conditions no longer apply."
+                    ),
                 },
             ],
         },
@@ -13459,8 +13461,12 @@ def test_b5_3_5_competing_supersede_approvals_have_one_canonical_winner(
         futures = [executor.submit(decide, approval) for approval in approvals]
         results = [future.result(timeout=90) for future in futures]
 
-    winners = [result for result in results if not isinstance(result, LearningCommitError)]
-    losers = [result for result in results if isinstance(result, LearningCommitError)]
+    winners = [
+        result for result in results if not isinstance(result, LearningCommitError)
+    ]
+    losers = [
+        result for result in results if isinstance(result, LearningCommitError)
+    ]
     assert len(winners) == 1
     assert len(losers) == 1
     winner_index = next(
@@ -13678,9 +13684,13 @@ def test_b5_3_5_original_supersede_replays_after_successor_retirement(
     retirement = _prepare_retirement_approval(
         session_factory, snapshot_store, fixture, successor_id
     )
-    retirement_change_id, retirement_task_id, retirement_attempt, retirement_principal, _ = (
-        retirement
-    )
+    (
+        retirement_change_id,
+        retirement_task_id,
+        retirement_attempt,
+        retirement_principal,
+        _,
+    ) = retirement
     retired = commit_service.decide(
         retirement_task_id, retirement_attempt, retirement_principal
     )
