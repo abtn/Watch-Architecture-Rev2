@@ -13992,3 +13992,108 @@ def test_b5_3_5_stale_supersede_replay_preserves_disposition_after_candidate_res
 
     with session_factory() as session:
         assert _team_lifecycle_snapshot(session, fixture.team_id) == before_replay
+
+
+@pytest.mark.parametrize("first_operation", ["candidate_retirement", "supersede"])
+def test_b5_3_5_candidate_retirement_serializes_with_supersede(
+    database_engine,
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    first_operation: str,
+):
+    fixture = distillation_fixture(1, False, review_interval_days=30)
+    predecessor_id = _create_active_knowledge_item(
+        session_factory, snapshot_store, fixture
+    )
+    successor_id = _create_active_knowledge_item(
+        session_factory,
+        snapshot_store,
+        fixture,
+        supersedes_item_id=predecessor_id,
+    )
+    retirement = _prepare_retirement_approval(
+        session_factory, snapshot_store, fixture, successor_id
+    )
+    supersede = _prepare_supersede_approval(
+        session_factory,
+        snapshot_store,
+        fixture,
+        predecessor_id,
+        successor_id,
+    )
+
+    def decide(approval):
+        _, task_id, attempt, operator, _ = approval
+        try:
+            return LearningCommitService(session_factory, snapshot_store).decide(
+                task_id, attempt, operator
+            )
+        except LearningCommitError as error:
+            return error
+
+    if first_operation == "candidate_retirement":
+        first_approval, second_approval = retirement, supersede
+    else:
+        first_approval, second_approval = supersede, retirement
+
+    first_result, second_result, _, _ = _run_team_lock_ordered_race(
+        database_engine,
+        session_factory,
+        lambda: decide(first_approval),
+        lambda: decide(second_approval),
+    )
+    assert not isinstance(first_result, LearningCommitError)
+    if first_operation == "candidate_retirement":
+        assert isinstance(second_result, LearningCommitError)
+    else:
+        assert not isinstance(second_result, LearningCommitError)
+
+    for approval, result in (
+        (first_approval, first_result),
+        (second_approval, second_result),
+    ):
+        if isinstance(result, LearningCommitError):
+            continue
+        change_id, task_id, attempt, _, _ = approval
+        TaskRuntime(session_factory, snapshot_store).finalize(
+            TerminalObservation(
+                task_id=task_id,
+                attempt=attempt,
+                result_category="success_learning_change_accepted",
+                observed_at=result.committed_at,
+                learning_change_id=change_id,
+            )
+        )
+
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        successor = session.get(KnowledgeItem, successor_id)
+        assert predecessor is not None and successor is not None
+        assert successor.status == "retired"
+        assert successor.supersedes_item_id == predecessor_id
+        if first_operation == "candidate_retirement":
+            assert predecessor.status == "active"
+            assert predecessor.superseded_by_id is None
+            assert predecessor.current_learning_change_id == (
+                predecessor_before_pointer := UUID(
+                    predecessor.current_learning_change_id
+                )
+            )
+            assert predecessor_before_pointer != retirement[0]
+            assert retirement[0] in reconstruct_knowledge_item_history(
+                session, successor
+            ).learning_change_ids
+            assert supersede[0] not in reconstruct_knowledge_item_history(
+                session, predecessor
+            ).learning_change_ids
+        else:
+            assert predecessor.status == "retired"
+            assert predecessor.superseded_by_id == successor_id
+            assert predecessor.current_learning_change_id == supersede[0]
+            assert retirement[0] in reconstruct_knowledge_item_history(
+                session, successor
+            ).learning_change_ids
+            assert supersede[0] in reconstruct_knowledge_item_history(
+                session, predecessor
+            ).learning_change_ids
