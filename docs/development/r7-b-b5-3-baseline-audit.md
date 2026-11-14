@@ -76,7 +76,7 @@ The smallest implementation surface is:
 
 **Remote code-path audit: PASS.** The existing architecture supported the intended operation and the smallest missing implementation surface was identified. This is the B5.3.0 baseline result, not the B5.3 final acceptance decision.
 
-**Initial local preflight at the B5.3.0 audit checkpoint: PENDING.** The original audit correctly required a clean, exact-main preflight before implementation. That checkpoint was subsequently superseded: the implementation branch was created from the exact merged base `cde40b2c9edb17a693eff43e7e1158515302cd69`, and the Operator-local B5.3.3 verification and final B5.3.6 verification are recorded below.
+**Initial local preflight at the B5.3.0 audit checkpoint: PENDING (historical; superseded).** The original audit correctly required a clean, exact-main preflight before implementation. That checkpoint was subsequently superseded: the implementation branch was created from the exact merged base `cde40b2c9edb17a693eff43e7e1158515302cd69`, and the Operator-local B5.3.3 verification and final B5.3.6 verification are recorded below.
 
 ## 7. B5.3 implementation and final verification closeout — 2026-11-14
 
@@ -84,23 +84,10 @@ The smallest implementation surface is:
 
 **Operator-local exact-head verification:** `uv sync --locked`; fresh disposable PostgreSQL migration to the single Alembic head `0018_r7b_lifecycle_review_date`; Ruff; Mypy (38 source files); and full suite (**996 passed, 113 warnings in 407.23s**) all passed. Warnings are Alembic `path_separator` deprecations. The disposable container was removed, `DATABASE_URL` and `TEST_DATABASE_URL` were restored, and the script confirmed the exact branch/HEAD and clean worktree.
 
-**Hosted CI:** exact final PR head passed [run #1146](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43618529970).
+**Hosted CI:** exact final implementation/test head passed [run #1146](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43618529970).
 
 **Implementation/scope review:** no blocking code findings. The proposal, lifecycle assessment, trusted Operator approval, TaskRuntime, and canonical LearningCommit paths are reused. The canonical commit locks the Team first, then both KnowledgeItems in ascending UUID order, rechecks exact predecessor/candidate bindings, and mutates only the predecessor. The accepted candidate row and immutable `supersedes_item_id` remain unchanged. Reciprocal publication checks and D7 eligibility remain enforced. No migration, schema change, second write path, new Task/runtime/dispatcher/scheduler/authentication boundary, or B5.4/B6/R7-C/R8 scope was introduced.
 
 **Test-only isolation corrections:** distillation LearningChange absence assertions are scoped to the test's `distillation_task_id`; ingestion Event-count assertions are scoped to the proposal's `task_id`. This avoids false failures from unrelated stale records in a reused local test database without weakening production behavior.
 
 **Disposition:** B5.3 implementation and verification/review are complete. Explicit Operator technical acceptance remains pending; PR #120 remains draft/unmerged. B5.4 remains gated; B6 and R7-C remain unauthorized.
-## 6. B5.3.0 exit status
-
-**Remote code-path audit: PASS.** The existing architecture supports the intended operation and the smallest missing implementation surface is identified above.
-
-**Operator-local preflight: PENDING.** Before B5.3.1 source changes proceed, the local programmer must verify:
-
-- Repository root and origin identify `abtn/Watch-Architecture-Rev2`.
-- Current branch is `main`, with local HEAD exactly `cde40b2c9edb17a693eff43e7e1158515302cd69` after a fast-forward-only sync.
-- Worktree is clean before branch checkout.
-- Alembic reports exactly one head, expected to be `0018_r7b_lifecycle_review_date`.
-- Existing `DATABASE_URL` and `TEST_DATABASE_URL` are preserved; no persistent database is used.
-
-Once that local preflight is confirmed, proceed to **B5.3.1 — Supersede proposal and immutable binding** in this implementation PR.
