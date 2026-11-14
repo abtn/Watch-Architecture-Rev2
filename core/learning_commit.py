@@ -278,6 +278,7 @@ class LearningCommitService:
                         require_assessment=decision == "accept",
                         snapshot_store=self._snapshot_store,
                         session_factory=self._session_factory,
+                        require_current=task.status != "done",
                     )
                 except KnowledgeApprovalBindingError as error:
                     if is_supported_learning_change(
