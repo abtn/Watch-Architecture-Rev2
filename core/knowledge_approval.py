@@ -435,7 +435,7 @@ def build_approval_binding(
             require_recorded_assessment as require_lifecycle_assessment,
         )
 
-        if not require_assessment:
+        if not require_assessment and learning_change.operation == "retire":
             from core.knowledge_lifecycle import build_lifecycle_task_request
 
             try:
