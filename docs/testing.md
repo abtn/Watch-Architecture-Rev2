@@ -995,4 +995,16 @@ Hosted exact-head GitHub Actions CI run [#43456366139](https://github.com/abtn/W
 
 The 113 warnings are Alembic `path_separator` deprecation warnings. They did not fail the test run.
 
-This is execution evidence, not formal B5.2 acceptance. The PR's added integrated regression proves the main ordinary-retirement, candidate-cancellation/replacement, predecessor-no-cascade, history, semantic-immutability, and replay sequences. Dedicated retirement concurrency proofs and complete coverage of the B5.2 negative/stale-binding matrix remain open. See the B5 implementation plan and PR #118 review record. No merge or B5.2 closeout is claimed.
+The initial PR regression proves the main ordinary-retirement, candidate-cancellation/replacement, predecessor-no-cascade, history, semantic-immutability, and replay sequences. Supplemental acceptance tests were added in test commit `1a6e704b5ee6fcf45536923401b37e258b06e34f`:
+- `test_concurrent_retirements_of_one_item_commit_one_transition`
+- `test_retiring_predecessor_races_candidate_commit_without_cascade`
+- `test_retiring_pending_candidate_races_replacement_proposal`
+- `test_competing_replacement_candidates_after_cancellation_have_one_winner`
+- `test_retirement_stale_bindings_reject_without_rewriting_evidence` (six binding dimensions at both approval boundaries)
+- `test_retirement_approval_idempotency_conflicts_on_different_target`
+- `test_rejected_retirement_replay_keeps_disposition_after_later_retirement`
+- Extended `test_b5_2_integrated_retirement_candidate_lifecycle_sequences` for accepted retirement replay after subsequent lifecycle activity.
+
+On that exact test commit, focused B5.2 verification passed **19 tests, 100 deselected**. The full `scripts/test-disposable-postgres.ps1` run passed: Alembic upgrade and single-head check (`0018_r7b_lifecycle_review_date`), Ruff, Mypy (38 source files), and **980 tests, 113 warnings in 306.14s**. The disposable container was removed. The warnings are Alembic `path_separator` deprecations.
+
+This is execution evidence, not formal B5.2 acceptance. Hosted CI must still pass on the final PR head, and explicit Operator review and acceptance remain required. PR #118 remains open and draft; no merge or B5.2 closeout is claimed.
