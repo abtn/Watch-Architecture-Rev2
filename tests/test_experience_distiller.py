@@ -13853,6 +13853,15 @@ def test_b5_3_5_rejected_supersede_replay_survives_later_acceptance_and_conflict
             ),
         )
 
+    other_principal = _approval_principal(
+        fixture.team_id, subject=f"operator-supersede-conflict-{uuid4()}"
+    )
+    with pytest.raises(
+        OperatorTaskRequestConflict,
+        match="idempotency_key_reused_with_different_request",
+    ):
+        adapter.decide_learning_change(other_principal, rejection_request)
+
 
 def test_b5_3_5_stale_supersede_replay_preserves_disposition_after_candidate_restore(
     session_factory,
