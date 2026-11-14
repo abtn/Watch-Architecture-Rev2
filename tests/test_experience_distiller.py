@@ -8503,6 +8503,7 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     source_task_id, learning_change_id = uuid4(), uuid4()
     started_at = datetime.now(timezone.utc)
     completed_at = started_at + timedelta(seconds=2)
+    proposal_hash = "sha256:" + ("d" * 64)
     rationale = {
         "schema_version": 1,
         "summary": "The existing procedure is no longer appropriate for this context.",
@@ -9872,7 +9873,6 @@ def test_b37_supersede_assessment_round_trips_successor_and_rechecks_approval_bi
     lifecycle_task_id = _task_id(fixture.team_id, supersede_change_id)
     proposal_started_at = datetime.now(timezone.utc)
     proposal_completed_at = proposal_started_at + timedelta(seconds=2)
-    proposal_hash = "sha256:" + ("d" * 64)
     rationale = {
         "schema_version": 1,
         "summary": "A validated successor replaces the predecessor.",
