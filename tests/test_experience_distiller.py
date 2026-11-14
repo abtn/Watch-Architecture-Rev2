@@ -14015,6 +14015,10 @@ def test_b5_3_5_candidate_retirement_serializes_with_supersede(
     retirement = _prepare_retirement_approval(
         session_factory, snapshot_store, fixture, successor_id
     )
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        assert predecessor is not None
+        predecessor_pointer_before = predecessor.current_learning_change_id
     supersede = _prepare_supersede_approval(
         session_factory,
         snapshot_store,
@@ -14075,12 +14079,9 @@ def test_b5_3_5_candidate_retirement_serializes_with_supersede(
         if first_operation == "candidate_retirement":
             assert predecessor.status == "active"
             assert predecessor.superseded_by_id is None
-            assert predecessor.current_learning_change_id == (
-                predecessor_before_pointer := UUID(
-                    predecessor.current_learning_change_id
-                )
+            assert (
+                predecessor.current_learning_change_id == predecessor_pointer_before
             )
-            assert predecessor_before_pointer != retirement[0]
             assert retirement[0] in reconstruct_knowledge_item_history(
                 session, successor
             ).learning_change_ids
