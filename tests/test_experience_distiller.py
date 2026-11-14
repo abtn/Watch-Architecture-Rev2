@@ -13661,12 +13661,14 @@ def test_b5_3_5_original_supersede_replays_after_successor_retirement(
         fixture,
         supersedes_item_id=predecessor_id,
     )
+    supersede_idempotency_key = uuid4()
     supersede = _prepare_supersede_approval(
         session_factory,
         snapshot_store,
         fixture,
         predecessor_id,
         successor_id,
+        idempotency_key=supersede_idempotency_key,
     )
     supersede_change_id, supersede_task_id, supersede_attempt, principal, _ = supersede
     commit_service = LearningCommitService(session_factory, snapshot_store)
@@ -13718,8 +13720,15 @@ def test_b5_3_5_original_supersede_replays_after_successor_retirement(
         ).learning_change_ids
         before_replay = _team_lifecycle_snapshot(session, fixture.team_id)
 
-    replay = commit_service.decide(
-        supersede_task_id, supersede_attempt, principal
+    replay = OperatorApplicationAdapter(
+        session_factory, snapshot_store
+    ).decide_learning_change(
+        principal,
+        LearningChangeDecisionRequest(
+            learning_change_id=supersede_change_id,
+            decision="accept",
+            idempotency_key=supersede_idempotency_key,
+        ),
     )
     assert replay.replayed is True
     assert replay.learning_change_id == supersede_change_id
