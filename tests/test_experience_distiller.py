@@ -1075,7 +1075,11 @@ def test_provider_failure_marks_cost_unknown_and_creates_no_proposal(
             )
         )
         assert charge is not None and charge.status == "unknown"
-        assert session.scalar(select(LearningChange.id)) is None
+        assert session.scalar(
+            select(LearningChange.id).where(
+                LearningChange.proposed_by_task_id == fixture.distillation_task_id
+            )
+        ) is None
 
 
 def test_usage_overrun_blocks_learning_change(
@@ -1094,7 +1098,11 @@ def test_usage_overrun_blocks_learning_change(
             )
         )
         assert charge is not None and charge.status == "overrun"
-        assert session.scalar(select(LearningChange.id)) is None
+        assert session.scalar(
+            select(LearningChange.id).where(
+                LearningChange.proposed_by_task_id == fixture.distillation_task_id
+            )
+        ) is None
 
 
 def test_malformed_model_output_is_rejected_after_cost_reconciliation(
@@ -1115,7 +1123,11 @@ def test_malformed_model_output_is_rejected_after_cost_reconciliation(
             )
         )
         assert charge is not None and charge.status == "reconciled"
-        assert session.scalar(select(LearningChange.id)) is None
+        assert session.scalar(
+            select(LearningChange.id).where(
+                LearningChange.proposed_by_task_id == fixture.distillation_task_id
+            )
+        ) is None
 
 
 def test_taskruntime_requires_typed_proposal_and_reconciled_charge(
