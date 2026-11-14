@@ -1,6 +1,6 @@
 # R7-B B5 — Candidate Creation, Supersession, and Retirement Plan
 
-**Status:** B5.1 and B5.2 complete; B5.3 Supersede separately authorized on 2026-11-14; B5.4 remains gated
+**Status:** B5.1 and B5.2 complete; B5.3 Supersede authorized; B5.3.0 remote audit complete/local preflight pending; B5.4 remains gated
 **Planning authorization:** Granted 2026-11-13 for the B5 sequence and its checkpoint plans
 **Implementation authorization:** B5.1 and B5.2 separately authorized and complete. B5.3 was explicitly authorized on 2026-11-14. B5.4 requires separate checkpoint authorization
 **Baseline:** `main` after PR #116 squash merge `d946342907dc1c384c73de18216a5c018dd48e2f`; migration head `0018_r7b_lifecycle_review_date`
@@ -287,7 +287,7 @@ Also verify that existing create, revise, revalidate, review, and B5.1 candidate
 
 **Purpose:** Atomically retire the predecessor and publish the already accepted candidate through reciprocal-link validation. Supersede changes the predecessor only; the candidate row and its immutable `supersedes_item_id` remain untouched.
 
-**Authorization:** The Operator separately authorized B5.3 implementation on 2026-11-14. The implementation branch must be created from verified `main` only after the documentation reconciliation PR containing this sequence has merged. This authorization does not include B5.4, B6, R7-C, or R8.
+**Authorization:** The Operator separately authorized B5.3 implementation on 2026-11-14. Documentation reconciliation PR #119 merged at `cde40b2c9edb17a693eff43e7e1158515302cd69`. The remote baseline/code-path audit is recorded in [B5.3.0](r7-b-b5-3-baseline-audit.md); local preflight remains pending before B5.3.1 source changes. This authorization does not include B5.4, B6, R7-C, or R8.
 
 #### B5.3.0 — Baseline and path preflight
 
