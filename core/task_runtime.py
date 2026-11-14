@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from core.learning_history import (
     KnowledgeHistoryError,
     decode_state_snapshot,
-    encode_state_snapshot,
     knowledge_item_content_hash,
     knowledge_item_state,
     reconstruct_knowledge_item_history,
@@ -4301,42 +4300,20 @@ class TaskRuntime:
                         learning_change.proposed_state["successor_knowledge_item_id"]
                     )
                     successor = session.get(KnowledgeItem, successor_id)
-                    successor_state = (
-                        knowledge_item_state(successor) if successor is not None else None
-                    )
-                    successor_snapshot = (
-                        encode_state_snapshot(successor_state)
-                        if successor_state is not None
-                        else None
-                    )
-                    successor_binding = {
-                        "successor_knowledge_item_id": str(successor.id),
-                        "successor_team_id": str(successor.team_id),
-                        "successor_current_learning_change_id": str(successor.current_learning_change_id),
-                        "successor_content_version": successor.version,
-                        "successor_content_hash": knowledge_item_content_hash(successor),
-                        "successor_content_hash_scheme": "watch.r7b.knowledge-content.v2",
-                        "successor_status": successor.status,
-                        "successor_review_after": successor_state["review_after"],
-                        "successor_state_hash": successor_snapshot["snapshot_hash"],
-                    } if successor is not None and successor_state is not None and successor_snapshot is not None else {}
-                except (KeyError, TypeError, ValueError, KnowledgeHistoryError):
-                    successor = None
-                    successor_binding = {}
-                if (
-                    successor is None
-                    or successor.team_id != task.team_id
-                    or successor.supersedes_item_id != item.id
-                    or successor.status != "active"
-                    or item.superseded_by_id != successor.id
-                    or successor.review_after is None
-                    or successor.review_after <= learning_change.committed_at
-                    or any(
-                        learning_change.proposed_state.get(key) != value
-                        for key, value in successor_binding.items()
-                    )
-                ):
-                    raise TaskNotFinalizable("committed_supersede_candidate_mismatch")
+                    if (
+                        successor is None
+                        or successor.team_id != task.team_id
+                        or successor.supersedes_item_id != item.id
+                        or item.superseded_by_id != successor.id
+                    ):
+                        raise TaskNotFinalizable(
+                            "committed_supersede_reciprocal_link_invalid"
+                        )
+                    reconstruct_knowledge_item_history(session, successor)
+                except (KeyError, TypeError, ValueError, KnowledgeHistoryError) as error:
+                    raise TaskNotFinalizable(
+                        "committed_supersede_candidate_history_invalid"
+                    ) from error
             if (
                 learning_change.decision_reason is not None
                 or item.team_id != task.team_id

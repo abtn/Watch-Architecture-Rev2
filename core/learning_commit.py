@@ -1625,34 +1625,23 @@ class LearningCommitService:
             if learning_change.operation == "supersede":
                 successor = session.get(
                     KnowledgeItem,
-                    uuid.UUID(learning_change.proposed_state["successor_knowledge_item_id"]),
+                    uuid.UUID(
+                        learning_change.proposed_state["successor_knowledge_item_id"]
+                    ),
                 )
                 if (
                     successor is None
                     or successor.team_id != learning_change.team_id
                     or successor.supersedes_item_id != item.id
                     or item.superseded_by_id != successor.id
-                    or successor.status != "active"
                 ):
                     raise LearningCommitCorrupt("committed_supersede_link_invalid")
-                successor_state = knowledge_item_state(successor)
-                successor_snapshot = encode_state_snapshot(successor_state)
-                successor_binding = {
-                    "successor_knowledge_item_id": str(successor.id),
-                    "successor_team_id": str(successor.team_id),
-                    "successor_current_learning_change_id": str(successor.current_learning_change_id),
-                    "successor_content_version": successor.version,
-                    "successor_content_hash": knowledge_item_content_hash(successor),
-                    "successor_content_hash_scheme": "watch.r7b.knowledge-content.v2",
-                    "successor_status": successor.status,
-                    "successor_review_after": successor_state["review_after"],
-                    "successor_state_hash": successor_snapshot["snapshot_hash"],
-                }
-                if any(
-                    learning_change.proposed_state.get(key) != value
-                    for key, value in successor_binding.items()
-                ):
-                    raise LearningCommitCorrupt("committed_supersede_candidate_changed")
+                try:
+                    reconstruct_knowledge_item_history(session, successor)
+                except KnowledgeHistoryError as error:
+                    raise LearningCommitCorrupt(
+                        "committed_supersede_candidate_history_invalid"
+                    ) from error
             if learning_change.operation == "create":
                 expected_supersedes_id = learning_change.proposed_state.get(
                     "supersedes_item_id"
