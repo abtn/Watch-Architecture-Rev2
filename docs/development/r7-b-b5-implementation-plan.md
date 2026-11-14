@@ -368,7 +368,7 @@ Also verify that existing create, revise, revalidate, review, and B5.1 candidate
 4. Review the complete diff for scope, lock order, exact predecessor-only mutation, and absence of a second commit path or unauthorized schema change.
 5. Require hosted CI to pass on the exact final PR head.
 6. Reconcile PLAN.md, this plan, CHANGE_MAP.md, README.md, and docs/testing.md with the actual implementation and evidence.
-7. Obtain explicit B5.3 technical acceptance before planning or implementing B5.4.
+7. Obtain explicit B5.3 technical acceptance before B5.4 implementation. B5.4 planning may be documented separately without authorizing source/test changes.
 
 **Exit:** Exact-head hosted CI and Operator-local verification pass; candidate publication, predecessor history, replay, concurrency, and consumer eligibility are proven; no scope expansion remains; and the Operator explicitly accepts B5.3. B5.4 remains a separate gate.
 
@@ -475,4 +475,4 @@ Operator-local verification on that exact implementation head passed fresh dispo
 
 Exact implementation-head hosted CI passed in run [#43597709449](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43597709449). After documentation reconciliation, exact final PR head `d715a868a95a3d8e4856e0428ab678445637cf14` also passed hosted CI in run [#43599132517](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43599132517).
 
-The Operator accepted D1–D3 concurrency, stale-binding, and replay proofs; D4 verification/review; and D5 scope. The review found no blocking code findings. **B5.2 technical acceptance: APPROVED.** This acceptance is limited to B5.2. B5.3 and B5.4 remain separately gated; B6 and R7-C remain unauthorized.
+The Operator accepted D1–D3 concurrency, stale-binding, and replay proofs; D4 verification/review; and D5 scope. The review found no blocking code findings. **B5.2 technical acceptance: APPROVED.** This acceptance is limited to B5.2. At the time of this historical B5.2 closeout snapshot, B5.3 and B5.4 remained separately gated; B5.3 was subsequently authorized and formally closed by PR #120. B5.4 implementation remains separately gated; B6 and R7-C remain unauthorized.
