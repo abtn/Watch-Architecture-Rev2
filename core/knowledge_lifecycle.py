@@ -936,6 +936,21 @@ def _successor_binding(
     proposed_binding = {
         key: change.proposed_state[key] for key in SUCCESSOR_REQUEST_FIELDS
     }
+    if not require_current:
+        if (
+            proposed_binding["successor_knowledge_item_id"] != str(successor.id)
+            or proposed_binding["successor_team_id"] != str(successor.team_id)
+        ):
+            raise KnowledgeLifecycleAssessmentError(
+                "knowledge_lifecycle_successor_binding_invalid"
+            )
+        try:
+            reconstruct_knowledge_item_history(session, successor)
+        except KnowledgeHistoryError as error:
+            raise KnowledgeLifecycleAssessmentError(
+                f"knowledge_lifecycle_successor_{error.reason}"
+            ) from error
+        return proposed_binding
     if proposed_binding != binding:
         raise KnowledgeLifecycleAssessmentError(
             "knowledge_lifecycle_successor_stale"
