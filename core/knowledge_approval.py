@@ -401,7 +401,7 @@ def build_approval_binding(
         )
         return binding
 
-    if not require_assessment and learning_change.operation == "retire":
+    if not require_assessment and learning_change.operation not in {"retire", "supersede"}:
         raise KnowledgeApprovalBindingError(
             "knowledge_approval_assessment_required_for_operation"
         )
