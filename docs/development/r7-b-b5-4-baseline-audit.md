@@ -1,10 +1,10 @@
 # R7-B B5.4.0 — Baseline and Coverage Audit
 
-**Audit date:** 2026-11-14  
-**Status:** Remote source/test and fixture inventory complete. Read-only audit only; no source, tests, migrations, schemas, dependencies, or runtime files changed. Local Operator worktree/database preflight remains unverified.  
-**Implementation branch:** `r7b-b5-4-implementation-20261114`  
-**Exact implementation base:** `eef7815db922984c798e95ebd91d6d5c6c87e3b0` (squash merge of documentation PR #121)  
-**Planning PR:** [#121](https://github.com/abtn/Watch-Architecture-Rev2/pull/121), merged at `eef7815db922984c798e95ebd91d6d5c6c87e3b0).  
+**Audit date:** 2026-11-14
+**Status:** Remote source/test and fixture inventory complete. Read-only audit only; no source, tests, migrations, schemas, dependencies, or runtime files changed. Local Operator worktree/database preflight remains unverified.
+**Implementation branch:** `r7b-b5-4-implementation-20261114`
+**Exact implementation base:** `eef7815db922984c798e95ebd91d6d5c6c87e3b0` (squash merge of documentation PR #121)
+**Planning PR:** [#121](https://github.com/abtn/Watch-Architecture-Rev2/pull/121), merged at `eef7815db922984c798e95ebd91d6d5c6c87e3b0`.
 **Hosted verification:** [CI run #1155](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43634784291) passed on reconciled docs head `64682393320b3f66f7fdde1392498c9cf31ab60b`. The code/test tree was unchanged from merged `main`; CI completed fresh PostgreSQL migration, single-head check, Ruff, Mypy, patch check, full test suite, and disposable-container cleanup.
 
 ## 1. Authority and scope
@@ -129,4 +129,3 @@ No local Windows checkout, local Git worktree, Docker daemon, local environment 
 **B5.4.0 remote audit: COMPLETE.** The implementation branch starts from the verified merged `main` SHA above. The audit found two bounded coverage gaps: the complete six-transition composition and accepted revise replay after later history. The create-with-successor replay scope requires clarification before inclusion as a mandatory case.
 
 **Next decision:** Review this audit and explicitly authorize B5.4.1 (and, when appropriate, the revise replay addition within B5.4.4) before source/test changes. B5.4.0 does not authorize implementation. B5.4.2–B5.4.5, B6, and R7-C remain separately gated.
-
