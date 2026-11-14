@@ -1,6 +1,6 @@
 # R7-B B5 — Candidate Creation, Supersession, and Retirement Plan
 
-**Status:** B5.1 and B5.2 complete; B5.3.1–B5.3.3 implemented and verified; B5.3.4–B5.3.5 implementation and hosted verification in progress; B5.3.6 pending; B5.4 remains gated
+**Status:** B5.1 and B5.2 complete; B5.3.1–B5.3.5 implemented; B5.3.6 integrated regression implemented and exact-head hosted CI passed; Operator-local verification and explicit B5.3 acceptance pending; B5.4 remains gated
 **Planning authorization:** Granted 2026-11-13 for the B5 sequence and its checkpoint plans
 **Implementation authorization:** B5.1 and B5.2 separately authorized and complete. B5.3 was explicitly authorized on 2026-11-14. B5.4 requires separate checkpoint authorization
 **B5.3 implementation baseline:** `main` after documentation PR #119 squash merge `cde40b2c9edb17a693eff43e7e1158515302cd69`; expected migration head `0018_r7b_lifecycle_review_date`
@@ -378,7 +378,8 @@ Also verify that existing create, revise, revalidate, review, and B5.1 candidate
 - **B5.3.1–B5.3.3:** Implemented in draft PR [#120](https://github.com/abtn/Watch-Architecture-Rev2/pull/120): trusted supersede proposal and immutable predecessor/successor binding; existing lifecycle assessment; trusted approval; Team-first, ascending-item-lock canonical commit; predecessor-only mutation; TaskRuntime validation and replay. No migration or schema change was added.
 - **B5.3.4:** The existing projection, retrieval, and Context gates are exercised together. Publication now also checks that the committed supersede LearningChange's immutable successor binding and accepted Event agree with the predecessor's reciprocal pointer. Tests cover pre-reciprocity hiding, post-commit successor visibility, predecessor exclusion, cross-Team/non-reciprocal/corrupt decision bindings, and D7 ineligibility.
 - **B5.3.5:** Tests cover competing supersede approvals, supersede-versus-retirement serialization, replay after later successor retirement, rejected-decision replay after a later accepted supersede, conflicting idempotency reuse, and stale successor-binding replay after state restoration. Completed-request replay uses the immutable recorded binding while still reconstructing the candidate's current history and checking its immutable Team/predecessor relation.
-- The B5.3.4–B5.3.5 additions are not accepted or verified yet. Exact-head hosted CI and Operator-local verification on the final combined head remain pending. B5.3.6 has not started.
+- **B5.3.6 hosted verification:** exact code head `d39834548cfe6d1b96246e3108bd48ded103e7ff` passed [hosted CI run #1140](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43613291052) on 2026-11-14. Fresh PostgreSQL migrations reached the single head `0018_r7b_lifecycle_review_date`; Ruff, Mypy, and PR patch whitespace passed; full suite **996 passed, 113 warnings in 145.56s**; disposable-container cleanup passed.
+- **B5.3.6 remaining:** Operator-local exact-head sync and disposable-PostgreSQL verification, final diff/scope review, and documentation closeout remain pending. B5.3 has not been accepted; B5.4 remains separately gated.
 
 ### B5.4 — Integrated regression and closeout
 
