@@ -702,7 +702,7 @@ class TaskRuntime:
             raise TaskNotEligible("operator_task_request_target_invalid")
         if (
             decision == "accept"
-            and learning_change.operation not in {"revalidate", "retire", "supersede"}
+            and learning_change.operation not in {"revalidate", "retire"}
         ):
             from core.knowledge_quality import (
                 KnowledgeQualityAssessmentError,
@@ -720,7 +720,7 @@ class TaskRuntime:
                 or assessment.assessment_payload_hash != quality_assessment_hash
             ):
                 raise TaskNotEligible("operator_quality_assessment_binding_invalid")
-        elif decision == "accept" and learning_change.operation in {"retire", "supersede"}:
+        elif decision == "accept" and learning_change.operation == "retire":
             from core.knowledge_lifecycle import (
                 KnowledgeLifecycleAssessmentError,
             )
@@ -1149,7 +1149,7 @@ class TaskRuntime:
                     self._create_knowledge_revalidation_task_request(
                         session, task, learning_change
                     )
-                elif learning_change.operation in {"retire", "supersede"}:
+                elif learning_change.operation == "retire":
                     self._create_knowledge_lifecycle_task_request(
                         session, task, learning_change
                     )
@@ -4002,7 +4002,7 @@ class TaskRuntime:
                     raise TaskNotFinalizable(
                         "operator_revalidation_assessment_binding_invalid"
                     )
-            elif learning_change.operation in {"retire", "supersede"}:
+            elif learning_change.operation == "retire":
                 from core.knowledge_lifecycle import (
                     KnowledgeLifecycleAssessmentError,
                 )
@@ -4092,14 +4092,14 @@ class TaskRuntime:
                 )
             )
             or (
-                learning_change.operation in {"revise", "revalidate", "retire", "supersede"}
+                learning_change.operation in {"revise", "revalidate", "retire"}
                 and (
                     learning_change.previous_state is None
                     or learning_change.target_id is None
                 )
             )
             or learning_change.operation
-            not in {"create", "revise", "revalidate", "retire", "supersede"}
+            not in {"create", "revise", "revalidate", "retire"}
             or not isinstance(learning_change.proposed_state, dict)
             or learning_change.committed_at is None
             or learning_change.committed_at != observation.observed_at
@@ -4203,7 +4203,7 @@ class TaskRuntime:
                 expected_payload["knowledge_revalidation_assessment_hash"] = (
                     approval_binding.get("assessment_payload_hash")
                 )
-            elif learning_change.operation in {"retire", "supersede"}:
+            elif learning_change.operation == "retire":
                 approval_binding = request_payload.get("approval_binding")
                 if not isinstance(approval_binding, dict):
                     raise TaskNotFinalizable("operator_approval_binding_invalid")
@@ -4271,7 +4271,7 @@ class TaskRuntime:
                 learning_change.previous_state.get("state", {}).get(
                     "supersedes_item_id"
                 )
-                if learning_change.operation in {"retire", "supersede"}
+                if learning_change.operation == "retire"
                 and isinstance(learning_change.previous_state, dict)
                 else learning_change.proposed_state.get("supersedes_item_id")
             )
@@ -4300,7 +4300,7 @@ class TaskRuntime:
                     and history.learning_change_ids[0] != learning_change.id
                 )
                 or (
-                    learning_change.operation in {"revise", "revalidate", "retire", "supersede"}
+                    learning_change.operation in {"revise", "revalidate", "retire"}
                     and (
                         committed_state is None
                         or history.states[
@@ -4389,14 +4389,14 @@ class TaskRuntime:
             or learning_change.status != "proposed"
             or learning_change.target_kind != "knowledge_item"
             or learning_change.operation not in {
-                "create", "revise", "revalidate", "retire", "supersede"
+                "create", "revise", "revalidate", "retire"
             }
             or learning_change.evidence_basis_hash
             != learning_change.proposed_state.get("evidence_basis_hash")
             or not isinstance(learning_change.evidence_basis, list)
             or not 1 <= len(learning_change.evidence_basis) <= 8
             or (
-                learning_change.operation not in {"retire", "supersede"}
+                learning_change.operation != "retire"
                 and learning_change.proposed_state.get("evidence_case_count")
                 != len(learning_change.evidence_basis)
             )
@@ -4897,7 +4897,7 @@ class TaskRuntime:
         }
         if learning_change.operation in {"create", "revise"}:
             expected_event["kind"] = proposal_state.get("kind")
-        if learning_change.operation in {"revise", "revalidate", "retire", "supersede"}:
+        if learning_change.operation in {"revise", "revalidate", "retire"}:
             expected_event["target_binding"] = target_binding
         if learning_change.operation == "retire":
             expected_event["proposed_state_hash"] = proposed_state_hash
