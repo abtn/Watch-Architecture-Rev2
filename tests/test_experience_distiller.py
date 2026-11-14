@@ -13510,6 +13510,14 @@ def test_b5_3_4_reciprocal_publication_is_shared_by_projection_retrieval_and_con
         for passage in retriever.retrieve(fixture.team_id, "validated source evidence")
     }
     assert indexer.index_knowledge_item(successor_id).outcome == "indexed"
+    reindexed_passages = retriever.retrieve(
+        fixture.team_id, "validated source evidence"
+    )
+    successor_passage = next(
+        passage
+        for passage in reindexed_passages
+        if passage.knowledge_item_id == successor_id
+    )
 
     with session_factory() as session:
         successor = session.get(KnowledgeItem, successor_id)
