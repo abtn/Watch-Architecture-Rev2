@@ -1016,7 +1016,7 @@ def test_request_creation_rejects_unsupported_lifecycle_operation(
 
     with pytest.raises(
         LearningChangeNotApprovable,
-        match="only_knowledge_item_create_revise_revalidate_or_retire_is_supported",
+        match="knowledge_approval_snapshot_context_required",
     ):
         OperatorApplicationAdapter(session_factory).request_learning_change_decision(
             _principal(approval_context.team_id),
@@ -1087,7 +1087,7 @@ def test_task_runtime_rejects_unsupported_lifecycle_operation(
         learning_change.target_id = uuid4()
 
     with pytest.raises(
-        TaskNotEligible, match="operator_task_request_target_invalid"
+        TaskNotEligible, match="operator_lifecycle_snapshot_context_missing"
     ):
         TaskRuntime(session_factory).admit(created.task_id)
 
@@ -1130,7 +1130,7 @@ def test_learning_commit_rechecks_unsupported_operation_eligibility(
         learning_change.target_id = uuid4()
 
     with pytest.raises(
-        LearningCommitCorrupt, match="operator_task_request_target_invalid"
+        LearningCommitCorrupt, match="knowledge_approval_target_snapshot_missing"
     ):
         LearningCommitService(session_factory, snapshot_store).decide(
             created.task_id, 1, principal
