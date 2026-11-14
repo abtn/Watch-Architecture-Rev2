@@ -3,7 +3,7 @@
 **Status:** B5.1 and B5.2 complete; B5.3 Supersede authorized; B5.3.0 remote audit complete/local preflight pending; B5.4 remains gated
 **Planning authorization:** Granted 2026-11-13 for the B5 sequence and its checkpoint plans
 **Implementation authorization:** B5.1 and B5.2 separately authorized and complete. B5.3 was explicitly authorized on 2026-11-14. B5.4 requires separate checkpoint authorization
-**Baseline:** `main` after PR #116 squash merge `d946342907dc1c384c73de18216a5c018dd48e2f`; migration head `0018_r7b_lifecycle_review_date`
+**B5.3 implementation baseline:** `main` after documentation PR #119 squash merge `cde40b2c9edb17a693eff43e7e1158515302cd69`; expected migration head `0018_r7b_lifecycle_review_date` (confirm locally during B5.3.0 preflight)
 
 **B5.1 implementation closeout (2026-11-13):** PR [#116](https://github.com/abtn/Watch-Architecture-Rev2/pull/116) merged to `main` at `d946342907dc1c384c73de18216a5c018dd48e2f`. Exact PR head `b9fe3ff56347ca456f0db466d07e109a311501ca` passed hosted CI run [#43408281624](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43408281624): fresh PostgreSQL migration/head verification, Ruff, Mypy, patch whitespace, and full suite (**961 passed, 113 warnings in 148.07s**). Operator-local exact-head verification also passed: disposable PostgreSQL migration to `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), and full suite (**961 passed, 113 warnings in 315.33s**); the disposable container was removed, both database environment variables were restored, and the worktree remained clean. B5.1 is complete; this does not authorize B5.2 implementation.
 
