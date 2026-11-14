@@ -1021,7 +1021,7 @@ The Operator accepted D1–D3 concurrency, stale-binding, and replay proofs; D4 
 
 ## R7-B B5.3 Supersede — integrated regression and hosted verification (2026-11-14)
 
-**Status:** B5.3.1–B5.3.6 implementation, exact-head hosted/local verification, and final implementation/scope review are complete in draft PR [#120](https://github.com/abtn/Watch-Architecture-Rev2/pull/120). Final head `6821dba35da3fecd1540483f2e30cbff7aebcf15` passed hosted CI run [#1146](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43618529970) and Operator-local full disposable-PostgreSQL verification (996 passed, 113 Alembic deprecation warnings). Explicit B5.3 technical acceptance remains pending.
+**Historical status at the pre-closeout checkpoint (superseded):** B5.3.1–B5.3.6 implementation, exact-head hosted/local verification, and final review were complete in PR #120. The pending-acceptance disposition below was superseded by the formal closure record at the end of this section.
 
 - Fresh PostgreSQL migration and single-head checks passed at `0018_r7b_lifecycle_review_date`.
 - Ruff, Mypy, and PR patch-whitespace checks passed.
@@ -1057,4 +1057,18 @@ The integrated run exposed and corrected three issues before the passing head: r
 
 **Test-isolation correction included before this final head:** distillation assertions for absent LearningChange records now scope to the test's `distillation_task_id`; ingestion Event-count assertions now scope to the proposal's `task_id`. These test-only scopes prevent unrelated stale records in a reused local test database from affecting results. Production recovery and lifecycle safeguards were not weakened.
 
-**Closeout boundary:** B5.3 implementation, exact-head hosted/local verification, and final implementation/scope review are complete. The Operator has not yet given the separate explicit B5.3 technical-acceptance decision. PR #120 remains a draft and has not been merged. B5.4 remains gated; B6 and R7-C remain unauthorized.
+**Historical closeout boundary at the pre-acceptance checkpoint (superseded):** B5.3 implementation and verification were complete, while Operator technical acceptance and merge were pending. The final formal closure record below supersedes this checkpoint. B5.4 remained gated; B6 and R7-C remained unauthorized.
+
+
+## R7-B B5.3 Supersede — formal closure (2026-11-14)
+
+B5.3 was explicitly closed by the Operator and squash-merged in PR [#120](https://github.com/abtn/Watch-Architecture-Rev2/pull/120) at `7fbac0656f9eda9983a73dfe84fae859fd7e98f9`.
+
+- Exact implementation/test head: `6821dba35da3fecd1540483f2e30cbff7aebcf15`; Operator-local fresh disposable-PostgreSQL verification passed (**996 passed, 113 warnings in 407.23s**), Ruff, Mypy (38 source files), migration single-head checks, cleanup, environment restoration, and exact branch/HEAD/worktree checks.
+- Hosted CI run [#1146](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43618529970) passed on the exact implementation/test head.
+- Documentation-inclusive PR head `2aa6cb09419feb2342dbc1d1ba38b4c1fc1394c1` passed hosted CI run [#1150](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43622220433).
+- The 113 warnings are Alembic `path_separator` deprecations.
+- Final implementation/scope review found no blocking code findings. The canonical supersede path changes only the predecessor; the accepted candidate row remains unchanged. Reciprocal publication and D7 eligibility remain enforced.
+- Test-isolation assertions are scoped to records owned by each test Task; no production lifecycle/recovery safeguards were weakened.
+
+**Disposition:** B5.3 is formally closed. B5.4.0 read-only baseline/coverage audit was explicitly authorized on 2026-11-14; B5.4.1–B5.4.5 remain separately gated. The B5.4 planning PR [#121](https://github.com/abtn/Watch-Architecture-Rev2/pull/121) passed hosted CI run [#1153](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43623117784) on exact documentation head `7c0dfb141e5f52dbabf532433d9de18d919f2545`. See [the B5.4 plan](development/r7-b-b5-4-integrated-regression-plan.md).

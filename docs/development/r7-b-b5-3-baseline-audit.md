@@ -1,7 +1,7 @@
 # R7-B B5.3.0 — Baseline and Code-Path Audit
 
 **Audit date:** 2026-11-14
-**Status:** The B5.3.0 remote baseline/code-path audit is complete. Its initial local-preflight-pending disposition is historical and superseded by the B5.3.3 checkpoint and the final B5.3.6 exact-head verification/review recorded below. Final PR head `6821dba35da3fecd1540483f2e30cbff7aebcf15` passed hosted and Operator-local verification; implementation review found no blocking code findings. Explicit B5.3 technical acceptance remains pending.
+**Status:** The B5.3.0 remote baseline/code-path audit and B5.3 implementation are complete. B5.3 was formally accepted/closed by the Operator and squash-merged in PR #120 at `7fbac0656f9eda9983a73dfe84fae859fd7e98f9`. Exact implementation/test and documentation-inclusive hosted verification passed. See the final closure record below.
 **Implementation PR:** [#120](https://github.com/abtn/Watch-Architecture-Rev2/pull/120), draft at this closeout checkpoint.
 **Scope:** B5.3 Supersede only. No B5.4, B6, R7-C, or R8 work.
 
@@ -90,4 +90,4 @@ The smallest implementation surface is:
 
 **Test-only isolation corrections:** distillation LearningChange absence assertions are scoped to the test's `distillation_task_id`; ingestion Event-count assertions are scoped to the proposal's `task_id`. This avoids false failures from unrelated stale records in a reused local test database without weakening production behavior.
 
-**Disposition:** B5.3 implementation and verification/review are complete. Explicit Operator technical acceptance remains pending; PR #120 remains draft/unmerged. B5.4 remains gated; B6 and R7-C remain unauthorized.
+**Disposition:** B5.3 is formally accepted and closed by squash-merged PR #120 at `7fbac0656f9eda9983a73dfe84fae859fd7e98f9`. Exact implementation/test head `6821dba35da3fecd1540483f2e30cbff7aebcf15` passed local verification and hosted CI #1146; documentation-inclusive head `2aa6cb09419feb2342dbc1d1ba38b4c1fc1394c1` passed hosted CI #1150. B5.4 planning is documented separately; its implementation remains gated. B6 and R7-C remain unauthorized.
