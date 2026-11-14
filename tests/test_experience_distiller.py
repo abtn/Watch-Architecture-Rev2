@@ -1666,6 +1666,7 @@ def _run_team_lock_ordered_race(
             and first_after_query_before_second(statement.lower())
         ):
             first_gate_reached.set()
+            second_start_barrier.wait(timeout=30)
             if not release_first_gate.wait(timeout=30):
                 raise TimeoutError("first query gate was not released")
         if (
