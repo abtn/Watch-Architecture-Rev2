@@ -13277,6 +13277,7 @@ def test_b5_3_4_reciprocal_publication_is_shared_by_projection_retrieval_and_con
         )
     )
 
+    assert indexer.index_knowledge_item(successor_id).outcome == "unchanged"
     after = retriever.retrieve(fixture.team_id, "validated source evidence")
     after_ids = {passage.knowledge_item_id for passage in after}
     assert successor_id in after_ids
@@ -13395,6 +13396,28 @@ def test_b5_3_4_reciprocal_publication_is_shared_by_projection_retrieval_and_con
             assert successor is not None
             successor.review_after = original_review_after
             successor.status = "active"
+
+    from core.knowledge_index import _review_date_is_eligible
+
+    eligibility_now = datetime.now(timezone.utc)
+    assert not _review_date_is_eligible(
+        SimpleNamespace(status="needs_review", review_after=original_review_after),
+        eligibility_now,
+    )
+    assert not _review_date_is_eligible(
+        SimpleNamespace(status="active", review_after=None),
+        eligibility_now,
+    )
+    due_reference_time = original_review_after + timedelta(seconds=1)
+    assert (
+        indexer.index_knowledge_item(successor_id, now=due_reference_time).outcome
+        == "ineligible"
+    )
+    assert successor_id not in {
+        passage.knowledge_item_id
+        for passage in retriever.retrieve(fixture.team_id, "validated source evidence")
+    }
+    assert indexer.index_knowledge_item(successor_id).outcome == "indexed"
 
     with session_factory() as session:
         successor = session.get(KnowledgeItem, successor_id)
