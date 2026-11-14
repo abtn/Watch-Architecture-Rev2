@@ -1017,3 +1017,44 @@ At the time of this initial 2026-11-13 record, supplemental concurrency, stale-b
 Exact implementation-head hosted CI passed in [run #43597709449](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43597709449). The final documentation-inclusive PR #118 head was `c7061d73350d458338611cd9a6aa1426ae476739`; exact-head hosted CI passed in [run #43601002645](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43601002645) (run #1085), including fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, the full suite, and disposable-container cleanup. PR #118 was squash-merged at `dcc77b350985facdcc3ec840f499efd959f2d7bd`. The earlier documentation-inclusive head `d715a868a95a3d8e4856e0428ab678445637cf14` and run #43599132517 (run #1083) were intermediate and are retained only as historical verification.
 
 The Operator accepted D1–D3 concurrency, stale-binding, and replay proofs; D4 verification/review; and D5 scope. The review found no blocking code findings. **B5.2 technical acceptance: APPROVED.** The earlier 2026-11-13 verification and review entries above are historical snapshots; their pending-acceptance statements were superseded by this final record. B5.3 Supersede was separately authorized on 2026-11-14; B5.4 remains gated; B6 and R7-C remain unauthorized.
+
+
+## R7-B B5.3 Supersede — integrated regression and hosted verification (2026-11-14)
+
+**Status:** B5.3.1–B5.3.6 implementation, exact-head hosted/local verification, and final implementation/scope review are complete in draft PR [#120](https://github.com/abtn/Watch-Architecture-Rev2/pull/120). Final head `6821dba35da3fecd1540483f2e30cbff7aebcf15` passed hosted CI run [#1146](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43618529970) and Operator-local full disposable-PostgreSQL verification (996 passed, 113 Alembic deprecation warnings). Explicit B5.3 technical acceptance remains pending.
+
+- Fresh PostgreSQL migration and single-head checks passed at `0018_r7b_lifecycle_review_date`.
+- Ruff, Mypy, and PR patch-whitespace checks passed.
+- Full suite: **996 passed, 113 warnings in 145.56s**. The warnings are Alembic `path_separator` deprecations.
+- CI disposable PostgreSQL container cleanup passed.
+- No schema change or migration was added.
+
+The B5.3.4 regressions exercise reciprocal publication across Team Experience projection/indexing, ordinary retrieval, and Task Context. They verify candidate invisibility before the predecessor's reciprocal pointer is committed, candidate visibility after the canonical commit, predecessor exclusion, invalid/cross-Team reciprocal bindings, and D7 eligibility at projection, retrieval, and Context boundaries.
+
+The B5.3.5 regressions cover competing supersede approvals, supersede-versus-retirement serialization, accepted replay after later candidate retirement, rejected replay after a later accepted supersede, stale successor-history replay after state restoration, and idempotency conflicts. Completed-request replay uses the immutable recorded binding while reconstructing the candidate's current history and checking its immutable Team/predecessor relation.
+
+The integrated run exposed and corrected three issues before the passing head: rejected supersede requests must preserve their lifecycle-assessment binding; stale successor-history failures must use the same durable replay path as predecessor-history failures; and the D7 Context test must use a refreshed passage after the projection is rebuilt. These corrections are included in `d39834548cfe6d1b96246e3108bd48ded103e7ff`.
+
+**Historical remaining-work note at the earlier `d398345` checkpoint (superseded):** At that checkpoint, Operator-local sync/test, final review, and documentation closeout were still pending. The final exact-head evidence below supersedes that status.
+
+
+## R7-B B5.3.6 — final exact-head verification and implementation review (2026-11-14)
+
+**Final PR/implementation head:** `6821dba35da3fecd1540483f2e30cbff7aebcf15` on branch `r7b-b5-3-implementation-20261114`.
+
+**Operator-local verification on the exact final head:**
+- Preflight confirmed the expected repository, branch, origin, clean starting worktree, and Docker availability; the script advanced by fast-forward to the exact target head.
+- `uv sync --locked` passed.
+- A fresh disposable PostgreSQL container was created on a dynamically assigned localhost port. `uv run alembic upgrade head`, `heads`, and `current` passed; exactly one head was present: `0018_r7b_lifecycle_review_date`.
+- `uv run ruff check core tests migrations` passed.
+- `uv run mypy core` passed with no issues in 38 source files.
+- `uv run pytest -q` passed: **996 passed, 113 warnings in 407.23s**. The warnings are Alembic `path_separator` deprecations.
+- The disposable PostgreSQL container was removed. The script restored the original `DATABASE_URL` and `TEST_DATABASE_URL`, then confirmed the expected branch, exact HEAD, and clean worktree.
+
+**Hosted CI on the same exact final head:** run [#1146](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43618529970) passed.
+
+**Final implementation/scope review:** no blocking code findings. Supersede uses the existing proposal, lifecycle-assessment, trusted Operator approval, TaskRuntime, and canonical LearningCommit paths. The commit locks the Team first and both affected KnowledgeItems in ascending UUID order, rechecks exact predecessor/candidate bindings, and mutates only the predecessor. The accepted successor row and immutable `supersedes_item_id` remain unchanged. Reciprocal publication checks and D7 eligibility remain enforced. No migration, schema change, new Task/runtime/dispatcher/scheduler/authentication boundary, second canonical write path, or B5.4/B6/R7-C/R8 scope was introduced.
+
+**Test-isolation correction included before this final head:** distillation assertions for absent LearningChange records now scope to the test's `distillation_task_id`; ingestion Event-count assertions now scope to the proposal's `task_id`. These test-only scopes prevent unrelated stale records in a reused local test database from affecting results. Production recovery and lifecycle safeguards were not weakened.
+
+**Closeout boundary:** B5.3 implementation, exact-head hosted/local verification, and final implementation/scope review are complete. The Operator has not yet given the separate explicit B5.3 technical-acceptance decision. PR #120 remains a draft and has not been merged. B5.4 remains gated; B6 and R7-C remain unauthorized.

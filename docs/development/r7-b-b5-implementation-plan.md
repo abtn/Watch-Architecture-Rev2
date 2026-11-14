@@ -1,9 +1,9 @@
 # R7-B B5 — Candidate Creation, Supersession, and Retirement Plan
 
-**Status:** B5.1 and B5.2 complete; B5.3 Supersede separately authorized on 2026-11-14; B5.4 remains gated
+**Status:** B5.1 and B5.2 complete; B5.3.1–B5.3.6 implementation, exact-head hosted/local verification, and final implementation/scope review complete; explicit B5.3 technical acceptance pending; B5.4 remains gated
 **Planning authorization:** Granted 2026-11-13 for the B5 sequence and its checkpoint plans
-**Implementation authorization:** B5.1 and B5.2 separately authorized and complete. B5.3 was explicitly authorized on 2026-11-14. B5.4 requires separate checkpoint authorization
-**Baseline:** `main` after PR #116 squash merge `d946342907dc1c384c73de18216a5c018dd48e2f`; migration head `0018_r7b_lifecycle_review_date`
+**Implementation authorization:** B5.1 and B5.2 separately authorized and complete. B5.3 was explicitly authorized on 2026-11-14 and its implementation/verification/review are complete; formal technical acceptance remains pending. B5.4 requires separate checkpoint authorization
+**B5.3 implementation baseline:** `main` after documentation PR #119 squash merge `cde40b2c9edb17a693eff43e7e1158515302cd69`; expected migration head `0018_r7b_lifecycle_review_date`
 
 **B5.1 implementation closeout (2026-11-13):** PR [#116](https://github.com/abtn/Watch-Architecture-Rev2/pull/116) merged to `main` at `d946342907dc1c384c73de18216a5c018dd48e2f`. Exact PR head `b9fe3ff56347ca456f0db466d07e109a311501ca` passed hosted CI run [#43408281624](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43408281624): fresh PostgreSQL migration/head verification, Ruff, Mypy, patch whitespace, and full suite (**961 passed, 113 warnings in 148.07s**). Operator-local exact-head verification also passed: disposable PostgreSQL migration to `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), and full suite (**961 passed, 113 warnings in 315.33s**); the disposable container was removed, both database environment variables were restored, and the worktree remained clean. B5.1 is complete; this does not authorize B5.2 implementation.
 
@@ -287,7 +287,7 @@ Also verify that existing create, revise, revalidate, review, and B5.1 candidate
 
 **Purpose:** Atomically retire the predecessor and publish the already accepted candidate through reciprocal-link validation. Supersede changes the predecessor only; the candidate row and its immutable `supersedes_item_id` remain untouched.
 
-**Authorization:** The Operator separately authorized B5.3 implementation on 2026-11-14. The implementation branch must be created from verified `main` only after the documentation reconciliation PR containing this sequence has merged. This authorization does not include B5.4, B6, R7-C, or R8.
+**Authorization:** The Operator separately authorized B5.3 implementation on 2026-11-14. Documentation reconciliation PR #119 merged at `cde40b2c9edb17a693eff43e7e1158515302cd69`. The B5.3.0 baseline/code-path audit is recorded in [B5.3.0](r7-b-b5-3-baseline-audit.md). The implementation branch was created from that exact merged base. The B5.3.3 local checkpoint at `3f3c4c26ca6fb771bd9ff1f31653622f68179e69` and hosted CI run [#1109](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43607884811) are historical intermediate evidence. Final integrated PR head `6821dba35da3fecd1540483f2e30cbff7aebcf15` passed hosted CI run [#1146](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43618529970) and Operator-local full disposable-PostgreSQL verification (996 passed). Final implementation/scope review found no blocking code findings. Explicit B5.3 technical acceptance remains pending. This authorization does not include B5.4, B6, R7-C, or R8.
 
 #### B5.3.0 — Baseline and path preflight
 
@@ -371,6 +371,19 @@ Also verify that existing create, revise, revalidate, review, and B5.1 candidate
 7. Obtain explicit B5.3 technical acceptance before planning or implementing B5.4.
 
 **Exit:** Exact-head hosted CI and Operator-local verification pass; candidate publication, predecessor history, replay, concurrency, and consumer eligibility are proven; no scope expansion remains; and the Operator explicitly accepts B5.3. B5.4 remains a separate gate.
+
+#### B5.3 implementation progress and final closeout — 2026-11-14
+
+- **B5.3.0:** The remote baseline audit is recorded in [r7-b-b5-3-baseline-audit.md](r7-b-b5-3-baseline-audit.md). The implementation branch was created from the exact merged base `cde40b2c9edb17a693eff43e7e1158515302cd69`.
+- **B5.3.1–B5.3.3:** Implemented in draft PR [#120](https://github.com/abtn/Watch-Architecture-Rev2/pull/120): trusted supersede proposal and immutable predecessor/successor binding; existing lifecycle assessment; trusted approval; Team-first, ascending-item-lock canonical commit; predecessor-only mutation; TaskRuntime validation and replay. No migration or schema change was added.
+- **B5.3.4:** The existing projection, retrieval, and Context gates are exercised together. Publication checks that the committed supersede LearningChange's immutable successor binding and accepted Event agree with the predecessor's reciprocal pointer. Tests cover pre-reciprocity hiding, post-commit successor visibility, predecessor exclusion, cross-Team/non-reciprocal/corrupt decision bindings, and D7 ineligibility.
+- **B5.3.5:** Tests cover competing supersede approvals, supersede-versus-retirement serialization, replay after later successor retirement, rejected-decision replay after a later accepted supersede, conflicting idempotency reuse, and stale successor-binding replay after state restoration.
+- **B5.3.6 hosted verification:** final exact PR head `6821dba35da3fecd1540483f2e30cbff7aebcf15` passed [hosted CI run #1146](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43618529970). Fresh PostgreSQL migration/head checks, Ruff, Mypy, patch whitespace, the full suite, and disposable-container cleanup passed.
+- **B5.3.6 Operator-local verification:** on the same exact head, `uv sync --locked`, fresh disposable PostgreSQL migration and single-head checks at `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), and full suite (**996 passed, 113 warnings in 407.23s**) passed. Warnings are Alembic `path_separator` deprecations. The script removed its disposable container, restored both database environment variables, and confirmed exact branch/HEAD and clean worktree.
+- **Final implementation/scope review:** no blocking code findings. The candidate row and immutable `supersedes_item_id` remain unchanged; only the predecessor is atomically retired/linked. Team-first and ascending UUID item-lock order, exact snapshot rechecks, canonical reciprocal publication, and D7 eligibility are preserved. No migration, schema change, second write path, new Task/runtime/dispatcher/scheduler/authentication boundary, or out-of-scope milestone was introduced.
+- **Test isolation:** global distillation LearningChange assertions and ingestion Event-count assertions are scoped to the Task-owned records created by the relevant tests. No production lifecycle/recovery safeguard was weakened.
+- **Final status:** implementation, integrated regression, exact-head hosted/local verification, and final review are complete. The explicit Operator decision to accept B5.3 remains pending. PR #120 remains draft/unmerged. B5.4 requires separate authorization.
+
 
 ### B5.4 — Integrated regression and closeout
 

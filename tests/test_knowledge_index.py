@@ -422,3 +422,35 @@ def test_retrieval_discards_tampered_chunk_projection(
     )
 
     assert retriever.retrieve(team_id, "alpha") == ()
+
+
+
+def test_supersession_publication_rejects_cross_team_predecessor() -> None:
+    from types import SimpleNamespace
+
+    from core.knowledge_index import _supersession_publication_is_visible
+
+    team_id = uuid4()
+    predecessor_id = uuid4()
+    candidate = SimpleNamespace(
+        id=uuid4(),
+        team_id=team_id,
+        supersedes_item_id=predecessor_id,
+        superseded_by_id=None,
+    )
+    predecessor = SimpleNamespace(
+        id=predecessor_id,
+        team_id=uuid4(),
+        status="retired",
+        superseded_by_id=candidate.id,
+        current_learning_change_id=uuid4(),
+    )
+
+    class CrossTeamSession:
+        def get(self, model, item_id):
+            assert item_id == predecessor_id
+            return predecessor
+
+    assert not _supersession_publication_is_visible(
+        CrossTeamSession(), candidate, {}
+    )

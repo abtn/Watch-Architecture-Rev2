@@ -743,6 +743,48 @@ def _proposal_context(
         KNOWLEDGE_CONTENT_HASH_SCHEME,
         {field: target_state[field] for field in CONTENT_FIELDS},
     )
+    if learning_change.operation == "supersede":
+        from core.operator_approval import canonical_operator_identity
+
+        predecessor_binding = {
+            "target_knowledge_item_id": str(learning_change.target_id),
+            "target_current_learning_change_id": str(pointer),
+            "target_content_version": target_state["version"],
+            "target_content_hash": target_content_hash,
+            "target_content_hash_scheme": KNOWLEDGE_CONTENT_HASH_SCHEME,
+            "target_state_hash": target_state_hash,
+        }
+        successor_binding = {
+            key: learning_change.proposed_state[key]
+            for key in SUCCESSOR_REQUEST_FIELDS
+        }
+        unsigned_state = {
+            key: value
+            for key, value in learning_change.proposed_state.items()
+            if key != "proposal_hash"
+        }
+        expected_proposal_hash = _sha256_json({
+            "predecessor_binding": predecessor_binding,
+            **unsigned_state,
+        })
+        expected_idempotency_key = "r7b-supersede-v1:" + _sha256_json({
+            "team_id": str(learning_change.team_id),
+            "task_id": str(source_task.id),
+            "predecessor_binding": predecessor_binding,
+            "successor_binding": successor_binding,
+            "evidence_basis_hash": evidence_hash,
+            "operator_rationale": rationale,
+            "operator_id": canonical_operator_identity(
+                provenance.issuer, provenance.subject
+            ),
+        }).removeprefix("sha256:")
+        if (
+            proposal_hash != expected_proposal_hash
+            or learning_change.idempotency_key != expected_idempotency_key
+        ):
+            raise KnowledgeLifecycleAssessmentError(
+                "knowledge_lifecycle_supersede_proposal_binding_invalid"
+            )
     if require_current:
         team = session.scalar(
             select(Team)
@@ -894,6 +936,21 @@ def _successor_binding(
     proposed_binding = {
         key: change.proposed_state[key] for key in SUCCESSOR_REQUEST_FIELDS
     }
+    if not require_current:
+        if (
+            proposed_binding["successor_knowledge_item_id"] != str(successor.id)
+            or proposed_binding["successor_team_id"] != str(successor.team_id)
+        ):
+            raise KnowledgeLifecycleAssessmentError(
+                "knowledge_lifecycle_successor_binding_invalid"
+            )
+        try:
+            reconstruct_knowledge_item_history(session, successor)
+        except KnowledgeHistoryError as error:
+            raise KnowledgeLifecycleAssessmentError(
+                f"knowledge_lifecycle_successor_{error.reason}"
+            ) from error
+        return proposed_binding
     if proposed_binding != binding:
         raise KnowledgeLifecycleAssessmentError(
             "knowledge_lifecycle_successor_stale"

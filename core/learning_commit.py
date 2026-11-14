@@ -214,7 +214,7 @@ class LearningCommitService:
 
             candidate_team_lock: Team | None = None
             if (
-                learning_change.operation == "retire"
+                learning_change.operation in {"retire", "supersede"}
                 or (
                     learning_change.operation == "create"
                     and "supersedes_item_id" in learning_change.proposed_state
@@ -231,6 +231,38 @@ class LearningCommitService:
                 ):
                     raise LearningCommitError("team_not_active")
 
+            if learning_change.operation == "supersede":
+                raw_successor_id = learning_change.proposed_state.get(
+                    "successor_knowledge_item_id"
+                )
+                try:
+                    successor_id = uuid.UUID(raw_successor_id)
+                except (TypeError, ValueError) as error:
+                    raise LearningCommitCorrupt(
+                        "supersede_successor_id_invalid"
+                    ) from error
+                if (
+                    not isinstance(raw_successor_id, str)
+                    or str(successor_id) != raw_successor_id
+                    or learning_change.target_id is None
+                    or successor_id == learning_change.target_id
+                ):
+                    raise LearningCommitCorrupt("supersede_successor_id_invalid")
+                item_ids = sorted(
+                    (learning_change.target_id, successor_id), key=str
+                )
+                locked_items = list(session.scalars(
+                    select(KnowledgeItem)
+                    .where(
+                        KnowledgeItem.team_id == task.team_id,
+                        KnowledgeItem.id.in_(item_ids),
+                    )
+                    .order_by(KnowledgeItem.id.asc())
+                    .with_for_update()
+                ))
+                if len(locked_items) != 2:
+                    raise LearningCommitConflict("supersede_item_missing")
+
             if approval_request.schema_version == 3:
                 from core.knowledge_approval import (
                     KnowledgeApprovalBindingError,
@@ -246,6 +278,7 @@ class LearningCommitService:
                         require_assessment=decision == "accept",
                         snapshot_store=self._snapshot_store,
                         session_factory=self._session_factory,
+                        require_current=task.status != "done",
                     )
                 except KnowledgeApprovalBindingError as error:
                     if is_supported_learning_change(
@@ -301,7 +334,7 @@ class LearningCommitService:
                 or learning_change.committed_by_task_id is not None
             ):
                 raise LearningCommitError(
-                    "only_knowledge_item_create_revise_revalidate_or_retire_is_supported"
+                    "only_knowledge_item_create_revise_revalidate_retire_or_supersede_is_supported"
                 )
 
             team = candidate_team_lock or session.scalar(
@@ -363,7 +396,7 @@ class LearningCommitService:
 
             draft = None
             pack = None
-            if learning_change.operation in {"revalidate", "retire"}:
+            if learning_change.operation in {"revalidate", "retire", "supersede"}:
                 self._validate_proposer_terminal(
                     session,
                     learning_change,
@@ -417,7 +450,10 @@ class LearningCommitService:
                     )
                 revalidation_assessment_id = str(revalidation_assessment.id)
                 revalidation_assessment_hash = revalidation_assessment.payload_hash
-            elif decision == "accept" and learning_change.operation == "retire":
+            elif (
+                decision == "accept"
+                and learning_change.operation in {"retire", "supersede"}
+            ):
                 from core.knowledge_lifecycle import (
                     KnowledgeLifecycleAssessmentError,
                 )
@@ -483,7 +519,10 @@ class LearningCommitService:
                 )
             committed_at = datetime.datetime.now(datetime.timezone.utc)
             review_after: datetime.datetime | None = None
-            if decision == "accept" and learning_change.operation != "retire":
+            if (
+                decision == "accept"
+                and learning_change.operation not in {"retire", "supersede"}
+            ):
                 raw_predecessor_id = learning_change.proposed_state.get(
                     "supersedes_item_id"
                 )
@@ -932,6 +971,137 @@ class LearningCommitService:
                     session.refresh(target)
                     knowledge_item_id = target.id
                     knowledge_item_version = target.version
+                elif learning_change.operation == "supersede":
+                    target = session.get(KnowledgeItem, learning_change.target_id)
+                    raw_successor_id = learning_change.proposed_state.get(
+                        "successor_knowledge_item_id"
+                    )
+                    try:
+                        successor_id = uuid.UUID(raw_successor_id)
+                    except (TypeError, ValueError) as error:
+                        raise LearningCommitCorrupt(
+                            "supersede_successor_id_invalid"
+                        ) from error
+                    successor = session.get(KnowledgeItem, successor_id)
+                    if target is None or successor is None:
+                        raise LearningCommitConflict("supersede_item_missing")
+                    previous = learning_change.previous_state
+                    if not isinstance(previous, dict) or not isinstance(
+                        previous.get("state"), dict
+                    ):
+                        raise LearningCommitCorrupt(
+                            "supersede_predecessor_snapshot_invalid"
+                        )
+                    try:
+                        pointer = uuid.UUID(
+                            previous["state"]["current_learning_change_id"]
+                        )
+                        previous_state, reconstructed = decode_state_snapshot(
+                            previous,
+                            learning_change_id=pointer,
+                            operation="supersede",
+                            allow_legacy_root=False,
+                        )
+                        live_state = knowledge_item_state(target)
+                        live_content_hash = knowledge_item_content_hash(target)
+                        successor_state = knowledge_item_state(successor)
+                        successor_snapshot = encode_state_snapshot(successor_state)
+                        successor_content_hash = knowledge_item_content_hash(successor)
+                        reconstruct_knowledge_item_history(session, target)
+                        reconstruct_knowledge_item_history(session, successor)
+                    except (
+                        KnowledgeHistoryError,
+                        KeyError,
+                        TypeError,
+                        ValueError,
+                    ) as error:
+                        raise LearningCommitConflict(
+                            "supersede_snapshot_or_history_invalid"
+                        ) from error
+                    successor_review_after = successor.review_after
+                    expected_successor = {
+                        "successor_knowledge_item_id": str(successor.id),
+                        "successor_team_id": str(successor.team_id),
+                        "successor_current_learning_change_id": str(
+                            successor.current_learning_change_id
+                        ),
+                        "successor_content_version": successor.version,
+                        "successor_content_hash": successor_content_hash,
+                        "successor_content_hash_scheme": (
+                            "watch.r7b.knowledge-content.v2"
+                        ),
+                        "successor_status": successor.status,
+                        "successor_review_after": successor_state["review_after"],
+                        "successor_state_hash": successor_snapshot["snapshot_hash"],
+                    }
+                    if (
+                        reconstructed
+                        or target.team_id != team.id
+                        or target.status not in {"active", "needs_review"}
+                        or target.superseded_by_id is not None
+                        or live_state != previous_state
+                        or target.current_learning_change_id != pointer
+                        or target.version != previous_state["version"]
+                        or live_content_hash != lifecycle_assessment.target_content_hash
+                        or successor.team_id != team.id
+                        or successor.id == target.id
+                        or successor.supersedes_item_id != target.id
+                        or successor.status != "active"
+                        or successor_review_after is None
+                        or successor_review_after <= committed_at
+                        or any(
+                            learning_change.proposed_state.get(key) != value
+                            for key, value in expected_successor.items()
+                        )
+                        or lifecycle_assessment.successor_knowledge_item_id
+                        != successor.id
+                    ):
+                        raise LearningCommitConflict(
+                            "supersede_compare_and_set_failed"
+                        )
+                    origin = session.get(
+                        LearningChange, successor.origin_learning_change_id
+                    )
+                    if (
+                        origin is None
+                        or origin.team_id != team.id
+                        or origin.operation != "create"
+                        or origin.status != "accepted"
+                    ):
+                        raise LearningCommitConflict(
+                            "supersede_successor_not_accepted"
+                        )
+                    committed_values = dict(live_state)
+                    committed_values.update(
+                        {
+                            "status": "retired",
+                            "superseded_by_id": str(successor.id),
+                            "current_learning_change_id": str(learning_change.id),
+                        }
+                    )
+                    committed_state = encode_state_snapshot(committed_values)
+                    cas_id = session.execute(
+                        _knowledge_item_cas_statement(
+                            item_id=target.id,
+                            team_id=target.team_id,
+                            expected_pointer=pointer,
+                            expected_version=previous_state["version"],
+                            expected_status=previous_state["status"],
+                            values={
+                                "status": "retired",
+                                "superseded_by_id": successor.id,
+                                "current_learning_change_id": learning_change.id,
+                            },
+                        ),
+                        execution_options={"synchronize_session": False},
+                    ).scalar_one_or_none()
+                    if cas_id != target.id:
+                        raise LearningCommitConflict(
+                            "supersede_compare_and_set_failed"
+                        )
+                    session.refresh(target)
+                    knowledge_item_id = target.id
+                    knowledge_item_version = target.version
                 else:
                     raise LearningCommitError("learning_change_operation_not_supported")
 
@@ -984,13 +1154,17 @@ class LearningCommitService:
                     event_payload["knowledge_revalidation_assessment_hash"] = (
                         revalidation_assessment_hash
                     )
-                elif learning_change.operation == "retire":
+                elif learning_change.operation in {"retire", "supersede"}:
                     event_payload["knowledge_lifecycle_assessment_id"] = (
                         lifecycle_assessment_id
                     )
                     event_payload["knowledge_lifecycle_assessment_hash"] = (
                         lifecycle_assessment_hash
                     )
+                    if learning_change.operation == "supersede":
+                        event_payload["successor_knowledge_item_id"] = str(
+                            learning_change.proposed_state["successor_knowledge_item_id"]
+                        )
                 else:
                     event_payload["knowledge_quality_assessment_id"] = (
                         quality_assessment_id
@@ -1204,7 +1378,10 @@ class LearningCommitService:
                 )
             revalidation_assessment_id = str(revalidation_assessment.id)
             revalidation_assessment_hash = revalidation_assessment.payload_hash
-        elif recorded_decision == "accept" and learning_change.operation == "retire":
+        elif (
+            recorded_decision == "accept"
+            and learning_change.operation in {"retire", "supersede"}
+        ):
             from core.knowledge_lifecycle import (
                 KnowledgeLifecycleAssessmentError,
             )
@@ -1292,14 +1469,14 @@ class LearningCommitService:
                 )
             )
             or (
-                learning_change.operation in {"revise", "revalidate"}
+                learning_change.operation in {"revise", "revalidate", "supersede"}
                 and (
                     learning_change.previous_state is None
                     or learning_change.target_id is None
                 )
             )
             or learning_change.operation
-            not in {"create", "revise", "revalidate", "retire"}
+            not in {"create", "revise", "revalidate", "retire", "supersede"}
         ):
             raise LearningCommitConflict("learning_change_decision_request_conflict")
 
@@ -1436,13 +1613,17 @@ class LearningCommitService:
                 expected_payload["knowledge_revalidation_assessment_hash"] = (
                     revalidation_assessment_hash
                 )
-            elif learning_change.operation == "retire":
+            elif learning_change.operation in {"retire", "supersede"}:
                 expected_payload["knowledge_lifecycle_assessment_id"] = (
                     lifecycle_assessment_id
                 )
                 expected_payload["knowledge_lifecycle_assessment_hash"] = (
                     lifecycle_assessment_hash
                 )
+                if learning_change.operation == "supersede":
+                    expected_payload["successor_knowledge_item_id"] = str(
+                        learning_change.proposed_state["successor_knowledge_item_id"]
+                    )
             else:
                 expected_payload["knowledge_quality_assessment_id"] = (
                     quality_assessment_id
@@ -1458,6 +1639,26 @@ class LearningCommitService:
                         "committed_knowledge_item_mismatch"
                     ) from error
                 raise LearningCommitCorrupt(str(error)) from error
+            if learning_change.operation == "supersede":
+                successor = session.get(
+                    KnowledgeItem,
+                    uuid.UUID(
+                        learning_change.proposed_state["successor_knowledge_item_id"]
+                    ),
+                )
+                if (
+                    successor is None
+                    or successor.team_id != learning_change.team_id
+                    or successor.supersedes_item_id != item.id
+                    or item.superseded_by_id != successor.id
+                ):
+                    raise LearningCommitCorrupt("committed_supersede_link_invalid")
+                try:
+                    reconstruct_knowledge_item_history(session, successor)
+                except KnowledgeHistoryError as error:
+                    raise LearningCommitCorrupt(
+                        "committed_supersede_candidate_history_invalid"
+                    ) from error
             if learning_change.operation == "create":
                 expected_supersedes_id = learning_change.proposed_state.get(
                     "supersedes_item_id"

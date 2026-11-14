@@ -22,6 +22,8 @@ _STALE_OPERATOR_APPROVAL_REASONS = frozenset(
         "knowledge_quality_revision_target_stale",
         "knowledge_revalidation_target_stale",
         "knowledge_lifecycle_predecessor_reconstructed_history_does_not_match_live_item",
+        "knowledge_lifecycle_successor_stale",
+        "knowledge_lifecycle_successor_reconstructed_history_does_not_match_live_item",
     }
 )
 
@@ -160,7 +162,7 @@ def is_supported_learning_change(
         and (
             (operation == "create" and target_id is None)
             or (
-                operation in {"revise", "revalidate", "retire"}
+                operation in {"revise", "revalidate", "retire", "supersede"}
                 and target_id is not None
             )
         )
@@ -628,7 +630,10 @@ def parse_request_event_payload(
             raise OperatorApprovalValidationError(
                 "operator_quality_assessment_required"
             )
-        if decision == "reject" and binding_assessment_type is not None:
+        if decision == "reject" and binding_assessment_type not in {
+            None,
+            "knowledge_lifecycle",
+        }:
             raise OperatorApprovalValidationError(
                 "operator_approval_binding_invalid"
             )

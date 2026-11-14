@@ -633,6 +633,7 @@ class TeamExperienceEnv:
                     proposed_state={
                         "proposal_hash": proposal_hash,
                         "evidence_basis_hash": evidence_basis_hash,
+                        "successor_knowledge_item_id": str(successor_id),
                     },
                     previous_state=encode_state_snapshot(previous_state),
                     committed_state=encode_state_snapshot(committed_state),
@@ -699,6 +700,7 @@ class TeamExperienceEnv:
                             "committed_at": commit_time.isoformat(),
                             "knowledge_item_id": str(predecessor.id),
                             "knowledge_item_version": predecessor.version,
+                            "successor_knowledge_item_id": str(successor_id),
                         },
                         created_at=commit_time,
                     ),

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from core.learning_history import (
     KnowledgeHistoryError,
     decode_state_snapshot,
+    encode_state_snapshot,
     knowledge_item_content_hash,
     knowledge_item_state,
     reconstruct_knowledge_item_history,
@@ -702,7 +703,7 @@ class TaskRuntime:
             raise TaskNotEligible("operator_task_request_target_invalid")
         if (
             decision == "accept"
-            and learning_change.operation not in {"revalidate", "retire"}
+            and learning_change.operation not in {"revalidate", "retire", "supersede"}
         ):
             from core.knowledge_quality import (
                 KnowledgeQualityAssessmentError,
@@ -720,7 +721,10 @@ class TaskRuntime:
                 or assessment.assessment_payload_hash != quality_assessment_hash
             ):
                 raise TaskNotEligible("operator_quality_assessment_binding_invalid")
-        elif decision == "accept" and learning_change.operation == "retire":
+        elif (
+            decision == "accept"
+            and learning_change.operation in {"retire", "supersede"}
+        ):
             from core.knowledge_lifecycle import (
                 KnowledgeLifecycleAssessmentError,
             )
@@ -1149,7 +1153,7 @@ class TaskRuntime:
                     self._create_knowledge_revalidation_task_request(
                         session, task, learning_change
                     )
-                elif learning_change.operation == "retire":
+                elif learning_change.operation in {"retire", "supersede"}:
                     self._create_knowledge_lifecycle_task_request(
                         session, task, learning_change
                     )
@@ -1686,10 +1690,12 @@ class TaskRuntime:
             if (
                 stale_failure is not None
                 and stale_failure.failure_reason
-                == (
+                in {
                     "knowledge_lifecycle_predecessor_reconstructed_history_"
-                    "does_not_match_live_item"
-                )
+                    "does_not_match_live_item",
+                    "knowledge_lifecycle_successor_reconstructed_history_"
+                    "does_not_match_live_item",
+                }
             ):
                 self._validate_operator_admission(
                     session,
@@ -4002,7 +4008,7 @@ class TaskRuntime:
                     raise TaskNotFinalizable(
                         "operator_revalidation_assessment_binding_invalid"
                     )
-            elif learning_change.operation == "retire":
+            elif learning_change.operation in {"retire", "supersede"}:
                 from core.knowledge_lifecycle import (
                     KnowledgeLifecycleAssessmentError,
                 )
@@ -4092,14 +4098,15 @@ class TaskRuntime:
                 )
             )
             or (
-                learning_change.operation in {"revise", "revalidate", "retire"}
+                learning_change.operation
+                in {"revise", "revalidate", "retire", "supersede"}
                 and (
                     learning_change.previous_state is None
                     or learning_change.target_id is None
                 )
             )
             or learning_change.operation
-            not in {"create", "revise", "revalidate", "retire"}
+            not in {"create", "revise", "revalidate", "retire", "supersede"}
             or not isinstance(learning_change.proposed_state, dict)
             or learning_change.committed_at is None
             or learning_change.committed_at != observation.observed_at
@@ -4203,7 +4210,7 @@ class TaskRuntime:
                 expected_payload["knowledge_revalidation_assessment_hash"] = (
                     approval_binding.get("assessment_payload_hash")
                 )
-            elif learning_change.operation == "retire":
+            elif learning_change.operation in {"retire", "supersede"}:
                 approval_binding = request_payload.get("approval_binding")
                 if not isinstance(approval_binding, dict):
                     raise TaskNotFinalizable("operator_approval_binding_invalid")
@@ -4213,6 +4220,10 @@ class TaskRuntime:
                 expected_payload["knowledge_lifecycle_assessment_hash"] = (
                     approval_binding.get("assessment_payload_hash")
                 )
+                if learning_change.operation == "supersede":
+                    expected_payload["successor_knowledge_item_id"] = (
+                        learning_change.proposed_state["successor_knowledge_item_id"]
+                    )
             else:
                 expected_payload["knowledge_quality_assessment_id"] = (
                     quality_assessment_id_value
@@ -4271,7 +4282,7 @@ class TaskRuntime:
                 learning_change.previous_state.get("state", {}).get(
                     "supersedes_item_id"
                 )
-                if learning_change.operation == "retire"
+                if learning_change.operation in {"retire", "supersede"}
                 and isinstance(learning_change.previous_state, dict)
                 else learning_change.proposed_state.get("supersedes_item_id")
             )
@@ -4290,6 +4301,31 @@ class TaskRuntime:
                     )
                 except (TypeError, ValueError):
                     successor_link_valid = False
+            if learning_change.operation == "supersede":
+                try:
+                    successor_id = UUID(
+                        learning_change.proposed_state["successor_knowledge_item_id"]
+                    )
+                    successor = session.get(KnowledgeItem, successor_id)
+                    if (
+                        successor is None
+                        or successor.team_id != task.team_id
+                        or successor.supersedes_item_id != item.id
+                        or item.superseded_by_id != successor.id
+                    ):
+                        raise TaskNotFinalizable(
+                            "committed_supersede_reciprocal_link_invalid"
+                        )
+                    reconstruct_knowledge_item_history(session, successor)
+                except (
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                    KnowledgeHistoryError,
+                ) as error:
+                    raise TaskNotFinalizable(
+                        "committed_supersede_candidate_history_invalid"
+                    ) from error
             if (
                 learning_change.decision_reason is not None
                 or item.team_id != task.team_id
@@ -4300,7 +4336,8 @@ class TaskRuntime:
                     and history.learning_change_ids[0] != learning_change.id
                 )
                 or (
-                    learning_change.operation in {"revise", "revalidate", "retire"}
+                    learning_change.operation
+                in {"revise", "revalidate", "retire", "supersede"}
                     and (
                         committed_state is None
                         or history.states[
@@ -4389,14 +4426,14 @@ class TaskRuntime:
             or learning_change.status != "proposed"
             or learning_change.target_kind != "knowledge_item"
             or learning_change.operation not in {
-                "create", "revise", "revalidate", "retire"
+                "create", "revise", "revalidate", "retire", "supersede"
             }
             or learning_change.evidence_basis_hash
             != learning_change.proposed_state.get("evidence_basis_hash")
             or not isinstance(learning_change.evidence_basis, list)
             or not 1 <= len(learning_change.evidence_basis) <= 8
             or (
-                learning_change.operation != "retire"
+                learning_change.operation not in {"retire", "supersede"}
                 and learning_change.proposed_state.get("evidence_case_count")
                 != len(learning_change.evidence_basis)
             )
@@ -4414,6 +4451,7 @@ class TaskRuntime:
 
         target_binding: dict[str, Any] | None = None
         supersedes_target_binding: dict[str, Any] | None = None
+        successor_binding: dict[str, Any] | None = None
         if learning_change.operation == "create":
             if (
                 learning_change.target_id is not None
@@ -4848,6 +4886,184 @@ class TaskRuntime:
                     f"learning_change_retire_target_invalid:{error}"
                 ) from error
 
+        elif learning_change.operation == "supersede":
+            from core.evaluations import _sha256_json as _proposal_sha256_json
+            from core.knowledge_lifecycle import (
+                PROPOSED_STATE_HASH_DOMAIN,
+                SUCCESSOR_REQUEST_FIELDS,
+                KnowledgeLifecycleAssessmentError,
+                _domain_hash,
+                _normalize_json,
+                validate_operator_rationale,
+            )
+            from core.learning_history import KNOWLEDGE_CONTENT_HASH_SCHEME
+            from core.operator_approval import canonical_operator_identity
+
+            expected_state_keys = {
+                "proposal_hash",
+                "evidence_basis_hash",
+                "operator_rationale",
+                *SUCCESSOR_REQUEST_FIELDS,
+            }
+            if (
+                learning_change.target_id is None
+                or not isinstance(learning_change.previous_state, dict)
+                or set(proposal_state) != expected_state_keys
+            ):
+                raise TaskNotFinalizable("learning_change_supersede_shape_invalid")
+            team = session.scalar(
+                select(Team).where(Team.id == task.team_id).with_for_update()
+            )
+            if team is None or team.status != "active":
+                raise TaskNotFinalizable("learning_change_supersede_team_invalid")
+            try:
+                rationale = validate_operator_rationale(
+                    proposal_state.get("operator_rationale")
+                )
+                raw_state = learning_change.previous_state.get("state")
+                if not isinstance(raw_state, dict):
+                    raise KnowledgeHistoryError("snapshot_state_invalid")
+                pointer = UUID(raw_state.get("current_learning_change_id"))
+                previous_state, reconstructed = decode_state_snapshot(
+                    learning_change.previous_state,
+                    learning_change_id=pointer,
+                    operation="supersede",
+                    allow_legacy_root=False,
+                )
+                raw_successor_id = proposal_state.get(
+                    "successor_knowledge_item_id"
+                )
+                successor_id = UUID(raw_successor_id)
+                item_ids = sorted((learning_change.target_id, successor_id), key=str)
+                items = list(session.scalars(
+                    select(KnowledgeItem)
+                    .where(
+                        KnowledgeItem.team_id == task.team_id,
+                        KnowledgeItem.id.in_(item_ids),
+                    )
+                    .order_by(KnowledgeItem.id.asc())
+                    .with_for_update()
+                ))
+                if len(items) != 2:
+                    raise KnowledgeHistoryError("supersede_item_missing")
+                item_map = {item.id: item for item in items}
+                target = item_map[learning_change.target_id]
+                successor = item_map[successor_id]
+                live_state = knowledge_item_state(target)
+                target_content_hash = knowledge_item_content_hash(target)
+                successor_state = knowledge_item_state(successor)
+                successor_snapshot = encode_state_snapshot(successor_state)
+                successor_content_hash = knowledge_item_content_hash(successor)
+                reconstruct_knowledge_item_history(session, target)
+                reconstruct_knowledge_item_history(session, successor)
+                if (
+                    reconstructed
+                    or target.status not in {"active", "needs_review"}
+                    or target.superseded_by_id is not None
+                    or live_state != previous_state
+                    or target.version != previous_state["version"]
+                    or target.current_learning_change_id != pointer
+                    or successor.id == target.id
+                    or successor.team_id != team.id
+                    or successor.supersedes_item_id != target.id
+                    or successor.status != "active"
+                    or successor.review_after is None
+                    or successor.review_after <= observation.observed_at
+                ):
+                    raise KnowledgeHistoryError("supersede_target_or_candidate_stale")
+                candidates = list(session.scalars(
+                    select(KnowledgeItem.id).where(
+                        KnowledgeItem.team_id == team.id,
+                        KnowledgeItem.supersedes_item_id == target.id,
+                        KnowledgeItem.status != "retired",
+                    )
+                ))
+                if candidates != [successor.id]:
+                    raise KnowledgeHistoryError("supersede_successor_not_unique")
+                origin = session.get(
+                    LearningChange, successor.origin_learning_change_id
+                )
+                if (
+                    origin is None
+                    or origin.team_id != team.id
+                    or origin.operation != "create"
+                    or origin.status != "accepted"
+                ):
+                    raise KnowledgeHistoryError("supersede_successor_not_accepted")
+                target_binding = {
+                    "target_knowledge_item_id": str(target.id),
+                    "target_current_learning_change_id": str(pointer),
+                    "target_content_version": previous_state["version"],
+                    "target_content_hash": target_content_hash,
+                    "target_content_hash_scheme": KNOWLEDGE_CONTENT_HASH_SCHEME,
+                    "target_state_hash": learning_change.previous_state[
+                        "snapshot_hash"
+                    ],
+                }
+                successor_binding = {
+                    "successor_knowledge_item_id": str(successor.id),
+                    "successor_team_id": str(successor.team_id),
+                    "successor_current_learning_change_id": str(
+                        successor.current_learning_change_id
+                    ),
+                    "successor_content_version": successor.version,
+                    "successor_content_hash": successor_content_hash,
+                    "successor_content_hash_scheme": KNOWLEDGE_CONTENT_HASH_SCHEME,
+                    "successor_status": successor.status,
+                    "successor_review_after": successor_state["review_after"],
+                    "successor_state_hash": successor_snapshot["snapshot_hash"],
+                }
+                unsigned_state = {
+                    "evidence_basis_hash": learning_change.evidence_basis_hash,
+                    "operator_rationale": rationale,
+                    **successor_binding,
+                }
+                expected_proposal_hash = _proposal_sha256_json({
+                    "predecessor_binding": target_binding,
+                    **unsigned_state,
+                })
+                proposed_state_hash = _domain_hash(
+                    PROPOSED_STATE_HASH_DOMAIN, _normalize_json(proposal_state)
+                )
+                provenance = session.get(
+                    LearningChangeOperatorProvenance, learning_change.id
+                )
+                if (
+                    provenance is None
+                    or provenance.team_id != learning_change.team_id
+                    or not provenance.issuer.strip()
+                    or not provenance.subject.strip()
+                    or proposal_state.get("proposal_hash") != expected_proposal_hash
+                    or proposal_state.get("evidence_basis_hash")
+                    != learning_change.evidence_basis_hash
+                    or learning_change.idempotency_key
+                    != "r7b-supersede-v1:"
+                    + _proposal_sha256_json({
+                        "team_id": str(learning_change.team_id),
+                        "task_id": str(task.id),
+                        "predecessor_binding": target_binding,
+                        "successor_binding": successor_binding,
+                        "evidence_basis_hash": learning_change.evidence_basis_hash,
+                        "operator_rationale": rationale,
+                        "operator_id": canonical_operator_identity(
+                            provenance.issuer, provenance.subject
+                        ),
+                    }).removeprefix("sha256:")
+                ):
+                    raise KnowledgeHistoryError(
+                        "supersede_proposal_binding_invalid"
+                    )
+            except (
+                KnowledgeHistoryError,
+                KnowledgeLifecycleAssessmentError,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as error:
+                raise TaskNotFinalizable(
+                    f"learning_change_supersede_binding_invalid:{error}"
+                ) from error
+
         if learning_change.operation in {"create", "revise"}:
             charge = session.scalar(
                 select(TaskGenerationCharge).where(
@@ -4897,10 +5113,12 @@ class TaskRuntime:
         }
         if learning_change.operation in {"create", "revise"}:
             expected_event["kind"] = proposal_state.get("kind")
-        if learning_change.operation in {"revise", "revalidate", "retire"}:
+        if learning_change.operation in {"revise", "revalidate", "retire", "supersede"}:
             expected_event["target_binding"] = target_binding
-        if learning_change.operation == "retire":
+        if learning_change.operation in {"retire", "supersede"}:
             expected_event["proposed_state_hash"] = proposed_state_hash
+        if successor_binding is not None:
+            expected_event["successor_binding"] = successor_binding
         if supersedes_target_binding is not None:
             expected_event["supersedes_item_id"] = proposal_state[
                 "supersedes_item_id"

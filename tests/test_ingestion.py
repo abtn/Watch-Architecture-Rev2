@@ -363,7 +363,11 @@ def test_missing_task_cannot_receive_rejection_event(
 
     with session_factory() as session:
         assert session.scalar(select(func.count()).select_from(Signal)) == 0
-        assert session.scalar(select(func.count()).select_from(Event)) == 0
+        assert session.scalar(
+            select(func.count())
+            .select_from(Event)
+            .where(Event.task_id == proposal.task_id)
+        ) == 0
 
 
 def test_ingestion_scope_keeps_worker_write_and_kernel_effects_separate(
