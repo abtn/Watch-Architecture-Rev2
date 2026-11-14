@@ -1,7 +1,7 @@
 # R7-B B5.3.0 — Baseline and Code-Path Audit
 
 **Audit date:** 2026-11-14
-**Status:** Remote source audit complete; Operator-local implementation-branch sync/test verification passed at B5.3.3 head `3f3c4c26ca6fb771bd9ff1f31653622f68179e69`. A separate local checkout of `main` was not recorded; B5.3.4–B5.3.5 verification remains pending.
+**Status:** Remote source audit complete. Operator-local implementation-branch sync/test verification passed at B5.3.3 head `3f3c4c26ca6fb771bd9ff1f31653622f68179e69`. B5.3.4–B5.3.6 exact-head hosted CI passed at `d39834548cfe6d1b96246e3108bd48ded103e7ff` ([run #1140](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43613291052)); Operator-local verification of the integrated implementation and final diff review remain pending. A separate local checkout of `main` was not recorded.
 **Implementation PR:** Draft, based on the merged documentation checkpoint.
 **Scope:** B5.3 Supersede only. No B5.4, B6, R7-C, or R8 work.
 
