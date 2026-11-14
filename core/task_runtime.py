@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from core.learning_history import (
     KnowledgeHistoryError,
     decode_state_snapshot,
+    encode_state_snapshot,
     knowledge_item_content_hash,
     knowledge_item_state,
     reconstruct_knowledge_item_history,
