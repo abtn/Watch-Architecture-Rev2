@@ -23,6 +23,7 @@ _STALE_OPERATOR_APPROVAL_REASONS = frozenset(
         "knowledge_revalidation_target_stale",
         "knowledge_lifecycle_predecessor_reconstructed_history_does_not_match_live_item",
         "knowledge_lifecycle_successor_stale",
+        "knowledge_lifecycle_successor_reconstructed_history_does_not_match_live_item",
     }
 )
 
@@ -629,7 +630,10 @@ def parse_request_event_payload(
             raise OperatorApprovalValidationError(
                 "operator_quality_assessment_required"
             )
-        if decision == "reject" and binding_assessment_type is not None:
+        if decision == "reject" and binding_assessment_type not in {
+            None,
+            "knowledge_lifecycle",
+        }:
             raise OperatorApprovalValidationError(
                 "operator_approval_binding_invalid"
             )
