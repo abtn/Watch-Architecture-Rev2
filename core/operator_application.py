@@ -172,6 +172,29 @@ class OperatorApplicationAdapter:
             principal,
         )
 
+    def propose_supersede(
+        self,
+        principal: TrustedOperatorPrincipal,
+        *,
+        task_id: UUID,
+        evaluation_ids: tuple[UUID, ...],
+        target_knowledge_item_id: UUID,
+        successor_knowledge_item_id: UUID,
+        operator_rationale: dict[str, object],
+    ):
+        """Create a supersede proposal from trusted host Operator context."""
+        if self._snapshot_store is None:
+            raise OperatorApplicationError("supersede_snapshot_store_required")
+        _canonical_operator_identity(principal)
+        from core.experience_distiller import ExperienceDistiller
+
+        return ExperienceDistiller(
+            self._session_factory, self._snapshot_store, provider=None
+        ).propose_supersede(
+            task_id, evaluation_ids, target_knowledge_item_id,
+            successor_knowledge_item_id, operator_rationale, principal,
+        )
+
     def request_learning_change_decision(
         self,
         principal: TrustedOperatorPrincipal,

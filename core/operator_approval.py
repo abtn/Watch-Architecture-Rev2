@@ -160,7 +160,7 @@ def is_supported_learning_change(
         and (
             (operation == "create" and target_id is None)
             or (
-                operation in {"revise", "revalidate", "retire"}
+                operation in {"revise", "revalidate", "retire", "supersede"}
                 and target_id is not None
             )
         )

@@ -401,7 +401,7 @@ def build_approval_binding(
         )
         return binding
 
-    if not require_assessment and learning_change.operation != "retire":
+    if not require_assessment and learning_change.operation == "retire":
         raise KnowledgeApprovalBindingError(
             "knowledge_approval_assessment_required_for_operation"
         )
@@ -492,7 +492,7 @@ def build_approval_binding(
             raise KnowledgeApprovalBindingError(
                 "knowledge_approval_lifecycle_provenance_missing"
             )
-        if lifecycle_assessment.assessment_result != "eligible":
+        if require_assessment and lifecycle_assessment.assessment_result != "eligible":
             raise KnowledgeApprovalBindingError(
                 "knowledge_approval_lifecycle_not_eligible"
             )

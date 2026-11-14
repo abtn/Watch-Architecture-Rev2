@@ -608,6 +608,218 @@ class ExperienceDistiller:
                 generation_charge_id=None,
             )
 
+    def propose_supersede(
+        self,
+        task_id: UUID,
+        evaluation_ids: Sequence[UUID],
+        target_knowledge_item_id: UUID,
+        successor_knowledge_item_id: UUID,
+        operator_rationale: dict[str, Any],
+        principal: Any,
+    ) -> LearningChangeProposalResult:
+        """Record a trusted, immutable proposal to supersede a predecessor."""
+        from core.knowledge_lifecycle import (
+            PROPOSED_STATE_HASH_DOMAIN,
+            SUCCESSOR_REQUEST_FIELDS,
+            _domain_hash,
+            _normalize_json,
+            validate_operator_rationale,
+        )
+        from core.operator_application import (
+            TrustedOperatorPrincipal,
+            _canonical_operator_identity,
+            _require_team_grant,
+        )
+
+        if (
+            not isinstance(target_knowledge_item_id, UUID)
+            or not isinstance(successor_knowledge_item_id, UUID)
+            or target_knowledge_item_id == successor_knowledge_item_id
+        ):
+            raise ExperienceDistillerError("supersede_item_ids_invalid")
+        normalized_ids = self._normalize_evaluation_ids(evaluation_ids)
+        if not isinstance(principal, TrustedOperatorPrincipal):
+            raise ExperienceDistillerError("trusted_operator_principal_required")
+        try:
+            operator_id = _canonical_operator_identity(principal)
+            rationale = validate_operator_rationale(operator_rationale)
+        except (TypeError, ValueError) as error:
+            raise ExperienceDistillerError(
+                getattr(error, "reason", "supersede_rationale_invalid")
+            ) from error
+
+        with self._session_factory.begin() as session:
+            task = ObjectiveService._lock_task(session, task_id)
+            if task is None:
+                raise ExperienceDistillerError("task_not_found")
+            team = session.scalar(
+                select(Team).where(Team.id == task.team_id).with_for_update()
+            )
+            team = self._require_task_scope(task, team, allow_completed=True)
+            try:
+                _require_team_grant(principal, team.id)
+            except ValueError as error:
+                raise ExperienceDistillerError("operator_not_authorized") from error
+
+            prior_changes = list(
+                session.scalars(
+                    select(LearningChange).where(
+                        LearningChange.proposed_by_task_id == task.id
+                    )
+                )
+            )
+            if prior_changes:
+                if len(prior_changes) != 1:
+                    raise ExperienceDistillerConflict(
+                        "learning_change_task_history_conflict"
+                    )
+                prior = prior_changes[0]
+                provenance = session.get(LearningChangeOperatorProvenance, prior.id)
+                prior_ids = tuple(sorted(
+                    UUID(item["evaluation_id"])
+                    for item in prior.evidence_basis
+                    if isinstance(item, dict)
+                    and isinstance(item.get("evaluation_id"), str)
+                ))
+                if (
+                    prior.operation != "supersede"
+                    or prior.target_id != target_knowledge_item_id
+                    or prior.proposed_state.get("successor_knowledge_item_id")
+                    != str(successor_knowledge_item_id)
+                    or prior_ids != normalized_ids
+                    or prior.proposed_state.get("operator_rationale") != rationale
+                    or provenance is None
+                    or provenance.team_id != team.id
+                    or provenance.issuer != principal.issuer
+                    or provenance.subject != principal.subject
+                ):
+                    raise ExperienceDistillerConflict(
+                        "learning_change_task_basis_conflict"
+                    )
+                return LearningChangeProposalResult(
+                    learning_change_id=prior.id,
+                    status=prior.status,
+                    evidence_basis_hash=prior.evidence_basis_hash,
+                    proposal_hash=str(prior.proposed_state.get("proposal_hash", "")),
+                    generation_charge_id=None,
+                    replayed=True,
+                )
+
+            pack = self._build_pack(session, task, team, normalized_ids)
+            ids = sorted(
+                (target_knowledge_item_id, successor_knowledge_item_id), key=str
+            )
+            locked = list(session.scalars(
+                select(KnowledgeItem)
+                .where(KnowledgeItem.team_id == team.id, KnowledgeItem.id.in_(ids))
+                .order_by(KnowledgeItem.id.asc())
+                .with_for_update()
+            ))
+            if len(locked) != 2:
+                raise ExperienceDistillerError("supersede_item_not_found")
+            predecessor, _, previous_state, predecessor_binding = (
+                self._capture_target_state(
+                    session, team.id, target_knowledge_item_id,
+                    allowed_statuses={"active", "needs_review"}, lock=False,
+                )
+            )
+            successor, successor_state, successor_snapshot, successor_target = (
+                self._capture_target_state(
+                    session, team.id, successor_knowledge_item_id,
+                    allowed_statuses={"active"}, lock=False,
+                )
+            )
+            if predecessor.superseded_by_id is not None:
+                raise ExperienceDistillerError("supersede_predecessor_already_linked")
+            if successor.supersedes_item_id != predecessor.id:
+                raise ExperienceDistillerError("supersede_successor_relation_invalid")
+            if successor.review_after is None or successor.review_after <= datetime.now(timezone.utc):
+                raise ExperienceDistillerError("supersede_successor_not_d7_eligible")
+            origin = session.get(LearningChange, successor.origin_learning_change_id)
+            if origin is None or origin.team_id != team.id or origin.operation != "create" or origin.status != "accepted":
+                raise ExperienceDistillerError("supersede_successor_not_accepted")
+            candidates = list(session.scalars(
+                select(KnowledgeItem.id).where(
+                    KnowledgeItem.team_id == team.id,
+                    KnowledgeItem.supersedes_item_id == predecessor.id,
+                    KnowledgeItem.status != "retired",
+                )
+            ))
+            if candidates != [successor.id]:
+                raise ExperienceDistillerError("supersede_successor_not_unique")
+
+            successor_binding = {
+                "successor_knowledge_item_id": str(successor.id),
+                "successor_team_id": str(successor.team_id),
+                "successor_current_learning_change_id": successor_target["target_current_learning_change_id"],
+                "successor_content_version": successor_target["target_content_version"],
+                "successor_content_hash": successor_target["target_content_hash"],
+                "successor_content_hash_scheme": successor_target["target_content_hash_scheme"],
+                "successor_status": successor.status,
+                "successor_review_after": successor_state["review_after"],
+                "successor_state_hash": successor_snapshot["snapshot_hash"],
+            }
+            if set(successor_binding) != SUCCESSOR_REQUEST_FIELDS:
+                raise ExperienceDistillerError("supersede_successor_binding_invalid")
+            unsigned_state = {
+                "evidence_basis_hash": pack.basis_hash,
+                "operator_rationale": rationale,
+                **successor_binding,
+            }
+            proposal_hash = _sha256_json({
+                "predecessor_binding": predecessor_binding,
+                **unsigned_state,
+            })
+            proposed_state = {"proposal_hash": proposal_hash, **unsigned_state}
+            proposed_state_hash = _domain_hash(
+                PROPOSED_STATE_HASH_DOMAIN, _normalize_json(proposed_state)
+            )
+            idempotency_key = "r7b-supersede-v1:" + _sha256_json({
+                "team_id": str(team.id),
+                "task_id": str(task.id),
+                "predecessor_binding": predecessor_binding,
+                "successor_binding": successor_binding,
+                "evidence_basis_hash": pack.basis_hash,
+                "operator_rationale": rationale,
+                "operator_id": operator_id,
+            }).removeprefix("sha256:")
+            proposed_at = datetime.now(timezone.utc)
+            change = LearningChange(
+                id=uuid4(), team_id=team.id, target_kind="knowledge_item",
+                target_id=predecessor.id, operation="supersede",
+                proposed_state=proposed_state, previous_state=previous_state,
+                committed_state=None, evidence_basis=pack.evidence_basis,
+                evidence_basis_hash=pack.basis_hash, status="proposed",
+                idempotency_key=idempotency_key, proposed_by_task_id=task.id,
+                committed_by_task_id=None, operator_id=None, decision_reason=None,
+                created_at=proposed_at, committed_at=None,
+            )
+            session.add(change)
+            session.flush()
+            session.add(LearningChangeOperatorProvenance(
+                learning_change_id=change.id, team_id=team.id,
+                issuer=principal.issuer, subject=principal.subject,
+                recorded_at=proposed_at,
+            ))
+            ObjectiveService._add_event(session, task.id, "learning_change_proposed", {
+                "learning_change_id": str(change.id),
+                "operation": "supersede",
+                "evidence_basis_hash": pack.basis_hash,
+                "proposal_hash": proposal_hash,
+                "proposed_state_hash": proposed_state_hash,
+                "evaluation_ids": [str(item) for item in normalized_ids],
+                "generation_charge_id": None,
+                "target_binding": predecessor_binding,
+                "successor_binding": successor_binding,
+                "attempt_count": task.attempt_count,
+            })
+            session.flush()
+            return LearningChangeProposalResult(
+                learning_change_id=change.id, status=change.status,
+                evidence_basis_hash=change.evidence_basis_hash,
+                proposal_hash=proposal_hash, generation_charge_id=None,
+            )
+
     def _propose_candidate(
         self,
         task_id: UUID,
