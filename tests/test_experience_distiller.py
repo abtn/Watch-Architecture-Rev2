@@ -13405,6 +13405,33 @@ def test_b5_3_4_reciprocal_publication_is_shared_by_projection_retrieval_and_con
         decision_event.payload = original_payload
 
     with session_factory() as session:
+        change = session.get(LearningChange, learning_change_id)
+        assert change is not None
+        original_proposed_state = dict(change.proposed_state)
+    with session_factory.begin() as session:
+        change = session.get(LearningChange, learning_change_id)
+        assert change is not None
+        change.proposed_state = {
+            **change.proposed_state,
+            "successor_knowledge_item_id": str(uuid4()),
+        }
+    assert successor_id not in {
+        passage.knowledge_item_id
+        for passage in retriever.retrieve(fixture.team_id, "validated source evidence")
+    }
+    with session_factory() as session:
+        with pytest.raises(
+            TaskContextError, match="team_experience_supersession_not_visible"
+        ):
+            TaskContextAssembler._validate_team_experience_passage(
+                session, scope, successor_passage, datetime.now(timezone.utc)
+            )
+    with session_factory.begin() as session:
+        change = session.get(LearningChange, learning_change_id)
+        assert change is not None
+        change.proposed_state = original_proposed_state
+
+    with session_factory() as session:
         successor = session.get(KnowledgeItem, successor_id)
         assert successor is not None
         original_review_after = successor.review_after
