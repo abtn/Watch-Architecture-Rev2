@@ -759,7 +759,7 @@ class ExperienceDistiller:
                 "successor_review_after": successor_state["review_after"],
                 "successor_state_hash": successor_snapshot["snapshot_hash"],
             }
-            if set(successor_binding) != SUCCESSOR_REQUEST_FIELDS:
+            if set(successor_binding) != set(SUCCESSOR_REQUEST_FIELDS):
                 raise ExperienceDistillerError("supersede_successor_binding_invalid")
             unsigned_state = {
                 "evidence_basis_hash": pack.basis_hash,
