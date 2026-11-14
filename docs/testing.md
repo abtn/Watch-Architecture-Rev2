@@ -1021,7 +1021,7 @@ The Operator accepted D1–D3 concurrency, stale-binding, and replay proofs; D4 
 
 ## R7-B B5.3 Supersede — integrated regression and hosted verification (2026-11-14)
 
-**Status:** B5.3.1–B5.3.6 implementation, exact-head hosted/local verification, and final implementation/scope review are complete in draft PR [#120](https://github.com/abtn/Watch-Architecture-Rev2/pull/120). Final head `6821dba35da3fecd1540483f2e30cbff7aebcf15` passed hosted CI run [#1146](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43618529970) and Operator-local full disposable-PostgreSQL verification (996 passed, 113 Alembic deprecation warnings). Explicit B5.3 technical acceptance remains pending.
+**Historical status at the pre-closeout checkpoint (superseded):** B5.3.1–B5.3.6 implementation, exact-head hosted/local verification, and final review were complete in PR #120. The pending-acceptance disposition below was superseded by the formal closure record at the end of this section.
 
 - Fresh PostgreSQL migration and single-head checks passed at `0018_r7b_lifecycle_review_date`.
 - Ruff, Mypy, and PR patch-whitespace checks passed.
@@ -1057,7 +1057,7 @@ The integrated run exposed and corrected three issues before the passing head: r
 
 **Test-isolation correction included before this final head:** distillation assertions for absent LearningChange records now scope to the test's `distillation_task_id`; ingestion Event-count assertions now scope to the proposal's `task_id`. These test-only scopes prevent unrelated stale records in a reused local test database from affecting results. Production recovery and lifecycle safeguards were not weakened.
 
-**Closeout boundary:** B5.3 implementation, exact-head hosted/local verification, and final implementation/scope review are complete. The Operator has not yet given the separate explicit B5.3 technical-acceptance decision. PR #120 remains a draft and has not been merged. B5.4 remains gated; B6 and R7-C remain unauthorized.
+**Historical closeout boundary at the pre-acceptance checkpoint (superseded):** B5.3 implementation and verification were complete, while Operator technical acceptance and merge were pending. The final formal closure record below supersedes this checkpoint. B5.4 remained gated; B6 and R7-C remained unauthorized.
 
 
 ## R7-B B5.3 Supersede — formal closure (2026-11-14)
