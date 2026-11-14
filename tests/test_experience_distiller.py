@@ -13103,3 +13103,710 @@ def test_b5_3_supersede_proposal_assessment_and_atomic_predecessor_commit(
     )
     assert replayed.replayed is True
     assert replayed.knowledge_item_id == predecessor_id
+
+
+def _prepare_supersede_assessment(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    fixture: _Fixture,
+    predecessor_id: UUID,
+    successor_id: UUID,
+    *,
+    principal: TrustedOperatorPrincipal | None = None,
+) -> tuple[UUID, TrustedOperatorPrincipal, UUID]:
+    from core.knowledge_lifecycle_tasks import (
+        KnowledgeLifecycleAssessmentTask,
+        KnowledgeLifecycleAssessmentTaskRunner,
+    )
+
+    operator = principal or _approval_principal(
+        fixture.team_id, subject=f"operator-supersede-{uuid4()}"
+    )
+    proposal_task_id = _create_proposal_task(session_factory, fixture)
+    proposal = OperatorApplicationAdapter(
+        session_factory, snapshot_store
+    ).propose_supersede(
+        operator,
+        task_id=proposal_task_id,
+        evaluation_ids=tuple(case.evaluation_id for case in fixture.cases),
+        target_knowledge_item_id=predecessor_id,
+        successor_knowledge_item_id=successor_id,
+        operator_rationale={
+            "schema_version": 1,
+            "summary": "The accepted successor replaces the predecessor.",
+            "reasons": [
+                {
+                    "category": "improved_evidence",
+                    "statement": "The successor incorporates newer validated evidence.",
+                },
+                {
+                    "category": "applicability_changed",
+                    "statement": "The predecessor's original conditions no longer apply.",
+                },
+            ],
+        },
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=proposal_task_id,
+            attempt=1,
+            result_category="success_learning_change_proposed",
+            observed_at=datetime.now(timezone.utc),
+            learning_change_id=proposal.learning_change_id,
+        )
+    )
+    lifecycle_task_id = KnowledgeLifecycleAssessmentTask(
+        session_factory, snapshot_store
+    ).create(proposal.learning_change_id)
+    fixture.extra_task_ids.append(lifecycle_task_id)
+    assessment = KnowledgeLifecycleAssessmentTaskRunner(
+        session_factory, snapshot_store
+    ).run(lifecycle_task_id)
+    assert assessment.status == "done"
+    assert assessment.assessment_result == "eligible"
+    assert assessment.assessment_id is not None
+    return proposal.learning_change_id, operator, assessment.assessment_id
+
+
+def _prepare_supersede_approval(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    fixture: _Fixture,
+    predecessor_id: UUID,
+    successor_id: UUID,
+    *,
+    principal: TrustedOperatorPrincipal | None = None,
+    idempotency_key: UUID | None = None,
+) -> tuple[UUID, UUID, int, TrustedOperatorPrincipal, UUID]:
+    learning_change_id, operator, assessment_id = _prepare_supersede_assessment(
+        session_factory,
+        snapshot_store,
+        fixture,
+        predecessor_id,
+        successor_id,
+        principal=principal,
+    )
+    approval = OperatorApplicationAdapter(
+        session_factory, snapshot_store
+    ).request_learning_change_decision(
+        operator,
+        LearningChangeDecisionRequest(
+            learning_change_id=learning_change_id,
+            decision="accept",
+            idempotency_key=idempotency_key or uuid4(),
+        ),
+    )
+    admission = TaskRuntime(session_factory, snapshot_store).admit(approval.task_id)
+    return (
+        learning_change_id,
+        approval.task_id,
+        admission.attempt_count,
+        operator,
+        assessment_id,
+    )
+
+
+def test_b5_3_4_reciprocal_publication_is_shared_by_projection_retrieval_and_context(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    from core.context_assembly import TaskContextAssembler, TaskContextError
+
+    fixture = distillation_fixture(1, False, review_interval_days=30)
+    predecessor_id = _create_active_knowledge_item(
+        session_factory, snapshot_store, fixture
+    )
+    successor_id = _create_active_knowledge_item(
+        session_factory,
+        snapshot_store,
+        fixture,
+        supersedes_item_id=predecessor_id,
+    )
+
+    class FakeEmbeddingProvider:
+        space = EmbeddingSpace(
+            provider="watch_test",
+            model="b53-reciprocal-publication",
+            revision="1",
+            dimensions=3,
+            configuration="b53-consumer-proof",
+        )
+
+        def current_space(self):
+            return self.space
+
+        def embed(self, texts):
+            return EmbeddingBatch(
+                space=self.space,
+                vectors=tuple((0.1, 0.2, 0.3) for _ in texts),
+            )
+
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(session_factory, provider)
+    retriever = HybridKnowledgeRetriever(session_factory, snapshot_store, provider)
+    assert indexer.index_knowledge_item(predecessor_id).outcome == "indexed"
+    assert indexer.index_knowledge_item(successor_id).outcome == "indexed"
+
+    before = retriever.retrieve(fixture.team_id, "validated source evidence")
+    before_ids = {passage.knowledge_item_id for passage in before}
+    assert predecessor_id in before_ids
+    assert successor_id not in before_ids
+
+    supersede = _prepare_supersede_approval(
+        session_factory,
+        snapshot_store,
+        fixture,
+        predecessor_id,
+        successor_id,
+    )
+    learning_change_id, approval_task_id, attempt, principal, _ = supersede
+    commit = LearningCommitService(session_factory, snapshot_store).decide(
+        approval_task_id, attempt, principal
+    )
+    assert commit.decision == "accept"
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=approval_task_id,
+            attempt=attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=commit.committed_at,
+            learning_change_id=learning_change_id,
+        )
+    )
+
+    after = retriever.retrieve(fixture.team_id, "validated source evidence")
+    after_ids = {passage.knowledge_item_id for passage in after}
+    assert successor_id in after_ids
+    assert predecessor_id not in after_ids
+    successor_passage = next(
+        passage for passage in after if passage.knowledge_item_id == successor_id
+    )
+
+    scope = SimpleNamespace(team_id=fixture.team_id)
+    with session_factory() as session:
+        TaskContextAssembler._validate_team_experience_passage(
+            session, scope, successor_passage, datetime.now(timezone.utc)
+        )
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        assert predecessor is not None
+        original_pointer = predecessor.superseded_by_id
+        assert original_pointer == successor_id
+
+    # A one-sided link must fail closed in both consumers.
+    with session_factory.begin() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        assert predecessor is not None
+        predecessor.superseded_by_id = None
+    assert successor_id not in {
+        passage.knowledge_item_id
+        for passage in retriever.retrieve(fixture.team_id, "validated source evidence")
+    }
+    with session_factory() as session:
+        with pytest.raises(
+            TaskContextError, match="team_experience_supersession_not_visible"
+        ):
+            TaskContextAssembler._validate_team_experience_passage(
+                session, scope, successor_passage, datetime.now(timezone.utc)
+            )
+    with session_factory.begin() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        assert predecessor is not None
+        predecessor.superseded_by_id = successor_id
+
+    # The canonical decision Event must name the same successor as the graph.
+    with session_factory() as session:
+        decision_event = session.scalar(
+            select(Event).where(
+                Event.task_id == approval_task_id,
+                Event.type == "learning_change_accepted",
+            )
+        )
+        assert decision_event is not None
+        original_payload = dict(decision_event.payload)
+    with session_factory.begin() as session:
+        decision_event = session.scalar(
+            select(Event).where(
+                Event.task_id == approval_task_id,
+                Event.type == "learning_change_accepted",
+            )
+        )
+        assert decision_event is not None
+        decision_event.payload = {
+            **decision_event.payload,
+            "successor_knowledge_item_id": str(uuid4()),
+        }
+    assert successor_id not in {
+        passage.knowledge_item_id
+        for passage in retriever.retrieve(fixture.team_id, "validated source evidence")
+    }
+    with session_factory() as session:
+        with pytest.raises(
+            TaskContextError, match="team_experience_supersession_not_visible"
+        ):
+            TaskContextAssembler._validate_team_experience_passage(
+                session, scope, successor_passage, datetime.now(timezone.utc)
+            )
+    with session_factory.begin() as session:
+        decision_event = session.scalar(
+            select(Event).where(
+                Event.task_id == approval_task_id,
+                Event.type == "learning_change_accepted",
+            )
+        )
+        assert decision_event is not None
+        decision_event.payload = original_payload
+
+    with session_factory() as session:
+        successor = session.get(KnowledgeItem, successor_id)
+        assert successor is not None
+        original_review_after = successor.review_after
+        assert original_review_after is not None
+
+    ineligible_states = (
+        ("due", original_review_after - timedelta(seconds=1), "active"),
+        ("unscheduled", None, "active"),
+        ("needs_review", original_review_after, "needs_review"),
+    )
+    for _, review_after, status in ineligible_states:
+        with session_factory.begin() as session:
+            successor = session.get(KnowledgeItem, successor_id)
+            assert successor is not None
+            successor.review_after = review_after
+            successor.status = status
+        assert successor_id not in {
+            passage.knowledge_item_id
+            for passage in retriever.retrieve(
+                fixture.team_id, "validated source evidence"
+            )
+        }
+        with session_factory() as session:
+            with pytest.raises(
+                TaskContextError,
+                match="team_experience_item_not_current_or_eligible",
+            ):
+                TaskContextAssembler._validate_team_experience_passage(
+                    session, scope, successor_passage, datetime.now(timezone.utc)
+                )
+        with session_factory.begin() as session:
+            successor = session.get(KnowledgeItem, successor_id)
+            assert successor is not None
+            successor.review_after = original_review_after
+            successor.status = "active"
+
+    with session_factory() as session:
+        successor = session.get(KnowledgeItem, successor_id)
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        assert successor is not None and predecessor is not None
+        assert successor.supersedes_item_id == predecessor.id
+        assert predecessor.superseded_by_id == successor.id
+        TaskContextAssembler._validate_team_experience_passage(
+            session, scope, successor_passage, datetime.now(timezone.utc)
+        )
+
+
+def test_b5_3_5_competing_supersede_approvals_have_one_canonical_winner(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(1, False, review_interval_days=30)
+    predecessor_id = _create_active_knowledge_item(
+        session_factory, snapshot_store, fixture
+    )
+    successor_id = _create_active_knowledge_item(
+        session_factory,
+        snapshot_store,
+        fixture,
+        supersedes_item_id=predecessor_id,
+    )
+    principal = _approval_principal(
+        fixture.team_id, subject=f"operator-competing-supersede-{uuid4()}"
+    )
+    approvals = [
+        _prepare_supersede_approval(
+            session_factory,
+            snapshot_store,
+            fixture,
+            predecessor_id,
+            successor_id,
+            principal=principal,
+        )
+        for _ in range(2)
+    ]
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        successor = session.get(KnowledgeItem, successor_id)
+        assert predecessor is not None and successor is not None
+        predecessor_before = knowledge_item_state(predecessor)
+        successor_before = knowledge_item_state(successor)
+        successor_hash = knowledge_item_content_hash(successor)
+
+    barrier = Barrier(2)
+
+    def decide(approval):
+        change_id, task_id, attempt, operator, _ = approval
+        barrier.wait(timeout=30)
+        try:
+            return LearningCommitService(session_factory, snapshot_store).decide(
+                task_id, attempt, operator
+            )
+        except LearningCommitError as error:
+            return error
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(decide, approval) for approval in approvals]
+        results = [future.result(timeout=90) for future in futures]
+
+    winners = [result for result in results if not isinstance(result, LearningCommitError)]
+    losers = [result for result in results if isinstance(result, LearningCommitError)]
+    assert len(winners) == 1
+    assert len(losers) == 1
+    winner_index = next(
+        index
+        for index, result in enumerate(results)
+        if not isinstance(result, LearningCommitError)
+    )
+    winner_change_id, winner_task_id, winner_attempt, _, _ = approvals[winner_index]
+    loser_change_id, loser_task_id, _, _, _ = approvals[1 - winner_index]
+    winner = winners[0]
+    assert winner.learning_change_id == winner_change_id
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=winner_task_id,
+            attempt=winner_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=winner.committed_at,
+            learning_change_id=winner_change_id,
+        )
+    )
+
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        successor = session.get(KnowledgeItem, successor_id)
+        winner_change = session.get(LearningChange, winner_change_id)
+        loser_change = session.get(LearningChange, loser_change_id)
+        assert predecessor is not None and successor is not None
+        assert winner_change is not None and loser_change is not None
+        assert predecessor.status == "retired"
+        assert predecessor.superseded_by_id == successor_id
+        assert predecessor.current_learning_change_id == winner_change_id
+        assert knowledge_item_state(successor) == successor_before
+        assert knowledge_item_content_hash(successor) == successor_hash
+        assert winner_change.status == "accepted"
+        assert loser_change.status == "proposed"
+        assert loser_change.committed_by_task_id is None
+        assert reconstruct_knowledge_item_history(
+            session, predecessor
+        ).learning_change_ids[-1] == winner_change_id
+        assert winner_change_id not in reconstruct_knowledge_item_history(
+            session, successor
+        ).learning_change_ids
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == winner_task_id,
+                Event.type == "learning_change_accepted",
+            )
+        ) == 0
+        # The canonical decision Event is written by LearningCommitService;
+        # TaskRuntime adds completion provenance only after the winning commit.
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == winner_task_id
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == loser_task_id,
+                Event.type == "learning_change_accepted",
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == loser_task_id
+            )
+        ) == 0
+
+
+def test_b5_3_5_supersede_and_predecessor_retirement_race_has_one_winner(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(1, False, review_interval_days=30)
+    predecessor_id = _create_active_knowledge_item(
+        session_factory, snapshot_store, fixture
+    )
+    successor_id = _create_active_knowledge_item(
+        session_factory,
+        snapshot_store,
+        fixture,
+        supersedes_item_id=predecessor_id,
+    )
+    retirement = _prepare_retirement_approval(
+        session_factory, snapshot_store, fixture, predecessor_id
+    )
+    supersede = _prepare_supersede_approval(
+        session_factory,
+        snapshot_store,
+        fixture,
+        predecessor_id,
+        successor_id,
+    )
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        successor = session.get(KnowledgeItem, successor_id)
+        assert predecessor is not None and successor is not None
+        successor_before = knowledge_item_state(successor)
+        successor_hash = knowledge_item_content_hash(successor)
+
+    barrier = Barrier(2)
+
+    def decide(task_id, attempt, operator):
+        barrier.wait(timeout=30)
+        try:
+            return LearningCommitService(session_factory, snapshot_store).decide(
+                task_id, attempt, operator
+            )
+        except LearningCommitError as error:
+            return error
+
+    operations = (
+        (retirement[0], retirement[1], retirement[2], retirement[3]),
+        (supersede[0], supersede[1], supersede[2], supersede[3]),
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(decide, task_id, attempt, operator)
+            for _, task_id, attempt, operator in operations
+        ]
+        results = [future.result(timeout=90) for future in futures]
+
+    winners = [result for result in results if not isinstance(result, LearningCommitError)]
+    losers = [result for result in results if isinstance(result, LearningCommitError)]
+    assert len(winners) == 1
+    assert len(losers) == 1
+    winner_index = next(
+        index
+        for index, result in enumerate(results)
+        if not isinstance(result, LearningCommitError)
+    )
+    winner_change_id, winner_task_id, winner_attempt, winner_operator = operations[
+        winner_index
+    ]
+    loser_change_id, loser_task_id, _, _ = operations[1 - winner_index]
+    winner = winners[0]
+    assert winner.learning_change_id == winner_change_id
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=winner_task_id,
+            attempt=winner_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=winner.committed_at,
+            learning_change_id=winner_change_id,
+        )
+    )
+
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        successor = session.get(KnowledgeItem, successor_id)
+        winning_change = session.get(LearningChange, winner_change_id)
+        losing_change = session.get(LearningChange, loser_change_id)
+        assert predecessor is not None and successor is not None
+        assert winning_change is not None and losing_change is not None
+        assert predecessor.status == "retired"
+        assert predecessor.current_learning_change_id == winner_change_id
+        assert predecessor.superseded_by_id == (
+            successor_id if winning_change.operation == "supersede" else None
+        )
+        assert knowledge_item_state(successor) == successor_before
+        assert knowledge_item_content_hash(successor) == successor_hash
+        assert winning_change.status == "accepted"
+        assert losing_change.status == "proposed"
+        assert losing_change.committed_by_task_id is None
+        assert reconstruct_knowledge_item_history(
+            session, predecessor
+        ).learning_change_ids[-1] == winner_change_id
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == loser_task_id,
+                Event.type == "learning_change_accepted",
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == loser_task_id
+            )
+        ) == 0
+
+
+def test_b5_3_5_original_supersede_replays_after_successor_retirement(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(1, False, review_interval_days=30)
+    predecessor_id = _create_active_knowledge_item(
+        session_factory, snapshot_store, fixture
+    )
+    successor_id = _create_active_knowledge_item(
+        session_factory,
+        snapshot_store,
+        fixture,
+        supersedes_item_id=predecessor_id,
+    )
+    supersede = _prepare_supersede_approval(
+        session_factory,
+        snapshot_store,
+        fixture,
+        predecessor_id,
+        successor_id,
+    )
+    supersede_change_id, supersede_task_id, supersede_attempt, principal, _ = supersede
+    commit_service = LearningCommitService(session_factory, snapshot_store)
+    accepted = commit_service.decide(
+        supersede_task_id, supersede_attempt, principal
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=supersede_task_id,
+            attempt=supersede_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=accepted.committed_at,
+            learning_change_id=supersede_change_id,
+        )
+    )
+
+    retirement = _prepare_retirement_approval(
+        session_factory, snapshot_store, fixture, successor_id
+    )
+    retirement_change_id, retirement_task_id, retirement_attempt, retirement_principal, _ = (
+        retirement
+    )
+    retired = commit_service.decide(
+        retirement_task_id, retirement_attempt, retirement_principal
+    )
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=retirement_task_id,
+            attempt=retirement_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=retired.committed_at,
+            learning_change_id=retirement_change_id,
+        )
+    )
+
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        successor = session.get(KnowledgeItem, successor_id)
+        assert predecessor is not None and successor is not None
+        assert predecessor.superseded_by_id == successor_id
+        assert successor.status == "retired"
+        assert successor.supersedes_item_id == predecessor_id
+        assert retirement_change_id in reconstruct_knowledge_item_history(
+            session, successor
+        ).learning_change_ids
+        before_replay = _team_lifecycle_snapshot(session, fixture.team_id)
+
+    replay = commit_service.decide(
+        supersede_task_id, supersede_attempt, principal
+    )
+    assert replay.replayed is True
+    assert replay.learning_change_id == supersede_change_id
+    assert replay.knowledge_item_id == predecessor_id
+    with session_factory() as session:
+        assert _team_lifecycle_snapshot(session, fixture.team_id) == before_replay
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        successor = session.get(KnowledgeItem, successor_id)
+        assert predecessor is not None and successor is not None
+        assert reconstruct_knowledge_item_history(
+            session, predecessor
+        ).learning_change_ids[-1] == supersede_change_id
+        assert retirement_change_id in reconstruct_knowledge_item_history(
+            session, successor
+        ).learning_change_ids
+
+
+def test_b5_3_5_rejected_supersede_replay_survives_later_acceptance_and_conflicts(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(1, False, review_interval_days=30)
+    predecessor_id = _create_active_knowledge_item(
+        session_factory, snapshot_store, fixture
+    )
+    successor_id = _create_active_knowledge_item(
+        session_factory,
+        snapshot_store,
+        fixture,
+        supersedes_item_id=predecessor_id,
+    )
+    principal = _approval_principal(
+        fixture.team_id, subject=f"operator-supersede-replay-{uuid4()}"
+    )
+    rejected_change_id, _, _ = _prepare_supersede_assessment(
+        session_factory,
+        snapshot_store,
+        fixture,
+        predecessor_id,
+        successor_id,
+        principal=principal,
+    )
+    rejection_request = LearningChangeDecisionRequest(
+        learning_change_id=rejected_change_id,
+        decision="reject",
+        idempotency_key=uuid4(),
+        rejection_reason="The current evidence does not justify supersession.",
+    )
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    rejected = adapter.decide_learning_change(principal, rejection_request)
+    assert rejected.decision == "reject"
+    assert rejected.learning_change_status == "rejected"
+
+    accepted_change_id, _, _ = _prepare_supersede_assessment(
+        session_factory,
+        snapshot_store,
+        fixture,
+        predecessor_id,
+        successor_id,
+        principal=principal,
+    )
+    acceptance = adapter.decide_learning_change(
+        principal,
+        LearningChangeDecisionRequest(
+            learning_change_id=accepted_change_id,
+            decision="accept",
+            idempotency_key=uuid4(),
+        ),
+    )
+    assert acceptance.decision == "accept"
+    assert acceptance.learning_change_status == "accepted"
+
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        assert predecessor is not None
+        assert predecessor.status == "retired"
+        assert predecessor.superseded_by_id == successor_id
+        before_replay = _team_lifecycle_snapshot(session, fixture.team_id)
+
+    replay = adapter.decide_learning_change(principal, rejection_request)
+    assert replay.replayed is True
+    assert replay.decision == "reject"
+    assert replay.learning_change_id == rejected_change_id
+    with session_factory() as session:
+        assert _team_lifecycle_snapshot(session, fixture.team_id) == before_replay
+
+    with pytest.raises(
+        OperatorTaskRequestConflict,
+        match="idempotency_key_reused_with_different_request",
+    ):
+        adapter.decide_learning_change(
+            principal,
+            LearningChangeDecisionRequest(
+                learning_change_id=accepted_change_id,
+                decision="reject",
+                idempotency_key=rejection_request.idempotency_key,
+                rejection_reason=rejection_request.rejection_reason,
+            ),
+        )
