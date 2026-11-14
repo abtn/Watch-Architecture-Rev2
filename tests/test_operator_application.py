@@ -1130,7 +1130,7 @@ def test_learning_commit_rechecks_unsupported_operation_eligibility(
         learning_change.target_id = uuid4()
 
     with pytest.raises(
-        LearningCommitCorrupt, match="knowledge_approval_target_snapshot_missing"
+        LearningCommitCorrupt, match="supersede_successor_id_invalid"
     ):
         LearningCommitService(session_factory, snapshot_store).decide(
             created.task_id, 1, principal
