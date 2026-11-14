@@ -1,8 +1,8 @@
 # R7-B B5.4 — Integrated Lifecycle Regression and Closeout Plan
 
-**Status:** B5.3 is formally closed. B5.4.0 read-only baseline/coverage audit was explicitly authorized by the Operator on 2026-11-14 and is active. No source/test, migration, schema, model, or runtime change is authorized at this checkpoint; B5.4.1–B5.4.5 remain separately gated.
-**Planning baseline:** `main` at B5.3 squash merge `7fbac0656f9eda9983a73dfe84fae859fd7e98f9`.
-**Implementation baseline requirement:** Create the implementation branch from the exact then-current verified `main` after documentation PR #121 is merged; record the verified base SHA in the B5.4.0 audit record. Do not branch from this planning branch.
+**Status:** B5.3 is formally closed. B5.4.0 remote read-only baseline/coverage audit is complete and recorded in [the audit report](r7-b-b5-4-baseline-audit.md). Local Operator preflight remains pending. No source/test, migration, schema, model, or runtime change has been authorized; B5.4.1–B5.4.5 remain separately gated.
+**Planning baseline:** `main` after B5.4 planning PR #121 squash merge `eef7815db922984c798e95ebd91d6d5c6c87e3b0`.
+**Implementation baseline requirement:** The implementation branch `r7b-b5-4-implementation-20261114` was created from exact current `main` SHA `eef7815db922984c798e95ebd91d6d5c6c87e3b0` after PR #121 merged. The exact SHA and remote source/test inventory are recorded in [the B5.4.0 audit](r7-b-b5-4-baseline-audit.md). Do not branch from the earlier planning branch.
 **Scope:** Integrated regression evidence for the already implemented B5.1 Create-with-successor, B5.2 Retire, and B5.3 Supersede lifecycle paths. Prefer test-only changes and existing fixtures/entry points.
 
 ## 1. Objective
@@ -38,9 +38,9 @@ The work is an integration/regression and closeout phase. It must not redesign t
 5. Build a coverage matrix mapping each required scenario below to existing tests and identify only the missing integration assertions.
 6. Confirm whether the required proof can be completed in tests without production changes. If not, stop and report the exact blocker.
 
-**Deliverable:** A concise coverage map and a bounded test-only implementation proposal.
+**Deliverable:** Completed in [the B5.4.0 baseline/coverage audit](r7-b-b5-4-baseline-audit.md). It identifies two bounded test-only gaps and one create-with-successor replay interpretation point. No production or architectural gap was found by the remote inventory.
 
-**Exit:** Exact baseline verified; no production change is proposed without a demonstrated gap and separate authorization.
+**Exit:** Remote exact baseline and source/test inventory verified. Local Operator worktree/database preflight remains pending. No source/test change is proposed without separate checkpoint authorization.
 
 ### B5.4.1 — Complete lifecycle sequence
 
@@ -156,6 +156,6 @@ Do not weaken an acceptance criterion to preserve schedule.
 
 ## 6. Authorization boundary
 
-The Operator explicitly authorized B5.4.0 on 2026-11-14. This authorization permits creating the implementation branch from verified current `main`, performing the read-only baseline and coverage audit, and recording the audit documentation. It does not authorize source/test, migration, schema, model, or runtime changes. B5.4.1–B5.4.5 remain gated and require a separate checkpoint decision after B5.4.0 review. If the audit demonstrates a production defect or architecture change is necessary, stop and return for authorization.
+The Operator explicitly authorized B5.4.0 on 2026-11-14. The remote implementation branch and read-only audit are complete; see [the B5.4.0 audit](r7-b-b5-4-baseline-audit.md). Local Operator preflight remains pending. This authorization did not permit source/test, migration, schema, model, or runtime changes. B5.4.1–B5.4.5 remain gated and require separate checkpoint decisions. If later implementation work demonstrates a production defect or architecture change is necessary, stop and return for authorization.
 
 B5.3 is formally closed by the Operator's explicit instruction to close and squash-merge PR #120. The B5.4.0 audit does not make B5.4 an automatic R8 prerequisite. B6 and R7-C remain unauthorized. R8 remains governed by its separate entry gate and delivery plan.
