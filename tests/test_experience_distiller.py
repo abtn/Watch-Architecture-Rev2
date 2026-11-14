@@ -13213,8 +13213,6 @@ def test_b5_3_4_reciprocal_publication_is_shared_by_projection_retrieval_and_con
     snapshot_store,
     distillation_fixture,
 ):
-    from core.context_assembly import TaskContextAssembler, TaskContextError
-
     fixture = distillation_fixture(1, False, review_interval_days=30)
     predecessor_id = _create_active_knowledge_item(
         session_factory, snapshot_store, fixture
@@ -13255,6 +13253,53 @@ def test_b5_3_4_reciprocal_publication_is_shared_by_projection_retrieval_and_con
     assert predecessor_id in before_ids
     assert successor_id not in before_ids
 
+    from core.context_assembly import TaskContextAssembler, TaskContextError
+    from core.knowledge_index import RetrievedPassage
+
+    with session_factory() as session:
+        chunk = session.scalar(
+            select(TeamExperienceChunk)
+            .where(TeamExperienceChunk.knowledge_item_id == successor_id)
+            .order_by(TeamExperienceChunk.chunk_index)
+            .limit(1)
+        )
+        index_state = session.get(TeamExperienceIndexState, successor_id)
+        assert chunk is not None and index_state is not None
+        candidate_passage = RetrievedPassage(
+            signal_id=None,
+            source_url=None,
+            source_type=None,
+            snapshot_ref=None,
+            content_hash=chunk.item_content_hash,
+            chunk_id=chunk.id,
+            chunk_index=chunk.chunk_index,
+            text=chunk.chunk_text,
+            chunk_hash=chunk.chunk_hash,
+            score=0.0,
+            lexical_rank=None,
+            vector_rank=None,
+            embedding_space_key=index_state.embedding_space_key,
+            embedding_provider=chunk.embedding_provider,
+            embedding_model=chunk.embedding_model,
+            embedding_revision=chunk.embedding_revision,
+            embedding_configuration=chunk.embedding_configuration,
+            embedding_dimensions=chunk.embedding_dimensions,
+            logical_core="team_experience",
+            knowledge_item_id=chunk.knowledge_item_id,
+            knowledge_item_version=chunk.item_version,
+            origin_learning_change_id=chunk.origin_learning_change_id,
+            current_learning_change_id=chunk.current_learning_change_id,
+            content_hash_scheme=chunk.content_hash_scheme,
+        )
+    scope = SimpleNamespace(team_id=fixture.team_id)
+    with session_factory() as session:
+        with pytest.raises(
+            TaskContextError, match="team_experience_supersession_not_visible"
+        ):
+            TaskContextAssembler._validate_team_experience_passage(
+                session, scope, candidate_passage, datetime.now(timezone.utc)
+            )
+
     supersede = _prepare_supersede_approval(
         session_factory,
         snapshot_store,
@@ -13286,7 +13331,6 @@ def test_b5_3_4_reciprocal_publication_is_shared_by_projection_retrieval_and_con
         passage for passage in after if passage.knowledge_item_id == successor_id
     )
 
-    scope = SimpleNamespace(team_id=fixture.team_id)
     with session_factory() as session:
         TaskContextAssembler._validate_team_experience_passage(
             session, scope, successor_passage, datetime.now(timezone.utc)
