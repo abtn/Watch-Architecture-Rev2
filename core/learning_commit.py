@@ -333,7 +333,7 @@ class LearningCommitService:
                 or learning_change.committed_by_task_id is not None
             ):
                 raise LearningCommitError(
-                    "only_knowledge_item_create_revise_revalidate_or_retire_is_supported"
+                    "only_knowledge_item_create_revise_revalidate_retire_or_supersede_is_supported"
                 )
 
             team = candidate_team_lock or session.scalar(
