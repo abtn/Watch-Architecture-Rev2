@@ -1017,3 +1017,22 @@ At the time of this initial 2026-11-13 record, supplemental concurrency, stale-b
 Exact implementation-head hosted CI passed in [run #43597709449](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43597709449). The final documentation-inclusive PR #118 head was `c7061d73350d458338611cd9a6aa1426ae476739`; exact-head hosted CI passed in [run #43601002645](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43601002645) (run #1085), including fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, the full suite, and disposable-container cleanup. PR #118 was squash-merged at `dcc77b350985facdcc3ec840f499efd959f2d7bd`. The earlier documentation-inclusive head `d715a868a95a3d8e4856e0428ab678445637cf14` and run #43599132517 (run #1083) were intermediate and are retained only as historical verification.
 
 The Operator accepted D1–D3 concurrency, stale-binding, and replay proofs; D4 verification/review; and D5 scope. The review found no blocking code findings. **B5.2 technical acceptance: APPROVED.** The earlier 2026-11-13 verification and review entries above are historical snapshots; their pending-acceptance statements were superseded by this final record. B5.3 Supersede was separately authorized on 2026-11-14; B5.4 remains gated; B6 and R7-C remain unauthorized.
+
+
+## R7-B B5.3 Supersede — integrated regression and hosted verification (2026-11-14)
+
+**Status:** B5.3.1–B5.3.5 implementation and B5.3.6 integrated regression are present in draft PR [#120](https://github.com/abtn/Watch-Architecture-Rev2/pull/120). Exact-head hosted CI passed on implementation/test head `d39834548cfe6d1b96246e3108bd48ded103e7ff` in [run #1140](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43613291052). Operator-local full disposable-PostgreSQL verification and explicit B5.3 technical acceptance remain pending.
+
+- Fresh PostgreSQL migration and single-head checks passed at `0018_r7b_lifecycle_review_date`.
+- Ruff, Mypy, and PR patch-whitespace checks passed.
+- Full suite: **996 passed, 113 warnings in 145.56s**. The warnings are Alembic `path_separator` deprecations.
+- CI disposable PostgreSQL container cleanup passed.
+- No schema change or migration was added.
+
+The B5.3.4 regressions exercise reciprocal publication across Team Experience projection/indexing, ordinary retrieval, and Task Context. They verify candidate invisibility before the predecessor's reciprocal pointer is committed, candidate visibility after the canonical commit, predecessor exclusion, invalid/cross-Team reciprocal bindings, and D7 eligibility at projection, retrieval, and Context boundaries.
+
+The B5.3.5 regressions cover competing supersede approvals, supersede-versus-retirement serialization, accepted replay after later candidate retirement, rejected replay after a later accepted supersede, stale successor-history replay after state restoration, and idempotency conflicts. Completed-request replay uses the immutable recorded binding while reconstructing the candidate's current history and checking its immutable Team/predecessor relation.
+
+The integrated run exposed and corrected three issues before the passing head: rejected supersede requests must preserve their lifecycle-assessment binding; stale successor-history failures must use the same durable replay path as predecessor-history failures; and the D7 Context test must use a refreshed passage after the projection is rebuilt. These corrections are included in `d39834548cfe6d1b96246e3108bd48ded103e7ff`.
+
+**Remaining B5.3.6 work:** Operator-local exact-head sync/test against a fresh disposable PostgreSQL database, final diff/scope review, and documentation closeout. B5.3 has not been accepted or merged. B5.4 remains separately gated; B6 and R7-C remain unauthorized.
