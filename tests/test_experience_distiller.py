@@ -8503,7 +8503,6 @@ def test_lifecycle_retire_assessment_records_once_without_canonical_writes(
     source_task_id, learning_change_id = uuid4(), uuid4()
     started_at = datetime.now(timezone.utc)
     completed_at = started_at + timedelta(seconds=2)
-    proposal_hash = "sha256:" + ("d" * 64)
     rationale = {
         "schema_version": 1,
         "summary": "The existing procedure is no longer appropriate for this context.",
@@ -10136,13 +10135,23 @@ def test_b37_supersede_assessment_round_trips_successor_and_rechecks_approval_bi
             allow_completed_task=True,
             include_version_marker=True,
         )
+        from core.evaluations import _sha256_json
+
         predecessor_state = knowledge_item_state(predecessor)
+        predecessor_snapshot = encode_state_snapshot(predecessor_state)
+        predecessor_binding = {
+            "target_knowledge_item_id": str(predecessor.id),
+            "target_current_learning_change_id": str(
+                predecessor.current_learning_change_id
+            ),
+            "target_content_version": predecessor.version,
+            "target_content_hash": knowledge_item_content_hash(predecessor),
+            "target_content_hash_scheme": KNOWLEDGE_CONTENT_HASH_SCHEME,
+            "target_state_hash": predecessor_snapshot["snapshot_hash"],
+        }
         candidate = session.get(KnowledgeItem, candidate_id)
         assert candidate is not None
-        proposed_state = {
-            "proposal_hash": proposal_hash,
-            "evidence_basis_hash": evidence_pack.basis_hash,
-            "operator_rationale": rationale,
+        successor_binding = {
             "successor_knowledge_item_id": str(candidate.id),
             "successor_team_id": str(candidate.team_id),
             "successor_current_learning_change_id": str(
@@ -10155,6 +10164,27 @@ def test_b37_supersede_assessment_round_trips_successor_and_rechecks_approval_bi
             "successor_review_after": _timestamp(candidate.review_after),
             "successor_state_hash": candidate_snapshot["snapshot_hash"],
         }
+        unsigned_state = {
+            "evidence_basis_hash": evidence_pack.basis_hash,
+            "operator_rationale": rationale,
+            **successor_binding,
+        }
+        proposal_hash = _sha256_json({
+            "predecessor_binding": predecessor_binding,
+            **unsigned_state,
+        })
+        proposed_state = {"proposal_hash": proposal_hash, **unsigned_state}
+        idempotency_key = "r7b-supersede-v1:" + _sha256_json({
+            "team_id": str(fixture.team_id),
+            "task_id": str(proposal_source_task_id),
+            "predecessor_binding": predecessor_binding,
+            "successor_binding": successor_binding,
+            "evidence_basis_hash": evidence_pack.basis_hash,
+            "operator_rationale": rationale,
+            "operator_id": canonical_operator_identity(
+                "https://operator.example.test", "operator-b37-supersede"
+            ),
+        }).removeprefix("sha256:")
         proposed_state_hash = _domain_hash(
             PROPOSED_STATE_HASH_DOMAIN, _normalize_json(proposed_state)
         )
@@ -10165,12 +10195,12 @@ def test_b37_supersede_assessment_round_trips_successor_and_rechecks_approval_bi
             target_id=predecessor.id,
             operation="supersede",
             proposed_state=proposed_state,
-            previous_state=encode_state_snapshot(predecessor_state),
+            previous_state=predecessor_snapshot,
             committed_state=None,
             evidence_basis=evidence_pack.evidence_basis,
             evidence_basis_hash=evidence_pack.basis_hash,
             status="proposed",
-            idempotency_key=f"b37-supersede-{supersede_change_id}",
+            idempotency_key=idempotency_key,
             proposed_by_task_id=proposal_source_task_id,
             committed_by_task_id=None,
             operator_id=None,
@@ -10225,6 +10255,8 @@ def test_b37_supersede_assessment_round_trips_successor_and_rechecks_approval_bi
                         "proposal_hash": proposal_hash,
                         "proposed_state_hash": proposed_state_hash,
                         "evidence_basis_hash": evidence_pack.basis_hash,
+                        "target_binding": predecessor_binding,
+                        "successor_binding": successor_binding,
                         "attempt_count": 1,
                     },
                     created_at=proposal_completed_at - timedelta(seconds=1),
