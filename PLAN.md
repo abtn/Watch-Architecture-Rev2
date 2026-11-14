@@ -401,9 +401,3 @@ The first bounded Domain Knowledge Core, Team Experience Core, and controlled di
 
 Update this file whenever milestone status or its gate changes. Other documents should link here instead of duplicating a separate current-status table. Changes to the architecture contract require the applicable spec/ADR and `CHANGE_MAP.md` updates as well.
 
-
-### B5.2 current verification and acceptance gate (2026-11-13)
-
-PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118) is open as a draft at code head `3d102d8e4a9204580bf187018c51da358aa6c121`. Operator-local verification passed migration to `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), the integrated retirement regression, and the full suite (**962 passed, 113 Alembic deprecation warnings**). The disposable database was removed and the local verification script completed its final checks. Exact-head hosted CI run [#43456366139](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43456366139) passed.
-
-B5.2 is not formally accepted or closed. Dedicated retire-versus-retire and retire-versus-candidate-creation concurrency proofs, plus the remaining negative/stale-binding acceptance cases, are still required. See [the B5 implementation plan](docs/development/r7-b-b5-implementation-plan.md) and [testing evidence](docs/testing.md). No merge is authorized by this status update.

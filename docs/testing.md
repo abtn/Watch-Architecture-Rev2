@@ -983,7 +983,7 @@ New regressions cover successful candidate creation through the existing trusted
 
 ## R7-B B5.2 Retire — initial implementation verification (historical snapshot; superseded)
 
-PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118), code head `3d102d8e4a9204580bf187018c51da358aa6c121), passed Operator-local verification against a fresh disposable PostgreSQL instance:
+PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118), code head `3d102d8e4a9204580bf187018c51da358aa6c121`, passed Operator-local verification against a fresh disposable PostgreSQL instance:
 - Alembic upgraded to `0018_r7b_lifecycle_review_date`; one head.
 - Ruff passed.
 - Mypy passed (38 source files).
@@ -1008,3 +1008,12 @@ The initial PR regression proves the main ordinary-retirement, candidate-cancell
 On that exact test commit, focused B5.2 verification passed **19 tests, 100 deselected**. The full `scripts/test-disposable-postgres.ps1` run passed: Alembic upgrade and single-head check (`0018_r7b_lifecycle_review_date`), Ruff, Mypy (38 source files), and **980 tests, 113 warnings in 306.14s**. The disposable container was removed. The warnings are Alembic `path_separator` deprecations.
 
 At the time of this initial 2026-11-13 record, supplemental concurrency, stale-binding, and replay proofs and final Operator acceptance were still pending. Those requirements were subsequently completed and accepted; the authoritative final-head evidence and disposition are recorded in the following B5.2 final verification section.
+
+
+## R7-B B5.2 Retire — final verification and technical acceptance (2026-11-14)
+
+**Implementation/test head:** `dca48969f5f104eb306092906e12aeb39a2c5352`. Operator-local verification on that exact code head passed fresh disposable-PostgreSQL migration and single-head checks at `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), `git diff --check`, and the full suite (**985 passed, 113 warnings in 359.40s**). The verification script confirmed restoration of both database environment variables, removal of its disposable container, exact branch/HEAD, and a clean worktree. The 113 warnings are Alembic `path_separator` deprecations.
+
+Exact implementation-head hosted CI passed in [run #43597709449](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43597709449). After documentation reconciliation, exact final PR head `d715a868a95a3d8e4856e0428ab678445637cf14` passed hosted CI in [run #43599132517](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43599132517), including fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, the full suite, and disposable-container cleanup.
+
+The Operator accepted D1–D3 concurrency, stale-binding, and replay proofs; D4 verification/review; and D5 scope. The review found no blocking code findings. **B5.2 technical acceptance: APPROVED.** The earlier 2026-11-13 verification and review entries above are historical snapshots; their pending-acceptance statements were superseded by this final record. B5.3 and B5.4 remain separately gated; B6 and R7-C remain unauthorized.

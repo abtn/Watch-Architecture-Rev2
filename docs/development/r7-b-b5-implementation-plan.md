@@ -367,7 +367,7 @@ Do not weaken an acceptance criterion to preserve schedule.
 
 This document authorizes planning and review of B5 only. It does not authorize production implementation, schema changes, migrations, or any B6/R7-C/R8 work.
 
-This plan was explicitly accepted by the Operator on 2026-11-13. B5.1 implementation was separately authorized, verified, and merged. The B5.2 documentation checkpoint may refine the existing Retire scope and its verification sequence, but does not authorize production implementation, schema changes, or migrations. B5.2 implementation requires a separate explicit checkpoint authorization. B5.3 and B5.4 remain separately gated. B6 and R7-C remain unauthorized.
+This plan was explicitly accepted by the Operator on 2026-11-13. B5.1 implementation was separately authorized, verified, and merged. B5.2 Retire implementation was subsequently authorized as a separate checkpoint, implemented and technically accepted in PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118); its final verification and acceptance record appears below. This plan does not authorize B5.3 or B5.4 implementation. B5.3 and B5.4 remain separately gated. B6 and R7-C remain unauthorized.
 
 ## 8. Source authority
 
@@ -381,7 +381,9 @@ This plan is subordinate to and must remain consistent with:
 If this plan conflicts with those accepted sources, stop and resolve the discrepancy before implementation.
 
 
-## B5.2 implementation review record — 2026-11-13
+## Historical B5.2 implementation review snapshot — 2026-11-13 (superseded)
+
+The following review snapshot records the state before the supplemental D1–D3 proofs and final Operator acceptance. Its incomplete-evidence disposition is historical and is superseded by the final acceptance record below.
 
 **Implementation review surface:** PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118), branch `r7b-b5-2-retire-implementation-20261113`, exact reviewed code head `3d102d8e4a9204580bf187018c51da358aa6c121`. The PR changes seven production modules and three test modules. It adds no migration, model/schema change, Task type, runtime, scheduler, dispatcher, authentication boundary, or retrieval redesign.
 
@@ -397,4 +399,14 @@ If this plan conflicts with those accepted sources, stop and resolve the discrep
 
 **Acceptance evidence still incomplete:** The integrated test demonstrates ordinary retirement, `needs_review` retirement, already-retired rejection, candidate cancellation and replacement, predecessor retirement without implicit candidate mutation, history reconstruction, semantic immutability, and replay without duplicate Events or Outcomes. The added PR tests do not provide dedicated concurrency proofs for retire-versus-retire, retire-versus-candidate-creation, or competing replacement-candidate attempts. Nor do the added tests independently demonstrate every negative case in the B5.2.1/B5.2.3 matrix (including wrong-Team/malformed-relation and each stale-binding dimension). Existing generic lifecycle tests may cover shared primitives, but they are not treated here as proof of the new retirement paths.
 
-**Disposition:** B5.2.6 execution and exact-head CI are verified. B5.2 is not formally closed. The remaining acceptance proofs and explicit Operator acceptance are required before merge. B5.3, B5.4, B6, R7-C, and R8 remain outside this PR and are not authorized by this record.
+**Historical disposition at that checkpoint:** B5.2.6 execution and exact-head CI were verified, while supplemental acceptance proofs and Operator acceptance were still pending. This disposition was superseded by the final record below.
+
+## B5.2 final verification and technical acceptance — 2026-11-14
+
+**Implementation/test head:** `dca48969f5f104eb306092906e12aeb39a2c5352`.
+
+Operator-local verification on that exact implementation head passed fresh disposable-PostgreSQL migration and single-head checks at `0018_r7b_lifecycle_review_date`, Ruff, Mypy (38 source files), `git diff --check`, and the full suite (**985 passed, 113 warnings in 359.40s**). The verification script confirmed environment restoration, removal of its disposable container, exact branch/HEAD, and a clean worktree. The warnings are Alembic `path_separator` deprecations.
+
+Exact implementation-head hosted CI passed in run [#43597709449](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43597709449). After documentation reconciliation, exact final PR head `d715a868a95a3d8e4856e0428ab678445637cf14` also passed hosted CI in run [#43599132517](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43599132517).
+
+The Operator accepted D1–D3 concurrency, stale-binding, and replay proofs; D4 verification/review; and D5 scope. The review found no blocking code findings. **B5.2 technical acceptance: APPROVED.** This acceptance is limited to B5.2. B5.3 and B5.4 remain separately gated; B6 and R7-C remain unauthorized.
