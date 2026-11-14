@@ -11,6 +11,7 @@ from threading import Barrier, Lock, local
 from threading import Event as ThreadEvent
 from time import monotonic
 from types import SimpleNamespace
+from unittest.mock import patch
 from typing import Any, Callable, Iterator, Literal
 from uuid import UUID, uuid4
 
@@ -13459,14 +13460,6 @@ def test_b5_3_4_reciprocal_publication_is_shared_by_projection_retrieval_and_con
                 fixture.team_id, "validated source evidence"
             )
         }
-        with session_factory() as session:
-            with pytest.raises(
-                TaskContextError,
-                match="team_experience_item_not_current_or_eligible",
-            ):
-                TaskContextAssembler._validate_team_experience_passage(
-                    session, scope, successor_passage, datetime.now(timezone.utc)
-                )
         with session_factory.begin() as session:
             successor = session.get(KnowledgeItem, successor_id)
             assert successor is not None
@@ -13485,6 +13478,29 @@ def test_b5_3_4_reciprocal_publication_is_shared_by_projection_retrieval_and_con
         eligibility_now,
     )
     due_reference_time = original_review_after + timedelta(seconds=1)
+
+    class DueDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return due_reference_time if tz is not None else due_reference_time.replace(
+                tzinfo=None
+            )
+
+    with patch("core.knowledge_index.datetime", DueDateTime):
+        assert successor_id not in {
+            passage.knowledge_item_id
+            for passage in retriever.retrieve(
+                fixture.team_id, "validated source evidence"
+            )
+        }
+    with session_factory() as session:
+        with pytest.raises(
+            TaskContextError,
+            match="team_experience_item_not_current_or_eligible",
+        ):
+            TaskContextAssembler._validate_team_experience_passage(
+                session, scope, successor_passage, due_reference_time
+            )
     assert (
         indexer.index_knowledge_item(successor_id, now=due_reference_time).outcome
         == "ineligible"
