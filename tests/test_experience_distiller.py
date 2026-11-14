@@ -13588,7 +13588,9 @@ def test_b5_3_5_supersede_and_predecessor_retirement_race_has_one_winner(
         ]
         results = [future.result(timeout=90) for future in futures]
 
-    winners = [result for result in results if not isinstance(result, LearningCommitError)]
+    winners = [
+        result for result in results if not isinstance(result, LearningCommitError)
+    ]
     losers = [result for result in results if isinstance(result, LearningCommitError)]
     assert len(winners) == 1
     assert len(losers) == 1
