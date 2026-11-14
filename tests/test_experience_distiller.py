@@ -13995,6 +13995,22 @@ def test_b5_3_5_stale_supersede_replay_preserves_disposition_after_candidate_res
     drift_applied = False
     drift_injected = ThreadEvent()
 
+    def set_successor_review_after(expected, replacement) -> None:
+        with session_factory.begin() as session:
+            session.execute(text("ALTER TABLE knowledge_items DISABLE TRIGGER USER"))
+            try:
+                result = session.execute(
+                    update(KnowledgeItem)
+                    .where(
+                        KnowledgeItem.id == successor_id,
+                        KnowledgeItem.review_after == expected,
+                    )
+                    .values(review_after=replacement)
+                )
+            finally:
+                session.execute(text("ALTER TABLE knowledge_items ENABLE TRIGGER USER"))
+            assert result.rowcount == 1
+
     def inject_candidate_drift_after_commit_team_lock(
         connection, cursor, statement, parameters, context, executemany
     ):
@@ -14004,16 +14020,7 @@ def test_b5_3_5_stale_supersede_replay_preserves_disposition_after_candidate_res
             return
         team_lock_count += 1
         if team_lock_count == 2:
-            with session_factory.begin() as session:
-                result = session.execute(
-                    update(KnowledgeItem)
-                    .where(
-                        KnowledgeItem.id == successor_id,
-                        KnowledgeItem.review_after == original_review_after,
-                    )
-                    .values(review_after=stale_review_after)
-                )
-                assert result.rowcount == 1
+            set_successor_review_after(original_review_after, stale_review_after)
             drift_applied = True
             drift_injected.set()
 
@@ -14036,16 +14043,7 @@ def test_b5_3_5_stale_supersede_replay_preserves_disposition_after_candidate_res
             inject_candidate_drift_after_commit_team_lock,
         )
         if drift_applied:
-            with session_factory.begin() as session:
-                result = session.execute(
-                    update(KnowledgeItem)
-                    .where(
-                        KnowledgeItem.id == successor_id,
-                        KnowledgeItem.review_after == stale_review_after,
-                    )
-                    .values(review_after=original_review_after)
-                )
-                assert result.rowcount == 1
+            set_successor_review_after(stale_review_after, original_review_after)
 
     assert stale_error is not None
     assert str(stale_error) == "knowledge_lifecycle_successor_stale"
