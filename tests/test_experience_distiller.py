@@ -1594,6 +1594,7 @@ def _run_team_lock_ordered_race(
     second_operation: Callable[[], object],
     *,
     second_after_first_commit: Callable[[str], bool] | None = None,
+    first_after_query_before_second: Callable[[str], bool] | None = None,
     second_must_finish_before_first_commit: bool = False,
 ) -> tuple[object, object, int, int]:
     operation_role = local()
@@ -1602,6 +1603,8 @@ def _run_team_lock_ordered_race(
     first_lock_acquired = ThreadEvent()
     release_first = ThreadEvent()
     first_committed = ThreadEvent()
+    first_gate_reached = ThreadEvent()
+    release_first_gate = ThreadEvent()
     second_start_barrier = Barrier(2)
     second_started = ThreadEvent()
     second_team_lock_requested = ThreadEvent()
@@ -1625,7 +1628,12 @@ def _run_team_lock_ordered_race(
             and second_after_first_commit is not None
             and second_after_first_commit(statement.lower())
         )
-        if role == "first" and not is_team_row_lock:
+        first_gate_matches = (
+            role == "first"
+            and first_after_query_before_second is not None
+            and first_after_query_before_second(statement.lower())
+        )
+        if role == "first" and not (is_team_row_lock or first_gate_matches):
             return
         if (
             role == "second"
@@ -1651,8 +1659,17 @@ def _run_team_lock_ordered_race(
     def after_cursor_execute(
         connection, cursor, statement, parameters, context, executemany
     ):
+        role = getattr(operation_role, "name", None)
         if (
-            getattr(operation_role, "name", None) == "first"
+            role == "first"
+            and first_after_query_before_second is not None
+            and first_after_query_before_second(statement.lower())
+        ):
+            first_gate_reached.set()
+            if not release_first_gate.wait(timeout=30):
+                raise TimeoutError("first query gate was not released")
+        if (
+            role == "first"
             and is_team_lock(statement)
             and not first_lock_acquired.is_set()
         ):
@@ -1675,11 +1692,21 @@ def _run_team_lock_ordered_race(
     executor = ThreadPoolExecutor(max_workers=2)
     try:
         first_future = executor.submit(invoke, "first", first_operation)
-        if not first_lock_acquired.wait(timeout=30):
-            raise TimeoutError("first operation did not acquire the Team lock")
-        second_future = executor.submit(invoke, "second", second_operation)
+        if first_after_query_before_second is not None:
+            if not first_gate_reached.wait(timeout=30):
+                raise TimeoutError("first operation did not reach its gated query")
+            second_future = executor.submit(invoke, "second", second_operation)
+            second_result = second_future.result(timeout=90)
+            release_first_gate.set()
+            first_result = first_future.result(timeout=90)
+        else:
+            if not first_lock_acquired.wait(timeout=30):
+                raise TimeoutError("first operation did not acquire the Team lock")
+            second_future = executor.submit(invoke, "second", second_operation)
 
-        if second_after_first_commit is not None:
+        if first_after_query_before_second is not None:
+            pass
+        elif second_after_first_commit is not None:
             if not second_gate_reached.wait(timeout=30):
                 raise TimeoutError("second operation did not reach its gated query")
             release_first.set()
@@ -11601,14 +11628,30 @@ def test_predecessor_retirement_and_candidate_proposal_are_serialized(
         )
         if isinstance(candidate_result, ExperienceDistillerError):
             assert candidate_changes == []
-            assert (
-                session.scalar(
-                    select(func.count(Event.id)).where(
-                        Event.task_id == candidate_task_id
+            if str(candidate_result) == "revision_target_status_invalid":
+                # The proposal passed its initial read, paid for generation,
+                # then lost the Team-lock race. Cost accounting is durable;
+                # no LearningChange proposal or task-execution Outcome exists.
+                event_types = list(
+                    session.scalars(
+                        select(Event.type)
+                        .where(Event.task_id == candidate_task_id)
+                        .order_by(Event.id)
                     )
                 )
-                == initial_candidate_event_count
-            )
+                assert event_types == [
+                    "generation_cost_reserved",
+                    "generation_cost_reconciled",
+                ]
+            else:
+                assert (
+                    session.scalar(
+                        select(func.count(Event.id)).where(
+                            Event.task_id == candidate_task_id
+                        )
+                    )
+                    == initial_candidate_event_count
+                )
             assert (
                 session.scalar(
                     select(func.count(Outcome.id)).where(
@@ -11729,30 +11772,35 @@ def test_retiring_pending_candidate_and_replacement_proposal_are_serialized(
         except ExperienceDistillerError as error:
             return error
 
-    def team_lock_query(statement: str) -> bool:
-        return "teams" in statement and "for update" in statement
+    def pending_candidate_query(statement: str) -> bool:
+        return (
+            "from knowledge_items" in statement
+            and "supersedes_item_id" in statement
+            and "for update" not in statement
+        )
 
     if ordering == "replacement_first":
-        # The replacement proposal checks the still-pending candidate first;
-        # retirement is held at its Team lock until that rejection commits.
+        # Pause after the proposal has read the pending candidate. Retirement
+        # then commits before the proposal consumes that read result.
         replacement_result, retirement_result, first_pid, second_pid = (
             _run_team_lock_ordered_race(
                 database_engine,
                 session_factory,
                 propose_replacement,
                 retire_candidate,
-                second_after_first_commit=team_lock_query,
+                first_after_query_before_second=pending_candidate_query,
             )
         )
     else:
-        # Retirement owns the Team lock first. The replacement proposal must
-        # be observed blocked on that row lock before retirement is released.
+        # Retirement commits before the proposal performs its pending-candidate
+        # read, so the replacement is allowed to proceed.
         retirement_result, replacement_result, first_pid, second_pid = (
             _run_team_lock_ordered_race(
                 database_engine,
                 session_factory,
                 retire_candidate,
                 propose_replacement,
+                second_after_first_commit=pending_candidate_query,
             )
         )
     assert first_pid != second_pid
