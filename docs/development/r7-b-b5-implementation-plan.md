@@ -287,7 +287,7 @@ Also verify that existing create, revise, revalidate, review, and B5.1 candidate
 
 **Purpose:** Atomically retire the predecessor and publish the already accepted candidate through reciprocal-link validation. Supersede changes the predecessor only; the candidate row and its immutable `supersedes_item_id` remain untouched.
 
-**Authorization:** The Operator separately authorized B5.3 implementation on 2026-11-14. Documentation reconciliation PR #119 merged at `cde40b2c9edb17a693eff43e7e1158515302cd69`. The remote baseline/code-path audit is recorded in [B5.3.0](r7-b-b5-3-baseline-audit.md). The implementation branch's local sync/test preflight and full verification passed at B5.3.3 head `3f3c4c26ca6fb771bd9ff1f31653622f68179e69`; the exact evidence is recorded below. This authorization does not include B5.4, B6, R7-C, or R8.
+**Authorization:** The Operator separately authorized B5.3 implementation on 2026-11-14. Documentation reconciliation PR #119 merged at `cde40b2c9edb17a693eff43e7e1158515302cd69`. The remote baseline/code-path audit is recorded in [B5.3.0](r7-b-b5-3-baseline-audit.md). The implementation branch was created from that exact merged base. Operator-local sync/test verification passed at B5.3.3 head `3f3c4c26ca6fb771bd9ff1f31653622f68179e69`; exact-head hosted CI for the integrated B5.3.4–B5.3.6 implementation passed at `d39834548cfe6d1b96246e3108bd48ded103e7ff`. Operator-local verification of the integrated implementation remains pending. This authorization does not include B5.4, B6, R7-C, or R8.
 
 #### B5.3.0 — Baseline and path preflight
 
