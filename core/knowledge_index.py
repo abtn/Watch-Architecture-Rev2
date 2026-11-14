@@ -506,6 +506,24 @@ def _accepted_learning_change_is_canonical(
     )
     if len(decision_events) != 1:
         return False
+    supersede_successor_id: str | None = None
+    if learning_change.operation == "supersede":
+        proposed_state = learning_change.proposed_state
+        if not isinstance(proposed_state, dict):
+            return False
+        raw_successor_id = proposed_state.get("successor_knowledge_item_id")
+        try:
+            successor_id = UUID(raw_successor_id)
+        except (TypeError, ValueError):
+            return False
+        if (
+            not isinstance(raw_successor_id, str)
+            or str(successor_id) != raw_successor_id
+            or item.superseded_by_id != successor_id
+        ):
+            return False
+        supersede_successor_id = raw_successor_id
+
     decision = decision_events[0].payload
     if (
         not isinstance(decision, dict)
@@ -518,6 +536,10 @@ def _accepted_learning_change_is_canonical(
         or decision.get("knowledge_item_version") != item.version
         or decision.get("committed_at") != learning_change.committed_at.isoformat()
         or decision_events[0].created_at != learning_change.committed_at
+        or (
+            supersede_successor_id is not None
+            and decision.get("successor_knowledge_item_id") != supersede_successor_id
+        )
     ):
         return False
 
