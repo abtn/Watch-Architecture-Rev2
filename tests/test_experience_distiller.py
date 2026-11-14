@@ -11776,7 +11776,8 @@ def test_retiring_pending_candidate_and_replacement_proposal_are_serialized(
     def pending_candidate_query(statement: str) -> bool:
         return (
             "from knowledge_items" in statement
-            and "supersedes_item_id" in statement
+            and "where" in statement
+            and "supersedes_item_id =" in statement
             and "for update" not in statement
         )
 
