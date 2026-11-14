@@ -467,6 +467,9 @@ def test_successor_binding_matches_complete_proposal_snapshot(monkeypatch):
     ) = _successor_binding_fixture(review_after)
     monkeypatch.setattr(lifecycle, "knowledge_item_state", lambda item: state)
     monkeypatch.setattr(
+        lifecycle, "reconstruct_knowledge_item_history", lambda session, item: None
+    )
+    monkeypatch.setattr(
         lifecycle,
         "knowledge_item_content_hash",
         lambda item: content_hash,
@@ -477,7 +480,7 @@ def test_successor_binding_matches_complete_proposal_snapshot(monkeypatch):
         lambda payload: {"snapshot_hash": state_hash},
     )
 
-    binding = bind(session, proposal, require_current=False)
+    binding = bind(session, proposal, require_current=True)
 
     assert binding["successor_knowledge_item_id"] == str(successor.id)
     assert binding["successor_current_learning_change_id"] == str(
@@ -513,6 +516,9 @@ def test_successor_binding_rejects_state_drift_before_assessment(monkeypatch):
         lifecycle, "knowledge_item_state", lambda item: changed_state
     )
     monkeypatch.setattr(
+        lifecycle, "reconstruct_knowledge_item_history", lambda session, item: None
+    )
+    monkeypatch.setattr(
         lifecycle,
         "knowledge_item_content_hash",
         lambda item: content_hash,
@@ -527,7 +533,7 @@ def test_successor_binding_rejects_state_drift_before_assessment(monkeypatch):
         KnowledgeLifecycleAssessmentError,
         match="knowledge_lifecycle_successor_stale",
     ):
-        bind(session, proposal, require_current=False)
+        bind(session, proposal, require_current=True)
 
 
 def test_successor_binding_preserves_null_review_after(monkeypatch):
@@ -544,6 +550,9 @@ def test_successor_binding_preserves_null_review_after(monkeypatch):
     ) = _successor_binding_fixture(None)
     monkeypatch.setattr(lifecycle, "knowledge_item_state", lambda item: state)
     monkeypatch.setattr(
+        lifecycle, "reconstruct_knowledge_item_history", lambda session, item: None
+    )
+    monkeypatch.setattr(
         lifecycle,
         "knowledge_item_content_hash",
         lambda item: content_hash,
@@ -554,7 +563,7 @@ def test_successor_binding_preserves_null_review_after(monkeypatch):
         lambda payload: {"snapshot_hash": state_hash},
     )
 
-    binding = bind(session, proposal, require_current=False)
+    binding = bind(session, proposal, require_current=True)
 
     assert binding["successor_review_after"] is None
 
@@ -576,7 +585,7 @@ def test_successor_binding_rejects_cross_team_and_wrong_predecessor():
         KnowledgeLifecycleAssessmentError,
         match="knowledge_lifecycle_successor_cross_team",
     ):
-        bind(session, proposal, require_current=False)
+        bind(session, proposal, require_current=True)
 
     successor.team_id = proposal.learning_change.team_id
     successor.supersedes_item_id = uuid4()
