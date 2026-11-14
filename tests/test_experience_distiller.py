@@ -13440,12 +13440,13 @@ def test_b5_3_5_competing_supersede_approvals_have_one_canonical_winner(
         assert predecessor is not None and successor is not None
         predecessor_before = knowledge_item_state(predecessor)
         successor_before = knowledge_item_state(successor)
+        assert predecessor_before["status"] == "active"
         successor_hash = knowledge_item_content_hash(successor)
 
     barrier = Barrier(2)
 
     def decide(approval):
-        change_id, task_id, attempt, operator, _ = approval
+        _, task_id, attempt, operator, _ = approval
         barrier.wait(timeout=30)
         try:
             return LearningCommitService(session_factory, snapshot_store).decide(
@@ -13507,14 +13508,13 @@ def test_b5_3_5_competing_supersede_approvals_have_one_canonical_winner(
                 Event.task_id == winner_task_id,
                 Event.type == "learning_change_accepted",
             )
-        ) == 0
-        # The canonical decision Event is written by LearningCommitService;
-        # TaskRuntime adds completion provenance only after the winning commit.
+        ) == 1
         assert session.scalar(
             select(func.count(Outcome.id)).where(
-                Outcome.recorded_by_task_id == winner_task_id
+                Outcome.recorded_by_task_id == winner_task_id,
+                Outcome.outcome_type == "task_execution",
             )
-        ) == 0
+        ) == 1
         assert session.scalar(
             select(func.count(Event.id)).where(
                 Event.task_id == loser_task_id,
@@ -13591,9 +13591,7 @@ def test_b5_3_5_supersede_and_predecessor_retirement_race_has_one_winner(
         for index, result in enumerate(results)
         if not isinstance(result, LearningCommitError)
     )
-    winner_change_id, winner_task_id, winner_attempt, winner_operator = operations[
-        winner_index
-    ]
+    winner_change_id, winner_task_id, winner_attempt, _ = operations[winner_index]
     loser_change_id, loser_task_id, _, _ = operations[1 - winner_index]
     winner = winners[0]
     assert winner.learning_change_id == winner_change_id
