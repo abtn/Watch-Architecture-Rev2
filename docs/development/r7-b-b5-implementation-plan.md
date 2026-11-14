@@ -433,9 +433,9 @@ Do not weaken an acceptance criterion to preserve schedule.
 
 ## 7. Authorization boundary
 
-This document authorizes planning and review of B5 only. It does not authorize production implementation, schema changes, migrations, or any B6/R7-C/R8 work.
+This document records the accepted B5 planning contract. Production implementation requires separate checkpoint authorization. As of 2026-11-14, B5.1, B5.2, and B5.3 have each been separately authorized; B5.4 remains gated. This plan does not authorize a schema change or migration; any concrete need is a stop-and-return decision. B6, R7-C, and R8 remain outside B5 authority.
 
-This plan was explicitly accepted by the Operator on 2026-11-13. B5.1 implementation was separately authorized, verified, and merged. B5.2 Retire implementation was subsequently authorized as a separate checkpoint, implemented and technically accepted in PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118); its final verification and acceptance record appears below. This plan does not authorize B5.3 or B5.4 implementation. B5.3 and B5.4 remain separately gated. B6 and R7-C remain unauthorized.
+This plan was explicitly accepted by the Operator on 2026-11-13. B5.1 implementation was separately authorized, verified, and merged. B5.2 Retire was separately authorized, implemented, technically accepted, and merged in PR [#118](https://github.com/abtn/Watch-Architecture-Rev2/pull/118); its final verification and acceptance record appears below. The Operator separately authorized B5.3 Supersede on 2026-11-14. Its implementation sequence is defined above and begins from verified `main` after the documentation reconciliation PR merges. B5.4 remains separately gated. B6 and R7-C remain unauthorized.
 
 ## 8. Source authority
 
