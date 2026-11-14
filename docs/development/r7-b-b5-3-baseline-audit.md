@@ -1,8 +1,8 @@
 # R7-B B5.3.0 — Baseline and Code-Path Audit
 
 **Audit date:** 2026-11-14
-**Status:** Remote source audit complete. Operator-local implementation-branch sync/test verification passed at B5.3.3 head `3f3c4c26ca6fb771bd9ff1f31653622f68179e69`. B5.3.4–B5.3.6 exact-head hosted CI passed at `d39834548cfe6d1b96246e3108bd48ded103e7ff` ([run #1140](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43613291052)); Operator-local verification of the integrated implementation and final diff review remain pending. A separate local checkout of `main` was not recorded.
-**Implementation PR:** Draft, based on the merged documentation checkpoint.
+**Status:** The B5.3.0 remote baseline/code-path audit is complete. Its initial local-preflight-pending disposition is historical and superseded by the B5.3.3 checkpoint and the final B5.3.6 exact-head verification/review recorded below. Final PR head `6821dba35da3fecd1540483f2e30cbff7aebcf15` passed hosted and Operator-local verification; implementation review found no blocking code findings. Explicit B5.3 technical acceptance remains pending.
+**Implementation PR:** [#120](https://github.com/abtn/Watch-Architecture-Rev2/pull/120), draft at this closeout checkpoint.
 **Scope:** B5.3 Supersede only. No B5.4, B6, R7-C, or R8 work.
 
 ## 1. Exact baseline
@@ -72,6 +72,25 @@ The smallest implementation surface is:
 - No candidate mutation, candidate rewrite, synchronous indexing shortcut, or Context manifest redesign.
 - No B5.4 integrated closeout, B6, R7-C, or R8 implementation.
 
+## 6. B5.3.0 exit status
+
+**Remote code-path audit: PASS.** The existing architecture supported the intended operation and the smallest missing implementation surface was identified. This is the B5.3.0 baseline result, not the B5.3 final acceptance decision.
+
+**Initial local preflight at the B5.3.0 audit checkpoint: PENDING.** The original audit correctly required a clean, exact-main preflight before implementation. That checkpoint was subsequently superseded: the implementation branch was created from the exact merged base `cde40b2c9edb17a693eff43e7e1158515302cd69`, and the Operator-local B5.3.3 verification and final B5.3.6 verification are recorded below.
+
+## 7. B5.3 implementation and final verification closeout — 2026-11-14
+
+**Final PR/implementation head:** `6821dba35da3fecd1540483f2e30cbff7aebcf15` on `r7b-b5-3-implementation-20261114`.
+
+**Operator-local exact-head verification:** `uv sync --locked`; fresh disposable PostgreSQL migration to the single Alembic head `0018_r7b_lifecycle_review_date`; Ruff; Mypy (38 source files); and full suite (**996 passed, 113 warnings in 407.23s**) all passed. Warnings are Alembic `path_separator` deprecations. The disposable container was removed, `DATABASE_URL` and `TEST_DATABASE_URL` were restored, and the script confirmed the exact branch/HEAD and clean worktree.
+
+**Hosted CI:** exact final PR head passed [run #1146](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43618529970).
+
+**Implementation/scope review:** no blocking code findings. The proposal, lifecycle assessment, trusted Operator approval, TaskRuntime, and canonical LearningCommit paths are reused. The canonical commit locks the Team first, then both KnowledgeItems in ascending UUID order, rechecks exact predecessor/candidate bindings, and mutates only the predecessor. The accepted candidate row and immutable `supersedes_item_id` remain unchanged. Reciprocal publication checks and D7 eligibility remain enforced. No migration, schema change, second write path, new Task/runtime/dispatcher/scheduler/authentication boundary, or B5.4/B6/R7-C/R8 scope was introduced.
+
+**Test-only isolation corrections:** distillation LearningChange absence assertions are scoped to the test's `distillation_task_id`; ingestion Event-count assertions are scoped to the proposal's `task_id`. This avoids false failures from unrelated stale records in a reused local test database without weakening production behavior.
+
+**Disposition:** B5.3 implementation and verification/review are complete. Explicit Operator technical acceptance remains pending; PR #120 remains draft/unmerged. B5.4 remains gated; B6 and R7-C remain unauthorized.
 ## 6. B5.3.0 exit status
 
 **Remote code-path audit: PASS.** The existing architecture supports the intended operation and the smallest missing implementation surface is identified above.
