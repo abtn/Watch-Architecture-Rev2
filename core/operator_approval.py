@@ -21,6 +21,7 @@ _STALE_OPERATOR_APPROVAL_REASONS = frozenset(
     {
         "knowledge_quality_revision_target_stale",
         "knowledge_revalidation_target_stale",
+        "knowledge_lifecycle_predecessor_reconstructed_history_does_not_match_live_item",
     }
 )
 

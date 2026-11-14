@@ -771,6 +771,9 @@ class TaskRuntime:
                     operator_id=request_payload.operator_id,
                     approval_policy_version=task.policy_version,
                     require_assessment=decision == "accept",
+                    require_current=(
+                        require_current and learning_change.status == "proposed"
+                    ),
                     snapshot_store=snapshot_store,
                     session_factory=session_factory,
                 )
@@ -1676,6 +1679,26 @@ class TaskRuntime:
         """
         if task.task_type != _OPERATOR_TASK_TYPE:
             return None
+        if task.status == "failed":
+            stale_failure = self._committed_operator_stale_failure_observation(
+                session, task
+            )
+            if (
+                stale_failure is not None
+                and stale_failure.failure_reason
+                == (
+                    "knowledge_lifecycle_predecessor_reconstructed_history_"
+                    "does_not_match_live_item"
+                )
+            ):
+                self._validate_operator_admission(
+                    session,
+                    task,
+                    snapshot_store=self._snapshot_store,
+                    session_factory=self._session_factory,
+                    require_current=False,
+                )
+                return stale_failure
         stale_failure_reason: str | None = None
         try:
             self._validate_operator_admission(
@@ -1817,6 +1840,72 @@ class TaskRuntime:
             result_category="terminal_failure",
             observed_at=losing_started_at,
             failure_reason="learning_change_already_decided",
+        )
+
+    @staticmethod
+    def _committed_operator_stale_failure_observation(
+        session: Session, task: Task
+    ) -> TerminalObservation | None:
+        outcome = TaskRuntime._prior_terminal(session, task.id)
+        if outcome is None:
+            return None
+        events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type.in_(("task_attempt_failed", "task_failed")),
+                    Event.payload["attempt_count"].as_integer()
+                    == task.attempt_count,
+                )
+            )
+        )
+        by_type = {item.type: item for item in events}
+        if len(events) != 2 or set(by_type) != {
+            "task_attempt_failed",
+            "task_failed",
+        }:
+            raise TaskNotFinalizable("operator_stale_failure_events_invalid")
+        payload = by_type["task_failed"].payload
+        if not isinstance(payload, dict):
+            raise TaskNotFinalizable("operator_stale_failure_event_invalid")
+        failure_reason = payload.get("failure_reason")
+        if (
+            not isinstance(failure_reason, str)
+            or failure_reason not in _STALE_OPERATOR_APPROVAL_REASONS
+        ):
+            return None
+        if (
+            outcome.subject_kind != "task"
+            or outcome.subject_id != task.id
+            or outcome.recorded_by_task_id != task.id
+            or outcome.outcome_type != "task_execution"
+            or outcome.expected is not None
+            or outcome.observation_snapshot_ref is None
+            or outcome.observation_hash is None
+            or outcome.observed_at is None
+        ):
+            raise TaskNotFinalizable("operator_stale_failure_outcome_invalid")
+        for item in events:
+            event_payload = item.payload
+            if (
+                not isinstance(event_payload, dict)
+                or event_payload.get("from_status") != "running"
+                or event_payload.get("to_status") != "failed"
+                or event_payload.get("attempt_count") != task.attempt_count
+                or event_payload.get("result_category") != "terminal_failure"
+                or event_payload.get("failure_reason") != failure_reason
+                or event_payload.get("outcome_id") != str(outcome.id)
+                or event_payload.get("observation_snapshot_ref")
+                != outcome.observation_snapshot_ref
+                or event_payload.get("observation_hash") != outcome.observation_hash
+            ):
+                raise TaskNotFinalizable("operator_stale_failure_event_invalid")
+        return TerminalObservation(
+            task_id=task.id,
+            attempt=task.attempt_count,
+            result_category="terminal_failure",
+            observed_at=outcome.observed_at,
+            failure_reason=failure_reason,
         )
 
     @staticmethod
