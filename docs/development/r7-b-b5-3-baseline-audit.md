@@ -1,7 +1,7 @@
 # R7-B B5.3.0 — Baseline and Code-Path Audit
 
 **Audit date:** 2026-11-14
-**Status:** Remote source audit complete; Operator-local preflight remains pending.
+**Status:** Remote source audit complete; Operator-local implementation-branch sync/test verification passed at B5.3.3 head `3f3c4c26ca6fb771bd9ff1f31653622f68179e69`. A separate local checkout of `main` was not recorded; B5.3.4–B5.3.5 verification remains pending.
 **Implementation PR:** Draft, based on the merged documentation checkpoint.
 **Scope:** B5.3 Supersede only. No B5.4, B6, R7-C, or R8 work.
 
@@ -15,7 +15,9 @@
 - A remote compare confirmed `main` was identical to the merge SHA when the branch was created.
 - The B5 plan records `0018_r7b_lifecycle_review_date` as the expected Alembic head. This audit did not run Alembic or access the Operator's local checkout; the local single-head check is still required.
 
-No local tests, migrations, Ruff, Mypy, or database checks are claimed by this audit.
+No local tests, migrations, Ruff, Mypy, or database checks were run as part of this remote audit.
+
+**Subsequent Operator-local verification record (2026-11-14):** The user ran the implementation-branch sync/test script from the expected local branch and starting HEAD `7ae56f92646dd2800ff152ff5e4024fa828d2e91`. It verified repository root, branch, origin, clean worktree, fetched the exact target, fast-forwarded to `3f3c4c26ca6fb771bd9ff1f31653622f68179e69`, started disposable PostgreSQL on a dynamic localhost port, upgraded to `0018_r7b_lifecycle_review_date`, and passed Ruff, Mypy, `git diff --check`, and the full suite (**987 passed, 113 warnings in 377.50s**). The script restored `DATABASE_URL` and `TEST_DATABASE_URL` and removed its disposable container. Exact-head hosted CI passed in [run #43607884811](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43607884811) (run #1109). This is implementation-branch verification, not a separately recorded local checkout of `main`.
 
 ## 2. Existing code and test coverage
 
