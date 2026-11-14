@@ -13818,3 +13818,143 @@ def test_b5_3_5_rejected_supersede_replay_survives_later_acceptance_and_conflict
                 rejection_reason=rejection_request.rejection_reason,
             ),
         )
+
+
+def test_b5_3_5_stale_supersede_replay_preserves_disposition_after_candidate_restore(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(1, False, review_interval_days=30)
+    predecessor_id = _create_active_knowledge_item(
+        session_factory, snapshot_store, fixture
+    )
+    successor_id = _create_active_knowledge_item(
+        session_factory,
+        snapshot_store,
+        fixture,
+        supersedes_item_id=predecessor_id,
+    )
+    learning_change_id, principal, assessment_id = _prepare_supersede_assessment(
+        session_factory,
+        snapshot_store,
+        fixture,
+        predecessor_id,
+        successor_id,
+    )
+    request = LearningChangeDecisionRequest(
+        learning_change_id=learning_change_id,
+        decision="accept",
+        idempotency_key=uuid4(),
+    )
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    approval = adapter.request_learning_change_decision(principal, request)
+    admission = TaskRuntime(session_factory, snapshot_store).admit(approval.task_id)
+
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        successor = session.get(KnowledgeItem, successor_id)
+        change = session.get(LearningChange, learning_change_id)
+        assessment = session.get(KnowledgeLifecycleAssessment, assessment_id)
+        assert (
+            predecessor is not None
+            and successor is not None
+            and change is not None
+            and assessment is not None
+        )
+        predecessor_before = knowledge_item_state(predecessor)
+        successor_before = knowledge_item_state(successor)
+        original_review_after = successor.review_after
+        assert original_review_after is not None
+        original_change = (
+            change.status,
+            change.proposed_state,
+            change.previous_state,
+            change.committed_state,
+            change.committed_by_task_id,
+        )
+        original_assessment_hash = assessment.payload_hash
+
+    stale_review_after = original_review_after + timedelta(days=1)
+    with session_factory.begin() as session:
+        successor = session.get(KnowledgeItem, successor_id)
+        assert successor is not None
+        successor.review_after = stale_review_after
+
+    stale_error: LearningCommitError | None = None
+    try:
+        LearningCommitService(session_factory, snapshot_store).decide(
+            approval.task_id, admission.attempt_count, principal
+        )
+    except LearningCommitError as error:
+        stale_error = error
+    assert stale_error is not None
+    assert str(stale_error) == "knowledge_lifecycle_successor_stale"
+
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    with session_factory() as session:
+        task = session.get(Task, approval.task_id)
+        assert task is not None and task.status == "running"
+        started_at = TaskRuntime._current_attempt_start(session, task)
+        assert started_at is not None
+    failed = runtime.finalize(
+        TerminalObservation(
+            task_id=approval.task_id,
+            attempt=admission.attempt_count,
+            result_category="terminal_failure",
+            observed_at=started_at,
+            failure_reason=str(stale_error),
+        )
+    )
+    assert failed.status == "failed"
+
+    with session_factory.begin() as session:
+        successor = session.get(KnowledgeItem, successor_id)
+        assert successor is not None
+        successor.review_after = original_review_after
+
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        successor = session.get(KnowledgeItem, successor_id)
+        change = session.get(LearningChange, learning_change_id)
+        assessment = session.get(KnowledgeLifecycleAssessment, assessment_id)
+        task = session.get(Task, approval.task_id)
+        assert (
+            predecessor is not None
+            and successor is not None
+            and change is not None
+            and assessment is not None
+            and task is not None
+        )
+        assert knowledge_item_state(predecessor) == predecessor_before
+        assert knowledge_item_state(successor) == successor_before
+        assert (
+            change.status,
+            change.proposed_state,
+            change.previous_state,
+            change.committed_state,
+            change.committed_by_task_id,
+        ) == original_change
+        assert assessment.payload_hash == original_assessment_hash
+        assert task.status == "failed"
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == approval.task_id,
+                Event.type.in_(("task_attempt_failed", "task_failed")),
+            )
+        ) == 2
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == approval.task_id
+            )
+        ) == 1
+        before_replay = _team_lifecycle_snapshot(session, fixture.team_id)
+
+    with pytest.raises(
+        OperatorTaskRequestConflict,
+        match="knowledge_lifecycle_successor_stale",
+    ):
+        adapter.decide_learning_change(principal, request)
+
+    with session_factory() as session:
+        assert _team_lifecycle_snapshot(session, fixture.team_id) == before_replay
