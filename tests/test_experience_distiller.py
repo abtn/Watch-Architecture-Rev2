@@ -12988,15 +12988,11 @@ def test_b5_3_supersede_proposal_assessment_and_atomic_predecessor_commit(
     predecessor_id = _create_active_knowledge_item(
         session_factory, snapshot_store, fixture
     )
-    candidate_committed_at = revalidation_committed_at + timedelta(minutes=1)
-    successor_id = at_commit_time(
-        candidate_committed_at,
-        lambda: _create_active_knowledge_item(
-            session_factory,
-            snapshot_store,
-            fixture,
-            supersedes_item_id=predecessor_id,
-        ),
+    successor_id = _create_active_knowledge_item(
+        session_factory,
+        snapshot_store,
+        fixture,
+        supersedes_item_id=predecessor_id,
     )
     with session_factory() as session:
         predecessor = session.get(KnowledgeItem, predecessor_id)
@@ -14462,11 +14458,15 @@ def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
         )
 
     # Create a hidden candidate through the existing distillation/approval path.
-    successor_id = _create_active_knowledge_item(
-        session_factory,
-        snapshot_store,
-        fixture,
-        supersedes_item_id=predecessor_id,
+    candidate_committed_at = revalidation_committed_at + timedelta(minutes=1)
+    successor_id = at_commit_time(
+        candidate_committed_at,
+        lambda: _create_active_knowledge_item(
+            session_factory,
+            snapshot_store,
+            fixture,
+            supersedes_item_id=predecessor_id,
+        ),
     )
     with session_factory() as session:
         predecessor = session.get(KnowledgeItem, predecessor_id)
