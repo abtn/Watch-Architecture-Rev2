@@ -1,7 +1,7 @@
 # RW Value Harness — Newsroom First
 
-**Status:** proposed measurement contract; not yet frozen for scored runs  
-**First domain:** newsroom (Operator-confirmed 2026-11-15)  
+**Status:** proposed measurement contract; not yet frozen for scored runs
+**First domain:** newsroom (Operator-confirmed 2026-11-15)
 **Decision authority:** the Operator freezes the exact scenario, rubric, and thresholds during RW-0 / before the R8 entry gate.
 
 ## 1. What the harness measures
