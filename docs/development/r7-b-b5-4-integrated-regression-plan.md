@@ -1,6 +1,6 @@
 # R7-B B5.4 — Integrated Lifecycle Regression and Closeout Plan
 
-**Status:** B5.3 is formally closed. B5.4.0 remote read-only audit and local baseline preflight are complete. The Operator authorized B5.4.1–B5.4.3 test-only implementation on 2026-11-15. The integrated lifecycle-chain and terminal-retirement tests are implemented; B5.4.2 reuses the existing candidate replacement proof. Code/test head `145aaa2c58c10923e96d2d41d84968ff8a79fc4e` passed hosted CI #1166; documentation-inclusive head `ce58d1f2af895ff84ac27c942f5f36e14a0b80b6` passed hosted CI #1168 (998 passed). Operator-local exact-head verification at `1d16da86bdd2e97d1b9b86dbd07622225f9e75a1` passed: 3 focused tests, Ruff, Mypy, migration checks, and full pytest (998 passed, 113 warnings). Cleanup inspection found no disposable container, both database URL variables were empty, and the worktree was clean. Formal acceptance remains pending. B5.4.4–B5.4.5 remain separately gated.
+**Status:** B5.3 is formally closed. B5.4.0 remote read-only audit and local baseline preflight are complete. The Operator authorized B5.4.1–B5.4.5 test-only implementation and verification on 2026-11-15. The integrated lifecycle-chain and terminal-retirement tests are implemented; B5.4.2 reuses the existing candidate replacement proof. Code/test head `145aaa2c58c10923e96d2d41d84968ff8a79fc4e` passed hosted CI #1166; documentation-inclusive head `ce58d1f2af895ff84ac27c942f5f36e14a0b80b6` passed hosted CI #1168 (998 passed). Operator-local exact-head verification at `1d16da86bdd2e97d1b9b86dbd07622225f9e75a1` passed: 3 focused tests, Ruff, Mypy, migration checks, and full pytest (998 passed, 113 warnings). Cleanup inspection found no disposable container, both database URL variables were empty, and the worktree was clean. B5.4.4 is implemented and hosted-verified; B5.4.5 hosted verification passed. Operator-local exact-final-head verification, final review, and explicit technical acceptance remain pending.
 **Planning baseline:** `main` after B5.4 planning PR #121 squash merge `eef7815db922984c798e95ebd91d6d5c6c87e3b0`.
 **Implementation baseline requirement:** The implementation branch `r7b-b5-4-implementation-20261114` was created from exact current `main` SHA `eef7815db922984c798e95ebd91d6d5c6c87e3b0` after PR #121 merged. The exact SHA and remote source/test inventory are recorded in [the B5.4.0 audit](r7-b-b5-4-baseline-audit.md). Do not branch from the earlier planning branch.
 **Scope:** Integrated regression evidence for the already implemented B5.1 Create-with-successor, B5.2 Retire, and B5.3 Supersede lifecycle paths. Prefer test-only changes and existing fixtures/entry points.
@@ -114,6 +114,8 @@ For each replay, verify:
 
 Reuse existing focused replay proofs where they already establish the exact invariant; add only the missing cross-transition integration assertions.
 
+**Implementation:** Added `test_original_revise_approval_replays_after_later_retirement`. It accepts a revision through the trusted Operator path, accepts a later retirement, then replays the original revision approval. It verifies original Task/LearningChange/decision/Operator/timestamp/Outcome identity and compares durable Team lifecycle snapshots before and after replay, including Events, Outcomes, Tasks, LearningChanges, and KnowledgeItems. The Create row is ordinary root creation only, per the Operator's explicit scope decision; existing root-create later-history replay remains sufficient. Revalidate, Retire, and Supersede reuse their existing later-history replay proofs.
+
 **Exit:** Every lifecycle approval remains idempotent and historically stable after later operations.
 
 ### B5.4.5 — Integrated verification and closeout
@@ -127,6 +129,8 @@ Reuse existing focused replay proofs where they already establish the exact inva
 7. Require hosted CI to pass on the exact final PR head.
 8. Reconcile `PLAN.md`, README, CHANGE_MAP, this plan, and `docs/testing.md`.
 9. Obtain explicit Operator technical acceptance.
+
+**Hosted verification:** CI #1173 passed on exact code/test head `2a2f222ec43d88a38d993fe8737d54aa89f9b915` ([run #1173](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43696425996)): fresh PostgreSQL migration and single-head, Ruff, Mypy, patch whitespace, full suite (**999 passed, 113 Alembic `path_separator` deprecation warnings**), and disposable-container cleanup. The full suite includes the B5.4 proofs and existing B5.1–B5.3/R7-B regressions. Operator-local verification on the final documentation-inclusive head remains required.
 
 **Exit:** Complete lifecycle branches, durable history, consumer eligibility, and replay pass exact-head hosted/local verification; no unauthorized scope expansion remains; documentation agrees with evidence; and the Operator explicitly accepts B5.4.
 

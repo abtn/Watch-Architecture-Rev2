@@ -143,3 +143,15 @@ This section records events after the read-only B5.4.0 audit; it does not alter 
 - PR #122 remains open and Draft pending technical review and explicit Operator acceptance. B5.4.4–B5.4.5 remain separately gated; B6 and R7-C remain unauthorized.
 
 The B5.4.0 audit's original scope and findings remain historical. The subsequent implementation and verification above are not retroactively described as part of that read-only audit.
+
+
+## Subsequent B5.4.4 implementation and hosted verification — 2026-11-15
+
+This dated update records work authorized after the read-only baseline audit; it does not change the audit's original scope or findings.
+
+- The Operator selected **ordinary root creation only** for the B5.4.4 Create replay row. Create-with-successor replay was not added to the mandatory matrix.
+- Added `test_original_revise_approval_replays_after_later_retirement` in `tests/test_experience_distiller.py`. It accepts a revision through the trusted Operator path, accepts a later retirement, then replays the original revision approval. It checks the original Task, LearningChange, decision, Operator attribution, commit timestamp, and Outcome identity, and compares durable Team lifecycle snapshots before and after replay.
+- The first CI run exposed a test-fixture setup error: the retirement helper had already created the approval request, making the test's subsequent call a replay. The setup was corrected to use the retirement proposal/assessment helper and submit a fresh decision request. This was a test-only correction; no production change was made.
+- Corrected exact code/test head: `2a2f222ec43d88a38d993fe8737d54aa89f9b915`. Hosted CI [#1173](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43696425996) passed: fresh PostgreSQL migration and single-head check, Ruff, Mypy, patch whitespace, full suite (**999 passed, 113 Alembic `path_separator` deprecation warnings**), and disposable-container cleanup.
+- B5.4.5 hosted verification is complete on this exact code/test head. The documentation-inclusive final head still requires Operator-local exact-head verification, final review, and explicit technical acceptance. PR #122 remains Draft and unmerged.
+- Scope remains test/documentation only. No production modules, migrations, schemas, models, dependencies, TaskRuntime, dispatcher, scheduler, authentication boundary, or canonical write paths changed.
