@@ -386,6 +386,128 @@ def test_verified_d7_overlay_moves_active_state_to_needs_review():
     assert result.applied_review_event_ids == (marker.event_id,)
 
 
+def test_legacy_review_event_with_unique_state_match_is_applied():
+    item_id, team_id, root_id = uuid4(), uuid4(), uuid4()
+    root, root_state = _legacy_root(item_id, team_id, root_id)
+    marker = ReviewMarker(
+        event_id=uuid4(),
+        item_id=item_id,
+        current_learning_change_id=None,
+        version=1,
+        review_after=root_state["review_after"],
+        origin_learning_change_id=root_id,
+        reviewed_at=datetime(2026, 10, 3, tzinfo=timezone.utc),
+    )
+
+    result = reconstruct_history(
+        [root],
+        item_id=item_id,
+        team_id=team_id,
+        origin_learning_change_id=root_id,
+        current_learning_change_id=root_id,
+        review_markers=[marker],
+    )
+
+    assert result.state["status"] == "needs_review"
+    assert result.applied_review_event_ids == (marker.event_id,)
+
+
+def test_repeated_legacy_review_and_revalidation_cycles_reconstruct_in_order():
+    item_id, team_id, root_id, first_revalidation_id, second_revalidation_id = (
+        uuid4() for _ in range(5)
+    )
+    root, root_state = _legacy_root(
+        item_id,
+        team_id,
+        root_id,
+        committed_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+    )
+
+    first_review = ReviewMarker(
+        event_id=uuid4(),
+        item_id=item_id,
+        current_learning_change_id=None,
+        version=1,
+        review_after=root_state["review_after"],
+        origin_learning_change_id=root_id,
+        reviewed_at=datetime(2026, 10, 2, tzinfo=timezone.utc),
+    )
+
+    first_revalidation_at = datetime(2026, 10, 3, tzinfo=timezone.utc)
+    first_reviewed_state = dict(root_state)
+    first_reviewed_state["status"] = "needs_review"
+    first_active_state = dict(root_state)
+    first_active_state.update(
+        {
+            "status": "active",
+            "last_validated_at": _timestamp(first_revalidation_at),
+            "review_after": _timestamp(datetime(2026, 10, 4, tzinfo=timezone.utc)),
+            "current_learning_change_id": str(first_revalidation_id),
+        }
+    )
+    first_revalidation = _change(
+        first_revalidation_id,
+        team_id,
+        "revalidate",
+        item_id,
+        first_revalidation_at,
+        previous_state=encode_state_snapshot(first_reviewed_state),
+        committed_state=encode_state_snapshot(first_active_state),
+    )
+
+    second_review = ReviewMarker(
+        event_id=uuid4(),
+        item_id=item_id,
+        current_learning_change_id=None,
+        version=1,
+        review_after=first_active_state["review_after"],
+        origin_learning_change_id=root_id,
+        reviewed_at=datetime(2026, 10, 5, tzinfo=timezone.utc),
+    )
+
+    second_revalidation_at = datetime(2026, 10, 6, tzinfo=timezone.utc)
+    second_reviewed_state = dict(first_active_state)
+    second_reviewed_state["status"] = "needs_review"
+    second_active_state = dict(first_active_state)
+    second_active_state.update(
+        {
+            "status": "active",
+            "last_validated_at": _timestamp(second_revalidation_at),
+            "review_after": _timestamp(datetime(2026, 10, 7, tzinfo=timezone.utc)),
+            "current_learning_change_id": str(second_revalidation_id),
+        }
+    )
+    second_revalidation = _change(
+        second_revalidation_id,
+        team_id,
+        "revalidate",
+        item_id,
+        second_revalidation_at,
+        previous_state=encode_state_snapshot(second_reviewed_state),
+        committed_state=encode_state_snapshot(second_active_state),
+    )
+
+    result = reconstruct_history(
+        [second_revalidation, root, first_revalidation],
+        item_id=item_id,
+        team_id=team_id,
+        origin_learning_change_id=root_id,
+        current_learning_change_id=second_revalidation_id,
+        review_markers=[second_review, first_review],
+    )
+
+    assert result.learning_change_ids == (
+        root_id,
+        first_revalidation_id,
+        second_revalidation_id,
+    )
+    assert result.applied_review_event_ids == (
+        first_review.event_id,
+        second_review.event_id,
+    )
+    assert result.state == second_active_state
+
+
 def test_legacy_review_event_with_ambiguous_state_match_fails_closed():
     item_id, team_id, root_id, revalidate_id = uuid4(), uuid4(), uuid4(), uuid4()
     root, root_state = _legacy_root(item_id, team_id, root_id)
