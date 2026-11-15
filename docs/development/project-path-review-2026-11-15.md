@@ -140,7 +140,7 @@ This PR intentionally:
 - adds this current-main review so future contributors do not treat the proposal's dated assumptions as current facts;
 - links the orientation document from README.md, docs/documentation-guide.md, and CHANGE_MAP.md.
 
-This PR does **not** change PLAN.md, the R8 delivery plan, architecture contracts, invariants, Task scopes, ADR decisions, source code, tests, migrations, or dependencies. That restraint is deliberate: the supplied proposal says D1–D10 must be recorded before those changes, and no such decision record has yet been made.
+At the time this original static review was drafted, it did not itself change PLAN.md, the R8 delivery plan, architecture contracts, invariants, Task scopes, ADR decisions, source code, tests, migrations, or dependencies. The subsequent Operator roadmap decision and Checkpoints A/B on PR #123 supersede the original documentation-only restraint: this PR now updates roadmap, delivery, architecture-status, Task-contract, and RW planning documents. It still changes no accepted ADR, invariant, Task write scope, source code, tests, migrations, or dependencies. The original review recommendation is preserved as historical context; the dated addenda below record the later decisions.
 
 ## 10. Review conclusion
 
