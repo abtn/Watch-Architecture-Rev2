@@ -3514,7 +3514,6 @@ def test_original_revalidation_approval_replays_after_later_history_transition(
         ) == 1
 
 
-
 def test_original_revise_approval_replays_after_later_retirement(
     session_factory,
     snapshot_store,
@@ -3555,7 +3554,7 @@ def test_original_revise_approval_replays_after_later_retirement(
     (
         retirement_id,
         retirement_task_id,
-        retirement_attempt,
+        _,
         retirement_principal,
         _,
     ) = _prepare_retirement_approval(
