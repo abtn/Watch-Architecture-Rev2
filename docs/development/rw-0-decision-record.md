@@ -25,7 +25,7 @@ These are existing accepted contracts, not new decisions made by this record.
 
 ### 2.1 EvidenceLink is one shared evidence model
 
-- [ADR-0007](../decisions/0007-generalized-evidence-links-with-deterministic-validation.md) defines polymorphic EvidenceLink subjects **hypothesis | evaluation** and sources **signal | outcome | artifact**. Quotes are validated deterministically against immutable hashed Snapshots; only **supports** and **challenges** can anchor ConfidenceChanges.
+- [ADR-0007](../decisions/architecture%20decision%20records%20%28ADR-0001%20-%20ADR-0019%29.md#adr-0007-generalized-evidence-links-with-deterministic-validation) defines polymorphic EvidenceLink subjects **hypothesis | evaluation** and sources **signal | outcome | artifact**. Quotes are validated deterministically against immutable hashed Snapshots; only **supports** and **challenges** can anchor ConfidenceChanges.
 - [ADR-0020](../decisions/ADR-0020-consultations-waiting-happens-between-tasks.md) adds **consultation** as an EvidenceLink source. A Consultation answer is an immutable hashed Snapshot and can be cited using the same quote-validation rule.
 - [ADR-0021](../decisions/ADR-0021-operator-update-path-human-as-first-class-worker.md) requires **operator_update** to use the same proposal and commit validation as **update_thread**. Human authorship is provenance, not a validation exemption.
 
@@ -68,7 +68,7 @@ The following items are not silently accepted by this record.
 | Model re-proposal after rejection | The proposal recommends no automatic repair loop in the first slice so the rejection rate remains measurable. | Confirm whether rejected proposals are terminal for the first RW-3 attempt. |
 | Model-call test strategy | The proposal recommends deterministic stubbed-provider tests for proofs and a separate live smoke test. | Confirm the exact test split and provider boundary. |
 | Evaluation/distillation linkage | Preserve existing R6/R7 Evaluation and distillation behavior unless RW evidence demonstrates a required change. | Decide whether Hypothesis evidence must be linked into Evaluation/distillation in the first RW release. |
-| Value thresholds | Metric definitions are proposed in rw-value-harness.md; thresholds must be fixed before scored runs. | Operator freezes thresholds and rubric at the R8 entry gate, before the first scenario run. |
+| Value thresholds | Metric definitions are proposed in rw-value-harness.md; thresholds must be fixed before scored runs. | Operator freezes the scenario, rubric, run count, and thresholds during RW-0, before implementation and before any scored run; the R8 entry gate re-confirms that the frozen harness remains valid. |
 | Process changes | The proposal recommends proof-matrix enforcement, two-SHA PR summaries, spec markers, and a small complexity budget. | Decide which process controls become mandatory, and whether hygiene/test-structure work remains separately authorized. |
 
 ## 4. Proposed RW delivery shape
