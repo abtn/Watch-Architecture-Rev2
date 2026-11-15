@@ -1,5 +1,29 @@
 # Task specifications
 Every durable write in Watch is performed by a Task. This document is the spec for each v1 task type: what it reads, what it may write, how it runs, what is validated at commit time, and how it fails.
+## RW implementation status and evidence contract
+
+The following status is a static source audit at baseline **29c954fe8685e0a5ddb9b205277a28b1a158c57e**. The current documentation PR does not change code. Re-audit after B6 and before RW-1.
+
+| Task / entity | Implementation state at audit baseline |
+|---|---|
+| ingest_source | Implemented for the existing deterministic Signal-ingestion path. This does not include triage. |
+| triage_signal | Specified here; not implemented. |
+| update_thread | Specified here; not implemented. |
+| operator_update | Specified here and governed by ADR-0021; no dedicated implementation path found. |
+| apply_decay | Specified here; not implemented. |
+| Thread / Hypothesis / ConfidenceChange / SignalDisposition | Specified by architecture and Task contracts; no ORM models in the audited baseline. |
+| EvidenceLink | Partial ORM implementation: Evaluation subject with Signal/Outcome sources only. |
+
+The Event-scope allow-list in core/ingestion.py contains future Task type names so that bounded Task-attributed Events can be recorded. Its entries do **not** implement those Tasks or establish that their business entities and services exist.
+
+### EvidenceLink contract for RW
+
+- ADR-0007 accepts one polymorphic EvidenceLink model with subjects **hypothesis | evaluation** and sources **signal | outcome | artifact**. Quotes must match exact offsets in immutable hashed Snapshots. Only **supports** and **challenges** may anchor a ConfidenceChange.
+- ADR-0020 adds **consultation** as a source kind; an answer is an immutable hashed Snapshot and is quote-verifiable.
+- The ORM in the audited baseline is narrower: it constrains the subject to **evaluation** and sources to **signal | outcome**.
+- RW must extend the existing EvidenceLink model/table to the accepted contract. Do not create a sibling evidence model or weaken current Evaluation evidence. Preserve same-Team ownership, deterministic quote/hash validation, stance rules, uniqueness, and replay behavior.
+- Artifact and Consultation source rows must not be treated as valid references before their canonical source records and validation paths exist. Their staging order belongs in the RW-1 migration design. If implementation requires changing an accepted ADR contract, stop for an ADR addendum and Operator decision.
+
 ## 1. Task model
 - Every Task has: Team, `task_type`, optional Thread, `input_refs`, `allowed_tools`, `allowed_writes`, `policy_version`, `budget` (`max_tool_calls`, `max_cost_usd`, `deadline_seconds`), `created_at`, `attempt_count`, and a per-Task pinned `max_attempts` (initial default: 3 total starts). `completed_at` is nullable and set only for status `done`. These lifecycle fields are part of the R6 target; they are not all present in the current ORM baseline.
 - Task statuses and transitions: see `docs/architecture.md` §4.
@@ -114,6 +138,8 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Writes:** same as `ingest_source`. A host application authenticates/authorizes the Operator and invokes the in-repository manual-Task adapter; the adapter creates the ordinary Task. This caller is not implemented by the current R6-F slice, which first supplies the adapter for `approve_learning_change`.
 - **Validation:** same as `ingest_source`.
 ### `triage_signal` — deterministic
+
+**Implementation status:** specified; not implemented at the audit baseline above.
 - **Purpose:** disposition a Signal for the Team; enqueue follow-up work.
 - **Reads:** Signal (+embedding), Domain `match_heuristics` and `dedup_policy`, Team's Threads (+embeddings), recent dispositions.
 - **Writes:** SignalDisposition; Thread creation (`new_thread`); Thread reactivation (`dormant → active`); enqueue of `update_thread` for `deferred`/`matched` cases; Event.
@@ -121,6 +147,8 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Validation:** one disposition per `(signal, team)`; embedding similarity uses the recorded `embedding_model`; `new_thread` requires a strong deterministic heuristic match (per-domain threshold).
 - **Failure:** heuristics error → disposition `deferred` with reason; never silent (INV-09).
 ### `update_thread` — model worker
+
+**Implementation status:** specified; not implemented at the audit baseline above.
 - **Purpose:** incorporate new evidence into a Thread's world model.
 - **Reads:** Thread, active Hypotheses, deferred/unprocessed dispositions, relevant active KnowledgeItems (bounded by `knowledge_selection` policy), current policy, source Snapshots on demand (tool calls).
 - **Writes:** EvidenceLink, Hypothesis (create/supersede/reject), ConfidenceChange, SignalDisposition refinement (from `deferred` to a terminal value), Thread.summary (projection only), Event. **Not:** KnowledgeItem, TeamPolicy, Artifact, Outcome, other Threads.
@@ -129,11 +157,15 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Failure:** all proposals rejected → Task failed with rejection Events; partial commits never occur.
 - **Invariants exercised:** INV-01, 02, 04, 05, 06, 07, 13, 14.
 ### `operator_update` — Operator via host-invoked application adapter
+
+**Implementation status:** specified and constrained by ADR-0021; not implemented at the audit baseline above.
 - **Purpose:** a human expert contributes directly to world memory — their own hypotheses, evidence, confidence judgments, rejections (ADR-0021).
 - **Reads/Writes:** identical scope to `update_thread`.
 - **Commit-time validation:** **identical to `update_thread`** — quotes checked against snapshots (INV-04), stance rule (INV-06), cause pairing (INV-05), explicit transitions (INV-07), scope (INV-14). An unsubstantiated expert hypothesis (no EvidenceLink) enters at `low` band, like any worker's.
 - **Failure:** invalid proposals rejected with Events carrying reasons; human identity is never a validation exemption (INV-15).
 ### `apply_decay` — deterministic, scheduled
+
+**Implementation status:** specified; not implemented at the audit baseline above.
 - **Purpose:** lower confidence of stale Hypotheses; flag dormant Threads.
 - **Reads:** effective `decay_window` and `decay_action` (pack default or team `decay` override); Hypotheses' `last_touched_at` and bands; Thread composition.
 - **Writes:** ConfidenceChange (`cause_kind="decay"` only), Thread status `active → dormant`, Event.

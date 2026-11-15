@@ -83,6 +83,29 @@ Humans enter the loop through three channels, all of which pass the same validat
 
 These sketches are narrative. **Migrations are the authoritative schema**; when this section and a migration disagree, the migration wins and this section is a bug.
 
+### RW implementation state — source audit at 2026-11-15
+
+The following markers describe code at baseline commit **29c954fe8685e0a5ddb9b205277a28b1a158c57e**. The current documentation PR does not change code. These are static source findings, not runtime verification; re-audit after B6 and before RW-1.
+
+| Entity / flow | Implementation state | Evidence boundary |
+|---|---|---|
+| Signal | **Implemented — ingestion only** | ORM model and deterministic ingestion exist. This does not implement triage. |
+| SignalDisposition | **Specified; not implemented** | No ORM model or triage service in the audited baseline. |
+| Thread | **Specified; not implemented** | No ORM model in the audited baseline. |
+| Hypothesis | **Specified; not implemented** | No ORM model in the audited baseline. |
+| EvidenceLink | **Partial** | ORM is Evaluation-subject only and supports Signal/Outcome sources. It does not yet support Hypothesis subjects or Artifact/Consultation sources required by ADR-0007/ADR-0020. |
+| ConfidenceChange | **Specified; not implemented** | No ORM model in the audited baseline. |
+| Artifact | **Specified; not implemented** | No ORM model or render path in the audited baseline. |
+| Consultation | **Specified; not implemented** | Accepted ADR/specification exists; no ORM model or Consultation Task path in the audited baseline. |
+| F1 — ingestion and triage | **Partial** | Signal ingestion exists; triage, dispositions, and Thread matching are not implemented. |
+| F2 — update / operator_update | **Specified; not implemented** | Task contracts exist; no update_thread or operator_update implementation path was found. |
+| F3 — decay / apply_decay | **Specified; not implemented** | Task contract exists; no decay implementation path was found. |
+| F4 — render / Artifact output | **Specified; not implemented** | Task contract exists; no render implementation path was found. |
+| F8 — Consultation | **Specified; not implemented** | Accepted ADR/specification exists; Consultation entity and Task paths are absent. |
+
+A Task type string in an Event-scope allow-list is not evidence that the Task implementation exists. The Task specifications below describe intended contracts; code, migrations, and tests establish implementation.
+
+
 ### `Team`
 
 ```python
