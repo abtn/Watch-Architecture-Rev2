@@ -1071,4 +1071,43 @@ B5.3 was explicitly closed by the Operator and squash-merged in PR [#120](https:
 - Final implementation/scope review found no blocking code findings. The canonical supersede path changes only the predecessor; the accepted candidate row remains unchanged. Reciprocal publication and D7 eligibility remain enforced.
 - Test-isolation assertions are scoped to records owned by each test Task; no production lifecycle/recovery safeguards were weakened.
 
-**Disposition:** B5.3 is formally closed. B5.4.0 read-only baseline/coverage audit was explicitly authorized on 2026-11-14; B5.4.1–B5.4.5 remain separately gated. The B5.4 planning PR [#121](https://github.com/abtn/Watch-Architecture-Rev2/pull/121) passed hosted CI run [#1153](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43623117784) on exact documentation head `7c0dfb141e5f52dbabf532433d9de18d919f2545`. See [the B5.4 plan](development/r7-b-b5-4-integrated-regression-plan.md).
+**Disposition:** B5.3 is formally closed. B5.4.0 audit is complete. B5.4.1–B5.4.4 are implemented and hosted-verified; B5.4.5 hosted verification passed, while Operator-local exact-final-head verification, final review, and explicit acceptance remain pending. The B5.4 planning PR [#121](https://github.com/abtn/Watch-Architecture-Rev2/pull/121) passed hosted CI run [#1153](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43623117784) on exact documentation head `7c0dfb141e5f52dbabf532433d9de18d919f2545`. See [the B5.4 plan](development/r7-b-b5-4-integrated-regression-plan.md).
+
+
+## R7-B B5.4.0 — read-only baseline and coverage audit (2026-11-14)
+
+The remote B5.4.0 inventory is recorded in [the baseline/coverage audit](development/r7-b-b5-4-baseline-audit.md), against the exact implementation-branch base `eef7815db922984c798e95ebd91d6d5c6c87e3b0`. The documentation-only planning PR #121 was squash-merged at that SHA; hosted CI [#1155](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43634784291) passed on reconciled docs head `64682393320b3f66f7fdde1392498c9cf31ab60b`.
+
+The audit found substantial existing B5.2/B5.3 coverage for candidate retirement/replacement, terminal retirement, supersede publication, concurrency and replay. Two bounded test-only gaps remain for a later, separately authorized checkpoint: a cohesive full `create → review → revise → revalidate → create-with-successor → supersede` history, and replay of an accepted revise approval after a subsequent lifecycle transition. The create-with-successor interpretation in the B5.4.4 generic “Create” replay row is recorded for Operator decision. No production, schema, migration, model, TaskRuntime or other architectural gap was identified by the read-only inventory.
+
+This statement describes the remote B5.4.0 audit only: it did not access the Operator's local Windows checkout, Docker daemon, environment variables or database. The Operator subsequently completed local preflight and final B5.4.1–B5.4.3 verification, recorded below.
+
+## R7-B B5.4.1–B5.4.3 — integrated lifecycle regression implementation (2026-11-15)
+
+**Implementation branch:** `r7b-b5-4-implementation-20261114`
+**Exact code/test head:** `145aaa2c58c10923e96d2d41d84968ff8a79fc4e`
+
+Hosted CI run [#1166](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43690650329) passed on the exact code/test head: fresh PostgreSQL migration and single-head verification, Ruff, Mypy, patch whitespace, full pytest (**998 passed, 113 Alembic `path_separator` deprecation warnings in 194.96s**), and disposable-container cleanup.
+
+- **B5.4.1:** Added `test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths` in `tests/test_experience_distiller.py`. It proves `create → review → revise → revalidate → create-with-successor → supersede` through the existing trusted application paths. Assertions cover durable Task/LearningChange/Outcome/Event attribution, immutable history and state transitions, unchanged candidate content/link, reciprocal publication, ordinary retrieval, and Context eligibility.
+- **B5.4.2:** Reuses `test_b5_2_integrated_retirement_candidate_lifecycle_sequences`; it already proves canonical pending-candidate retirement, predecessor preservation, terminal candidate state and immutable `supersedes_item_id`, release of the single-candidate slot, and replacement-candidate creation. No duplicate test or production change was needed.
+- **B5.4.3:** Added `test_b5_4_3_terminal_retirement_hides_item_from_retrieval_and_context`. It uses the canonical trusted retirement path and proves the item becomes terminally retired without a successor, history records create and retire, and both retrieval and Context reject the retired item.
+
+The local baseline preflight was separately confirmed on 2026-11-15 at `3910da29531e0ef8428a22ec4feb688d3d8be4a3`: correct branch, clean worktree, migration head `0018_r7b_lifecycle_review_date`, and Docker 29.9.2 available. Final local verification subsequently synchronized to `1d16da86bdd2e97d1b9b86dbd07622225f9e75a1`; 3 focused tests and the full suite (998 passed, 113 Alembic path_separator deprecation warnings) passed, as did Ruff, Mypy, migration checks, and Git whitespace verification. Cleanup inspection found no disposable container and both database URL environment variables empty. The final worktree is clean.
+
+**Scope:** Test/documentation only. No production modules, migrations, schemas, models, dependencies, TaskRuntime, dispatcher, scheduler, authentication boundary, or canonical write paths changed. B5.4.4 is implemented and hosted-verified; B5.4.5 hosted verification passed. Operator-local exact-final-head verification, final review, and explicit acceptance remain pending; B6 and R7-C remain unauthorized.
+
+Documentation-inclusive PR head \`ce58d1f2af895ff84ac27c942f5f36e14a0b80b6\` also passed hosted CI run [#1168](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43691381433): fresh PostgreSQL migration/single-head, Ruff, Mypy, patch whitespace, full pytest (**998 passed, 113 warnings in 161.18s**), and disposable-container cleanup. Operator-local exact-head verification at `1d16da86bdd2e97d1b9b86dbd07622225f9e75a1` passed: 3 focused tests, Ruff, Mypy, migration checks, and full pytest (998 passed, 113 warnings). Cleanup inspection found no disposable container, both database URL variables were empty, and the Git worktree was clean.
+
+
+## R7-B B5.4.4–B5.4.5 — approval replay and hosted integrated verification (2026-11-15)
+
+The Operator selected ordinary root creation only for the B5.4.4 Create replay row; create-with-successor later-history replay was not added as an additional mandatory case.
+
+Added `test_original_revise_approval_replays_after_later_retirement` to `tests/test_experience_distiller.py`. It uses the trusted Operator decision path for both the revision and subsequent retirement, then replays the original revision approval. The replay must return the original Task, LearningChange, decision, Operator attribution, commit timestamp, and Outcome identity. The test captures and compares the Team lifecycle snapshot around replay; that snapshot includes LearningChanges, KnowledgeItems, Events, Outcomes, and Tasks. Existing later-history replay proofs continue to cover ordinary root Create, Revalidate, Retire, and Supersede.
+
+The first CI attempt found a test setup error: the retirement helper had already created an approval request before the test called the decision method, so the supposedly first retirement decision was itself a replay. The test was corrected to create only the retirement proposal/assessment before issuing a fresh approval request. No production change was required.
+
+Hosted CI [#1173](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43696425996) passed on exact code/test head `2a2f222ec43d88a38d993fe8737d54aa89f9b915`: fresh disposable PostgreSQL migration and single-head verification, Ruff, Mypy, patch whitespace, full pytest (**999 passed, 113 Alembic `path_separator` deprecation warnings in 172.04s**), and disposable-container cleanup. The full suite includes B5.4, B5.1–B5.3 lifecycle regressions, and relevant R7-B regressions.
+
+**B5.4.5 status:** Hosted verification passed. Operator-local verification against the final documentation-inclusive PR head, final complete-diff review, and explicit technical acceptance remain pending. PR #122 remains Draft and unmerged. No production modules, migrations, schemas, models, dependencies, runtime, dispatcher, scheduler, authentication boundary, or canonical write paths changed.

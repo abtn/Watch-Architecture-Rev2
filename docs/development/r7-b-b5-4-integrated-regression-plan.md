@@ -1,8 +1,8 @@
 # R7-B B5.4 — Integrated Lifecycle Regression and Closeout Plan
 
-**Status:** B5.3 is formally closed. B5.4.0 read-only baseline/coverage audit was explicitly authorized by the Operator on 2026-11-14 and is active. No source/test, migration, schema, model, or runtime change is authorized at this checkpoint; B5.4.1–B5.4.5 remain separately gated.
-**Planning baseline:** `main` at B5.3 squash merge `7fbac0656f9eda9983a73dfe84fae859fd7e98f9`.
-**Implementation baseline requirement:** Create the implementation branch from the exact then-current verified `main` after documentation PR #121 is merged; record the verified base SHA in the B5.4.0 audit record. Do not branch from this planning branch.
+**Status:** B5.4.0 audit and baseline preflight complete. B5.4.1–B5.4.3 implemented (B5.4.2 reuses existing B5.2 proof). B5.4.4 implemented; ordinary root Create replay is the selected scope, and accepted revise replay after later retirement is covered. Exact code/test head `2a2f222ec43d88a38d993fe8737d54aa89f9b915` passed hosted CI #1173 (**999 passed, 113 warnings**). B5.4.5 hosted verification passed; Operator-local verification on the final documentation-inclusive head, final review, and explicit technical acceptance remain pending.
+**Planning baseline:** `main` after B5.4 planning PR #121 squash merge `eef7815db922984c798e95ebd91d6d5c6c87e3b0`.
+**Implementation baseline requirement:** The implementation branch `r7b-b5-4-implementation-20261114` was created from exact current `main` SHA `eef7815db922984c798e95ebd91d6d5c6c87e3b0` after PR #121 merged. The exact SHA and remote source/test inventory are recorded in [the B5.4.0 audit](r7-b-b5-4-baseline-audit.md). Do not branch from the earlier planning branch.
 **Scope:** Integrated regression evidence for the already implemented B5.1 Create-with-successor, B5.2 Retire, and B5.3 Supersede lifecycle paths. Prefer test-only changes and existing fixtures/entry points.
 
 ## 1. Objective
@@ -38,9 +38,9 @@ The work is an integration/regression and closeout phase. It must not redesign t
 5. Build a coverage matrix mapping each required scenario below to existing tests and identify only the missing integration assertions.
 6. Confirm whether the required proof can be completed in tests without production changes. If not, stop and report the exact blocker.
 
-**Deliverable:** A concise coverage map and a bounded test-only implementation proposal.
+**Deliverable:** Completed in [the B5.4.0 baseline/coverage audit](r7-b-b5-4-baseline-audit.md). It identifies two bounded test-only gaps and one create-with-successor replay interpretation point. No production or architectural gap was found by the remote inventory.
 
-**Exit:** Exact baseline verified; no production change is proposed without a demonstrated gap and separate authorization.
+**Exit:** Remote exact baseline and source/test inventory verified. The local Operator worktree/database baseline preflight was subsequently verified before B5.4.1–B5.4.3 authorization.
 
 ### B5.4.1 — Complete lifecycle sequence
 
@@ -56,6 +56,8 @@ Verify after each transition:
 - Supersede atomically retires/links only the predecessor; the accepted candidate's row and immutable predecessor link remain unchanged.
 - The predecessor is excluded and the candidate is visible only after reciprocal canonical state and D7 eligibility permit it.
 - Ordinary retrieval and Context agree with the canonical relationship.
+
+**Implementation:** Added `test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths` in `tests/test_experience_distiller.py`. It uses the existing trusted proposal, review, assessment, Operator approval, TaskRuntime, and LearningCommit paths; asserts durable Task/LearningChange/Outcome/Event attribution, current-pointer/version/hash/history transitions, candidate immutability, reciprocal publication, retrieval exclusion/visibility, and Context eligibility. Exact code/test head `145aaa2c58c10923e96d2d41d84968ff8a79fc4e` passed hosted CI #1166 (**998 passed**). Operator-local final-head verification also passed.
 
 **Exit:** One integrated test or a minimal cohesive set of tests proves the whole chain and its durable history without hand-fabricating canonical rows.
 
@@ -73,6 +75,8 @@ Verify:
 - No stale or retired candidate is published; no predecessor reciprocal successor pointer is written before accepted supersede.
 - History reconstruction shows both the retired candidate and replacement candidate accurately.
 
+**Implementation:** Reuses the existing `test_b5_2_integrated_retirement_candidate_lifecycle_sequences` in `tests/test_experience_distiller.py`. That proof already covers canonical candidate retirement, predecessor preservation, immutable `supersedes_item_id`, release of the pending-candidate slot, replacement creation, and reconstructed history. The B5.4.1–B5.4.3 code/test head passed hosted CI #1166 (**998 passed**); no duplicate B5.4.2 test was added.
+
 **Exit:** Candidate cancellation/replacement works without cascade, stale graph state, or dual publication.
 
 ### B5.4.3 — Terminal no-successor branch
@@ -87,6 +91,8 @@ Verify:
 - No candidate, successor pointer, or supersede decision is fabricated.
 - Retrieval and Context exclude the retired item.
 - History reconstruction preserves the create and retire sequence.
+
+**Implementation:** Added `test_b5_4_3_terminal_retirement_hides_item_from_retrieval_and_context` in `tests/test_experience_distiller.py`. It retires through the canonical trusted path, verifies terminal state and create/retire history with no successor link, and proves ordinary retrieval and Context both reject the retired item. Exact code/test head passed hosted CI #1166 (**998 passed**); Operator-local verification remains pending.
 
 **Exit:** Ordinary retirement remains correct as a terminal path independent of candidate/supersede behavior.
 
@@ -108,6 +114,8 @@ For each replay, verify:
 
 Reuse existing focused replay proofs where they already establish the exact invariant; add only the missing cross-transition integration assertions.
 
+**Implementation:** Added `test_original_revise_approval_replays_after_later_retirement`. It accepts a revision through the trusted Operator path, accepts a later retirement, then replays the original revision approval. It verifies original Task/LearningChange/decision/Operator/timestamp/Outcome identity and compares durable Team lifecycle snapshots before and after replay, including Events, Outcomes, Tasks, LearningChanges, and KnowledgeItems. The Create row is ordinary root creation only, per the Operator's explicit scope decision; existing root-create later-history replay remains sufficient. Revalidate, Retire, and Supersede reuse their existing later-history replay proofs.
+
 **Exit:** Every lifecycle approval remains idempotent and historically stable after later operations.
 
 ### B5.4.5 — Integrated verification and closeout
@@ -121,6 +129,8 @@ Reuse existing focused replay proofs where they already establish the exact inva
 7. Require hosted CI to pass on the exact final PR head.
 8. Reconcile `PLAN.md`, README, CHANGE_MAP, this plan, and `docs/testing.md`.
 9. Obtain explicit Operator technical acceptance.
+
+**Hosted verification:** CI #1173 passed on exact code/test head `2a2f222ec43d88a38d993fe8737d54aa89f9b915` ([run #1173](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43696425996)): fresh PostgreSQL migration and single-head, Ruff, Mypy, patch whitespace, full suite (**999 passed, 113 Alembic `path_separator` deprecation warnings**), and disposable-container cleanup. The full suite includes the B5.4 proofs and existing B5.1–B5.3/R7-B regressions. Operator-local verification on the final documentation-inclusive head remains required.
 
 **Exit:** Complete lifecycle branches, durable history, consumer eligibility, and replay pass exact-head hosted/local verification; no unauthorized scope expansion remains; documentation agrees with evidence; and the Operator explicitly accepts B5.4.
 
@@ -156,6 +166,6 @@ Do not weaken an acceptance criterion to preserve schedule.
 
 ## 6. Authorization boundary
 
-The Operator explicitly authorized B5.4.0 on 2026-11-14. This authorization permits creating the implementation branch from verified current `main`, performing the read-only baseline and coverage audit, and recording the audit documentation. It does not authorize source/test, migration, schema, model, or runtime changes. B5.4.1–B5.4.5 remain gated and require a separate checkpoint decision after B5.4.0 review. If the audit demonstrates a production defect or architecture change is necessary, stop and return for authorization.
+The Operator explicitly authorized B5.4.0 on 2026-11-14 and B5.4.1–B5.4.5 test-only implementation and verification on 2026-11-15. The B5.4.0 remote audit and local baseline preflight are complete. B5.4.1–B5.4.4 are implemented; B5.4.2 reuses existing B5.2 coverage. Hosted CI #1173 passed on exact code/test head `2a2f222ec43d88a38d993fe8737d54aa89f9b915` (999 passed, 113 warnings), and B5.4.5 hosted verification passed. Operator-local verification on the final documentation-inclusive head, final review, and explicit acceptance remain pending. B6 and R7-C remain gated. If later work demonstrates a production defect or architecture change is necessary, stop and return for separate authorization.
 
 B5.3 is formally closed by the Operator's explicit instruction to close and squash-merge PR #120. The B5.4.0 audit does not make B5.4 an automatic R8 prerequisite. B6 and R7-C remain unauthorized. R8 remains governed by its separate entry gate and delivery plan.
