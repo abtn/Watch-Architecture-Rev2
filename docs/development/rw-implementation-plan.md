@@ -1,9 +1,9 @@
 # RW — Implementation Plan and Proof Matrix
 
-**Status:** proposed plan; no RW implementation is authorized  
-**Sequence:** B6 → RW-0 → RW-1 → RW-2 → RW-3 → RW-4 → RW-5 → foundation exit gate → R8  
-**Code audit basis:** 29c954fe8685e0a5ddb9b205277a28b1a158c57e (the Checkpoint B PR changes documentation only)  
-**Decision record:** [RW-0 decision record](rw-0-decision-record.md)  
+**Status:** proposed plan; no RW implementation is authorized
+**Sequence:** B6 → RW-0 → RW-1 → RW-2 → RW-3 → RW-4 → RW-5 → foundation exit gate → R8
+**Code audit basis:** 29c954fe8685e0a5ddb9b205277a28b1a158c57e (the Checkpoint B PR changes documentation only)
+**Decision record:** [RW-0 decision record](rw-0-decision-record.md)
 **Value harness:** [Newsroom value harness](rw-value-harness.md)
 
 This plan turns the accepted architecture and the RW proposal into bounded implementation slices. It does not authorize schema, code, tests, migrations, or provider changes. RW-0 must freeze unresolved decisions and the Operator must authorize each implementation slice.
