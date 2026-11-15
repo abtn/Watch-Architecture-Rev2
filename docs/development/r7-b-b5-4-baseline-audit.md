@@ -129,3 +129,17 @@ No local Windows checkout, local Git worktree, Docker daemon, local environment 
 **B5.4.0 remote audit: COMPLETE.** The implementation branch starts from the verified merged `main` SHA above. The audit found two bounded coverage gaps: the complete six-transition composition and accepted revise replay after later history. The create-with-successor replay scope requires clarification before inclusion as a mandatory case.
 
 **Next decision:** Review this audit and explicitly authorize B5.4.1 (and, when appropriate, the revise replay addition within B5.4.4) before source/test changes. B5.4.0 does not authorize implementation. B5.4.2–B5.4.5, B6, and R7-C remain separately gated.
+
+
+## 9. Subsequent authorization and implementation update — 2026-11-15
+
+This section records events after the read-only B5.4.0 audit; it does not alter what that audit inspected or its original authority.
+
+- The Operator separately authorized B5.4.1–B5.4.3 test-only implementation on 2026-11-15.
+- B5.4.1's integrated `create → review → revise → revalidate → create-with-successor → supersede` test and B5.4.3's terminal-retirement test were added in `tests/test_experience_distiller.py`. B5.4.2 reuses the existing B5.2 candidate-retirement/replacement proof.
+- Code/test CI #1166, documentation checkpoint CI #1168, and final docs/status CI #1169 passed; final PR head is `1d16da86bdd2e97d1b9b86dbd07622225f9e75a1`.
+- Operator-local verification at that exact head passed: 3 focused tests, Ruff, Mypy, fresh disposable-PostgreSQL migrations and single-head check, and full pytest (998 passed, 113 Alembic `path_separator` deprecation warnings). The final Git worktree is clean. Follow-up cleanup inspection found no disposable container and both database URL environment variables empty. The earlier baseline output described the variables as “NOT SET” but did not distinguish unset from empty.
+- No production, migration, schema, model, dependency, TaskRuntime, dispatcher, scheduler, authentication-boundary, or canonical-write-path changes were made.
+- PR #122 remains open and Draft pending technical review and explicit Operator acceptance. B5.4.4–B5.4.5 remain separately gated; B6 and R7-C remain unauthorized.
+
+The B5.4.0 audit's original scope and findings remain historical. The subsequent implementation and verification above are not retroactively described as part of that read-only audit.
