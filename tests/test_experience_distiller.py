@@ -14242,3 +14242,393 @@ def test_b5_3_5_candidate_retirement_serializes_with_supersede(
             assert supersede[0] in reconstruct_knowledge_item_history(
                 session, predecessor
             ).learning_change_ids
+
+def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+    monkeypatch,
+):
+    from core.context_assembly import TaskContextAssembler, TaskContextError
+    from core.knowledge_index import RetrievedPassage
+    from core.knowledge_lifecycle_tasks import KnowledgeLifecycleAssessmentTaskRunner
+
+    fixture = distillation_fixture(1, False, review_interval_days=1)
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    principal = _approval_principal(
+        fixture.team_id, subject=f"operator-b54-chain-{uuid4()}"
+    )
+
+    predecessor_id = _create_active_knowledge_item(
+        session_factory, snapshot_store, fixture
+    )
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        assert predecessor is not None and predecessor.review_after is not None
+        review_after = predecessor.review_after
+        initial_change_id = predecessor.origin_learning_change_id
+        initial_version = predecessor.version
+        initial_hash = knowledge_item_content_hash(predecessor)
+
+    # Exercise the ordinary D7 review transition before revising the item.
+    review_task_id = uuid4()
+    fixture.extra_task_ids.append(review_task_id)
+    review_started_at = review_after - timedelta(seconds=1)
+    with session_factory.begin() as session:
+        session.add(
+            Task(
+                id=review_task_id,
+                team_id=fixture.team_id,
+                task_type="review_knowledge",
+                status="running",
+                attempt_count=1,
+                policy_version=1,
+                objective_id=None,
+                plan_id=None,
+                plan_action_id=None,
+                allowed_writes=["KnowledgeItem"],
+                budget={
+                    "max_tool_calls": 0,
+                    "max_cost_usd": 0.0,
+                    "deadline_seconds": 30,
+                },
+                created_at=review_started_at,
+                completed_at=None,
+                max_attempts=3,
+            )
+        )
+        session.flush()
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=review_task_id,
+                type="task_started",
+                payload={
+                    "from_status": "pending",
+                    "to_status": "running",
+                    "attempt_count": 1,
+                },
+                created_at=review_started_at,
+            )
+        )
+    runtime.finalize(
+        TerminalObservation(
+            task_id=review_task_id,
+            attempt=1,
+            result_category="success_knowledge_reviewed",
+            observed_at=review_after,
+        )
+    )
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        review_event = session.scalar(
+            select(Event).where(
+                Event.task_id == review_task_id,
+                Event.type == "knowledge_items_reviewed",
+            )
+        )
+        assert predecessor is not None and predecessor.status == "needs_review"
+        assert review_event is not None
+        assert predecessor.current_learning_change_id == initial_change_id
+        assert predecessor.version == initial_version
+        assert knowledge_item_content_hash(predecessor) == initial_hash
+
+    revision_id = _create_revision_proposal(
+        session_factory,
+        snapshot_store,
+        fixture,
+        predecessor_id,
+        body=(
+            "The revised practice preserves source evidence and records a "
+            "distinct observation before drawing a conclusion."
+        ),
+    )
+    _run_quality_assessment(session_factory, snapshot_store, revision_id)
+    revision_committed_at = review_after + timedelta(seconds=3)
+
+    import core.learning_commit as learning_commit
+
+    def decide_at(request: LearningChangeDecisionRequest, committed_at: datetime):
+        class FixedCommitDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return (
+                    committed_at
+                    if tz is not None
+                    else committed_at.replace(tzinfo=None)
+                )
+
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                learning_commit,
+                "datetime",
+                SimpleNamespace(
+                    datetime=FixedCommitDateTime,
+                    timezone=timezone,
+                    timedelta=timedelta,
+                ),
+            )
+            return adapter.decide_learning_change(principal, request)
+
+    revised = decide_at(
+        LearningChangeDecisionRequest(
+            learning_change_id=revision_id,
+            decision="accept",
+            idempotency_key=uuid4(),
+        ),
+        revision_committed_at,
+    )
+    assert revised.learning_change_status == "accepted"
+    assert revised.task_status == "done"
+    assert revised.knowledge_item_id == predecessor_id
+    assert not revised.replayed
+    assert revised.outcome_id is not None
+
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        revision = session.get(LearningChange, revision_id)
+        assert predecessor is not None and revision is not None
+        revised_state = knowledge_item_state(predecessor)
+        revised_hash = knowledge_item_content_hash(predecessor)
+        assert predecessor.status == "needs_review"
+        assert predecessor.current_learning_change_id == revision_id
+        assert predecessor.version == initial_version + 1
+        assert predecessor.last_validated_at is None
+        assert revised_hash != initial_hash
+        assert revision.previous_state is not None
+        assert revision.previous_state["state"]["status"] == "needs_review"
+        assert revision.committed_state is not None
+        assert revision.committed_state["state"] == revised_state
+
+    # Build a fresh revalidation proposal only after the accepted revision.
+    revalidation_source_task_id, revalidation_id = _create_revalidation_proposal(
+        session_factory,
+        snapshot_store,
+        fixture,
+        predecessor_id,
+        perform_review=False,
+    )
+    revalidation_assessment_task_id = KnowledgeRevalidationAssessmentService(
+        session_factory, snapshot_store
+    ).create_task(revalidation_id)
+    fixture.extra_task_ids.append(revalidation_assessment_task_id)
+    revalidation_assessment = KnowledgeRevalidationAssessmentTaskRunner(
+        session_factory,
+        snapshot_store,
+        _FakeKnowledgeRevalidationProvider(),
+    ).run(revalidation_assessment_task_id)
+    assert revalidation_assessment.status == "done"
+    assert revalidation_assessment.assessment_id is not None
+
+    revalidation_committed_at = revision_committed_at + timedelta(minutes=1)
+    revalidated = decide_at(
+        LearningChangeDecisionRequest(
+            learning_change_id=revalidation_id,
+            decision="accept",
+            idempotency_key=uuid4(),
+        ),
+        revalidation_committed_at,
+    )
+    assert revalidated.learning_change_status == "accepted"
+    assert revalidated.task_status == "done"
+    assert revalidated.knowledge_item_id == predecessor_id
+    assert not revalidated.replayed
+    assert revalidated.outcome_id is not None
+
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        revalidation = session.get(LearningChange, revalidation_id)
+        assert predecessor is not None and revalidation is not None
+        assert predecessor.status == "active"
+        assert predecessor.current_learning_change_id == revalidation_id
+        assert predecessor.version == initial_version + 1
+        assert predecessor.last_validated_at == revalidation_committed_at
+        assert predecessor.review_after == revalidation_committed_at + timedelta(days=1)
+        assert knowledge_item_content_hash(predecessor) == revised_hash
+        assert revalidation.previous_state is not None
+        assert revalidation.previous_state["state"] == revised_state
+        assert revalidation.committed_state is not None
+        assert revalidation.committed_state["state"] == knowledge_item_state(
+            predecessor
+        )
+
+    # Create a hidden candidate through the existing distillation/approval path.
+    successor_id = _create_active_knowledge_item(
+        session_factory,
+        snapshot_store,
+        fixture,
+        supersedes_item_id=predecessor_id,
+    )
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        successor = session.get(KnowledgeItem, successor_id)
+        assert predecessor is not None and successor is not None
+        assert predecessor.status == "active"
+        assert predecessor.superseded_by_id is None
+        assert successor.status == "active"
+        assert successor.supersedes_item_id == predecessor_id
+        assert successor.superseded_by_id is None
+        successor_before = knowledge_item_state(successor)
+        successor_hash = knowledge_item_content_hash(successor)
+        assert not _supersession_publication_is_visible(session, successor, {})
+
+    # Index both items while the candidate is still unpublished.
+    class FakeEmbeddingProvider:
+        space = EmbeddingSpace(
+            provider="watch_test",
+            model="b54-integrated-chain",
+            revision="1",
+            dimensions=3,
+            configuration="b54-integrated-chain-v1",
+        )
+
+        def current_space(self):
+            return self.space
+
+        def embed(self, texts):
+            return EmbeddingBatch(
+                space=self.space,
+                vectors=tuple((0.1, 0.2, 0.3) for _ in texts),
+            )
+
+    embedding_provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(session_factory, embedding_provider)
+    retriever = HybridKnowledgeRetriever(
+        session_factory, snapshot_store, embedding_provider
+    )
+    assert indexer.index_knowledge_item(predecessor_id).outcome == "indexed"
+    assert indexer.index_knowledge_item(successor_id).outcome == "indexed"
+    before_supersede = retriever.retrieve(fixture.team_id, "source evidence")
+    assert predecessor_id in {item.knowledge_item_id for item in before_supersede}
+    assert successor_id not in {item.knowledge_item_id for item in before_supersede}
+    predecessor_passage = next(
+        item for item in before_supersede
+        if item.knowledge_item_id == predecessor_id
+    )
+
+    supersede_change_id, supersede_task_id, supersede_attempt, supersede_principal, _ = (
+        _prepare_supersede_approval(
+            session_factory,
+            snapshot_store,
+            fixture,
+            predecessor_id,
+            successor_id,
+            principal=principal,
+        )
+    )
+    superseded = LearningCommitService(session_factory, snapshot_store).decide(
+        supersede_task_id, supersede_attempt, supersede_principal
+    )
+    assert superseded.decision == "accept"
+    assert superseded.knowledge_item_id == predecessor_id
+    runtime.finalize(
+        TerminalObservation(
+            task_id=supersede_task_id,
+            attempt=supersede_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=superseded.committed_at,
+            learning_change_id=supersede_change_id,
+        )
+    )
+
+    with session_factory() as session:
+        predecessor = session.get(KnowledgeItem, predecessor_id)
+        successor = session.get(KnowledgeItem, successor_id)
+        supersede_change = session.get(LearningChange, supersede_change_id)
+        assert predecessor is not None and successor is not None
+        assert supersede_change is not None
+        assert predecessor.status == "retired"
+        assert predecessor.superseded_by_id == successor_id
+        assert predecessor.version == initial_version + 1
+        assert successor.supersedes_item_id == predecessor_id
+        assert successor.superseded_by_id is None
+        assert knowledge_item_state(successor) == successor_before
+        assert knowledge_item_content_hash(successor) == successor_hash
+        assert supersede_change.operation == "supersede"
+        assert supersede_change.status == "accepted"
+
+        predecessor_history = reconstruct_knowledge_item_history(
+            session, predecessor
+        )
+        successor_history = reconstruct_knowledge_item_history(session, successor)
+        assert predecessor_history.learning_change_ids == (
+            initial_change_id,
+            revision_id,
+            revalidation_id,
+            supersede_change_id,
+        )
+        assert predecessor_history.applied_review_event_ids == (review_event.id,)
+        assert predecessor_history.states[1]["status"] == "needs_review"
+        assert predecessor_history.states[2]["status"] == "active"
+        assert predecessor_history.states[-1]["status"] == "retired"
+        assert predecessor_history.states[-1]["superseded_by_id"] == str(successor_id)
+        assert predecessor_history.state == knowledge_item_state(predecessor)
+        assert successor_history.learning_change_ids == (
+            successor.origin_learning_change_id,
+        )
+
+        # Every accepted lifecycle write is attributable to one completed
+        # approval Task, one accepted-decision Event, and one terminal Outcome.
+        accepted_change_ids = (
+            initial_change_id,
+            revision_id,
+            revalidation_id,
+            successor.origin_learning_change_id,
+            supersede_change_id,
+        )
+        for change_id in accepted_change_ids:
+            change = session.get(LearningChange, change_id)
+            assert change is not None and change.status == "accepted"
+            assert change.committed_by_task_id is not None
+            task = session.get(Task, change.committed_by_task_id)
+            assert task is not None and task.status == "done"
+            assert session.scalar(
+                select(func.count(Event.id)).where(
+                    Event.task_id == task.id,
+                    Event.type == "learning_change_accepted",
+                )
+            ) == 1
+            assert session.scalar(
+                select(func.count(Outcome.id)).where(
+                    Outcome.recorded_by_task_id == task.id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            ) == 1
+
+        review_task = session.get(Task, review_task_id)
+        assert review_task is not None and review_task.status == "done"
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == review_task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) == 1
+        assert session.get(Task, revalidation_source_task_id).status == "done"
+
+    assert indexer.index_knowledge_item(successor_id).outcome == "unchanged"
+    after_supersede = retriever.retrieve(fixture.team_id, "source evidence")
+    assert successor_id in {item.knowledge_item_id for item in after_supersede}
+    assert predecessor_id not in {item.knowledge_item_id for item in after_supersede}
+    successor_passage = next(
+        item for item in after_supersede
+        if item.knowledge_item_id == successor_id
+    )
+
+    scope = SimpleNamespace(team_id=fixture.team_id)
+    with session_factory() as session:
+        with pytest.raises(
+            TaskContextError, match="team_experience_supersession_not_visible"
+        ):
+            TaskContextAssembler._validate_team_experience_passage(
+                session,
+                scope,
+                predecessor_passage,
+                datetime.now(timezone.utc),
+            )
+        TaskContextAssembler._validate_team_experience_passage(
+            session,
+            scope,
+            successor_passage,
+            datetime.now(timezone.utc),
+        )
