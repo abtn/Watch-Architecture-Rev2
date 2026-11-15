@@ -12988,11 +12988,15 @@ def test_b5_3_supersede_proposal_assessment_and_atomic_predecessor_commit(
     predecessor_id = _create_active_knowledge_item(
         session_factory, snapshot_store, fixture
     )
-    successor_id = _create_active_knowledge_item(
-        session_factory,
-        snapshot_store,
-        fixture,
-        supersedes_item_id=predecessor_id,
+    candidate_committed_at = revalidation_committed_at + timedelta(minutes=1)
+    successor_id = at_commit_time(
+        candidate_committed_at,
+        lambda: _create_active_knowledge_item(
+            session_factory,
+            snapshot_store,
+            fixture,
+            supersedes_item_id=predecessor_id,
+        ),
     )
     with session_factory() as session:
         predecessor = session.get(KnowledgeItem, predecessor_id)
@@ -14347,7 +14351,7 @@ def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
 
     import core.learning_commit as learning_commit
 
-    def decide_at(request: LearningChangeDecisionRequest, committed_at: datetime):
+    def at_commit_time(committed_at: datetime, operation):
         class FixedCommitDateTime(datetime):
             @classmethod
             def now(cls, tz=None):
@@ -14367,7 +14371,13 @@ def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
                     timedelta=timedelta,
                 ),
             )
-            return adapter.decide_learning_change(principal, request)
+            return operation()
+
+    def decide_at(request: LearningChangeDecisionRequest, committed_at: datetime):
+        return at_commit_time(
+            committed_at,
+            lambda: adapter.decide_learning_change(principal, request),
+        )
 
     revised = decide_at(
         LearningChangeDecisionRequest(
@@ -14519,8 +14529,12 @@ def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
         successor_id,
         principal=principal,
     )
-    superseded = LearningCommitService(session_factory, snapshot_store).decide(
-        supersede_task_id, supersede_attempt, supersede_principal
+    supersede_committed_at = candidate_committed_at + timedelta(minutes=1)
+    superseded = at_commit_time(
+        supersede_committed_at,
+        lambda: LearningCommitService(session_factory, snapshot_store).decide(
+            supersede_task_id, supersede_attempt, supersede_principal
+        ),
     )
     assert superseded.decision == "accept"
     assert superseded.knowledge_item_id == predecessor_id
@@ -14606,7 +14620,9 @@ def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
                 Outcome.outcome_type == "task_execution",
             )
         ) == 1
-        assert session.get(Task, revalidation_source_task_id).status == "done"
+        revalidation_source_task = session.get(Task, revalidation_source_task_id)
+        assert revalidation_source_task is not None
+        assert revalidation_source_task.status == "done"
 
     assert indexer.index_knowledge_item(successor_id).outcome == "unchanged"
     after_supersede = retriever.retrieve(fixture.team_id, "source evidence")
