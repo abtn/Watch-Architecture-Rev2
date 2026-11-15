@@ -1081,3 +1081,18 @@ The remote B5.4.0 inventory is recorded in [the baseline/coverage audit](develop
 The audit found substantial existing B5.2/B5.3 coverage for candidate retirement/replacement, terminal retirement, supersede publication, concurrency and replay. Two bounded test-only gaps remain for a later, separately authorized checkpoint: a cohesive full `create → review → revise → revalidate → create-with-successor → supersede` history, and replay of an accepted revise approval after a subsequent lifecycle transition. The create-with-successor interpretation in the B5.4.4 generic “Create” replay row is recorded for Operator decision. No production, schema, migration, model, TaskRuntime or other architectural gap was identified by the read-only inventory.
 
 This audit did not access the Operator's local Windows checkout, local Docker daemon, environment variables or database. No local test/clean-worktree result is claimed. Source/test implementation remains gated pending a separate Operator decision.
+
+## R7-B B5.4.1–B5.4.3 — integrated lifecycle regression implementation (2026-11-15)
+
+**Implementation branch:** \`r7b-b5-4-implementation-20261114\`  
+**Exact code/test head:** \`145aaa2c58c10923e96d2d41d84968ff8a79fc4e\`
+
+Hosted CI run [#1166](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43690650329) passed on the exact code/test head: fresh PostgreSQL migration and single-head verification, Ruff, Mypy, patch whitespace, full pytest (**998 passed, 113 Alembic \`path_separator\` deprecation warnings in 194.96s**), and disposable-container cleanup.
+
+- **B5.4.1:** Added \`test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths\` in \`tests/test_experience_distiller.py\`. It proves \`create → review → revise → revalidate → create-with-successor → supersede\` through the existing trusted application paths. Assertions cover durable Task/LearningChange/Outcome/Event attribution, immutable history and state transitions, unchanged candidate content/link, reciprocal publication, ordinary retrieval, and Context eligibility.
+- **B5.4.2:** Reuses \`test_b5_2_integrated_retirement_candidate_lifecycle_sequences\`; it already proves canonical pending-candidate retirement, predecessor preservation, terminal candidate state and immutable \`supersedes_item_id\`, release of the single-candidate slot, and replacement-candidate creation. No duplicate test or production change was needed.
+- **B5.4.3:** Added \`test_b5_4_3_terminal_retirement_hides_item_from_retrieval_and_context\`. It uses the canonical trusted retirement path and proves the item becomes terminally retired without a successor, history records create and retire, and both retrieval and Context reject the retired item.
+
+The local baseline preflight was separately confirmed on 2026-11-15 at \`3910da29531e0ef8428a22ec4feb688d3d8be4a3\`: correct branch, clean worktree, migration head \`0018_r7b_lifecycle_review_date\`, Docker 29.9.2 available, and both database URL variables unset. Final code-head synchronization and Operator-local disposable-PostgreSQL verification remain pending.
+
+**Scope:** Test-only. No production modules, migrations, schemas, models, dependencies, TaskRuntime, dispatcher, scheduler, authentication boundary, or canonical write paths changed. B5.4.4–B5.4.5 remain separately gated; B6 and R7-C remain unauthorized.
