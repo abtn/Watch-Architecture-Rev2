@@ -82,7 +82,7 @@ Add the update_thread model worker behind the existing generation-provider/cost-
 
 ### RW-4 — minimum signal intake and context read path
 
-Start with Operator-created Threads or a deliberately small deterministic triage rule. Make current Hypotheses available to Task context with strict Team scope and bounded context. Do not turn triage into a heuristic engine before the vertical slice demonstrates a need.
+Use same-Team Thread fixtures for RW-2/RW-3 commit-path proofs, or a deliberately small deterministic triage rule for end-to-end intake. The current `operator_update` Task scope does not create Threads. Make current Hypotheses available to Task context with strict Team scope and bounded context. Do not turn triage into a heuristic engine before the vertical slice demonstrates a need.
 
 ### RW-5 — decay
 
