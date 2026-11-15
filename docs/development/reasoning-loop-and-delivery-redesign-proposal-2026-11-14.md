@@ -159,3 +159,28 @@ Each needs its own database-backed test in the same slice as its code, and a mut
 - **Model nondeterminism:** D4 and D6.
 - **Schedule pressure:** decide D2 explicitly so the date does not set the scope.
 - **Unverified assumptions:** this proposal rests on a static read of a snapshot. The first act of RW-0 is to confirm the gaps in §2 against the current `main`.
+
+---
+
+## Operator roadmap decision — 2026-11-15
+
+This dated addendum records decisions made after the proposal was written. It does not rewrite the original proposal or silently accept every D1–D10 recommendation.
+
+### Decisions now established
+
+1. **The complete foundational architecture must precede R8.** R8 is a pressure test of the integrated architecture, not a development phase in which a missing fundamental layer such as the reasoning loop is added.
+2. **R8 is planned to start on November 23, 2026.** November 23 is not an R8 completion deadline. R8 has no fixed completion date in this decision.
+3. **The current lifecycle position is B6.** B5.4 is complete and closed; it must not be reopened without a demonstrated defect. B6 is the next lifecycle track and begins with baseline verification and a read-only audit.
+4. **The intended sequence is B6 → RW-0 through RW-5 → foundation exit gate → R8.** If the foundation is not ready, R8 does not start on the target date. Do not compress unfinished architecture into R8 or weaken the entry gate.
+
+### B6 boundary
+
+The B6 audit must define the actual scope from demonstrated defects and missing regression proofs. It must investigate F8 (legacy-rooted KnowledgeItems and retirement eligibility), but must not assume that the dead end exists. No production changes, migrations, broad refactors, or implementation branch are authorized by the audit itself. Implementation requires a reviewed acceptance checklist and explicit Operator scope approval.
+
+The current B6 delivery plan is [r7-b-b6-legacy-lifecycle-hardening-plan.md](r7-b-b6-legacy-lifecycle-hardening-plan.md).
+
+### Decisions still open
+
+The remaining D1–D10 details—including the minimum EvidenceLink contract, vertical-slice design, exact value-harness measures, and whether R7-C capabilities are needed to measure retained-experience use—must be recorded explicitly during RW-0. This addendum does not imply that every proposal decision has been resolved or that RW implementation is authorized.
+
+The original D1 wording that parks B5.4 is superseded: B5.4 is already complete. B6 is not parked; it is the next planned lifecycle track.
