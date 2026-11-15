@@ -16,6 +16,8 @@ The current path is B6 legacy-lifecycle hardening (baseline verification and rea
 
 See the [B6 delivery plan](docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md) and [R8 delivery plan](docs/development/r8-delivery-plan.md). A roadmap entry does not itself authorize implementation.
 
+The first RW value-harness domain is newsroom. Its proposed decision record, implementation/proof plan, and measurement contract are [RW-0](docs/development/rw-0-decision-record.md), [RW implementation plan](docs/development/rw-implementation-plan.md), and [newsroom value harness](docs/development/rw-value-harness.md). These are planning documents; RW-0 follows B6 and implementation remains separately gated.
+
 ## Read the smallest relevant set
 
 1. [PLAN.md](PLAN.md) — current milestone status, gates, and next action.
