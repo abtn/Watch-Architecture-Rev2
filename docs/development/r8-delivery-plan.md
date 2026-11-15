@@ -98,7 +98,7 @@ Freeze the task, rubric, comparison baseline, sample-size policy, and evidence s
 At minimum, report:
 
 - Validation outcomes by rule and producer; rejection rate is diagnostic, not a success metric by itself.
-- Whether relevant prior experience was retrieved and actually used.
+- Whether relevant prior experience was retrieved and entered the later Task Context; claim direct use only where a validated knowledge-use reference or equivalent accepted mechanism is in scope (otherwise report the controlled outcome effect without asserting direct use).
 - Whether a controlled second run improves against the fixed rubric and baseline.
 - Prediction calibration only where predictions are registered, resolvable, and numerous enough to support honest reporting.
 - Safe-abstention behavior under insufficient, contradictory, and irrelevant evidence.
