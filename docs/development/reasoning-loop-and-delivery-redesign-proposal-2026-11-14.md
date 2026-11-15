@@ -181,6 +181,6 @@ The current B6 delivery plan is [r7-b-b6-legacy-lifecycle-hardening-plan.md](r7-
 
 ### Decisions still open
 
-The remaining D1–D10 details—including the minimum EvidenceLink contract, vertical-slice design, exact value-harness measures, and whether R7-C capabilities are needed to measure retained-experience use—must be recorded explicitly during RW-0. This addendum does not imply that every proposal decision has been resolved or that RW implementation is authorized.
+The remaining D1–D10 details—including the minimum EvidenceLink contract, vertical-slice design, exact value-harness measures, and whether R7-C capabilities are needed to measure retained-experience use—must be recorded explicitly during RW-0. RW-0 must also decide whether other specified future capabilities (rendered Artifacts/output, Consultations, the setup advisor, TeamDraft, and expanded domain-pack machinery) are truly foundational to the chosen R8 product claim or can remain deferred. This addendum does not imply that every proposal decision has been resolved or that RW implementation is authorized.
 
 The original D1 wording that parks B5.4 is superseded: B5.4 is already complete. B6 is not parked; it is the next planned lifecycle track.
