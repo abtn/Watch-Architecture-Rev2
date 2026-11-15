@@ -43,7 +43,7 @@ Designed but not built includes the Thread/Hypothesis reasoning loop, signal tri
 | A governed record that workers cannot bypass | Kernel and Control layers | Built for the implemented paths; the belief-layer commit path is still future work. |
 | Lessons that are earned, versioned and reviewable | Experience and KnowledgeItem lifecycle | Built and still being extended. |
 | Beliefs grounded in checkable evidence | Hypothesis layer | Specified; implementation has not started. |
-| Proof across different domains | R8 pressure test | A planned validation of the existing shared architecture; its scope does not itself implement the missing belief layer. |
+| Proof across different domains | R8 pressure test | A planned validation of the completed shared architecture, including the implemented world-memory reasoning loop; R8 does not add missing foundational layers. |
 
 For current milestone status and authorization, read PLAN.md.
 
