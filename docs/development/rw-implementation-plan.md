@@ -138,7 +138,7 @@ The matrix defines required proof obligations, not tests that already exist. Eac
 | RW-HY-01 | Multiple active competing Hypotheses may coexist. | Create rival Hypotheses without implicit demotion/deletion. | RW-2 |
 | RW-HY-02 | Supersede/reject requires legal transition, successor where required, reason, and Event. | Missing reason, stale status, invalid successor, and replay cases. | RW-2 |
 | RW-HY-03 | An unsubstantiated Hypothesis starts at low for all authors. | Same proposal tested through Operator and model paths. | RW-2/RW-3 |
-| RW-AT-01 | A proposal set commits atomically or not at all. | One invalid proposal in a multi-proposal set leaves no business writes; rejection Events remain attributable. | RW-2 |
+| RW-AT-01 | Valid proposals commit atomically as one set; invalid proposals are rejected with attributable Events, and the Task fails if all proposals fail. | Test an all-valid set, a mixed valid/invalid batch, and a failure during the valid-set transaction. Invalid proposals create no business writes; a failed valid-set transaction leaves none of that set committed. Preserve the current `docs/tasks.md` / `docs/architecture.md` semantics unless RW-0 explicitly approves a contract change. | RW-2 |
 | RW-RP-01 | Task/proposal replay creates no duplicate evidence or state transition. | Repeated identical Task commit returns/reuses canonical result. | RW-2/RW-3/RW-4/RW-5 |
 | RW-RC-01 | Concurrent updates cannot lose a Hypothesis/evidence change. | Repeated race test on one Thread; one winner or clean serialization, no lost update. | RW-2/RW-3 |
 | RW-TS-01 | Cross-Team Thread, Hypothesis, Signal, and Snapshot references are rejected. | Database-backed negative tests for each reference type. | RW-1/RW-2/RW-4 |
