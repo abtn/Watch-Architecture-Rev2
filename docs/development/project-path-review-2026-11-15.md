@@ -168,7 +168,7 @@ The Operator has decided that all foundational Watch layers must be complete bef
 
 The planned order is **B6 → RW-0 through RW-5 → foundation exit gate → R8**. R8 is planned to start on **November 23, 2026**; this is its start date, not its completion deadline. If the foundation exit gate has not passed, R8 does not start and the schedule is re-baselined.
 
-RW-0 still owns the detailed design decisions, vertical slice, EvidenceLink contract, and value-harness definitions. This roadmap decision does not authorize RW implementation or resolve every D1–D10 item.
+RW-0 still owns the detailed design decisions, vertical slice, EvidenceLink relational/migration representation and staged source support, and value-harness definitions. It does not reopen the accepted ADR-0007/ADR-0020 contract. This roadmap decision does not authorize RW implementation or resolve every D1–D10 item.
 
 ### Delivery-process implications
 
