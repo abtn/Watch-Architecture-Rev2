@@ -3,6 +3,7 @@
 This file identifies the active source for each concern. It is an index, not a second specification. Read only the rows relevant to the task.
 
 | Concern | Authoritative source | Boundary |
+| Plain-language project orientation | [docs/simple-explain.md](docs/simple-explain.md) | Explains the product vision and memory model for readers and agents. Orientation only; PLAN.md owns current status and canonical specifications/ADRs own contracts. |
 |---|---|---|
 | Current milestone, phase gate, next action | [`PLAN.md`](PLAN.md) | The only source of current status. Code presence or a test result does not close a phase. |
 | R5-A materialization/recovery and R5-B lifecycle sequencing | [`PLAN.md`](PLAN.md), `docs/tasks.md`, `docs/testing.md` | R5-A and R5-B are recorded READY; overall R5 was formally closed by operator decision on 2026-10-24. R5 closure is not ADR-0027 acceptance or authorization to start R6. Replanning remains later work. |

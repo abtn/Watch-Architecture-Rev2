@@ -40,6 +40,7 @@ Use CONTEXT.md and README.md for orientation, not as additional authorities. Do 
 ### Orientation
 
 - README.md — public project overview and entry links.
+- docs/simple-explain.md — longer plain-language explanation of the product vision and memory model; orientation only, never a status or architecture authority.
 - CONTEXT.md — short session orientation and minimum reading path.
 
 These files may summarize status for navigation, but must point to PLAN.md and must not become independent status authorities.
