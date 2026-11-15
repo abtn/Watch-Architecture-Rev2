@@ -184,3 +184,28 @@ The current B6 delivery plan is [r7-b-b6-legacy-lifecycle-hardening-plan.md](r7-
 The remaining D1–D10 details—including the minimum EvidenceLink contract, vertical-slice design, exact value-harness measures, and whether R7-C capabilities are needed to measure retained-experience use—must be recorded explicitly during RW-0. RW-0 must also decide whether other specified future capabilities (rendered Artifacts/output, Consultations, the setup advisor, TeamDraft, and expanded domain-pack machinery) are truly foundational to the chosen R8 product claim or can remain deferred. This addendum does not imply that every proposal decision has been resolved or that RW implementation is authorized.
 
 The original D1 wording that parks B5.4 is superseded: B5.4 is already complete. B6 is not parked; it is the next planned lifecycle track.
+
+
+---
+
+## Operator Checkpoint B addendum — 2026-11-15
+
+This addendum records the additional Operator decision and points to the detailed RW-0 artifacts. It preserves the original proposal and the earlier roadmap addendum as historical records.
+
+### Confirmed
+
+- **Newsroom is the first real-world domain for the RW value harness.** The exact newsroom beat, source corpus, task brief, independent outcome set, and scoring thresholds remain to be frozen during RW-0.
+- Checkpoint B is being documented on PR #123. This documentation work does not authorize RW implementation, schema changes, migrations, production code, or tests.
+- The accepted EvidenceLink target is already defined by ADR-0007 and ADR-0020: one shared polymorphic model with Hypothesis/Evaluation subjects and Signal/Outcome/Artifact/Consultation sources. The current ORM is narrower; RW-1 must reconcile implementation with those accepted decisions rather than create a sibling evidence system.
+
+### Still open
+
+R7-C inclusion; whether persistent Artifact/output, Consultation workflows, setup advisor/TeamDraft, and expanded domain-pack machinery are foundational to the selected newsroom product claim; the exact newsroom scenario and thresholds; and the remaining RW-0 design decisions listed in the [RW-0 decision record](rw-0-decision-record.md).
+
+### Current planning artifacts
+
+- [RW-0 decision record](rw-0-decision-record.md)
+- [RW implementation plan and proof matrix](rw-implementation-plan.md)
+- [Newsroom value harness](rw-value-harness.md)
+
+The detailed plan remains proposed until RW-0 is completed after B6 and the Operator explicitly authorizes the next implementation slice.
