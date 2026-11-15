@@ -1,7 +1,7 @@
 # Proposal (v2): Add the Reasoning Loop Before R8, and Redesign How We Deliver
 
 **Date:** 2026-11-14
-**Status:** Proposed for a decision session. Documentation only. It authorizes no implementation, schema change, migration, or PLAN.md change until the Operator records decisions D1–D10.
+**Status:** Historical proposal; parts are superseded by the dated Operator roadmap and Checkpoint B addenda below. D1–D10 are only partially resolved; consult the RW-0 decision record for current confirmed decisions and open questions. This proposal does not authorize implementation, schema changes, or migrations.
 **Proposed phase name:** `RW` (reasoning slice). The name is the Operator's choice.
 **Companion documents:** `project-review-and-implementation-hints.md` (findings F1–F8) and the B5.2 acceptance decision record.
 
