@@ -3,7 +3,7 @@
 **Review date:** 2026-11-15  
 **Repository snapshot:** main at `29c954fe8685e0a5ddb9b205277a28b1a158c57e`  
 **Inputs:** the Operator's 2026-11-14 proposal; the uploaded Project source R8-Delivery-Plan.txt; current PLAN.md, CHANGE_MAP.md, README.md, CONTEXT.md, AGENTS.md, docs/documentation-guide.md, docs/architecture.md, docs/invariants.md, docs/tasks.md, docs/testing.md, docs/development/r8-delivery-plan.md, the R7-B B5 implementation plan including the B5.2 acceptance record, core/models.py, and core/ingestion.py.  
-**Method and limits:** static repository review. No tests, migrations, local checkout, or CI workflows were executed for this review. The referenced companion file project-review-and-implementation-hints.md was not present in the current main tree and was not located in the accessible Project/Library file search. The findings below are based on the proposal supplied for this review and the repository evidence listed above; F1–F8 in that missing companion have not been independently reviewed.
+**Method and limits:** static repository review. No tests, migrations, local checkout, or CI workflows were executed for this review. The companion report, **Watch — Project Review and Implementation Hints** (2026-11-14), has now been supplied and reviewed. Findings F1–F9 are incorporated below and in the decision addendum. Its repository snapshot is static and has no Git metadata or executed tests; it is advisory evidence, not proof of current branch, HEAD, merge, CI, or runtime state.
 
 ## 1. Executive view
 
@@ -40,7 +40,7 @@ The proposal is valuable as a dated record, but some sequencing assumptions have
 - B5.3 is closed.
 - B5.4 test/regression work was merged in PR #122 at `29c954fe8685e0a5ddb9b205277a28b1a158c57e`. The current PLAN.md next-action text has not been reconciled with that merge.
 - Therefore, D1's instruction to park B5.4 is no longer actionable as written. Do not reopen or undo completed work. Decide only what future work remains necessary.
-- B6 and R7-C remain separately gated. Nothing in this review authorizes either. Before B6 is reconsidered, review the proposal's F8 legacy-snapshot retirement question; this review does not resolve it because the referenced F1–F8 companion document was not available.
+- B6 is now the next planned lifecycle track. Its Phase 1 read-only audit must resolve F8 from migration/data and implementation evidence before scope is frozen; the report raises a possibility, not a proven defect. R7-C remains separately gated.
 
 ## 3. The central product decision: what is R8?
 
@@ -127,7 +127,7 @@ These are candidates for D10, not authorizations granted by this review.
 
 ## 8. Decisions still required
 
-D1–D10 remain **Proposed / Unresolved**. The original recommendations are preserved in [the proposal](reasoning-loop-and-delivery-redesign-proposal-2026-11-14.md). This review does not accept them.
+The remaining D1–D10 details are not all resolved. The Operator's selected sequencing and R8 start-date decisions are recorded in the dated addendum below; the remaining design decisions are preserved in [the proposal](reasoning-loop-and-delivery-redesign-proposal-2026-11-14.md) for RW-0.
 
 Before implementation, record each decision with one of: Accepted, Rejected, Deferred, or Revised, plus rationale and date. At minimum, resolve the R8 objective/date and the EvidenceLink contract before schema work.
 
@@ -147,3 +147,35 @@ This PR does **not** change PLAN.md, the R8 delivery plan, architecture contract
 The project should not abandon the rigor developed in R6/R7. It should redirect that rigor toward the missing product loop and measurable improvement. The immediate next step is a decision session, not a migration or model worker.
 
 The most important correction is to stop treating a schedule as a product definition. First decide whether R8 proves the current platform or the complete Watch vision. Then define the smallest vertical scenario and its evidence. Only after that should the team authorize RW implementation and process automation.
+
+
+---
+
+## Operator roadmap decision and companion findings — 2026-11-15
+
+The companion report *Watch — Project Review and Implementation Hints* (2026-11-14) is now available. Its F1–F9 findings are part of this review. The report is explicitly advisory and based on a static repository snapshot; it did not run tests and cannot establish Git or CI state.
+
+### Current milestone corrections
+
+- **B5.4 is complete and closed** by merged PR #122 at `29c954fe8685e0a5ddb9b205277a28b1a158c57e`. Earlier text in the proposal/review that treats B5.4 as unfinished or proposes parking it is historical and superseded. Do not reopen it without a demonstrated defect.
+- **B6 is the next lifecycle track.** Use the [B6 delivery plan](r7-b-b6-legacy-lifecycle-hardening-plan.md). Phase 0 establishes the exact baseline; Phase 1 is read-only. B6 acceptance criteria must come from demonstrated defects or proof gaps. No implementation scope is assumed in advance.
+- **F8 remains unresolved.** The audit must establish whether legacy-rooted items remain after B1 backfill and whether the current retirement path actually blocks them. Do not design a compatibility path until the condition is demonstrated.
+- **R7-C remains separate.** RW-0 decides whether knowledge-use references or other R7-C capabilities are necessary for the value harness; do not combine R7-C with B6 by default.
+
+### R8 and RW decision
+
+The Operator has decided that all foundational Watch layers must be complete before R8 testing begins. The reasoning/world-memory loop is foundational, not a feature to add after or during the R8 pressure test.
+
+The planned order is **B6 → RW-0 through RW-5 → foundation exit gate → R8**. R8 is planned to start on **November 23, 2026**; this is its start date, not its completion deadline. If the foundation exit gate has not passed, R8 does not start and the schedule is re-baselined.
+
+RW-0 still owns the detailed design decisions, vertical slice, EvidenceLink contract, and value-harness definitions. This roadmap decision does not authorize RW implementation or resolve every D1–D10 item.
+
+### Delivery-process implications
+
+F1–F9 remain findings to act on selectively, not a blanket refactor authorization:
+
+- Required proofs should be mapped to tests in the same implementation slice.
+- PR reports should identify verified code/test SHA and current PR head, with exact CI evidence.
+- Keep PLAN.md as the only current status authority and docs/testing.md as the verification evidence archive.
+- Preserve independent authorization gates; do not collapse PRs merely to reduce their count.
+- Treat F2/F3 refactors and hygiene work as separately scoped, behavior-preserving work unless the B6 audit demonstrates they are necessary.
