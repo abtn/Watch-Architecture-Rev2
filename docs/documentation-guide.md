@@ -86,4 +86,4 @@ docs/testing.md is the evidence archive and testing reference. Its historical en
 
 ## R8 source of truth
 
-docs/development/r8-delivery-plan.md is the sole canonical R8 delivery plan in the repository. Any exported or copied R8 plan is a convenience copy only and must not be independently maintained. Reconcile useful content into the canonical file before removing a duplicate from an external Project source set.
+docs/development/r8-delivery-plan.md is the sole canonical R8 delivery plan in the repository. The uploaded/exported Project source copy named `R8-Delivery-Plan.txt` is stale and must not be used as an active status or schedule authority. Any exported or copied R8 plan is a convenience copy only and must not be independently maintained. Reconcile useful content into the canonical file before removing or replacing a duplicate from an external Project source set.
