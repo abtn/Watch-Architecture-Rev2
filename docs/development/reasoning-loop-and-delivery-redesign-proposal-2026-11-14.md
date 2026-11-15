@@ -1,178 +1,161 @@
-# Proposal: Add the Reasoning Loop Before R8, and Redesign How We Deliver
+# Proposal (v2): Add the Reasoning Loop Before R8, and Redesign How We Deliver
 
-**Date:** 2026-11-14  
-**Status:** Proposed for a decision session. Documentation and discussion only. This proposal authorizes no implementation, schema change, migration, or PLAN.md change until the Operator records decisions D1–D10.  
-**Proposed phase name:** RW (reasoning slice); the name is the Operator's choice.
+**Date:** 2026-11-14
+**Status:** Proposed for a decision session. Documentation only. It authorizes no implementation, schema change, migration, or PLAN.md change until the Operator records decisions D1–D10.
+**Proposed phase name:** `RW` (reasoning slice). The name is the Operator's choice.
+**Companion documents:** `project-review-and-implementation-hints.md` (findings F1–F8) and the B5.2 acceptance decision record.
 
 ## 1. Purpose
 
-Watch aims to make AI-assisted teams systematic by requiring work to pass through durable, governed records. The architecture describes a reasoning loop built around Threads, competing Hypotheses, verified evidence, and graded confidence (INV-04 to INV-08; architecture flows F1–F3).
+Watch exists to force an LLM to work systematically inside a durable team, so the team becomes expert in a domain. The architecture says how: the model proposes, code validates and commits, and reasoning runs through Threads, competing Hypotheses, verified evidence and graded confidence (INV-04 to INV-08, flow F2).
 
-This proposal has two parts:
+This proposal does two things:
 
-1. **Product path:** add the missing reasoning loop before the R8 pressure test, if the Operator decides that R8 must validate the complete Watch vision.
-2. **Delivery process:** change how slices are scoped, implemented, proved, documented, and accepted so recurring process problems do not continue.
+1. **Product path:** add the missing reasoning loop before the R8 pressure test.
+2. **Delivery process:** change how we build, so the problems below do not recur.
 
 ## 2. Criticism of the path so far
 
-These are process findings, not personal criticism. They were prepared from a static repository read on 2026-11-14; the current-main review in the companion project-path review records which findings still hold.
+These are findings about the process, not about the people or the architecture, which is sound. Each is grounded in the repository as read; nothing was executed.
 
-| # | Criticism | Evidence cited in the original report |
+| # | Criticism | Evidence |
 |---|---|---|
-| C1 | **Depth before breadth.** Significant R7-B effort went into governing revisions, retirement, and supersession of lessons before the loop that produces world knowledge existed. | No Thread, Hypothesis, or ConfidenceChange tables and no update_thread worker in the code. |
-| C2 | **Milestones close on contracts and CI, not on value.** The project lacks a stable measure of whether a team becomes better at its domain. | The R8 acceptance criteria are mostly scenario and safety proofs; no value metric was defined. |
-| C3 | **Proof comes after code.** Follow-up proof work repeatedly expanded after an implementation was first presented as complete. | B2 residual gaps, B4 G1–G6 follow-up proofs, and B5.2 supplemental acceptance proofs; the report noted a one-test increase for one operation. |
-| C4 | **Specification runs ahead of implementation.** The architecture can read as though all described flows are present. | F1–F8 and their entities/tasks are specified, but several have no implementation. |
-| C5 | **Status is duplicated and drifts.** Historical narrative is copied into active documents and later becomes contradictory. | Stale PR #113 and closure statements appeared in PLAN.md and the R8 plan. |
-| C6 | **Paperwork grows with each slice.** A slice can produce a planning PR, implementation PR, proof follow-up, and closeout PR. | The B4.4 and B5.2 delivery sequences. |
-| C7 | **Dates drive scope.** A fixed R8 date and entry gate were set while important prerequisites and product scope remained unsettled. | R8 target November 23, 2026, while the reasoning layer was absent and B5.2 acceptance was still in progress at the report date. |
-| C8 | **Cheap hygiene stays open.** Known warnings and unexplained failures remain unresolved. | 113 Alembic warnings, one unexplained 36-failure run, and alleged migration filename/revision mismatches. |
-| C9 | **Claims are copied faster than verified.** Summaries can repeat a passed status or acceptance claim without tracing it to the exact source. | The author identified an earlier B5.2 draft that repeated an unverified CI claim and marked decisions Accepted while the proposal status remained Proposed. |
+| C1 | **Depth before breadth.** Roughly two weeks of R7-B went into governing how learned lessons are revised, retired and superseded, before the loop that produces knowledge existed. | No `threads`, `hypotheses` or `confidence_changes` tables in `core/models.py`. No `update_thread` worker. Their names appear only in `core/ingestion.py`. |
+| C2 | **Milestones close on contracts and CI, not on value.** Nothing measures whether a team gets better at a domain. The only integrated path is the R6-G three-case fixture. | PLAN.md exit criteria are proofs, hashes and approvals. R8 has no defined value metric. |
+| C3 | **Proof comes after the code, every time.** B2 left residual gaps, B4 needed a six-part G1–G6 follow-up, and B5.2 has six open gaps. The plan lists required tests, but nothing enforces them. | B5.2 moved the suite from 961 to 962 tests for a whole operation. |
+| C4 | **Spec runs ahead of code, and the docs read as finished.** `architecture.md` describes flows F1–F8 as the system. Only part exists. | `update_thread`, `triage_signal`, `apply_decay`, `render_output`, Consultations and the setup advisor have no implementation. |
+| C5 | **Status is duplicated and drifts.** The "single source of status" rule is broken by long narratives copied across files. | PLAN.md still calls PR #113 open and closure pending after recording B4.4 as closed. The R8 plan repeats bullets and calls #113 unmerged. |
+| C6 | **Paperwork grows with each slice.** A slice tends to need a documentation PR, an implementation PR, a proof follow-up and a closeout PR, each with its own evidence narrative. | B4.4 (#103–#114), B5.2 documentation checkpoint plus implementation. |
+| C7 | **Dates drove scope.** The R8 date and entry gate were set before prerequisites were settled. | R8 is scheduled 2026-11-23 while B5.2 is unaccepted and the reasoning layer is absent. |
+| C8 | **Cheap hygiene left open.** | 113 constant Alembic warnings, one unexplained 36-failure run, migration filename/revision mismatches. |
+| C9 | **Claims are copied faster than they are verified.** This includes my own work in this conversation: my first B5.2 draft repeated "CI passed on latest head" from the report without tracing it to the PR, and marked decisions "Accepted" while the status said "Proposed". | The corrections made earlier in this conversation. |
 
-**What to keep:** the single propose/validate/commit path, immutable evidence, exact-SHA verification, disposable-PostgreSQL race tests, stop conditions, and Operator approval at gates. The criticism is about sequencing and enforcement, not a request to weaken rigor.
+**What to keep:** the single propose/validate/commit path, immutable evidence, exact-SHA verification, disposable-PostgreSQL race tests, the stop conditions, and Operator approval at gates. The problem is sequencing and enforcement, not rigor.
 
 ## 3. What this is and is not
 
-This is a proposed resequencing and delivery-process redesign. The Hypothesis design already exists in ADRs, architecture sections F1–F3, the Task write-scope matrix, and INV-04 to INV-08.
+**It is a re-sequencing plus a process redesign.** The Hypothesis design already exists: ADR-0001 to ADR-0019, `docs/architecture.md` §3 and §5 (F1–F3), the `docs/tasks.md` write-scope matrix, and INV-04 to INV-08.
 
-It is **not** a Kernel redesign. It proposes no second write path, runtime, scheduler, or model-writable policy. One contract question must be resolved before implementation: the current EvidenceLink design is restricted to evaluation subjects and outcome/signal sources in the existing schema; carrying Hypothesis evidence may change an accepted shape (D3).
+**It is not a Kernel redesign.** No new write path, runtime, scheduler or model-writable policy. One real contract question exists: the `evidence_links` table is restricted to `subject_kind = 'evaluation'` with `outcome`/`signal` sources, so carrying hypothesis evidence changes an accepted shape (D3).
 
-## 4. Proposed delivery-process redesign
+## 4. Redesign of the delivery process
 
-### 4.1 Walking skeleton and value harness
+### 4.1 Walking skeleton and a value harness (fixes C1, C2, C7)
+Before any new subsystem, define one thin, repeatable end-to-end scenario on one real domain, and run it at every milestone gate: source → Thread/Hypothesis → Task → Outcome → Evaluation → lesson → retrieval in the next run. Record a small fixed set of numbers each time:
 
-Before adding another subsystem, define one thin, repeatable end-to-end scenario on one real domain:
-
-source → Thread/Hypothesis → Task → Outcome → Evaluation → lesson → retrieval in a later run.
-
-At each milestone gate, record a small fixed set of measures:
-
-- share of model claims accepted by deterministic validation, with rejection reasons;
-- whether a second run improves through retained experience, using a rule-based or independently assessed comparison where possible;
+- share of model claims that survive deterministic validation, and the rejection rate;
+- whether a second run of the same task improves because of retained experience (rule-based comparison where possible);
 - Hypothesis confidence calibration against recorded Outcomes.
 
-A milestone must identify which measure or vision element it serves. A metric is a diagnostic, not automatically a success target: a lower rejection rate, for example, could mean weaker validation rather than better proposals.
+A milestone that cannot say which number it moves, or which part of the vision it serves, goes on a parked list until the harness shows a need.
 
-### 4.2 One slice, one reviewable PR set, proofs included
+### 4.2 One slice, one PR set, proofs included (fixes C3, C6)
+A slice is code, its full proof matrix and its documentation update, merged together. There are no separate proof sub-phases and no closeout sub-phase. "Implementation complete" means every required-test row names a test that passes.
 
-A slice should include code, its full proof matrix, and necessary documentation changes in the same reviewable PR set. Implementation is not complete while required-test rows are missing. Separate PRs remain appropriate where an independent authorization or review gate requires them.
+### 4.3 Machine-checked proof matrix (fixes C3)
+For each slice, keep a short matrix file: requirement ID → test node ID. Mark tests with `@pytest.mark.proof("<id>")`. A small CI script fails the build if a listed ID has no test or no passing result. Also flag suspicious deltas (for example, one new test for a whole operation) for human review.
 
-### 4.3 Machine-checked proof matrix
+### 4.4 Status that cannot drift (fixes C5)
+Keep PLAN.md to about one page of current state. Move verification narratives to `docs/testing.md` as structured records (exact verified code head, current PR head, CI run IDs, test count, warning count). Link instead of copying. Add two fields to every PR summary: **verified code head** and **current PR head**, each with its CI run, or "unconfirmed". At each documentation checkpoint, sweep for stale "open PR" and "pending" text.
 
-For each slice, maintain a short mapping from requirement ID to pytest node ID. Mark tests with a proof identifier and make CI fail if a required identifier has no collected test or its test fails. Flag suspicious test-count or coverage deltas for human review rather than treating a crude count heuristic as proof.
+### 4.5 Spec honesty (fixes C4)
+Add an `Implemented: yes | partial | no (migration / test)` marker to each entity and flow in `architecture.md` and `tasks.md`. A small script compares the entity list against `core/models.py` and flags a spec entity with no table.
 
-### 4.4 Status that cannot drift
+### 4.6 Complexity budget and scope-cut order (fixes C1, C7)
+Every new operation, table or phase must name the harness number or vision element it serves. When a date is at risk, cut features in a pre-agreed order and never cut proofs. Keep one slice in flight at a time.
 
-Keep PLAN.md focused on current state and next action. Keep verification narratives in docs/testing.md as structured evidence records containing the exact code/test head, documentation-inclusive PR head, CI run IDs, test count, warning count, and limitations.
+### 4.7 Hygiene PR, separately authorized (fixes C8)
+- Add `path_separator` to `alembic.ini` to remove the 113 warnings.
+- Align migration filenames with revision IDs, or document the difference.
+- Investigate the 36-failure run: run the full suite repeatedly, once with concurrency tests isolated and once included, in fixed and random order. Record the result in `docs/testing.md`.
 
-Every PR summary should state:
+### 4.8 Test and code structure (supports all of the above)
+- Split `tests/test_experience_distiller.py` (10,881 lines) by area with shared fixtures, in a PR that changes no test bodies.
+- Extract a generic race helper so a new race test is a few lines.
+- Prefer several small tests over one long integrated test, so a failure does not hide later checks.
+- Put the per-operation branches of `learning_commit.py` behind one small interface, as its own behavior-preserving PR, using existing tests as the safety net.
 
-- **Verified code/test head** and the CI run for that exact head.
-- **Current PR head** and the CI run for that exact head, or explicitly say unconfirmed.
-
-At each documentation checkpoint, search for stale open-PR, pending, and authorization language. Link to evidence instead of copying it.
-
-### 4.5 Specification honesty
-
-Add an Implemented: yes / partial / no marker to each entity and flow in architecture.md and tasks.md, with concise evidence. A checker should compare specification claims with models, migrations, services, Task handlers, and tests. A table's presence alone does not prove that a flow is implemented.
-
-### 4.6 Complexity budget and scope-cut order
-
-Every new operation, table, or phase must name the value-harness measure or vision element it serves. Keep one feature slice in flight at a time. When a date is at risk, cut nonessential features in a pre-agreed order; never cut required proofs.
-
-### 4.7 Hygiene PR, separately authorized
-
-- Add Alembic path_separator configuration to remove the known deprecation warnings, after verifying the correct configuration.
-- Align migration filenames with revision IDs, or document deliberate differences.
-- Investigate the historical 36-failure run with isolated and integrated full-suite runs in controlled order, then record what is known and what remains unknown.
-
-### 4.8 Test and code structure
-
-- Split the very large experience-distiller test module by area, initially without changing test bodies.
-- Extract a small shared race-test helper only if it reduces duplication without hiding the concurrency behavior under test.
-- Prefer independently diagnosable tests over one long test that can stop at its first failure.
-- Simplify the per-operation branches in the learning commit service in a separate behavior-preserving change, protected by existing tests.
-
-### 4.9 Verify claims
-
-Every number, SHA, and passed/accepted statement in a report must point to a run ID, command output, source file, or recorded Operator decision. Untraceable claims should be marked unconfirmed, not repeated as fact.
+### 4.9 Verifying claims (fixes C9)
+Every number, SHA and "passed" in a report or summary must be traceable to a source: a run ID, a command output or a file. Reviewers, human or AI, reject summaries that cannot cite one.
 
 ## 5. Proposed product path
 
-The original proposal recommended:
+**Finish** B5.2 to its accepted bar (race, stale-state, replay and negative-case proofs). **Park** B5.3, B5.4, B6 and R7-C. The R8 plan already excludes them unless a blocker appears. Check the legacy-snapshot retirement question (F8) before B6.
 
-- Finish B5.2 to its accepted bar.
-- Park B5.3, B5.4, B6, and R7-C.
-- Insert RW before R8:
-  - **RW-0:** documentation and decision session; freeze the value harness, resolve D1–D10, and update the relevant plans only after those decisions.
-  - **RW-1:** schema for Threads, Hypotheses, and ConfidenceChanges; add SignalDispositions only if triage is in scope; resolve the EvidenceLink contract.
-  - **RW-2:** deterministic commit service with no LLM, entered through the Operator path, proving INV-04 to INV-07.
-  - **RW-3:** model-backed update_thread worker with bounded context, typed proposals, existing provider/cost accounting, and rejection Events.
-  - **RW-4:** minimal deterministic triage and a read path that makes Hypotheses available in Task context.
-  - **RW-5:** scheduled belief decay, before or after R8 according to the Operator's decision.
+**Insert RW before R8:**
 
-The original proposal deferred rendered Artifacts, Consultations, the setup advisor/TeamDraft, and domain-pack machinery beyond the initial reasoning slice unless an actual blocker requires them.
+| Slice | Content | Prevents |
+|---|---|---|
+| RW-0 | Documentation only: the value harness definition, resolution of D1–D10, updates to PLAN.md, CHANGE_MAP.md, `docs/tasks.md` and the R8 plan. Ends with a recorded decision. | C1, C2, C7 |
+| RW-1 | Schema: `threads`, `hypotheses`, `confidence_changes`, plus a minimal `signal_dispositions` only if triage is in scope. Widen `evidence_links` as D3 decides. One migration, one head. Constraint tests for each CHECK/FK. | C3 |
+| RW-2 | Deterministic commit service with **no LLM**, entered through `operator_update` (human as worker, ADR-0021). Proves INV-04 to INV-07 without model nondeterminism. | C3 |
+| RW-3 | `update_thread` model worker: bounded Context, typed proposal schema, existing generation provider and cost accounting, rejection Events with reasons. | Model nondeterminism |
+| RW-4 | Minimal deterministic `triage_signal` (Operator-created Threads acceptable at first), and a read path so Hypotheses enter Task Context as Domain Knowledge. | Scope creep |
+| RW-5 | `apply_decay` (F3). Before or after R8 per D2. | |
+
+**Deferred beyond R8 unless a blocker appears:** `render_output`/Artifacts, Consultations, the setup advisor and `TeamDraft`, and domain-pack machinery beyond a configured Team plus generalist defaults.
 
 ## 6. Required proofs for the reasoning loop
 
-Each proof should have its own database-backed test in the same slice as its code. The proposal also asks for mutation checks on critical guards.
+Each needs its own database-backed test in the same slice as its code, and a mutation check (remove the guard in a scratch copy and confirm the test fails).
 
-1. A quote that is not the exact substring at the offsets of the hashed Snapshot is rejected, with no partial write (INV-04).
-2. Evidence with stance mentions cannot anchor a ConfidenceChange (INV-06).
+1. A quote that is not the exact substring at the offsets of the hashed Snapshot is rejected, and nothing is written (INV-04).
+2. Evidence with stance `mentions` cannot anchor a ConfidenceChange (INV-06).
 3. A ConfidenceChange without exactly one valid cause is rejected (INV-05).
-4. A favored Hypothesis never silently deletes or demotes a rival; rejection and supersession require a reason and Event (INV-07).
-5. An unsubstantiated Hypothesis, whether model- or human-authored, enters at low (ADR-0021).
-6. A proposal set commits atomically or not at all; invalid proposals are rejected with recorded reasons.
-7. Replay creates no duplicate evidence, Hypothesis, or confidence change.
-8. Concurrent update_thread Tasks on one Thread serialize without lost updates; repeat the race test.
-9. Cross-Team Thread, Hypothesis, Signal, or Snapshot references are rejected.
-10. last_touched_at changes only when evidence is accepted; quiet time never rejects a Hypothesis (INV-08).
+4. A new favored Hypothesis never deletes or silently demotes a rival. Rejection and supersession need a reason and an Event (INV-07).
+5. An unsubstantiated Hypothesis, model- or human-authored, enters at `low` (ADR-0021).
+6. A proposal set commits atomically or not at all; one invalid proposal rejects the set with recorded reasons.
+7. Replay of the same Task or proposal creates no duplicate evidence, Hypothesis or confidence change.
+8. Concurrent `update_thread` Tasks on one Thread: exactly one wins or both serialize cleanly, with no lost update. Run each race test repeatedly, not once.
+9. Cross-Team Thread, Hypothesis, Signal or Snapshot references are rejected.
+10. `last_touched_at` moves only when evidence is accepted. Quiet time never rejects a Hypothesis (INV-08).
 
-## 7. Guardrails
+## 7. Guardrails: where each slice is likely to fail
 
-- **RW-1:** preserve existing evaluation evidence and hash constraints while resolving EvidenceLink polymorphism; add constraint tests for both subject kinds.
-- **RW-2:** write rejection proofs before relying on the success path; use mutation checks for critical guards.
-- **RW-3:** stub providers for deterministic tests; keep any live-model smoke test separate; emit rejection Events.
-- **RW-4:** start with Operator-created Threads and avoid a heuristic engine until evidence justifies it.
-- **All slices:** enforce the proof matrix and keep one feature slice in flight.
+| Slice | Likely failure | Prevention |
+|---|---|---|
+| RW-1 | Widening `evidence_links` breaks existing evaluation evidence or hash constraints. | Run the existing evidence and distillation suites first; add constraint tests for both subject kinds. |
+| RW-2 | Validation passes the happy path only. | Write the rejection proofs (§6) before the success path; apply mutation checks. |
+| RW-3 | Tests depend on live model output and flake. | Stubbed-provider fixtures for all proofs; one live smoke test kept separate. |
+| RW-3 | Rejection rate is hidden. | Emit rejection reasons as Events; the harness reports the rate. |
+| RW-4 | Triage grows into a heuristic engine. | Operator-created Threads first; minimal deterministic matching only. |
+| All | "Done" declared with gaps. | Proof matrix in CI (§4.3); one slice in flight. |
+| All | Status drift after merge. | Two-SHA PR fields and the documentation sweep (§4.4). |
 
 ## 8. Decisions requested
 
-| # | Decision | Original recommendation |
+| # | Decision | Recommendation |
 |---|---|---|
-| D1 | Insert RW before R8 and park B5.3, B5.4, B6, R7-C? | Yes, after B5.2 acceptance. |
-| D2 | Re-baseline the R8 date? | Yes; do not compress proofs to preserve November 23. |
-| D3 | Widen EvidenceLink or add a sibling table? | Widen it, with an ADR addendum if an accepted contract changes. |
-| D4 | Build operator_update before update_thread? | Yes. |
-| D5 | Allow one bounded model repair re-proposal after rejection? | No; measure rejection first. |
-| D6 | Model-call test strategy? | Stubbed proofs plus one separate live smoke test. |
-| D7 | Link Hypotheses into Evaluation/distillation now? | No; keep R6/R7 flows unchanged until RW-3 has evidence. |
-| D8 | Who freezes value metrics and when? | The Operator at the R8 entry gate, before scenarios run. |
-| D9 | Adopt process changes in §4? | Yes; begin with proof matrix and two-SHA PR reporting. |
-| D10 | Authorize hygiene and test-structure PRs separately? | Yes, scheduled between feature slices. |
+| D1 | Insert RW before R8 and park B5.3, B5.4, B6, R7-C? | Yes, after finishing B5.2 to its accepted bar. |
+| D2 | Re-baseline the R8 date? | Yes. Do not compress proofs to hold 2026-11-23. My estimate, not based on measured velocity, is that RW-0 to RW-3 will not fit in the remaining days. Decay after R8 unless R8 needs it. |
+| D3 | Widen `evidence_links` or add a sibling table? | Widen it, matching the polymorphic design in the ADRs. If this changes an accepted contract, record an ADR addendum before RW-1. |
+| D4 | Build `operator_update` before `update_thread`? | Yes. |
+| D5 | Allow a bounded model "repair" re-proposal after a rejection? | Not in the first slice. Measure the rejection rate first. |
+| D6 | Model-call test strategy? | Stubbed fixtures for proofs, one separate live smoke test. |
+| D7 | Link Hypotheses into Evaluation and distillation now? | No. Keep R6/R7 flows unchanged until RW-3 has data. |
+| D8 | Who freezes the value metrics and when? | The Operator, at the R8 entry gate, before any scenario runs. |
+| D9 | Adopt the process redesign in §4 (proof matrix in CI, two-SHA PR fields, one-page PLAN.md, spec markers, complexity budget)? | Yes. Start with §4.3 and §4.4, which are cheap and address the most repeated failures. |
+| D10 | Authorize the hygiene and test-structure PRs (§4.7, §4.8) as separate, behavior-preserving work? | Yes, scheduled between slices so they do not interleave with feature PRs. |
 
-**No decision in this table is accepted by inclusion in this document.** The Operator must explicitly record each decision.
+## 9. Boundaries and process
 
-## 9. Boundaries
+- No new Task type beyond `docs/tasks.md`, no new runtime, scheduler, dispatcher or authentication boundary, and no model writes to TeamPolicy or KnowledgeItem (INV-12).
+- Domain knowledge stays outside the Kernel. A domain that needs a Kernel change is a stop-and-return finding.
+- AGENTS.md stop conditions apply. Each slice needs separate authorization, exact-head CI, a local full-suite run on disposable PostgreSQL, and explicit Operator acceptance.
 
-- No new Task type beyond docs/tasks.md, no new runtime, scheduler, dispatcher, or authentication boundary.
-- No model writes to TeamPolicy or KnowledgeItem (INV-12).
-- Domain knowledge remains outside the Kernel. A domain requiring a Kernel change is a stop-and-return finding.
-- AGENTS.md stop conditions apply. Each implementation slice requires separate authorization, exact-head CI, local full-suite verification on disposable PostgreSQL, and explicit Operator acceptance.
+## 10. Session outputs
 
-## 10. Session outputs requested
-
-1. Recorded decisions D1–D10.
-2. An RW implementation plan in docs/development with slices, proof matrices, and stop conditions.
-3. The RW-0 value-harness definition.
-4. Authorized updates to PLAN.md, CHANGE_MAP.md, docs/tasks.md, and the R8 plan.
+1. Recorded decisions on D1–D10.
+2. An RW implementation plan in `docs/development/` with slices, proof matrices and stop conditions.
+3. The value harness definition (RW-0).
+4. PLAN.md, CHANGE_MAP.md, `docs/tasks.md` and R8 plan updates for the new order and date.
 5. An ADR addendum if D3 changes an accepted contract.
-6. A short process-changes note covering the proof matrix, two-SHA PR fields, and specification markers.
+6. A short process-changes note covering §4.3 to §4.5 (PR template fields, the CI proof check, spec markers).
 
-## 11. Risks and first action
+## 11. Risks
 
-- **Process overhead:** automate only small checks; avoid a manual registry that will drift.
-- **Scope creep:** preserve slice boundaries.
-- **Model nondeterminism:** use deterministic stubs for proofs.
-- **Schedule pressure:** decide explicitly whether R8 is still a fixed target.
-- **Unverified assumptions:** the original report was based on a static snapshot. The first step is to re-check each finding against current main.
+- **Process overhead:** §4 adds checks. Keep them small and automated; if a check needs manual upkeep it will drift like the status text did.
+- **Scope creep:** hold the slice boundaries in §5.
+- **Model nondeterminism:** D4 and D6.
+- **Schedule pressure:** decide D2 explicitly so the date does not set the scope.
+- **Unverified assumptions:** this proposal rests on a static read of a snapshot. The first act of RW-0 is to confirm the gaps in §2 against the current `main`.
