@@ -34,7 +34,8 @@ Use CONTEXT.md and README.md for orientation, not as additional authorities. Do 
 - PLAN.md — current milestone state, gates, authorization, next action.
 - CHANGE_MAP.md — concept-to-authority map.
 - AGENTS.md — repository operating contract.
-- docs/development/r8-delivery-plan.md — canonical R8 scope, schedule, entry gate, and acceptance criteria while R8 is the next planned delivery.
+- docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md — canonical B6 audit, scope-freeze, implementation, verification, and acceptance sequence.
+- docs/development/r8-delivery-plan.md — canonical R8 scope and acceptance criteria; November 23, 2026 is the planned start date, not a completion deadline. B6 and the RW foundation exit gate precede it.
 - docs/documentation-guide.md — this navigation and maintenance policy.
 
 ### Orientation
@@ -77,7 +78,7 @@ docs/testing.md is the evidence archive and testing reference. Its historical en
 - Keep CHANGE_MAP.md focused on authority and implementation locations, not a second project history.
 - Keep README.md public-facing and concise.
 - Keep CONTEXT.md short enough to orient a new session quickly.
-- Keep one canonical delivery plan per active phase. For R8, that file is docs/development/r8-delivery-plan.md.
+- Keep one canonical delivery plan per active phase. B6 uses docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md; R8 uses docs/development/r8-delivery-plan.md. Historical schedules are not active plans.
 - Keep accepted ADRs and meaningful historical verification records. Prefer labelling and linking over deleting.
 - When a phase closes, update PLAN.md first, then reconcile only the summaries and active plans that need to reflect the new state.
 - When recording test results, include the exact commit/PR head, command or workflow, result, and known limitations. Never transfer a test count from one SHA to another.
