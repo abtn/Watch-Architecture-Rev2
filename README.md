@@ -32,7 +32,9 @@ R7 is the current development workstream. Its active checkpoint, verified state,
 
 ## Future plan
 
-- **R8 (target: November 23, 2026):** test the same shared architecture across newsroom, development-team, and generalist scenarios. Entry is gated by B4.4 closure and the November 15 acceptance gate; see the [R8 delivery plan](docs/development/r8-delivery-plan.md).
+- **B6:** next lifecycle track; begins with a verified baseline and read-only audit. See the [B6 delivery plan](docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md).
+- **RW:** complete the world-memory reasoning foundation before cross-domain testing.
+- **R8 (planned start: November 23, 2026):** pressure-test the completed architecture across newsroom, development-team, and generalist domains. November 23 is not a completion deadline; R8 waits for the foundation exit gate. See the [R8 delivery plan](docs/development/r8-delivery-plan.md).
 - **R9:** make the development and review process more repeatable and reliable.
 
 ## Project documentation
