@@ -79,7 +79,7 @@ When two relevant sources disagree, stop before the disputed change. Report the 
 | Concept | Authority / implementation |
 |---|---|
 | Evaluation schema and typed contract | `core/models.py`, `migrations/versions/0012_learning_foundation.py`, `core/evaluations.py` |
-| Evidence ownership, Snapshot hashes, exact quotes | Evaluation service validation and Evaluation-scoped EvidenceLink constraints |
+| Evidence ownership, Snapshot hashes, exact quotes | Current implementation: `core/evaluations.py`, `core/models.py`, and Evaluation-scoped EvidenceLink constraints. Accepted RW target: ADR-0007 and ADR-0020, indexed in `docs/decisions/architecture decision records (ADR-0001 - ADR-0019).md` and `docs/decisions/ADR-0020-consultations-waiting-happens-between-tasks.md`. |
 | Evaluation Task completion | `core/task_runtime.py`; `docs/tasks.md`; existing TaskRuntime remains the sole lifecycle authority |
 | Canonical learning schema foundations | `KnowledgeItem` and `LearningChange` mappings/migration; no write service in Checkpoint 1 |
 | Multi-record LearningChange basis | `LearningChange.evidence_basis` JSONB typed collection plus SHA-256 complete-basis hash; full reference revalidation is required at Checkpoint 3 |
