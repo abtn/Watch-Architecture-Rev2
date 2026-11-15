@@ -74,6 +74,7 @@ from core.learning_commit import (
     _knowledge_item_cas_statement,
 )
 from core.learning_history import (
+    LEGACY_STATE_FIELDS,
     encode_state_snapshot,
     knowledge_item_content_hash,
     knowledge_item_state,
@@ -10965,6 +10966,113 @@ def test_accepted_revise_preserves_needs_review_and_retrieval_ineligibility(
         assert projection_state.status == "ineligible"
         assert projection_chunks == []
 
+
+
+def test_b6_legacy_create_root_with_backfilled_pointer_can_be_retired(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(1, False, review_interval_days=1)
+    item_id = _create_active_knowledge_item(
+        session_factory, snapshot_store, fixture
+    )
+
+    # Reproduce the durable post-0015 shape: the live pointer is backfilled to
+    # the origin, while the immutable create snapshot retains its legacy fields.
+    # The migration tests separately exercise the actual 0014 -> 0015 upgrade.
+    with session_factory.begin() as session:
+        item = session.get(KnowledgeItem, item_id)
+        assert item is not None
+        root = session.get(LearningChange, item.origin_learning_change_id)
+        assert root is not None and root.committed_state is not None
+        assert set(root.committed_state) == {
+            "snapshot_version",
+            "state",
+            "snapshot_hash",
+        }
+        legacy_state = root.committed_state["state"]
+        legacy_snapshot = {
+            field: legacy_state[field] for field in LEGACY_STATE_FIELDS
+        }
+        session.execute(text("ALTER TABLE learning_changes DISABLE TRIGGER USER"))
+        session.execute(
+            update(LearningChange)
+            .where(LearningChange.id == root.id)
+            .values(committed_state=legacy_snapshot)
+        )
+        session.execute(text("ALTER TABLE learning_changes ENABLE TRIGGER USER"))
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, item_id)
+        root = session.get(LearningChange, item.origin_learning_change_id)
+        assert item is not None and root is not None
+        assert item.current_learning_change_id == item.origin_learning_change_id
+        assert root.committed_state == legacy_snapshot
+        history = reconstruct_knowledge_item_history(session, item)
+        assert history.learning_change_ids == (root.id,)
+        assert history.reconstructed_legacy_fields == {
+            "current_learning_change_id",
+            "supersedes_item_id",
+            "superseded_by_id",
+        }
+
+    (
+        retirement_change_id,
+        approval_task_id,
+        attempt,
+        principal,
+        _assessment_id,
+    ) = _prepare_retirement_approval(
+        session_factory, snapshot_store, fixture, item_id
+    )
+    committed = LearningCommitService(session_factory, snapshot_store).decide(
+        approval_task_id, attempt, principal
+    )
+    assert committed.decision == "accept"
+    assert committed.learning_change_id == retirement_change_id
+    assert committed.knowledge_item_id == item_id
+    assert not committed.replayed
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=approval_task_id,
+            attempt=attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=committed.committed_at,
+            learning_change_id=committed.learning_change_id,
+        )
+    )
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, item_id)
+        root = session.get(LearningChange, item.origin_learning_change_id)
+        retirement = session.get(LearningChange, retirement_change_id)
+        assert item is not None and root is not None and retirement is not None
+        assert item.status == "retired"
+        assert item.current_learning_change_id == retirement_change_id
+        assert root.committed_state == legacy_snapshot
+        assert set(root.committed_state) == LEGACY_STATE_FIELDS
+        assert retirement.previous_state["state"]["current_learning_change_id"] == str(
+            root.id
+        )
+        history = reconstruct_knowledge_item_history(session, item)
+        assert history.learning_change_ids == (root.id, retirement_change_id)
+        assert history.reconstructed_legacy_fields == {
+            "current_learning_change_id",
+            "supersedes_item_id",
+            "superseded_by_id",
+        }
+        assert history.state == knowledge_item_state(item)
+
+    with session_factory() as session:
+        before_replay = _team_lifecycle_snapshot(session, fixture.team_id)
+    replay = LearningCommitService(session_factory, snapshot_store).decide(
+        approval_task_id, attempt, principal
+    )
+    assert replay.replayed
+    assert replay.learning_change_id == retirement_change_id
+    with session_factory() as session:
+        assert _team_lifecycle_snapshot(session, fixture.team_id) == before_replay
 
 
 def test_b5_2_integrated_retirement_candidate_lifecycle_sequences(
