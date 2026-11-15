@@ -1,8 +1,8 @@
 # Project path review: reasoning loop and delivery process
 
-**Review date:** 2026-11-15  
-**Repository snapshot:** main at `29c954fe8685e0a5ddb9b205277a28b1a158c57e`  
-**Inputs:** the Operator's 2026-11-14 proposal; the uploaded Project source R8-Delivery-Plan.txt; current PLAN.md, CHANGE_MAP.md, README.md, CONTEXT.md, AGENTS.md, docs/documentation-guide.md, docs/architecture.md, docs/invariants.md, docs/tasks.md, docs/testing.md, docs/development/r8-delivery-plan.md, the R7-B B5 implementation plan including the B5.2 acceptance record, core/models.py, and core/ingestion.py.  
+**Review date:** 2026-11-15
+**Repository snapshot:** main at `29c954fe8685e0a5ddb9b205277a28b1a158c57e`
+**Inputs:** the Operator's 2026-11-14 proposal; the uploaded Project source R8-Delivery-Plan.txt; current PLAN.md, CHANGE_MAP.md, README.md, CONTEXT.md, AGENTS.md, docs/documentation-guide.md, docs/architecture.md, docs/invariants.md, docs/tasks.md, docs/testing.md, docs/development/r8-delivery-plan.md, the R7-B B5 implementation plan including the B5.2 acceptance record, core/models.py, and core/ingestion.py.
 **Method and limits:** static repository review. No tests, migrations, local checkout, or CI workflows were executed for this review. The companion report, **Watch — Project Review and Implementation Hints** (2026-11-14), has now been supplied and reviewed. Findings F1–F9 are incorporated below and in the decision addendum. Its repository snapshot is static and has no Git metadata or executed tests; it is advisory evidence, not proof of current branch, HEAD, merge, CI, or runtime state.
 
 ## 1. Executive view
