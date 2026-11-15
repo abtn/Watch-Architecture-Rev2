@@ -29,7 +29,7 @@ The active path is:
 
 1. **R7-B B5.4 — complete and closed.** Do not reopen it without a demonstrated defect.
 2. **R7-B B6 — legacy lifecycle hardening.** Follow [the B6 delivery plan](r7-b-b6-legacy-lifecycle-hardening-plan.md): verified baseline, read-only audit, frozen scope, minimal implementation if justified, integrated verification, hosted/local verification, and explicit acceptance.
-3. **RW-0 — reasoning-loop decisions and value harness.** Confirm the current code/spec gap inventory, settle the remaining D1–D10 decisions, define one vertical scenario and operational measures, and resolve the EvidenceLink contract before schema work if required.
+3. **RW-0 — reasoning-loop decisions and value harness.** Confirm the current code/spec gap inventory, settle the remaining D1–D10 decisions, define one vertical scenario and operational measures, and freeze the EvidenceLink relational/migration representation and staged source support while preserving accepted ADR-0007 and ADR-0020.
 4. **RW-1 — minimum durable world-memory model.** Implement only the accepted Thread, competing Hypothesis, evidence, confidence-change, and immutable source-reference contract. Add SignalDisposition only if the vertical slice requires it.
 5. **RW-2 — deterministic Operator update and commit path.** Prove provenance, confidence, cause, rival-preservation, atomicity, replay, and concurrency rules without model nondeterminism.
 6. **RW-3 — model reasoning worker.** Add `update_thread` behind the existing generation-provider and cost-accounting boundaries. Model output remains an untrusted proposal.
