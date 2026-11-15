@@ -1,7 +1,7 @@
 # RW-0 — Decision Record
 
-**Recorded:** 2026-11-15  
-**Status:** decision record in progress; RW-0 execution remains after B6  
+**Recorded:** 2026-11-15
+**Status:** decision record in progress; RW-0 execution remains after B6
 **Authority:** Operator decisions are identified separately from accepted ADR constraints, recommendations, and unresolved questions.
 
 This record is the decision index for the world-memory reasoning loop (RW). It does not authorize RW implementation. The required sequence remains **B6 → RW-0 through RW-5 → foundation exit gate → R8**.
