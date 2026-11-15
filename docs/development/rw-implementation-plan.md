@@ -102,7 +102,7 @@ The strings for future Task types in core/ingestion.py's Event-scope allow-list 
 **Proposed scope:**
 - Implement deterministic triage_signal with the smallest matching/dedup behavior required by the frozen newsroom scenario.
 - Keep ambiguous cases explicit as deferred; never silently discard a Signal or infer a Thread without the deterministic rule required by the Task contract.
-- Permit Operator-created Threads as the first controlled path if that is sufficient for the harness; do not build a general heuristic engine merely for completeness.
+- Use explicit same-Team Thread fixtures for RW-2/RW-3 commit-path proofs. The current `operator_update` contract does not create Threads; canonical Thread creation remains in `triage_signal` (RW-4) unless a separate Task contract is explicitly approved. Do not widen `operator_update` scope implicitly.
 - Add a bounded, same-Team read path for active Hypotheses and verified evidence in Task Context.
 - Preserve the accepted Task write-scope matrix and Event (K) limits. Triage may enqueue only the documented update_thread follow-up cases.
 - Do not expand domain-pack machinery beyond the frozen scenario's demonstrated need.
