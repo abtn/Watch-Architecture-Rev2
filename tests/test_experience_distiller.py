@@ -14640,7 +14640,7 @@ def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
     scope = SimpleNamespace(team_id=fixture.team_id)
     with session_factory() as session:
         with pytest.raises(
-            TaskContextError, match="team_experience_supersession_not_visible"
+            TaskContextError, match="team_experience_item_not_current_or_eligible"
         ):
             TaskContextAssembler._validate_team_experience_passage(
                 session,
