@@ -36,6 +36,9 @@ Use CONTEXT.md and README.md for orientation, not as additional authorities. Do 
 - AGENTS.md — repository operating contract.
 - docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md — canonical B6 audit, scope-freeze, implementation, verification, and acceptance sequence.
 - docs/development/r8-delivery-plan.md — canonical R8 scope and acceptance criteria; November 23, 2026 is the planned start date, not a completion deadline. B6 and the RW foundation exit gate precede it.
+- docs/development/rw-0-decision-record.md — records Operator-confirmed RW decisions, accepted ADR constraints, and unresolved RW-0 questions. It does not authorize implementation.
+- docs/development/rw-implementation-plan.md — proposed RW-1–RW-5 slice boundaries, proof matrix, stop conditions, and foundation exit gate.
+- docs/development/rw-value-harness.md — proposed newsroom-first value measurement contract; exact scenario and thresholds are frozen during RW-0.
 - docs/documentation-guide.md — this navigation and maintenance policy.
 
 ### Orientation
@@ -53,7 +56,7 @@ Read when the task needs them:
 - docs/architecture.md — general/original architecture where not superseded.
 - docs/control-model.md — Revision 2 Control contract.
 - docs/invariants.md — non-negotiable system constraints.
-- docs/tasks.md — Task types, write scopes, and budgets.
+- docs/tasks.md — Task types, write scopes, and budgets. For RW work, its implementation-state audit and EvidenceLink contract section distinguish specified behavior from implemented behavior.
 - docs/domains.md — domain-pack contracts and open domain questions.
 - docs/glossary.md — terminology.
 - docs/decisions.md — ADR index; open the relevant ADR, not every ADR.
