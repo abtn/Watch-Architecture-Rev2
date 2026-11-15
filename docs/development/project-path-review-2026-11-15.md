@@ -3,7 +3,7 @@
 **Review date:** 2026-11-15  
 **Repository snapshot:** main at `29c954fe8685e0a5ddb9b205277a28b1a158c57e`  
 **Inputs:** the Operator's 2026-11-14 proposal; the uploaded Project source R8-Delivery-Plan.txt; current PLAN.md, CHANGE_MAP.md, README.md, CONTEXT.md, AGENTS.md, docs/documentation-guide.md, docs/architecture.md, docs/invariants.md, docs/tasks.md, docs/testing.md, docs/development/r8-delivery-plan.md, the R7-B B5 implementation plan including the B5.2 acceptance record, core/models.py, and core/ingestion.py.  
-**Method and limits:** static repository review. No tests, migrations, local checkout, or CI workflows were executed for this review. The referenced companion file project-review-and-implementation-hints.md was not present in the current main tree; the findings below are based on the proposal supplied for this review and the repository evidence listed above.
+**Method and limits:** static repository review. No tests, migrations, local checkout, or CI workflows were executed for this review. The referenced companion file project-review-and-implementation-hints.md was not present in the current main tree and was not located in the accessible Project/Library file search. The findings below are based on the proposal supplied for this review and the repository evidence listed above; F1–F8 in that missing companion have not been independently reviewed.
 
 ## 1. Executive view
 
@@ -40,7 +40,7 @@ The proposal is valuable as a dated record, but some sequencing assumptions have
 - B5.3 is closed.
 - B5.4 test/regression work was merged in PR #122 at `29c954fe8685e0a5ddb9b205277a28b1a158c57e`. The current PLAN.md next-action text has not been reconciled with that merge.
 - Therefore, D1's instruction to park B5.4 is no longer actionable as written. Do not reopen or undo completed work. Decide only what future work remains necessary.
-- B6 and R7-C remain separately gated. Nothing in this review authorizes either.
+- B6 and R7-C remain separately gated. Nothing in this review authorizes either. Before B6 is reconsidered, review the proposal's F8 legacy-snapshot retirement question; this review does not resolve it because the referenced F1–F8 companion document was not available.
 
 ## 3. The central product decision: what is R8?
 
