@@ -3514,6 +3514,134 @@ def test_original_revalidation_approval_replays_after_later_history_transition(
         ) == 1
 
 
+
+def test_original_revise_approval_replays_after_later_retirement(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    fixture = distillation_fixture(2, include_contrary=False)
+    knowledge_item_id = _create_active_knowledge_item(
+        session_factory, snapshot_store, fixture
+    )
+    revision_id = _create_revision_proposal(
+        session_factory,
+        snapshot_store,
+        fixture,
+        knowledge_item_id,
+        body="The accepted revision remains historically stable after retirement.",
+    )
+    _run_quality_assessment(session_factory, snapshot_store, revision_id)
+
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    principal = _approval_principal(
+        fixture.team_id, subject="operator-revise-replay-after-retirement"
+    )
+    revision_request = LearningChangeDecisionRequest(
+        learning_change_id=revision_id,
+        decision="accept",
+        idempotency_key=uuid4(),
+    )
+    original = adapter.decide_learning_change(principal, revision_request)
+    assert original.learning_change_status == "accepted"
+    assert original.task_status == "done"
+    assert original.knowledge_item_id == knowledge_item_id
+    assert original.operator_id is not None
+    assert original.committed_at is not None
+    assert original.outcome_id is not None
+    assert not original.replayed
+
+    retirement_key = uuid4()
+    (
+        retirement_id,
+        retirement_task_id,
+        retirement_attempt,
+        retirement_principal,
+        _,
+    ) = _prepare_retirement_approval(
+        session_factory,
+        snapshot_store,
+        fixture,
+        knowledge_item_id,
+        idempotency_key=retirement_key,
+    )
+    retirement_request = LearningChangeDecisionRequest(
+        learning_change_id=retirement_id,
+        decision="accept",
+        idempotency_key=retirement_key,
+    )
+    retirement = adapter.decide_learning_change(
+        retirement_principal, retirement_request
+    )
+    assert retirement.task_id == retirement_task_id
+    assert retirement.learning_change_status == "accepted"
+    assert retirement.task_status == "done"
+    assert retirement.knowledge_item_id == knowledge_item_id
+    assert not retirement.replayed
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, knowledge_item_id)
+        original_change = session.get(LearningChange, revision_id)
+        retirement_change = session.get(LearningChange, retirement_id)
+        assert item is not None and original_change is not None
+        assert retirement_change is not None
+        assert item.status == "retired"
+        assert item.current_learning_change_id == retirement_id
+        assert original_change.status == retirement_change.status == "accepted"
+        assert original_change.operator_id == original.operator_id
+        assert original_change.committed_by_task_id == original.task_id
+        assert original_change.committed_at == original.committed_at
+        assert retirement_change.committed_by_task_id == retirement.task_id
+        retired_state = knowledge_item_state(item)
+        retired_hash = knowledge_item_content_hash(item)
+        durable_snapshot = _team_lifecycle_snapshot(session, fixture.team_id)
+
+    replay = adapter.decide_learning_change(principal, revision_request)
+    assert replay.replayed
+    assert replay.task_id == original.task_id
+    assert replay.learning_change_id == original.learning_change_id
+    assert replay.decision == original.decision
+    assert replay.learning_change_status == original.learning_change_status
+    assert replay.task_status == original.task_status
+    assert replay.knowledge_item_id == original.knowledge_item_id
+    assert replay.operator_id == original.operator_id
+    assert replay.committed_at == original.committed_at
+    assert replay.outcome_id == original.outcome_id
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, knowledge_item_id)
+        original_change = session.get(LearningChange, revision_id)
+        retirement_change = session.get(LearningChange, retirement_id)
+        assert item is not None and original_change is not None
+        assert retirement_change is not None
+        assert knowledge_item_state(item) == retired_state
+        assert knowledge_item_content_hash(item) == retired_hash
+        assert item.status == "retired"
+        assert item.current_learning_change_id == retirement_id
+        assert original_change.operator_id == original.operator_id
+        assert original_change.committed_by_task_id == original.task_id
+        assert original_change.committed_at == original.committed_at
+        assert retirement_change.committed_by_task_id == retirement.task_id
+        assert _team_lifecycle_snapshot(session, fixture.team_id) == durable_snapshot
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == original.task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == original.task_id,
+                Event.type == "operator_task_requested",
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == original.task_id,
+                Event.type == "learning_change_accepted",
+            )
+        ) == 1
+
 def test_concurrent_revise_approvals_advance_one_knowledge_item_once(
     session_factory,
     snapshot_store,
