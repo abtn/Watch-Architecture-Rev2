@@ -209,3 +209,7 @@ R7-C inclusion; whether persistent Artifact/output, Consultation workflows, setu
 - [Newsroom value harness](rw-value-harness.md)
 
 The detailed plan remains proposed until RW-0 is completed after B6 and the Operator explicitly authorizes the next implementation slice.
+
+### Checkpoint B contract clarification — proposal-batch atomicity
+
+The original proposal's §6 wording that one invalid proposal rejects an entire proposal set is a proposal, not an accepted contract. The current canonical `docs/tasks.md` and `docs/architecture.md` wording is: valid proposals commit atomically as one set; invalid proposals are rejected with reason Events; a Task whose proposals all fail is marked failed. RW-0 must confirm the exact mixed valid/invalid batch semantics before RW-2. Until an explicit Operator decision changes the contract and the canonical specifications are updated, implementation and tests must preserve the existing Task contract; do not silently strengthen or weaken it.
