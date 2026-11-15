@@ -14392,65 +14392,73 @@ def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
         initial_version = predecessor.version
         initial_hash = knowledge_item_content_hash(predecessor)
 
-    # Exercise the ordinary D7 review transition before revising the item.
+    # Exercise the ordinary D7 review path: a pending Task is admitted and
+    # finalized by complete_knowledge_review(), not hand-started by the test.
     review_task_id = uuid4()
     fixture.extra_task_ids.append(review_task_id)
-    review_started_at = review_after - timedelta(seconds=1)
     with session_factory.begin() as session:
         session.add(
             Task(
                 id=review_task_id,
                 team_id=fixture.team_id,
                 task_type="review_knowledge",
-                status="running",
-                attempt_count=1,
+                status="pending",
+                attempt_count=0,
                 policy_version=1,
-                objective_id=None,
-                plan_id=None,
-                plan_action_id=None,
                 allowed_writes=["KnowledgeItem"],
                 budget={
                     "max_tool_calls": 0,
                     "max_cost_usd": 0.0,
-                    "deadline_seconds": 30,
+                    "deadline_seconds": 60,
                 },
-                created_at=review_started_at,
-                completed_at=None,
-                max_attempts=3,
             )
         )
-        session.flush()
-        session.add(
-            Event(
-                id=uuid4(),
-                task_id=review_task_id,
-                type="task_started",
-                payload={
-                    "from_status": "pending",
-                    "to_status": "running",
-                    "attempt_count": 1,
-                },
-                created_at=review_started_at,
+
+    class ReviewDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return (
+                review_after
+                if tz is not None
+                else review_after.replace(tzinfo=None)
             )
-        )
-    runtime.finalize(
-        TerminalObservation(
-            task_id=review_task_id,
-            attempt=1,
-            result_category="success_knowledge_reviewed",
-            observed_at=review_after,
-        )
-    )
+
+    import core.task_runtime as task_runtime_module
+
+    with monkeypatch.context() as patch:
+        patch.setattr(task_runtime_module, "datetime", ReviewDateTime)
+        review_result = runtime.complete_knowledge_review(review_task_id)
+    assert review_result.status == "done"
+
     with session_factory() as session:
         predecessor = session.get(KnowledgeItem, predecessor_id)
+        review_task = session.get(Task, review_task_id)
+        review_started = session.scalar(
+            select(Event).where(
+                Event.task_id == review_task_id,
+                Event.type == "task_started",
+            )
+        )
         review_event = session.scalar(
             select(Event).where(
                 Event.task_id == review_task_id,
                 Event.type == "knowledge_items_reviewed",
             )
         )
+        review_outcome = session.scalar(
+            select(Outcome).where(
+                Outcome.recorded_by_task_id == review_task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        )
         assert predecessor is not None and predecessor.status == "needs_review"
+        assert review_task is not None
+        assert review_task.status == "done"
+        assert review_task.attempt_count == 1
+        assert review_started is not None
         assert review_event is not None
+        assert review_outcome is not None
+        assert review_outcome.observed_at == review_after
         review_event_id = review_event.id
         assert predecessor.current_learning_change_id == initial_change_id
         assert predecessor.version == initial_version
