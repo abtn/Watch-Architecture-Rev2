@@ -4,7 +4,13 @@
 
 **Status rule:** this page does not own milestone or gate status. The implementation map below is a dated snapshot, not a second status tracker. For what is current, gated, or next, read [PLAN.md](../PLAN.md).
 
-**Last checked against the repository:** 2026-11-15, main at `29c954fe8685e0a5ddb9b205277a28b1a158c57e`. This was a static documentation/code inspection, not a fresh test run.
+**Last checked against the repository:** 2026-11-15. The implementation-state descriptions are a static documentation/code review, not a fresh test run. For current milestone status and verified SHAs, use [PLAN.md](../PLAN.md).
+
+## Current development path
+
+B5.4 is complete and closed. The next lifecycle track is B6, beginning with a verified repository baseline and a read-only audit; implementation scope must come from demonstrated defects or proof gaps. After B6, the RW workstream completes the world-memory reasoning foundation. R8 then tests the completed architecture across three domains.
+
+**R8 is planned to start on November 23, 2026.** That date is not a finish deadline. R8 must not start while a fundamental layer is still missing; unfinished foundation work is not added during the pressure test.
 
 ## At a glance
 
