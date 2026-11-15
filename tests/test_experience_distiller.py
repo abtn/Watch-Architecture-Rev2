@@ -14505,15 +14505,19 @@ def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
         if item.knowledge_item_id == predecessor_id
     )
 
-    supersede_change_id, supersede_task_id, supersede_attempt, supersede_principal, _ = (
-        _prepare_supersede_approval(
-            session_factory,
-            snapshot_store,
-            fixture,
-            predecessor_id,
-            successor_id,
-            principal=principal,
-        )
+    (
+        supersede_change_id,
+        supersede_task_id,
+        supersede_attempt,
+        supersede_principal,
+        _,
+    ) = _prepare_supersede_approval(
+        session_factory,
+        snapshot_store,
+        fixture,
+        predecessor_id,
+        successor_id,
+        principal=principal,
     )
     superseded = LearningCommitService(session_factory, snapshot_store).decide(
         supersede_task_id, supersede_attempt, supersede_principal
