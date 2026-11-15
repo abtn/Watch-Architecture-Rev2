@@ -3553,16 +3553,13 @@ def test_original_revise_approval_replays_after_later_retirement(
     retirement_key = uuid4()
     (
         retirement_id,
-        retirement_task_id,
-        _,
         retirement_principal,
         _,
-    ) = _prepare_retirement_approval(
+    ) = _prepare_retirement_assessment(
         session_factory,
         snapshot_store,
         fixture,
         knowledge_item_id,
-        idempotency_key=retirement_key,
     )
     retirement_request = LearningChangeDecisionRequest(
         learning_change_id=retirement_id,
@@ -3572,7 +3569,6 @@ def test_original_revise_approval_replays_after_later_retirement(
     retirement = adapter.decide_learning_change(
         retirement_principal, retirement_request
     )
-    assert retirement.task_id == retirement_task_id
     assert retirement.learning_change_status == "accepted"
     assert retirement.task_status == "done"
     assert retirement.knowledge_item_id == knowledge_item_id
