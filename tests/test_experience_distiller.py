@@ -12967,6 +12967,7 @@ def test_b5_3_supersede_proposal_assessment_and_atomic_predecessor_commit(
     distillation_fixture,
 ):
     from core.knowledge_lifecycle import _task_id
+    from core.knowledge_lifecycle_tasks import KnowledgeLifecycleAssessmentTaskRunner
     from core.learning_commit import LearningCommitService
     from core.learning_history import (
         knowledge_item_content_hash,
@@ -13266,6 +13267,7 @@ def test_b5_3_4_reciprocal_publication_is_shared_by_projection_retrieval_and_con
     assert successor_id not in before_ids
 
     from core.context_assembly import TaskContextAssembler, TaskContextError
+    from core.knowledge_index import RetrievedPassage
 
     with session_factory() as session:
         chunk = session.scalar(
@@ -14248,8 +14250,6 @@ def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
     monkeypatch,
 ):
     from core.context_assembly import TaskContextAssembler, TaskContextError
-    from core.knowledge_index import RetrievedPassage
-    from core.knowledge_lifecycle_tasks import KnowledgeLifecycleAssessmentTaskRunner
 
     fixture = distillation_fixture(1, False, review_interval_days=1)
     runtime = TaskRuntime(session_factory, snapshot_store)
