@@ -369,17 +369,17 @@ Snapshot-first history reconstruction is conditionally accepted, subject to B1 p
 
 **B5 — Supersede/retire/candidate creation:** implement create-with-supersedes_item_id, the D7-aware reciprocal publication gate, abandoned-candidate rules and Team-scoped graph lock. The predecessor and candidate must never both be exposed.
 
-**B6 — Legacy compatibility and hardening:** repeated review/revalidation history, legacy Events/snapshots, approval replay after later transitions, unauthorized drift rejection and full regression verification.
+**B6 — Legacy lifecycle hardening:** see the active [B6 delivery plan](docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md). Its scope is not predefined; derive acceptance criteria from the read-only audit.
 
-G1–G6 are implemented and verified in their separately authorized regression slices. G1–G5 are merged through PRs #103, #105, #107, #109, and #111. G6 is implemented in open PR #113. The latest exact PR head `44a31cb59588457cbaedc4863046795cea03ca3a` passed hosted CI run [#43394074207](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43394074207); all workflow steps passed, but the available metadata does not expose the final-head full-suite count. Operator-local full-suite verification on the earlier implementation head `d5b9ac9806b5af31fa337ee01cf1c9a5a7e6f6fd` passed 956 tests with 113 Alembic deprecation warnings. The earlier 36-failure run did not reproduce; its cause remains undetermined. B4.4's technical closeout review passed. The documentation reconciliation is proposed in stacked PR [#114](https://github.com/abtn/Watch-Architecture-Rev2/pull/114); formal closure remains pending review and merge of that exact-head documentation PR, then explicit Operator acceptance. B5, B6, and R7-C remain unauthorized.
+**Historical note:** the preceding G1–G6 and B4.4 records describe the November 13 closeout sequence. B4.4 is formally closed. B5.4 is also complete and closed by PR #122. Current R7 status and the next B6 action are stated at the top of this file; do not use older narrative snapshots as current status.
 
 ### R7-C — Retrieval quality and downstream-use evaluation — NOT AUTHORIZED
 
 R7-C remains separately gated: retrieval benchmark, label provenance/small-n reporting, application-written per-claim TaskKnowledgeReference, typed KnowledgeUseAssessment, and later-Task outcome evaluation without causal overclaiming. No R7-C implementation is authorized by R7-A completion or R7-B planning.
 
-## R8 — Multi-domain pressure test (scheduled; entry-gated)
+## R8 — Multi-domain pressure test (planned start: November 23, 2026)
 
-The delivery target is November 23, 2026. The R8 entry gate is scheduled for November 15, after B4.4 final verification and explicit Operator acceptance; domain scenarios are targeted for November 16–18, integration and transfer testing for November 19–21, final review November 22, and acceptance November 23. This schedule does not authorize R8 implementation before the entry gate. See [the R8 delivery plan](docs/development/r8-delivery-plan.md).
+November 23 is the planned start date, not a completion deadline. B6 and the RW-0–RW-5 foundation exit gate must be accepted before R8 begins. R8 tests the completed architecture; it does not add missing foundational layers. There is no fixed completion date. See [the canonical R8 delivery plan](docs/development/r8-delivery-plan.md).
 
 ## R9 — Agent-assisted production workflow (future)
 
