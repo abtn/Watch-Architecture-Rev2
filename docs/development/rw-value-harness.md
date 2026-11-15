@@ -103,7 +103,9 @@ The harness must record:
 - its review eligibility at retrieval time;
 - the retrieval result and Context manifest proving it entered the later Task Context.
 
-This makes the causal claim testable: the second run received a specific accepted lesson through the real retrieval path.
+A Context manifest proves that an item was retrieved and made available; it does not prove that the worker actually used it. Direct use attribution requires a validated knowledge-use reference or equivalent accepted mechanism. RW-0 must decide whether R7-C supplies a necessary part of that mechanism. If no such mechanism is in scope, report retrieval/availability and the independently measured paired outcome effect, but do not claim direct use attribution.
+
+This makes the causal claim testable at the level supported by the evidence: the second run received a specific accepted lesson through the real retrieval path.
 
 ## 7. Capability gate
 
