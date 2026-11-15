@@ -179,3 +179,28 @@ F1–F9 remain findings to act on selectively, not a blanket refactor authorizat
 - Keep PLAN.md as the only current status authority and docs/testing.md as the verification evidence archive.
 - Preserve independent authorization gates; do not collapse PRs merely to reduce their count.
 - Treat F2/F3 refactors and hygiene work as separately scoped, behavior-preserving work unless the B6 audit demonstrates they are necessary.
+
+
+### Companion findings F1–F9: current disposition
+
+The following table reconciles the supplied 2026-11-14 implementation hints with the later B5.4 closure and the Operator's new path. The findings are advisory; the proposed remedies are not blanket authorizations.
+
+| Finding | Disposition after the current decisions | Action in the new path |
+|---|---|---|
+| **F1 — Proof gaps close after implementation** | Accepted process weakness. The same-slice proof requirement remains relevant. | For B6 and RW, derive a requirement-to-test matrix from the approved acceptance checklist. Every accepted requirement names its regression proof before the slice is declared complete. |
+| **F2 — Per-operation commit branching** | Maintainability risk, not a demonstrated B6 defect. Supersede (B5.3) is already complete; do not reopen it to refactor. | Inspect the B6-relevant code only. Any broad commit-path refactor requires a separate behavior-preserving scope and authorization unless the audit proves it is the smallest necessary correction. |
+| **F3 — File concentration and integrated tests** | Confirmed maintainability concern; no automatic refactor authorization. | Prefer focused tests for each accepted B6 defect. Test-file moves and broad module splits remain separate behavior-preserving work. |
+| **F4 — Duplicated and drifting status** | Confirmed. The present Checkpoint A reconciles the active roadmap and summaries. | Keep PLAN.md as the only current status authority; keep detailed verification in docs/testing.md. Treat dated records as historical rather than silently rewriting them. |
+| **F5 — Unexplained failures and warnings** | The 36-failure incident remains unexplained; 113 Alembic path_separator warnings were reported in historical runs. Neither is resolved by this documentation change. | Preserve the incident as unresolved evidence. Put warning cleanup and repeated-suite investigation in separately authorized hygiene work, not inside B6 unless the audit proves a direct dependency. |
+| **F6 — Migration filename/revision naming** | The alleged mismatches were not independently verified by the static report. | Inspect actual migration filenames and revision IDs before proposing any change. Never rename an applied migration casually. |
+| **F7 — Candidate lifecycle was half-open until supersede** | Historical finding; B5.3 Supersede is now complete and closed. | No new work is implied. Preserve the B5.3 acceptance and regression evidence. |
+| **F8 — Legacy-snapshot retirement dead end** | Unresolved hypothesis, not a confirmed defect. | Mandatory B6 read-only audit item: inspect B1 backfill behavior, legacy-rooted item population/possibility, history reconstruction, and the retirement guard. Only a demonstrated gap enters B6 scope. |
+| **F9 — Reasoning layer specified but not built** | Confirmed architectural gap and the reason R8 must be moved behind the foundation. | Complete RW-0 through RW-5 and the foundation exit gate before R8. R8 must test the integrated reasoning layer, not add it. |
+
+### Specific implementation hints retained
+
+- B6 must cover only the defects and missing proofs established by its read-only audit. Keep it test-heavy and schema-light.
+- For accepted concurrency and stale-state proofs, use mutation sanity checks and repeated race runs where the test's claim depends on a race. Assert absence of side effects for losing operations.
+- Preserve lock ordering, compare-and-set semantics, current-pointer eligibility, history reconstruction, and TaskRuntime ownership. Do not infer that a passing test count alone proves the required matrix.
+- Keep B6 separate from R7-C. RW-0 may identify a measurable dependency on R7-C, but it must be explicitly decided and scoped.
+- Keep Alembic warning cleanup, migration naming investigation, test-file restructuring, and broad commit-path refactoring out of the B6 implementation by default.
