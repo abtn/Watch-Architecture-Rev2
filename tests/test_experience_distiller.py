@@ -14654,3 +14654,129 @@ def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
             successor_passage,
             datetime.now(timezone.utc),
         )
+
+def test_b5_4_3_terminal_retirement_hides_item_from_retrieval_and_context(
+    session_factory,
+    snapshot_store,
+    distillation_fixture,
+):
+    from core.context_assembly import TaskContextAssembler, TaskContextError
+
+    fixture = distillation_fixture(1, False, review_interval_days=30)
+    item_id = _create_active_knowledge_item(
+        session_factory, snapshot_store, fixture
+    )
+
+    class FakeEmbeddingProvider:
+        space = EmbeddingSpace(
+            provider="watch_test",
+            model="b54-terminal-retirement",
+            revision="1",
+            dimensions=3,
+            configuration="b54-terminal-retirement-v1",
+        )
+
+        def current_space(self):
+            return self.space
+
+        def embed(self, texts):
+            return EmbeddingBatch(
+                space=self.space,
+                vectors=tuple((0.1, 0.2, 0.3) for _ in texts),
+            )
+
+    provider = FakeEmbeddingProvider()
+    indexer = TeamExperienceIndexer(session_factory, provider)
+    retriever = HybridKnowledgeRetriever(
+        session_factory, snapshot_store, provider
+    )
+    assert indexer.index_knowledge_item(item_id).outcome == "indexed"
+    before_retirement = retriever.retrieve(
+        fixture.team_id, "source evidence"
+    )
+    assert item_id in {
+        passage.knowledge_item_id for passage in before_retirement
+    }
+    stale_passage = next(
+        passage
+        for passage in before_retirement
+        if passage.knowledge_item_id == item_id
+    )
+
+    (
+        retirement_change_id,
+        retirement_task_id,
+        retirement_attempt,
+        principal,
+        _,
+    ) = _prepare_retirement_approval(
+        session_factory,
+        snapshot_store,
+        fixture,
+        item_id,
+    )
+    retirement = LearningCommitService(
+        session_factory, snapshot_store
+    ).decide(
+        retirement_task_id,
+        retirement_attempt,
+        principal,
+    )
+    assert retirement.decision == "accept"
+    assert retirement.knowledge_item_id == item_id
+    TaskRuntime(session_factory, snapshot_store).finalize(
+        TerminalObservation(
+            task_id=retirement_task_id,
+            attempt=retirement_attempt,
+            result_category="success_learning_change_accepted",
+            observed_at=retirement.committed_at,
+            learning_change_id=retirement_change_id,
+        )
+    )
+
+    with session_factory() as session:
+        item = session.get(KnowledgeItem, item_id)
+        change = session.get(LearningChange, retirement_change_id)
+        assert item is not None and change is not None
+        assert item.status == "retired"
+        assert item.supersedes_item_id is None
+        assert item.superseded_by_id is None
+        history = reconstruct_knowledge_item_history(session, item)
+        assert history.learning_change_ids == (
+            item.origin_learning_change_id,
+            retirement_change_id,
+        )
+        assert history.states[-1]["status"] == "retired"
+        assert history.states[-1]["superseded_by_id"] is None
+        assert history.state == knowledge_item_state(item)
+        assert change.operation == "retire"
+        assert change.status == "accepted"
+        assert change.committed_state is not None
+
+        task = session.get(Task, retirement_task_id)
+        assert task is not None and task.status == "done"
+        assert session.scalar(
+            select(func.count(Event.id)).where(
+                Event.task_id == retirement_task_id,
+                Event.type == "learning_change_accepted",
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count(Outcome.id)).where(
+                Outcome.recorded_by_task_id == retirement_task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ) == 1
+
+    assert retriever.retrieve(fixture.team_id, "source evidence") == ()
+    with session_factory() as session:
+        with pytest.raises(
+            TaskContextError,
+            match="team_experience_item_not_current_or_eligible",
+        ):
+            TaskContextAssembler._validate_team_experience_passage(
+                session,
+                SimpleNamespace(team_id=fixture.team_id),
+                stale_passage,
+                datetime.now(timezone.utc),
+            )
