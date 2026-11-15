@@ -10,9 +10,11 @@ Reactive and deliberative work converge on the same ordinary Task runtime. Tasks
 
 ## Current status
 
-PLAN.md is the only authority for milestone status, gates, and next actions. Do not copy a second status tracker here.
+[PLAN.md](PLAN.md) is the only authority for current milestone status, gates, and next actions.
 
-As of 2026-11-13, R7-B B4.4 G1–G6 regression proofs are complete. G1–G5 are merged; G6 is implemented and verified in open PR [#113](https://github.com/abtn/Watch-Architecture-Rev2/pull/113). Its latest exact-head hosted CI passed on `44a31cb59588457cbaedc4863046795cea03ca3a` (run [#43394074207](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43394074207)). B4.4 is not formally closed: documentation reconciliation and explicit Operator acceptance remain. B5, B6, and R7-C remain unauthorized. R8 remains entry-gated; its November 15 gate is not implementation authorization.
+The current path is B6 legacy-lifecycle hardening (baseline verification and read-only audit first), then the RW world-memory reasoning foundation, then R8. B5.4 is complete and closed. R8 is planned to start on November 23, 2026; that is not its completion deadline. R8 cannot start until all required foundational layers have passed their exit gate.
+
+See the [B6 delivery plan](docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md) and [R8 delivery plan](docs/development/r8-delivery-plan.md). A roadmap entry does not itself authorize implementation.
 
 ## Read the smallest relevant set
 
