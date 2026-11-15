@@ -35,7 +35,7 @@ The active path is:
 8. **RW-5 — confidence decay.** Implement the accepted deterministic decay behavior and its proofs before the foundation exit gate.
 9. **Foundation exit gate.** Verify all required layers end-to-end, including the value harness, migrations, tests, docs, exact-head local verification, and hosted CI. Record explicit Operator acceptance.
 
-RW-0 must decide whether R7-C knowledge-use references or other existing milestones are required to measure retained-experience effects. R7-C is not silently merged into B6 or RW; any required work receives an explicit scope and authorization.
+RW-0 must decide whether R7-C knowledge-use references or other existing milestones are required to measure retained-experience effects. R7-C is not silently merged into B6 or RW; any required work receives an explicit scope and authorization. RW-0 must also classify proposed capabilities such as rendered Artifacts/output, Consultations, the setup advisor, TeamDraft, and expanded domain-pack machinery: include a capability before R8 only if the product claim and vertical slice demonstrate that it is foundational. Do not treat every specified future feature as an automatic prerequisite.
 
 The B6 audit must resolve the F8 legacy-snapshot retirement question before any B6 implementation contract is frozen. B6 is not an excuse for speculative schema or lifecycle refactoring.
 
