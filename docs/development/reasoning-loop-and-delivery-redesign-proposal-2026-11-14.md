@@ -36,7 +36,7 @@ These are findings about the process, not about the people or the architecture, 
 
 **It is a re-sequencing plus a process redesign.** The Hypothesis design already exists: ADR-0001 to ADR-0019, `docs/architecture.md` §3 and §5 (F1–F3), the `docs/tasks.md` write-scope matrix, and INV-04 to INV-08.
 
-**It is not a Kernel redesign.** No new write path, runtime, scheduler or model-writable policy. One real contract question exists: the `evidence_links` table is restricted to `subject_kind = 'evaluation'` with `outcome`/`signal` sources, so carrying hypothesis evidence changes an accepted shape (D3).
+**It is not a Kernel redesign.** No new write path, runtime, scheduler or model-writable policy. One implementation gap exists: the current `evidence_links` ORM/table is restricted to `subject_kind = 'evaluation'` with `outcome`/`signal` sources, while accepted ADR-0007 already defines the polymorphic `hypothesis | evaluation` subject and `signal | outcome | artifact` source contract, and ADR-0020 adds `consultation`. Implementing Hypothesis evidence therefore brings the current schema up to the accepted architecture; it does not itself change that accepted contract. The exact relational representation, migration compatibility, and staging of Artifact/Consultation sources remain RW-0/RW-1 design decisions. An ADR addendum is needed only if the accepted contract itself must change.
 
 ## 4. Redesign of the delivery process
 
