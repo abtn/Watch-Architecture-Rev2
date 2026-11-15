@@ -129,7 +129,7 @@ These are candidates for D10, not authorizations granted by this review.
 
 The remaining D1–D10 details are not all resolved. The Operator's selected sequencing and R8 start-date decisions are recorded in the dated addendum below; the remaining design decisions are preserved in [the proposal](reasoning-loop-and-delivery-redesign-proposal-2026-11-14.md) for RW-0.
 
-Before implementation, record each decision with one of: Accepted, Rejected, Deferred, or Revised, plus rationale and date. At minimum, resolve the R8 objective/date and the EvidenceLink contract before schema work.
+Before implementation, record each remaining decision with one of: Accepted, Rejected, Deferred, or Revised, plus rationale and date. The Operator has since settled the R8 objective/order/start date and the accepted EvidenceLink architecture target (ADR-0007/ADR-0020). RW-0 must resolve the remaining capability, vertical-slice, measurement, and relational/migration design questions before schema work.
 
 ## 9. Documentation changes in this PR
 
@@ -144,9 +144,9 @@ At the time this original static review was drafted, it did not itself change PL
 
 ## 10. Review conclusion
 
-The project should not abandon the rigor developed in R6/R7. It should redirect that rigor toward the missing product loop and measurable improvement. The immediate next step is a decision session, not a migration or model worker.
+The project should not abandon the rigor developed in R6/R7. It should redirect that rigor toward the missing product loop and measurable improvement. At the time of this original review, the immediate next step was a decision session, not a migration or model worker. The later Operator roadmap addendum supersedes that immediate-action recommendation: B6 baseline verification and a read-only audit come first; RW-0 follows B6.
 
-The most important correction is to stop treating a schedule as a product definition. First decide whether R8 proves the current platform or the complete Watch vision. Then define the smallest vertical scenario and its evidence. Only after that should the team authorize RW implementation and process automation.
+The most important correction remains to stop treating a schedule as a product definition. The Operator has since chosen the full Watch product loop as the R8 foundation target. RW-0 must freeze the smallest vertical scenario and its evidence before implementation; R8 tests the completed foundation rather than adding it.
 
 
 ---
