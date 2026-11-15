@@ -19,7 +19,7 @@
 | Floor of memory | Meaning | Repository reality at the check date |
 |---|---|---|
 | Perception | Raw observations (Signals and immutable Snapshots) | **Built in part.** Signal ingestion and content-addressed Snapshots exist. |
-| Belief | Threads, competing Hypotheses, evidence, confidence | **Designed, not built.** The ORM has no Thread, Hypothesis, EvidenceLink, ConfidenceChange, or SignalDisposition models; the reasoning workers are not implemented. |
+| Belief | Threads, competing Hypotheses, evidence, confidence | **Designed, not built.** The ORM has no Thread, Hypothesis, ConfidenceChange, or SignalDisposition models. EvidenceLink exists, but its current schema is limited to Evaluation subjects and Outcome/Signal sources; it does not yet support Hypothesis evidence. The reasoning workers are not implemented. |
 | Skill | Lessons about the team's own methods (KnowledgeItems) | **Built and still being extended.** Distillation, Operator approval, create/revise/revalidate and lifecycle operations are implemented to the extent recorded in PLAN.md. |
 | Doctrine | How the team operates (TeamPolicy) | **Exists.** Models cannot write it. |
 | Instinct | What the model just knows | Not ours. It lives in model weights and is not durable Watch experience. |
