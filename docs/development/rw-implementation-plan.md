@@ -55,7 +55,7 @@ The strings for future Task types in core/ingestion.py's Event-scope allow-list 
 - Define a forward migration and compatibility behavior. Do not rewrite or reinterpret historical evidence silently.
 
 **Required proof:**
-- database constraints reject invalid subject/source combinations and invalid cause pairings;
+- schema and application validation reject invalid subject/source combinations and invalid cause pairings; use database constraints for the cases the relational representation can enforce without breaking the accepted polymorphic contract;
 - existing Evaluation evidence remains readable and valid;
 - cross-Team references fail closed;
 - quote/hash validation remains deterministic;
