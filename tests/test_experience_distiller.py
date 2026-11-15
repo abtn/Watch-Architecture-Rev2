@@ -14328,6 +14328,7 @@ def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
         )
         assert predecessor is not None and predecessor.status == "needs_review"
         assert review_event is not None
+        review_event_id = review_event.id
         assert predecessor.current_learning_change_id == initial_change_id
         assert predecessor.version == initial_version
         assert knowledge_item_content_hash(predecessor) == initial_hash
@@ -14347,7 +14348,9 @@ def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
 
     import core.learning_commit as learning_commit
 
-    def at_commit_time(committed_at: datetime, operation):
+    def at_commit_time(
+        committed_at: datetime, operation: Callable[[], Any]
+    ):
         class FixedCommitDateTime(datetime):
             @classmethod
             def now(cls, tz=None):
@@ -14537,6 +14540,7 @@ def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
         ),
     )
     assert superseded.decision == "accept"
+    assert superseded.committed_at == supersede_committed_at
     assert superseded.knowledge_item_id == predecessor_id
     runtime.finalize(
         TerminalObservation(
@@ -14574,7 +14578,7 @@ def test_b5_4_1_complete_lifecycle_sequence_uses_existing_trusted_paths(
             revalidation_id,
             supersede_change_id,
         )
-        assert predecessor_history.applied_review_event_ids == (review_event.id,)
+        assert predecessor_history.applied_review_event_ids == (review_event_id,)
         assert predecessor_history.states[1]["status"] == "needs_review"
         assert predecessor_history.states[2]["status"] == "active"
         assert predecessor_history.states[-1]["status"] == "retired"
