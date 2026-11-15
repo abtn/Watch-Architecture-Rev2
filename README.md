@@ -8,33 +8,31 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Completed foundations
 
-- **K0:** established the project's development tools and database foundation.
-- **K1:** created the first safe path for recording completed work.
-- **R0:** defined the main ideas and boundaries of the system.
-- **R1:** checked that the design fits the existing system.
-- **R2:** introduced goals and how they are managed.
-- **R3:** added a consistent way to assess the system's state.
-- **R4 (closed 2026-10-20):** established how the system turns goals into structured strategies.
-- **R5 (closed 2026-10-24):** added durable plans and their lifecycle.
-- **R6-G0:** agreed how Watch should learn from evidence and retain useful team knowledge.
-- **R6-A:** added reliable task outcomes, retries, and recovery.
-- **R6-B:** added the first end-to-end path for carrying out configured source work.
-- **R6-C:** added a way to review how work was carried out without changing its records.
-- **R6-D:** added the ability to index and search approved source material.
-- **R6-E:** gave tasks useful background information and allowed AI to suggest next steps within set limits.
-- **R6-F:** enabled reviewed experience to become reusable team knowledge.
-- **R6-G (closed 2026-11-04):** completed the process for reviewing past work and reusing lessons in future tasks.
+- **K0–K1:** established the development and database foundation, then proved the safe proposal → validation → atomic Kernel commit → Event path.
+- **R0–R3:** established Revision 2 architecture boundaries, compatibility with the existing Kernel and Task model, durable Objectives, and deterministic StateAssessment.
+- **R4:** established the StrategyProposal boundary and deterministic strategy validation.
+- **R5:** introduced durable Plan materialization and lifecycle.
+- **R6:** completed the source → Evaluation → distillation → Operator → Team Experience path, including task outcomes and recovery, source execution, review, indexing, retrieval, and reusable experience.
+- **R7-0:** completed the architecture decisions and entry gate for knowledge quality and lifecycle.
+- **R7-A:** added evidence-lineage classification and immutable knowledge-quality assessment.
+- **R7-B0:** froze the canonical KnowledgeItem lifecycle design and cross-document contracts.
+- **R7-B1:** added current-pointer history and snapshot-based lifecycle reconstruction.
+- **R7-B2:** completed versioned content hashing and canonicality, projection, and Context-manifest updates.
+- **R7-B3:** added immutable lifecycle assessments and their narrow assessment Tasks.
+- **R7-B4:** implemented the trusted revise/revalidate commit path and completed the integrated G1–G6 regression proofs.
+- **R7-B5.0–B5.4:** implemented candidate creation, supersession, and retirement, then completed the integrated lifecycle verification and formal closeout.
 
 ## Work in progress
 
-R7 is the current development workstream. Its active checkpoint, verified state, authorization, and next action are recorded in [PLAN.md](PLAN.md). This README intentionally does not duplicate milestone status.
+- **R7-B6 — final step of R7:** legacy lifecycle hardening. It begins with exact baseline verification and a read-only audit; implementation scope is determined only by demonstrated defects or proof gaps and requires explicit approval. See the [B6 delivery plan](docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md).
+- **R7-C** remains separately gated and is not silently included in B6. RW-0 will determine whether any R7-C capability is needed for the reasoning value harness.
 
+The active checkpoint, exact status, authorization, and verification evidence are maintained in [PLAN.md](PLAN.md) and [docs/testing.md](docs/testing.md).
 
 ## Future plan
 
-- **B6:** next lifecycle track; begins with a verified baseline and read-only audit. See the [B6 delivery plan](docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md).
-- **RW:** complete the world-memory reasoning foundation before cross-domain testing.
-- **R8 (planned start: November 23, 2026):** pressure-test the completed architecture across newsroom, development-team, and generalist domains. November 23 is not a completion deadline; R8 waits for the foundation exit gate. See the [R8 delivery plan](docs/development/r8-delivery-plan.md).
+- **RW — world-memory reasoning loop:** complete RW-0 through RW-5 and pass the foundation exit gate before cross-domain testing.
+- **R8 (planned start: November 23, 2026):** pressure-test the completed architecture across newsroom, development-team, and generalist domains. November 23 is a planned start, not a completion deadline; R8 waits for the foundation exit gate. See the [R8 delivery plan](docs/development/r8-delivery-plan.md).
 - **R9:** make the development and review process more repeatable and reliable.
 
 ## Project documentation
