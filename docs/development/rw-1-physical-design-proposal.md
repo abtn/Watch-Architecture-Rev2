@@ -185,7 +185,7 @@ Downgrade:
 - Never cascade-delete or silently discard Thread, Hypothesis, ConfidenceChange, or Hypothesis-subject EvidenceLink history.
 - Refuse downgrade with a clear exception if any RW-created world-memory records or Hypothesis-subject links exist.
 - For a clean installation with no Thread, Hypothesis, ConfidenceChange, or Hypothesis-subject EvidenceLink rows, restore the previous Evaluation-only EvidenceLink representation and constraints without changing historical Evaluation link IDs, source IDs, hashes, quotes, offsets, stances, reference keys, or timestamps. The `originating_task_id` column is removed on downgrade with the new schema.
-- Test upgrade against a populated pre-RW fixture containing Evaluation→Signal/Outcome links; include invalid parent, missing Task, cross-Team mismatch, unmapped row, and proposal-hash mismatch fixtures that must abort with no partial DDL/data change. Test downgrade refusal when new world-memory rows exist and safe downgrade when they do not.
+- Test upgrade against populated pre-RW fixtures containing Evaluation→Signal/Outcome links. Exercise integrity failures that can occur under the pre-RW schema (including Signal-domain mismatch, EvidenceLink reference-hash mismatch, and Evaluation proposal-hash mismatch) and verify transactional rollback. Existing foreign keys already prohibit orphaned Evaluation/Task references and cross-Team Evaluation links; document those pre-existing guarantees rather than constructing impossible legacy fixtures. Verify complete row/Task mapping and downgrade refusal when new world-memory rows exist, plus safe downgrade when they do not.
 
 No migration number is assigned here. Use the revision that follows the verified live Alembic head at implementation time; never infer the next revision from filenames alone.
 
@@ -217,7 +217,7 @@ The RW-1 implementation PR must identify exact test nodes for at least:
 | Team isolation | Cross-Team subject, Outcome, Hypothesis, Task and ConfidenceChange references rejected. Signal domain must equal the linking Team's domain for both subject kinds. |
 | Quote integrity | Exact quote/offset/hash accepted; altered quote, offset, Snapshot ref, or hash rejected. |
 | Uniqueness/replay | Duplicate reference keys and same-Task replay handled deterministically; concurrent conflicting commits cannot corrupt records. |
-| Migration | Upgrade on populated pre-RW DB and fresh DB; verify complete Task attribution, row counts, Team consistency, and proposal hashes; all invalid fixtures abort transactionally without partial DDL/data changes; verify migration head, downgrade refusal with new records, and safe downgrade on empty RW tables. |
+| Migration | Upgrade on populated pre-RW DB and fresh DB; verify complete Task attribution, row counts, Team consistency, and proposal hashes; reachable invalid legacy fixtures abort transactionally without partial DDL/data changes; document legacy FK guarantees for impossible orphan/cross-Team states; verify migration head, downgrade refusal with new records, and safe downgrade on empty RW tables. |
 | Immutability | EvidenceLink and ConfidenceChange history cannot be rewritten or deleted through application paths. |
 
 Use real disposable PostgreSQL for database-backed constraints, migration, race, and mutation proofs. Unit-only SQLite substitutes are not sufficient for PostgreSQL-specific constraints.
