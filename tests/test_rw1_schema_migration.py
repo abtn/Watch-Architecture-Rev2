@@ -260,6 +260,136 @@ def _seed_legacy_evaluation(
     )
 
 
+def _assert_upgrade_rolled_back(sandbox: MigrationSandbox) -> None:
+    with sandbox.engine.connect() as connection:
+        revision = connection.scalar(
+            text(
+                f'SELECT version_num FROM "{sandbox.schema}".alembic_version'
+            )
+        )
+        assert revision == "0018_r7b_lifecycle_review_date"
+        tables = set(
+            connection.scalars(
+                text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = :schema"
+                ),
+                {"schema": sandbox.schema},
+            )
+        )
+        assert "threads" not in tables
+        columns = set(
+            connection.scalars(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = :schema AND table_name = 'evidence_links'"
+                ),
+                {"schema": sandbox.schema},
+            )
+        )
+        assert "subject_id" in columns
+        assert "evaluation_id" not in columns
+
+
+def _add_second_legacy_outcome_link(
+    sandbox: MigrationSandbox, legacy: LegacyEvidence
+) -> None:
+    second_link_id = uuid4()
+    second_payload: dict[str, object] = {
+        "source_kind": "outcome",
+        "outcome_id": str(legacy.outcome_id),
+        "signal_id": None,
+        "snapshot_ref": None,
+        "snapshot_hash": None,
+        "stance": "challenges",
+        "quote_text": None,
+        "quote_start": None,
+        "quote_end": None,
+    }
+    second_reference_key = _digest(second_payload)
+    with sandbox.engine.begin() as connection:
+        original = connection.execute(
+            text("SELECT * FROM evidence_links WHERE id = :id"),
+            {"id": legacy.link_id},
+        ).mappings().one()
+        evaluation = connection.execute(
+            text("SELECT * FROM evaluations WHERE id = :id"),
+            {"id": legacy.evaluation_id},
+        ).mappings().one()
+        # Deliberately make primary-key order the reverse of reference-key order.
+        original_id, second_link_id = (
+            (UUID(int=2), UUID(int=1))
+            if legacy.reference_key < second_reference_key
+            else (UUID(int=1), UUID(int=2))
+        )
+        connection.execute(
+            text("UPDATE evidence_links SET id = :new_id WHERE id = :old_id"),
+            {"new_id": original_id, "old_id": legacy.link_id},
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO evidence_links (
+                    id, team_id, subject_kind, subject_id, source_kind,
+                    outcome_id, signal_id, snapshot_ref, snapshot_hash, stance,
+                    quote_text, quote_start, quote_end, reference_key
+                )
+                VALUES (
+                    :id, :team_id, 'evaluation', :evaluation_id, 'outcome',
+                    :outcome_id, NULL, NULL, NULL, 'challenges',
+                    NULL, NULL, NULL, :reference_key
+                )
+                """
+            ),
+            {
+                "id": second_link_id,
+                "team_id": legacy.team_id,
+                "evaluation_id": legacy.evaluation_id,
+                "outcome_id": legacy.outcome_id,
+                "reference_key": second_reference_key,
+            },
+        )
+        links = connection.execute(
+            text(
+                "SELECT source_kind, outcome_id, signal_id, snapshot_ref, "
+                "snapshot_hash, stance, quote_text, quote_start, quote_end, "
+                "reference_key FROM evidence_links WHERE subject_id = :id"
+            ),
+            {"id": legacy.evaluation_id},
+        ).mappings().all()
+        evidence: list[dict[str, object]] = []
+        for link in links:
+            item: dict[str, object] = {
+                "source_kind": link["source_kind"],
+                "outcome_id": str(link["outcome_id"]) if link["outcome_id"] else None,
+                "signal_id": str(link["signal_id"]) if link["signal_id"] else None,
+                "snapshot_ref": link["snapshot_ref"],
+                "snapshot_hash": link["snapshot_hash"],
+                "stance": link["stance"],
+                "quote_text": link["quote_text"],
+                "quote_start": link["quote_start"],
+                "quote_end": link["quote_end"],
+            }
+            item["reference_key"] = link["reference_key"]
+            evidence.append(item)
+        evidence.sort(key=lambda item: str(item["reference_key"]))
+        proposal = {
+            "team_id": str(evaluation["team_id"]),
+            "outcome_id": str(evaluation["outcome_id"]),
+            "conclusion": evaluation["conclusion"],
+            "findings": evaluation["findings"],
+            "evidence": evidence,
+            "evaluator_kind": evaluation["evaluator_kind"],
+            "evaluator_identity": evaluation["evaluator_identity"],
+            "evaluator_revision": evaluation["evaluator_revision"],
+            "idempotency_key": evaluation["idempotency_key"],
+        }
+        connection.execute(
+            text("UPDATE evaluations SET proposal_hash = :hash WHERE id = :id"),
+            {"hash": _digest(proposal), "id": legacy.evaluation_id},
+        )
+
+
 def test_0019_backfills_typed_subject_and_task_without_changing_legacy_rows(
     rw1_migration_schema: MigrationSandbox,
 ) -> None:
@@ -350,6 +480,201 @@ def test_0019_refuses_proposal_hash_mismatch_and_rolls_back_schema(
         )
         assert "subject_id" in columns
         assert "evaluation_id" not in columns
+
+
+def test_0019_refuses_signal_domain_mismatch_and_rolls_back_schema(
+    rw1_migration_schema: MigrationSandbox,
+) -> None:
+    legacy = _seed_legacy_evaluation(rw1_migration_schema)
+    signal_id = uuid4()
+    with rw1_migration_schema.engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO signals (
+                    id, domain, source_type, origin_url, fetched_at,
+                    content_hash, snapshot_ref
+                )
+                VALUES (
+                    :id, 'another_domain', 'web', :url, now(),
+                    :content_hash, :snapshot_ref
+                )
+                """
+            ),
+            {
+                "id": signal_id,
+                "url": f"https://example.test/{signal_id}",
+                "content_hash": "sha256:" + ("0" * 64),
+                "snapshot_ref": "snapshot://rw1-migration-test",
+            },
+        )
+        connection.execute(
+            text(
+                """
+                UPDATE evidence_links
+                SET source_kind = 'signal', outcome_id = NULL, signal_id = :signal_id
+                WHERE id = :link_id
+                """
+            ),
+            {"signal_id": signal_id, "link_id": legacy.link_id},
+        )
+    with pytest.raises(RuntimeError, match="Team/domain mismatch"):
+        _run_revision(
+            rw1_migration_schema.engine,
+            rw1_migration_schema.schema,
+            "0019_rw1_world_memory",
+        )
+    _assert_upgrade_rolled_back(rw1_migration_schema)
+
+
+def test_0019_refuses_evidence_reference_hash_mismatch_and_rolls_back_schema(
+    rw1_migration_schema: MigrationSandbox,
+) -> None:
+    legacy = _seed_legacy_evaluation(rw1_migration_schema)
+    with rw1_migration_schema.engine.begin() as connection:
+        connection.execute(
+            text("UPDATE evidence_links SET reference_key = :bad WHERE id = :id"),
+            {
+                "bad": "sha256:" + ("0" * 64),
+                "id": legacy.link_id,
+            },
+        )
+    with pytest.raises(RuntimeError, match="EvidenceLink reference hash mismatch"):
+        _run_revision(
+            rw1_migration_schema.engine,
+            rw1_migration_schema.schema,
+            "0019_rw1_world_memory",
+        )
+    _assert_upgrade_rolled_back(rw1_migration_schema)
+
+
+def test_0019_backfills_multiple_links_in_canonical_reference_order(
+    rw1_migration_schema: MigrationSandbox,
+) -> None:
+    legacy = _seed_legacy_evaluation(rw1_migration_schema)
+    _add_second_legacy_outcome_link(rw1_migration_schema, legacy)
+    _run_revision(
+        rw1_migration_schema.engine,
+        rw1_migration_schema.schema,
+        "0019_rw1_world_memory",
+    )
+    with rw1_migration_schema.engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                """
+                SELECT evaluation_id, hypothesis_id, originating_task_id,
+                       reference_key
+                FROM evidence_links
+                ORDER BY id
+                """
+            )
+        ).mappings().all()
+        assert len(rows) == 2
+        assert all(row["evaluation_id"] == legacy.evaluation_id for row in rows)
+        assert all(row["hypothesis_id"] is None for row in rows)
+        assert all(row["originating_task_id"] == legacy.task_id for row in rows)
+        assert [row["reference_key"] for row in rows] == sorted(
+            row["reference_key"] for row in rows
+        )
+
+
+def test_0019_downgrade_refuses_hypothesis_confidence_history(
+    rw1_migration_schema: MigrationSandbox,
+) -> None:
+    legacy = _seed_legacy_evaluation(rw1_migration_schema)
+    _run_revision(
+        rw1_migration_schema.engine,
+        rw1_migration_schema.schema,
+        "0019_rw1_world_memory",
+    )
+    thread_id, hypothesis_id, link_id, change_id = (uuid4() for _ in range(4))
+    with rw1_migration_schema.engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO threads (id, team_id, domain, title)
+                VALUES (:id, :team_id, 'rw1_migration_test', 'History guard')
+                """
+            ),
+            {"id": thread_id, "team_id": legacy.team_id},
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO hypotheses (
+                    id, team_id, thread_id, statement, confidence
+                )
+                VALUES (:id, :team_id, :thread_id, 'History must be retained', 'low')
+                """
+            ),
+            {
+                "id": hypothesis_id,
+                "team_id": legacy.team_id,
+                "thread_id": thread_id,
+            },
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO evidence_links (
+                    id, team_id, subject_kind, evaluation_id, hypothesis_id,
+                    originating_task_id, source_kind, outcome_id, signal_id,
+                    snapshot_ref, snapshot_hash, stance, quote_text, quote_start,
+                    quote_end, reference_key
+                )
+                VALUES (
+                    :id, :team_id, 'hypothesis', NULL, :hypothesis_id,
+                    :task_id, 'outcome', :outcome_id, NULL, NULL, NULL,
+                    'supports', NULL, NULL, NULL, 'hypothesis-history-evidence'
+                )
+                """
+            ),
+            {
+                "id": link_id,
+                "team_id": legacy.team_id,
+                "hypothesis_id": hypothesis_id,
+                "task_id": legacy.task_id,
+                "outcome_id": legacy.outcome_id,
+            },
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO confidence_changes (
+                    id, team_id, hypothesis_id, from_confidence, to_confidence,
+                    cause_kind, evidence_link_id, created_by_task_id, idempotency_key
+                )
+                VALUES (
+                    :id, :team_id, :hypothesis_id, 'low', 'moderate',
+                    'evidence', :link_id, :task_id, 'history-guard'
+                )
+                """
+            ),
+            {
+                "id": change_id,
+                "team_id": legacy.team_id,
+                "hypothesis_id": hypothesis_id,
+                "link_id": link_id,
+                "task_id": legacy.task_id,
+            },
+        )
+    with pytest.raises(RuntimeError, match="Cannot downgrade RW-1"):
+        _run_revision(
+            rw1_migration_schema.engine,
+            rw1_migration_schema.schema,
+            "0018_r7b_lifecycle_review_date",
+            downgrade=True,
+        )
+    with rw1_migration_schema.engine.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM confidence_changes")) == 1
+        assert connection.scalar(text("SELECT count(*) FROM evidence_links")) == 2
+        revision = connection.scalar(
+            text(
+                f'SELECT version_num FROM "{rw1_migration_schema.schema}".'
+                "alembic_version"
+            )
+        )
+        assert revision == "0019_rw1_world_memory"
 
 
 def test_0019_downgrade_refuses_world_memory_then_restores_legacy_shape(
