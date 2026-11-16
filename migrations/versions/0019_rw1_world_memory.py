@@ -346,7 +346,7 @@ def upgrade() -> None:
     )
     op.alter_column("evidence_links", "originating_task_id", nullable=False)
     op.drop_constraint(
-        "fk_evidence_links_evaluation_subject_team", "evidence_links", type_="foreignkey"
+        "fk_evidence_links_evaluation_team", "evidence_links", type_="foreignkey"
     )
     op.drop_constraint(
         "ck_evidence_links_subject_kind", "evidence_links", type_="check"
@@ -521,7 +521,9 @@ def downgrade() -> None:
         "fk_evidence_links_hypothesis_team", "evidence_links", type_="foreignkey"
     )
     op.drop_constraint(
-        "fk_evidence_links_evaluation_team", "evidence_links", type_="foreignkey"
+        "fk_evidence_links_evaluation_subject_team",
+        "evidence_links",
+        type_="foreignkey",
     )
     op.drop_column("evidence_links", "evaluation_id")
     op.drop_column("evidence_links", "hypothesis_id")
