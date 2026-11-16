@@ -20,6 +20,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from core.vector_type import Vector
@@ -854,6 +855,172 @@ class KnowledgeItem(Base):
         nullable=False, server_default=func.now())
 
 
+class Thread(Base):
+    """Team-owned canonical discussion thread for world-memory reasoning."""
+
+    __tablename__ = "threads"
+    __table_args__ = (
+        UniqueConstraint("id", "team_id", name="uq_threads_id_team"),
+        CheckConstraint(
+            "status IN ('active', 'dormant', 'resolved')",
+            name="ck_threads_status",
+        ),
+        CheckConstraint(
+            "length(btrim(domain)) > 0 AND length(btrim(title)) > 0",
+            name="ck_threads_text",
+        ),
+        Index(
+            "ix_threads_team_status_updated",
+            "team_id",
+            "status",
+            "last_updated_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False
+    )
+    domain: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="active", server_default="active"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class Hypothesis(Base):
+    """A Team-owned proposition attached to one canonical Thread."""
+
+    __tablename__ = "hypotheses"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["thread_id", "team_id"],
+            ["threads.id", "threads.team_id"],
+            name="fk_hypotheses_thread_team",
+        ),
+        UniqueConstraint("id", "team_id", name="uq_hypotheses_id_team"),
+        CheckConstraint(
+            "status IN ('active', 'superseded', 'rejected')",
+            name="ck_hypotheses_status",
+        ),
+        CheckConstraint(
+            "confidence IN ('low', 'moderate', 'high')",
+            name="ck_hypotheses_confidence",
+        ),
+        CheckConstraint(
+            "length(btrim(statement)) > 0",
+            name="ck_hypotheses_statement",
+        ),
+        Index(
+            "ix_hypotheses_team_thread_status",
+            "team_id",
+            "thread_id",
+            "status",
+        ),
+        Index(
+            "ix_hypotheses_team_status_touched",
+            "team_id",
+            "status",
+            "last_touched_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False
+    )
+    thread_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    statement: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="active", server_default="active"
+    )
+    confidence: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="low", server_default="low"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_touched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ConfidenceChange(Base):
+    """Append-only, Task-attributed change to one Hypothesis confidence band."""
+
+    __tablename__ = "confidence_changes"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["hypothesis_id", "team_id"],
+            ["hypotheses.id", "hypotheses.team_id"],
+            name="fk_confidence_changes_hypothesis_team",
+        ),
+        ForeignKeyConstraint(
+            ["evidence_link_id", "hypothesis_id", "team_id"],
+            [
+                "evidence_links.id",
+                "evidence_links.hypothesis_id",
+                "evidence_links.team_id",
+            ],
+            name="fk_confidence_changes_evidence_hypothesis_team",
+        ),
+        ForeignKeyConstraint(
+            ["created_by_task_id", "team_id"],
+            ["tasks.id", "tasks.team_id"],
+            name="fk_confidence_changes_task_team",
+        ),
+        UniqueConstraint(
+            "created_by_task_id",
+            "idempotency_key",
+            name="uq_confidence_changes_task_idempotency",
+        ),
+        CheckConstraint(
+            "from_confidence IN ('low', 'moderate', 'high') AND "
+            "to_confidence IN ('low', 'moderate', 'high') AND "
+            "from_confidence <> to_confidence",
+            name="ck_confidence_changes_bands",
+        ),
+        CheckConstraint(
+            "cause_kind IN ('evidence', 'decay')",
+            name="ck_confidence_changes_cause_kind",
+        ),
+        CheckConstraint(
+            "(cause_kind = 'evidence' AND evidence_link_id IS NOT NULL) OR "
+            "(cause_kind = 'decay' AND evidence_link_id IS NULL)",
+            name="ck_confidence_changes_cause",
+        ),
+        Index(
+            "ix_confidence_changes_team_hypothesis_created",
+            "team_id",
+            "hypothesis_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False
+    )
+    hypothesis_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    from_confidence: Mapped[str] = mapped_column(String(16), nullable=False)
+    to_confidence: Mapped[str] = mapped_column(String(16), nullable=False)
+    cause_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    evidence_link_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    created_by_task_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class Evaluation(Base):
     """An attributable assessment of one immutable Outcome."""
     __tablename__ = "evaluations"
@@ -917,53 +1084,102 @@ class Evaluation(Base):
 
 
 class EvidenceLink(Base):
-    """Evaluation-scoped link to a same-Team Outcome or domain Signal."""
+    """One logical evidence link with typed, same-Team subject references."""
+
     __tablename__ = "evidence_links"
     __table_args__ = (
-        ForeignKeyConstraint(["subject_id", "team_id"], ["evaluations.id",
-            "evaluations.team_id"], name="fk_evidence_links_evaluation_team"),
-        ForeignKeyConstraint(["outcome_id", "team_id"], ["outcomes.id",
-            "outcomes.team_id"], name="fk_evidence_links_outcome_team"),
-        CheckConstraint("subject_kind = 'evaluation'",
-            name="ck_evidence_links_subject_kind"),
+        ForeignKeyConstraint(
+            ["evaluation_id", "team_id"],
+            ["evaluations.id", "evaluations.team_id"],
+            name="fk_evidence_links_evaluation_subject_team",
+        ),
+        ForeignKeyConstraint(
+            ["hypothesis_id", "team_id"],
+            ["hypotheses.id", "hypotheses.team_id"],
+            name="fk_evidence_links_hypothesis_team",
+        ),
+        ForeignKeyConstraint(
+            ["originating_task_id", "team_id"],
+            ["tasks.id", "tasks.team_id"],
+            name="fk_evidence_links_originating_task_team",
+        ),
+        ForeignKeyConstraint(
+            ["outcome_id", "team_id"],
+            ["outcomes.id", "outcomes.team_id"],
+            name="fk_evidence_links_outcome_team",
+        ),
+        UniqueConstraint("id", "team_id", name="uq_evidence_links_id_team"),
+        UniqueConstraint(
+            "id",
+            "hypothesis_id",
+            "team_id",
+            name="uq_evidence_links_id_hypothesis_team",
+        ),
+        UniqueConstraint(
+            "evaluation_id",
+            "reference_key",
+            name="uq_evidence_links_evaluation_reference",
+        ),
+        UniqueConstraint(
+            "hypothesis_id",
+            "reference_key",
+            name="uq_evidence_links_hypothesis_reference",
+        ),
         CheckConstraint(
-            "(source_kind = 'outcome' AND outcome_id IS "
-                "NOT NULL AND signal_id IS NULL) OR "
-            "(source_kind = 'signal' AND signal_id IS NOT NULL AND outcome_id IS NULL)",
+            "((subject_kind = 'evaluation' AND evaluation_id IS NOT NULL "
+            "AND hypothesis_id IS NULL) OR "
+            "(subject_kind = 'hypothesis' AND hypothesis_id IS NOT NULL "
+            "AND evaluation_id IS NULL))",
+            name="ck_evidence_links_subject",
+        ),
+        CheckConstraint(
+            "(source_kind = 'outcome' AND outcome_id IS NOT NULL "
+            "AND signal_id IS NULL) OR "
+            "(source_kind = 'signal' AND signal_id IS NOT NULL "
+            "AND outcome_id IS NULL)",
             name="ck_evidence_links_source",
         ),
-        CheckConstraint("stance IN ('supports', 'challenges', 'mentions')",
-            name="ck_evidence_links_stance"),
+        CheckConstraint(
+            "stance IN ('supports', 'challenges', 'mentions')",
+            name="ck_evidence_links_stance",
+        ),
         CheckConstraint(
             "(snapshot_ref IS NULL AND snapshot_hash IS NULL) OR "
-            "(snapshot_ref IS NOT NULL AND snapshot_hash "
-                "IS NOT NULL AND snapshot_ref ~ "
-                "'^snap://sha256/[0-9a-f]{64}$' "
+            "(snapshot_ref IS NOT NULL AND snapshot_hash IS NOT NULL "
+            "AND snapshot_ref ~ '^snap://sha256/[0-9a-f]{64}$' "
             "AND snapshot_hash ~ '^sha256:[0-9a-f]{64}$' "
-                "AND split_part(snapshot_ref, '/', 4) = "
-                "split_part(snapshot_hash, ':', 2))",
+            "AND split_part(snapshot_ref, '/', 4) = "
+            "split_part(snapshot_hash, ':', 2))",
             name="ck_evidence_links_snapshot_pair",
         ),
         CheckConstraint(
             "(quote_text IS NULL AND quote_start IS NULL AND quote_end IS NULL) OR "
-            "(quote_text IS NOT NULL AND quote_start IS "
-                "NOT NULL AND quote_end IS NOT NULL AND "
-                "quote_start >= 0 AND quote_end > "
-                "quote_start)",
+            "(quote_text IS NOT NULL AND quote_start IS NOT NULL "
+            "AND quote_end IS NOT NULL AND quote_start >= 0 "
+            "AND quote_end > quote_start)",
             name="ck_evidence_links_quote_offsets",
         ),
-        CheckConstraint("length(reference_key) > 0",
-            name="ck_evidence_links_reference_key"),
-        UniqueConstraint("subject_id", "reference_key",
-            name="uq_evidence_links_subject_reference"),
-        Index("ix_evidence_links_team_source", "team_id", "source_kind",
-            "outcome_id", "signal_id"),
+        CheckConstraint(
+            "length(reference_key) > 0",
+            name="ck_evidence_links_reference_key",
+        ),
+        Index(
+            "ix_evidence_links_team_source",
+            "team_id",
+            "source_kind",
+            "outcome_id",
+            "signal_id",
+        ),
     )
+
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
-    team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True),
-        ForeignKey("teams.id"), nullable=False)
+    team_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False
+    )
     subject_kind: Mapped[str] = mapped_column(String, nullable=False)
-    subject_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    evaluation_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    hypothesis_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    originating_task_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     source_kind: Mapped[str] = mapped_column(String, nullable=False)
     outcome_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     signal_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
@@ -974,8 +1190,36 @@ class EvidenceLink(Base):
     quote_start: Mapped[int | None] = mapped_column(nullable=True)
     quote_end: Mapped[int | None] = mapped_column(nullable=True)
     reference_key: Mapped[str] = mapped_column(String, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
-        nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    @hybrid_property
+    def subject_id(self) -> UUID:
+        """Expose the historical polymorphic subject ID to existing callers."""
+        subject_id = self.evaluation_id or self.hypothesis_id
+        if subject_id is None:
+            raise ValueError("EvidenceLink subject is not set")
+        return subject_id
+
+    @subject_id.setter
+    def subject_id(self, value: UUID) -> None:
+        if self.subject_kind == "evaluation":
+            self.evaluation_id = value
+            self.hypothesis_id = None
+        elif self.subject_kind == "hypothesis":
+            self.hypothesis_id = value
+            self.evaluation_id = None
+        else:
+            raise ValueError("Unsupported EvidenceLink subject kind")
+
+    @subject_id.expression
+    def subject_id(cls):
+        return sa.case(
+            (cls.subject_kind == "evaluation", cls.evaluation_id),
+            (cls.subject_kind == "hypothesis", cls.hypothesis_id),
+            else_=None,
+        )
 
 
 class KnowledgeQualityAssessment(Base):
