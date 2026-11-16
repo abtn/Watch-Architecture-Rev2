@@ -166,7 +166,8 @@ class EvaluationService:
             for item in normalized:
                 session.add(EvidenceLink(
                     id=uuid4(), team_id=team.id, subject_kind="evaluation",
-                    subject_id=evaluation.id, source_kind=item["source_kind"],
+                    evaluation_id=evaluation.id, originating_task_id=task.id,
+                    source_kind=item["source_kind"],
                     outcome_id=UUID(item["outcome_id"]) if item["outcome_id"] else None,
                     signal_id=UUID(item["signal_id"]) if item["signal_id"] else None,
                     snapshot_ref=item["snapshot_ref"],
@@ -209,6 +210,10 @@ class EvaluationService:
             )))
             if not links:
                 raise EvaluationValidationError("evaluation_evidence_required")
+            if any(link.originating_task_id != task.id for link in links):
+                raise EvaluationValidationError(
+                    "evidence_link_originating_task_mismatch"
+                )
             if (
                 not any(link.source_kind == "outcome"
                 and link.outcome_id == evaluation.outcome_id for link in links)

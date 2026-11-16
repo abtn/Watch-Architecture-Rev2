@@ -1,13 +1,13 @@
 # RW — Implementation Plan and Proof Matrix
 
-**Status:** RW-0 is closed by docs-only squash merge PR #126; RW-1 physical design is under Operator review; no RW implementation is authorized
+**Status:** RW-0 is closed by PR #126; RW-1 physical design/planning is merged by PR #127 at `9ac259bb5fd5986a89955dc06cb8a185e2599993`; all six D132 decisions were accepted on 2026-11-16; RW-1 implementation is authorized as one bounded slice only
 **Sequence:** B6 → RW-0 → RW-1 → RW-2 → RW-3 → RW-4 → RW-5 → foundation exit gate → R8
 **Code audit basis:** post-B6 static source/spec audit at `91169b4931e48cb7b2803ed2066ec365f563a0ea`; RW-0 docs-only closeout squash-merged by PR #126 at `cac63a01380624bbaf0c9965a363a352e46960d7`
 **Decision record:** [RW-0 decision record](rw-0-decision-record.md)
-**RW-1 physical design:** [RW-1 physical world-memory and EvidenceLink design proposal](rw-1-physical-design-proposal.md) — proposed, not accepted
+**RW-1 physical design:** [RW-1 physical world-memory and EvidenceLink design proposal](rw-1-physical-design-proposal.md) — accepted under D132 on 2026-11-16
 **Value harness:** [Newsroom value harness](rw-value-harness.md)
 
-This plan turns the accepted architecture and the RW proposal into bounded implementation slices. It does not authorize schema, code, tests, migrations, or provider changes. RW-0 must freeze unresolved decisions and the Operator must authorize each implementation slice.
+This plan turns the accepted architecture and RW proposal into bounded implementation slices. RW-1 is authorized as the current implementation slice only; RW-2–RW-5 require their own explicit authorization. No R7-C implementation, persistent-database access, or newsroom scored execution is authorized.
 
 ## 1. Purpose and boundary
 
@@ -19,7 +19,7 @@ The model proposes. Application code validates. The existing Kernel/commit path 
 
 The newsroom is the first value-harness domain. RW-0 freezes the measurement methodology and eligibility rules. The exact completed story and source package must be prepared and frozen before scored runs; any item deferred from documentation closeout must be tracked with a named owner and acceptance gate. Other domains belong to R8 after the foundation exit gate.
 
-The minimum R7-C capabilities approved by RW-D99—claim-level `TaskKnowledgeReference` and typed `KnowledgeUseAssessment`—are required only to the extent defined by the frozen newsroom claim. Before authorizing any RW slice that implements them, this plan must assign each capability to a named slice and proof obligations. This plan does not authorize R7-C or RW implementation.
+The minimum R7-C capabilities approved by RW-D99—claim-level `TaskKnowledgeReference` and typed `KnowledgeUseAssessment`—are required only to the extent defined by the frozen newsroom claim. Before authorizing any RW slice that implements them, this plan must assign each capability to a named slice and proof obligations. The historical post-B6 audit did not authorize R7-C or RW implementation; RW-1 was subsequently authorized under D132 and is the only current RW implementation slice. RW-2–RW-5 remain separately gated.
 
 ## 2. Post-B6 implementation audit
 
@@ -50,8 +50,8 @@ The `triage_signal`, `update_thread`, `operator_update`, and `apply_decay` strin
 
 **Purpose:** create the canonical records required for world memory and align the existing EvidenceLink implementation with ADR-0007 and ADR-0020.
 
-**Pre-implementation design gate (RW-D131/RW-D132):** RW-0 freezes the shared EvidenceLink contract and vocabulary, not its physical relational design. Before any RW-1 schema, migration, or production-code implementation, prepare and obtain explicit Operator acceptance of the exact relational representation, columns/keys, foreign-key strategy, constraints, indexes, Team ownership enforcement, quote/Snapshot validation, uniqueness/replay behavior, compatibility/backfill behavior, forward migration, staged Artifact/Consultation handling, and downgrade/data-preservation behavior. Preserve current Evaluation→Signal/Outcome evidence and ADR-0007/ADR-0020. No related implementation begins before this design gate passes.
-**Proposed scope:**
+**Design gate (RW-D131/RW-D132): SATISFIED on 2026-11-16.** The Operator explicitly accepted all six D132 recommendations in the [RW-1 physical design proposal](rw-1-physical-design-proposal.md) §9, including the exact typed-subject representation, strict legacy attribution/backfill gate, supersession Event contract, initial confidence rule, Signal-domain eligibility, and projection deferral. RW-1 implementation is separately authorized as the current bounded slice. The design gate is closed; do not repeat it as a pending prerequisite.
+**Authorized scope:**
 - Add Thread, Hypothesis, and ConfidenceChange persistence with same-Team ownership, explicit status/confidence/cause constraints, and the indexes needed by the first newsroom scenario.
 - Add SignalDisposition in this slice only if RW-4 triage remains in the accepted scope; otherwise defer its schema with the triage slice.
 - Extend the existing evidence_links table/model rather than creating a sibling evidence system. Preserve current Evaluation→Signal/Outcome rows and their hashes, quotes, references, and uniqueness.
@@ -75,8 +75,8 @@ The `triage_signal`, `update_thread`, `operator_update`, and `apply_decay` strin
 **Proposed scope:**
 - Implement operator_update as an ordinary manual Task through the host-invoked application adapter boundary.
 - Reuse the same proposal envelope and commit-time validation contract as update_thread (ADR-0021).
-- Enforce same-Team references, exact Snapshot quote/hash/offset checks, stance rules, legal Hypothesis transitions, exactly-one ConfidenceChange cause, idempotency, and atomic proposal-set commit.
-- An unsubstantiated Hypothesis starts at low, regardless of whether its author is human or model.
+- Enforce same-Team references, exact Snapshot quote/hash/offset checks, stance rules (a `mentions` link cannot cause a ConfidenceChange), legal Hypothesis transitions, exactly-one ConfidenceChange cause, idempotency, and atomic proposal-set commit.
+- Every new Hypothesis starts at `low`; initial evidence does not establish a higher starting band. A higher band can result only from a later ConfidenceChange with an explicit valid cause and Task attribution.
 - Keep Operator authentication/authorization at the host boundary; Watch receives trusted principal context. Do not add a deployed Watch API/CLI or a second auth system.
 
 **Required proof:** all applicable RW proof-matrix rows for evidence, Hypothesis transitions, atomicity, replay, concurrency, Team scope, and Operator provenance.
@@ -141,7 +141,7 @@ The matrix defines required proof obligations, not tests that already exist. Eac
 | RW-EV-03 | Every ConfidenceChange has exactly one valid cause. | Missing, dual, mismatched, or wrong-Task cause rejected by DB/application. | RW-1/RW-2/RW-5 |
 | RW-HY-01 | Multiple active competing Hypotheses may coexist. | Create rival Hypotheses without implicit demotion/deletion. | RW-2 |
 | RW-HY-02 | Supersede/reject requires legal transition, successor where required, reason, and Event. | Missing reason, stale status, invalid successor, and replay cases. | RW-2 |
-| RW-HY-03 | An unsubstantiated Hypothesis starts at low for all authors. | Same proposal tested through Operator and model paths. | RW-2/RW-3 |
+| RW-HY-03 | Every new Hypothesis starts at low, including when evidence is supplied at creation; higher confidence requires a later Task-attributed ConfidenceChange. | Explicitly reject a proposal attempting an elevated initial band; prove low initial state and a later valid confidence change through Operator and model paths. | RW-2/RW-3 |
 | RW-AT-01 | Valid proposals commit atomically as one set; invalid proposals are rejected with attributable Events, and the Task fails if all proposals fail. | Test an all-valid set, a mixed valid/invalid batch, and a failure during the valid-set transaction. Invalid proposals create no business writes; a failed valid-set transaction leaves none of that set committed. Preserve the current `docs/tasks.md` / `docs/architecture.md` semantics unless RW-0 explicitly approves a contract change. | RW-2 |
 | RW-RP-01 | Task/proposal replay creates no duplicate evidence or state transition. | Repeated identical Task commit returns/reuses canonical result. | RW-2/RW-3/RW-4/RW-5 |
 | RW-RC-01 | Concurrent updates cannot lose a Hypothesis/evidence change. | Repeated race test on one Thread; one winner or clean serialization, no lost update. | RW-2/RW-3 |
@@ -156,16 +156,28 @@ The matrix defines required proof obligations, not tests that already exist. Eac
 
 ## 4.1 RW-1 physical design preparation
 
-The [RW-1 physical design proposal](rw-1-physical-design-proposal.md) is the current design artifact for D132. A source/schema audit was completed against branch head `a8c6b489cfa9dba05ae143474d7a86399b4382a6`, including `core/models.py`, `core/evaluations.py`, `core/task_runtime.py`, and `core/experience_distiller.py`, plus a disposable PostgreSQL migration/schema audit through `0018_r7b_lifecycle_review_date`. No persistent database rows were inspected. The revised proposal records these source findings and recommends typed subject foreign keys behind one logical EvidenceLink model, non-null `originating_task_id` backfilled from the parent Evaluation Task under fail-closed migration checks, same-Hypothesis ConfidenceChange evidence FKs, Task-attributed supersession Events, initial `low` confidence, the existing Signal-domain eligibility rule, append-only ConfidenceChange records, and staged Artifact/Consultation support. These recommendations remain unaccepted pending D132 Operator review.
+The [RW-1 physical design proposal](rw-1-physical-design-proposal.md) is the current design artifact for D132. A source/schema audit was completed against branch head `a8c6b489cfa9dba05ae143474d7a86399b4382a6`, including `core/models.py`, `core/evaluations.py`, `core/task_runtime.py`, and `core/experience_distiller.py`, plus a disposable PostgreSQL migration/schema audit through `0018_r7b_lifecycle_review_date`. No persistent database rows were inspected. The revised proposal records these source findings and recommends typed subject foreign keys behind one logical EvidenceLink model, non-null `originating_task_id` backfilled from the parent Evaluation Task under fail-closed migration checks, same-Hypothesis ConfidenceChange evidence FKs, Task-attributed supersession Events, initial `low` confidence, the existing Signal-domain eligibility rule, append-only ConfidenceChange records, and staged Artifact/Consultation support. The six decisions were explicitly accepted by the Operator on 2026-11-16; their exact terms are recorded in proposal §9.
 
-RW-1 implementation entry remains blocked until the Operator explicitly accepts the physical design and resolves or assigns every design decision in proposal §9. In particular:
-- confirm the historical Task attribution source for existing EvidenceLinks before adding required provenance;
-- settle Hypothesis supersession successor/reason representation;
-- freeze initial confidence semantics;
-- define Signal Team eligibility without breaking existing Evaluation evidence;
-- confirm that Thread projections remain deferred to retrieval.
+RW-1 implementation is authorized as the current bounded slice. The accepted design requires typed EvidenceLink subject FKs; strict non-null legacy Task-attribution backfill with transactional failure on any integrity/hash mismatch; Task-attributed supersession Events; initial `low` confidence; the existing Signal-domain eligibility rule; and deferred projections. Implement only these accepted decisions and the remaining proposal requirements. The empty disposable audit does not establish that persistent historical rows pass migration validation.
 
 D133 mapping is now explicit: both minimum D99 capabilities are assigned to the planned RW-4-KU sub-slice, with proposed test modules recorded in the proof matrix. These test paths must be confirmed and the proof rows completed before RW-4-KU authorization. This assignment is not implementation authorization and does not create a separate R7-C programme.
+
+### RW-1 implementation proof nodes (PR #128; verification pending)
+
+- `tests/test_evaluations.py::test_evaluation_propose_record_and_replay` — legacy Evaluation subject is stored through `evaluation_id`, with Task provenance, while the logical `subject_id` query remains compatible.
+- `tests/test_evaluations.py::test_evaluation_record_rejects_changed_originating_task` — Task attribution cannot be changed before Evaluation recording.
+- `tests/test_evaluations.py::test_hypothesis_evidence_uses_one_typed_evidence_link` — Hypothesis subject uses the same EvidenceLink model and the initial confidence default is `low`.
+- `tests/test_evaluations.py::test_hypothesis_cannot_reference_another_teams_thread` — composite Thread/Team ownership FK rejects cross-Team Hypotheses.
+- `tests/test_evaluations.py::test_confidence_change_evidence_fk_is_bound_to_same_hypothesis` — composite EvidenceLink/Hypothesis/Team FK rejects a mismatched evidence cause.
+- `tests/test_rw1_schema_migration.py::test_0019_backfills_typed_subject_and_task_without_changing_legacy_rows` — populated legacy EvidenceLink identity and provenance survive upgrade.
+- `tests/test_rw1_schema_migration.py::test_0019_refuses_proposal_hash_mismatch_and_rolls_back_schema` — a legacy proposal-hash mismatch aborts and leaves revision/schema at 0018.
+- `tests/test_rw1_schema_migration.py::test_0019_refuses_signal_domain_mismatch_and_rolls_back_schema` — a legacy Signal from another domain aborts before the old representation is removed.
+- `tests/test_rw1_schema_migration.py::test_0019_refuses_evidence_reference_hash_mismatch_and_rolls_back_schema` — a tampered legacy EvidenceLink reference hash aborts transactionally.
+- `tests/test_rw1_schema_migration.py::test_0019_backfills_multiple_links_in_canonical_reference_order` — a multi-link Evaluation proves canonical ordering and complete typed-subject/Task backfill.
+- `tests/test_rw1_schema_migration.py::test_0019_downgrade_refuses_hypothesis_confidence_history` — downgrade refuses to discard Hypothesis EvidenceLink and ConfidenceChange history.
+- `tests/test_rw1_schema_migration.py::test_0019_downgrade_refuses_world_memory_then_restores_legacy_shape` — downgrade refuses to discard Thread history and safely restores the Evaluation-only shape when empty.
+
+These are authored proof nodes, not passing results. Exact tested SHA, disposable-PostgreSQL results, Ruff, Mypy, full-suite results, and hosted CI must be recorded only after they actually pass.
 
 ## 5. Foundation exit gate
 
@@ -200,7 +212,7 @@ Stop and return to the Operator before proceeding if:
 - One bounded slice at a time; code, migration, tests, docs, and proof evidence belong in the same slice PR.
 - Write or identify the regression proof before the implementation change; demonstrate the defect/failure before fixing it where applicable.
 - Use the repository's exact-head and disposable-PostgreSQL operating rules. Never run migrations/tests against a persistent user database.
-- Do not begin RW-1 schema or migration implementation until the RW-D132 physical EvidenceLink design gate is explicitly accepted.
+- RW-D132 is accepted. Keep all RW-1 schema and migration work within the accepted physical design and fail-closed legacy-data migration gate; stop if implementation would require changing an accepted decision.
 - Before authorizing a slice that implements D99 capabilities, assign the relevant RW-KU proof rows to that named slice and replace their placeholders with exact test nodes or approved non-automated evidence.
 - Report both the verified implementation SHA and current PR head, each with its CI evidence. Never transfer a test result to a different SHA.
 - Re-audit implementation markers after B6 and after each RW slice. A specification or Task allow-list is not implementation evidence.

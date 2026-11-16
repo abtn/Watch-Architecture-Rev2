@@ -1,9 +1,9 @@
 # RW-1 — Physical World-Memory and EvidenceLink Design Proposal
 
-**Status:** design proposal for Operator review; not accepted for implementation
+**Status:** physical design accepted under D132 on 2026-11-16; RW-1 implementation authorized as a bounded slice
 **Parent milestone:** RW-0 documentation closeout, squash-merged PR [#126](https://github.com/abtn/Watch-Architecture-Rev2/pull/126)
 **Design authority:** RW-D131/RW-D132; ADR-0007, ADR-0009, ADR-0011, ADR-0014, ADR-0020, ADR-0021
-**Implementation authority:** none. This document does not authorize schema, ORM, migration, production code, tests, provider changes, or scored execution.
+**Implementation authority:** RW-1's bounded schema/ORM/migration/test implementation was explicitly authorized on 2026-11-16 after D132 acceptance. This authority is limited to the scope and proof obligations in this proposal and the implementation plan; it does not authorize RW-2–RW-5, R7-C, provider changes, persistent-database access, or scored execution.
 
 ## 1. Purpose
 
@@ -185,7 +185,7 @@ Downgrade:
 - Never cascade-delete or silently discard Thread, Hypothesis, ConfidenceChange, or Hypothesis-subject EvidenceLink history.
 - Refuse downgrade with a clear exception if any RW-created world-memory records or Hypothesis-subject links exist.
 - For a clean installation with no Thread, Hypothesis, ConfidenceChange, or Hypothesis-subject EvidenceLink rows, restore the previous Evaluation-only EvidenceLink representation and constraints without changing historical Evaluation link IDs, source IDs, hashes, quotes, offsets, stances, reference keys, or timestamps. The `originating_task_id` column is removed on downgrade with the new schema.
-- Test upgrade against a populated pre-RW fixture containing Evaluation→Signal/Outcome links; include invalid parent, missing Task, cross-Team mismatch, unmapped row, and proposal-hash mismatch fixtures that must abort with no partial DDL/data change. Test downgrade refusal when new world-memory rows exist and safe downgrade when they do not.
+- Test upgrade against populated pre-RW fixtures containing Evaluation→Signal/Outcome links. Exercise integrity failures that can occur under the pre-RW schema (including Signal-domain mismatch, EvidenceLink reference-hash mismatch, and Evaluation proposal-hash mismatch) and verify transactional rollback. Existing foreign keys already prohibit orphaned Evaluation/Task references and cross-Team Evaluation links; document those pre-existing guarantees rather than constructing impossible legacy fixtures. Verify complete row/Task mapping and downgrade refusal when new world-memory rows exist, plus safe downgrade when they do not.
 
 No migration number is assigned here. Use the revision that follows the verified live Alembic head at implementation time; never infer the next revision from filenames alone.
 
@@ -217,31 +217,24 @@ The RW-1 implementation PR must identify exact test nodes for at least:
 | Team isolation | Cross-Team subject, Outcome, Hypothesis, Task and ConfidenceChange references rejected. Signal domain must equal the linking Team's domain for both subject kinds. |
 | Quote integrity | Exact quote/offset/hash accepted; altered quote, offset, Snapshot ref, or hash rejected. |
 | Uniqueness/replay | Duplicate reference keys and same-Task replay handled deterministically; concurrent conflicting commits cannot corrupt records. |
-| Migration | Upgrade on populated pre-RW DB and fresh DB; verify complete Task attribution, row counts, Team consistency, and proposal hashes; all invalid fixtures abort transactionally without partial DDL/data changes; verify migration head, downgrade refusal with new records, and safe downgrade on empty RW tables. |
+| Migration | Upgrade on populated pre-RW DB and fresh DB; verify complete Task attribution, row counts, Team consistency, and proposal hashes; reachable invalid legacy fixtures abort transactionally without partial DDL/data changes; document legacy FK guarantees for impossible orphan/cross-Team states; verify migration head, downgrade refusal with new records, and safe downgrade on empty RW tables. |
 | Immutability | EvidenceLink and ConfidenceChange history cannot be rewritten or deleted through application paths. |
 
 Use real disposable PostgreSQL for database-backed constraints, migration, race, and mutation proofs. Unit-only SQLite substitutes are not sufficient for PostgreSQL-specific constraints.
 
-## 9. Design decisions requiring Operator acceptance before implementation
+## 9. D132 Operator decisions — accepted 2026-11-16
 
-The source/schema audit supports the following six proposed decisions. They remain recommendations for Operator acceptance under D132; this document does not accept them on the Operator's behalf:
+The Operator explicitly accepted all six recommendations on 2026-11-16. They are binding design decisions for RW-1 implementation:
 
-1. **Typed EvidenceLink subject FKs — recommend accept.** Use `evaluation_id` and `hypothesis_id` physical columns behind one logical polymorphic EvidenceLink model. Keep the old Evaluation-only representation until the transactional backfill and replacement constraints pass.
-2. **Legacy EvidenceLink attribution — recommend accept with a strict migration gate.** Use non-null `originating_task_id`, backfilled from the parent Evaluation's `created_by_task_id`. The existing service creates the Evaluation and its EvidenceLinks atomically. The migration must verify parent/Task existence, Team equality, complete row mapping, and proposal-hash consistency. Any failure aborts; no legacy-null exception and no guessed Task ID. This is a source-supported mapping, not a claim that the actual persistent database has already passed it.
-3. **Hypothesis supersession — recommend Task-attributed Event only.** Record the old Hypothesis ID, successor Hypothesis ID, and non-empty reason in one canonical historical Event appended through the existing Task/Kernel application path. The source audit verified Event Task attribution but did not establish database-level immutability; do not claim that guarantee unless an existing or explicitly approved mechanism enforces it. Do not add a redundant successor FK or transition table unless a later concrete invariant cannot be enforced through the Event and status validation.
-4. **Initial confidence — recommend every new Hypothesis starts at `low`.** ADR-0021 explicitly requires `low` for an unsubstantiated Hypothesis but leaves the initial band for an evidence-backed Hypothesis unspecified. This proposal deliberately chooses the stricter rule for both cases: evidence at creation does not set a higher initial band. A higher band can only result from a later ConfidenceChange, with an explicit cause and Task attribution. This avoids an unrecorded initial confidence jump.
-5. **Signal eligibility — recommend preserve the existing domain rule.** For both Evaluation and Hypothesis links in RW-1/RW-2, require `Signal.domain == Team.domain`, exactly as `EvaluationService._normalize_evidence()` and `_revalidate_link()` do today. SignalDisposition may add later triage context in RW-4, but must not silently narrow or invalidate this existing eligibility rule.
-6. **Projection timing — recommend defer.** Thread summaries, embeddings, and retrieval projections remain outside RW-1's authoritative schema and are introduced only with the accepted retrieval slice.
+1. **Typed EvidenceLink subject FKs — accepted.** Use `evaluation_id` and `hypothesis_id` physical columns behind one logical polymorphic EvidenceLink model. Keep the old Evaluation-only representation until the transactional backfill and replacement constraints pass.
+2. **Legacy EvidenceLink attribution — accepted with a strict migration gate.** Use non-null `originating_task_id`, backfilled from the parent Evaluation's `created_by_task_id`. The existing service creates the Evaluation and its EvidenceLinks atomically. The migration must verify parent/Task existence, Team equality, complete row mapping, and proposal-hash consistency. Any failure aborts; no legacy-null exception and no guessed Task ID. This is a source-supported mapping, not a claim that the actual persistent database has already passed it.
+3. **Hypothesis supersession — accepted: Task-attributed Event only.** Record the old Hypothesis ID, successor Hypothesis ID, and non-empty reason in one canonical historical Event appended through the existing Task/Kernel application path. The source audit verified Event Task attribution but did not establish database-level immutability; do not claim that guarantee unless an existing or explicitly approved mechanism enforces it. Do not add a redundant successor FK or transition table unless a later concrete invariant cannot be enforced through the Event and status validation.
+4. **Initial confidence — accepted: every new Hypothesis starts at `low`.** ADR-0021 explicitly requires `low` for an unsubstantiated Hypothesis but leaves the initial band for an evidence-backed Hypothesis unspecified. This proposal deliberately chooses the stricter rule for both cases: evidence at creation does not set a higher initial band. A higher band can only result from a later ConfidenceChange, with an explicit cause and Task attribution. This avoids an unrecorded initial confidence jump.
+5. **Signal eligibility — accepted: preserve the existing domain rule.** For both Evaluation and Hypothesis links in RW-1/RW-2, require `Signal.domain == Team.domain`, exactly as `EvaluationService._normalize_evidence()` and `_revalidate_link()` do today. SignalDisposition may add later triage context in RW-4, but must not silently narrow or invalidate this existing eligibility rule.
+6. **Projection timing — accepted: defer projections to the retrieval slice.** Thread summaries, embeddings, and retrieval projections remain outside RW-1's authoritative schema and are introduced only with the accepted retrieval slice.
 
-## 10. Entry and exit gates
+## 10. RW-1 implementation gate
 
-RW-1 documentation/design PR is complete only when:
-- this proposal is reconciled with ADR-0007/ADR-0020/ADR-0021 and current architecture/Task specifications;
-- each review point above is explicitly accepted, rejected, or assigned to a later named gate;
-- the implementation plan and proof matrix name the exact RW-1 scope and test nodes;
-- the migration/backfill/downgrade strategy is internally consistent with existing Evaluation evidence;
-- the Operator explicitly accepts the physical design under D132.
+The D132 design gate is satisfied by explicit Operator acceptance of all six decisions above. The implementation slice is separately authorized on 2026-11-16 and is limited to the RW-1 scope and proof obligations in this proposal and `docs/development/rw-implementation-plan.md`.
 
-RW-1 implementation remains separately authorized. After design acceptance, prepare a bounded implementation instruction and local preflight; do not silently begin coding as part of this documentation PR.
-
-**Current boundary:** this is a design/planning artifact only. It does not close RW-1, implement Hypothesis, authorize any migration or production code, authorize RW-2–RW-5, authorize R7-C, or authorize newsroom scored runs.
+**Current boundary:** RW-1 implementation is authorized but not complete. This authorization does not close RW-1, authorize RW-2–RW-5, authorize R7-C, permit persistent-database access, or authorize newsroom scored runs.

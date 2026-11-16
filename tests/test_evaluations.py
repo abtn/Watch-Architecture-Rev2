@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import delete, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.evaluations import (
@@ -16,14 +17,17 @@ from core.evaluations import (
     EvaluationValidationError,
 )
 from core.models import (
+    ConfidenceChange,
     Evaluation,
     Event,
     EvidenceLink,
+    Hypothesis,
     Outcome,
     Signal,
     Task,
     Team,
     TeamPolicy,
+    Thread,
 )
 from core.snapshot_store import SnapshotStore
 from core.task_runtime import TaskNotFinalizable, TaskRuntime, TerminalObservation
@@ -131,7 +135,15 @@ def test_evaluation_propose_record_and_replay(session_factory, snapshot_store,
         row = session.get(Evaluation, proposed.evaluation_id)
         assert row is not None and row.status == "recorded"
         assert row.evaluator_identity == "r6f-checkpoint-1-tests" and row.evaluator_revision == "1"  # noqa: E501
-        assert len(list(session.scalars(select(EvidenceLink).where(EvidenceLink.subject_id == proposed.evaluation_id)))) == 1  # noqa: E501
+        links = list(session.scalars(
+            select(EvidenceLink).where(
+                EvidenceLink.subject_id == proposed.evaluation_id
+            )
+        ))
+        assert len(links) == 1
+        assert links[0].evaluation_id == proposed.evaluation_id
+        assert links[0].hypothesis_id is None
+        assert links[0].originating_task_id == evaluation_context["task_id"]
         events = set(session.scalars(select(Event.type).where(Event.task_id == evaluation_context["task_id"])))  # noqa: E501
         assert {"evaluation_proposed", "evaluation_recorded"} <= events
 
@@ -262,6 +274,26 @@ def test_evaluation_task_cannot_finalize_as_no_change(
         assert task is not None and task.status == "running"
 
 
+def test_evaluation_record_rejects_changed_originating_task(
+    session_factory, snapshot_store, evaluation_context
+):
+    service = EvaluationService(session_factory, snapshot_store)
+    proposed = _propose(service, evaluation_context)
+    with session_factory.begin() as session:
+        link = session.scalar(
+            select(EvidenceLink).where(
+                EvidenceLink.subject_id == proposed.evaluation_id
+            )
+        )
+        assert link is not None
+        link.originating_task_id = evaluation_context["source_task_id"]
+    with pytest.raises(
+        EvaluationValidationError,
+        match="evidence_link_originating_task_mismatch",
+    ):
+        service.record(evaluation_context["task_id"], proposed.evaluation_id)
+
+
 def test_changed_evidence_link_is_rejected_before_recording(
     session_factory, snapshot_store, evaluation_context
 ):
@@ -348,3 +380,172 @@ def test_checkpoint_one_schema_constraints_exist(session_factory):
                     "conrelid = CAST(:table AS regclass)"
             ).bindparams(table=table)))
             assert required <= actual
+
+
+
+def test_hypothesis_evidence_uses_one_typed_evidence_link(
+    session_factory, evaluation_context
+):
+    team_id = evaluation_context["team_id"]
+    task_id = evaluation_context["task_id"]
+    outcome_id = evaluation_context["outcome_id"]
+    thread_id, hypothesis_id, link_id = (uuid4() for _ in range(3))
+    with session_factory.begin() as session:
+        session.add(
+            Thread(
+                id=thread_id,
+                team_id=team_id,
+                domain="evaluation_test",
+                title="Typed subject test",
+            )
+        )
+        session.flush()
+        session.add(
+            Hypothesis(
+                id=hypothesis_id,
+                team_id=team_id,
+                thread_id=thread_id,
+                statement="The source supports this hypothesis.",
+            )
+        )
+        session.flush()
+        session.add(
+            EvidenceLink(
+                id=link_id,
+                team_id=team_id,
+                subject_kind="hypothesis",
+                hypothesis_id=hypothesis_id,
+                originating_task_id=task_id,
+                source_kind="outcome",
+                outcome_id=outcome_id,
+                stance="supports",
+                reference_key="hypothesis-evidence-test",
+            )
+        )
+    try:
+        with session_factory() as session:
+            link = session.scalar(
+                select(EvidenceLink).where(EvidenceLink.subject_id == hypothesis_id)
+            )
+            hypothesis = session.get(Hypothesis, hypothesis_id)
+            assert link is not None
+            assert link.evaluation_id is None
+            assert link.hypothesis_id == hypothesis_id
+            assert link.subject_id == hypothesis_id
+            assert link.originating_task_id == task_id
+            assert hypothesis is not None and hypothesis.confidence == "low"
+    finally:
+        with session_factory.begin() as session:
+            session.execute(delete(EvidenceLink).where(EvidenceLink.id == link_id))
+            session.execute(delete(Hypothesis).where(Hypothesis.id == hypothesis_id))
+            session.execute(delete(Thread).where(Thread.id == thread_id))
+
+
+def test_hypothesis_cannot_reference_another_teams_thread(
+    session_factory, evaluation_context
+):
+    team_id = evaluation_context["team_id"]
+    thread_id, other_team_id, hypothesis_id = (uuid4() for _ in range(3))
+    with session_factory.begin() as session:
+        session.add(
+            Thread(
+                id=thread_id,
+                team_id=team_id,
+                domain="evaluation_test",
+                title="Team-owned thread",
+            )
+        )
+        session.add(
+            Team(id=other_team_id, domain="other_domain", status="active")
+        )
+        session.flush()
+    try:
+        with pytest.raises(IntegrityError):
+            with session_factory.begin() as session:
+                session.add(
+                    Hypothesis(
+                        id=hypothesis_id,
+                        team_id=other_team_id,
+                        thread_id=thread_id,
+                        statement="Cross-Team hypothesis must fail.",
+                    )
+                )
+    finally:
+        with session_factory.begin() as session:
+            session.execute(delete(Thread).where(Thread.id == thread_id))
+            session.execute(delete(Team).where(Team.id == other_team_id))
+
+
+def test_confidence_change_evidence_fk_is_bound_to_same_hypothesis(
+    session_factory, evaluation_context
+):
+    team_id = evaluation_context["team_id"]
+    task_id = evaluation_context["task_id"]
+    outcome_id = evaluation_context["outcome_id"]
+    thread_id, first_id, second_id, link_id, change_id = (
+        uuid4() for _ in range(5)
+    )
+    with session_factory.begin() as session:
+        session.add(
+            Thread(
+                id=thread_id,
+                team_id=team_id,
+                domain="evaluation_test",
+                title="Confidence evidence binding",
+            )
+        )
+        session.flush()
+        session.add_all(
+            [
+                Hypothesis(
+                    id=first_id,
+                    team_id=team_id,
+                    thread_id=thread_id,
+                    statement="First hypothesis.",
+                ),
+                Hypothesis(
+                    id=second_id,
+                    team_id=team_id,
+                    thread_id=thread_id,
+                    statement="Second hypothesis.",
+                ),
+            ]
+        )
+        session.flush()
+        session.add(
+            EvidenceLink(
+                id=link_id,
+                team_id=team_id,
+                subject_kind="hypothesis",
+                hypothesis_id=first_id,
+                originating_task_id=task_id,
+                source_kind="outcome",
+                outcome_id=outcome_id,
+                stance="supports",
+                reference_key="first-hypothesis-evidence",
+            )
+        )
+        session.flush()
+    try:
+        with pytest.raises(IntegrityError):
+            with session_factory.begin() as session:
+                session.add(
+                    ConfidenceChange(
+                        id=change_id,
+                        team_id=team_id,
+                        hypothesis_id=second_id,
+                        from_confidence="low",
+                        to_confidence="moderate",
+                        cause_kind="evidence",
+                        evidence_link_id=link_id,
+                        created_by_task_id=task_id,
+                        idempotency_key="wrong-hypothesis-evidence",
+                    )
+                )
+    finally:
+        with session_factory.begin() as session:
+            session.execute(delete(EvidenceLink).where(EvidenceLink.id == link_id))
+            session.execute(delete(Hypothesis).where(
+                Hypothesis.id.in_([first_id, second_id])
+            ))
+            session.execute(delete(Thread).where(Thread.id == thread_id))

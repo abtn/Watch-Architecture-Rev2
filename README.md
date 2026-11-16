@@ -26,7 +26,7 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 
 ## Work in progress
 
-- **RW-1 — physical design and planning:** the proposed Thread, Hypothesis, ConfidenceChange, and shared EvidenceLink model is documented in the [RW-1 physical design proposal](docs/development/rw-1-physical-design-proposal.md). It is under Operator review; its design decisions must be accepted before RW-1 implementation is authorized. The current documentation/planning work is tracked in [PR #127](https://github.com/abtn/Watch-Architecture-Rev2/pull/127).
+- **RW-1 — implementation in progress:** the accepted Thread, Hypothesis, ConfidenceChange, and shared EvidenceLink physical design is documented in the [RW-1 physical design proposal](docs/development/rw-1-physical-design-proposal.md). All six D132 decisions were accepted on 2026-11-16; the bounded implementation is tracked on branch `rw-1-implementation-20261116`. Design/planning PR [#127](https://github.com/abtn/Watch-Architecture-Rev2/pull/127) is merged.
 - **RW-1 through RW-5:** these are the remaining world-memory reasoning-loop foundation slices. Implementation will proceed in bounded, separately authorized steps, followed by the foundation exit gate.
 - **R7-C** remains separately gated. Neither R7-B6 nor RW-0 closeout authorizes R7-C implementation.
 - **RWN-01 newsroom scenario preparation:** source capture, corpus freeze, reviewer materials, and final harness/test configuration are deferred from the immediate foundation critical path. They remain required before newsroom scored runs and the foundation exit/R8 gate; no scored runs are currently authorized.
