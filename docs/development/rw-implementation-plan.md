@@ -1,13 +1,13 @@
 # RW — Implementation Plan and Proof Matrix
 
-**Status:** RW-0 is closed by docs-only squash merge PR #126; RW-1 physical design is under Operator review; no RW implementation is authorized
+**Status:** RW-0 is closed by PR #126; RW-1 physical design/planning is merged by PR #127 at `9ac259bb5fd5986a89955dc06cb8a185e2599993`; all six D132 decisions were accepted on 2026-11-16; RW-1 implementation is authorized as one bounded slice only
 **Sequence:** B6 → RW-0 → RW-1 → RW-2 → RW-3 → RW-4 → RW-5 → foundation exit gate → R8
 **Code audit basis:** post-B6 static source/spec audit at `91169b4931e48cb7b2803ed2066ec365f563a0ea`; RW-0 docs-only closeout squash-merged by PR #126 at `cac63a01380624bbaf0c9965a363a352e46960d7`
 **Decision record:** [RW-0 decision record](rw-0-decision-record.md)
-**RW-1 physical design:** [RW-1 physical world-memory and EvidenceLink design proposal](rw-1-physical-design-proposal.md) — proposed, not accepted
+**RW-1 physical design:** [RW-1 physical world-memory and EvidenceLink design proposal](rw-1-physical-design-proposal.md) — accepted under D132 on 2026-11-16
 **Value harness:** [Newsroom value harness](rw-value-harness.md)
 
-This plan turns the accepted architecture and the RW proposal into bounded implementation slices. It does not authorize schema, code, tests, migrations, or provider changes. RW-0 must freeze unresolved decisions and the Operator must authorize each implementation slice.
+This plan turns the accepted architecture and RW proposal into bounded implementation slices. RW-1 is authorized as the current implementation slice only; RW-2–RW-5 require their own explicit authorization. No R7-C implementation, persistent-database access, or newsroom scored execution is authorized.
 
 ## 1. Purpose and boundary
 
@@ -156,14 +156,9 @@ The matrix defines required proof obligations, not tests that already exist. Eac
 
 ## 4.1 RW-1 physical design preparation
 
-The [RW-1 physical design proposal](rw-1-physical-design-proposal.md) is the current design artifact for D132. A source/schema audit was completed against branch head `a8c6b489cfa9dba05ae143474d7a86399b4382a6`, including `core/models.py`, `core/evaluations.py`, `core/task_runtime.py`, and `core/experience_distiller.py`, plus a disposable PostgreSQL migration/schema audit through `0018_r7b_lifecycle_review_date`. No persistent database rows were inspected. The revised proposal records these source findings and recommends typed subject foreign keys behind one logical EvidenceLink model, non-null `originating_task_id` backfilled from the parent Evaluation Task under fail-closed migration checks, same-Hypothesis ConfidenceChange evidence FKs, Task-attributed supersession Events, initial `low` confidence, the existing Signal-domain eligibility rule, append-only ConfidenceChange records, and staged Artifact/Consultation support. These recommendations remain unaccepted pending D132 Operator review.
+The [RW-1 physical design proposal](rw-1-physical-design-proposal.md) is the current design artifact for D132. A source/schema audit was completed against branch head `a8c6b489cfa9dba05ae143474d7a86399b4382a6`, including `core/models.py`, `core/evaluations.py`, `core/task_runtime.py`, and `core/experience_distiller.py`, plus a disposable PostgreSQL migration/schema audit through `0018_r7b_lifecycle_review_date`. No persistent database rows were inspected. The revised proposal records these source findings and recommends typed subject foreign keys behind one logical EvidenceLink model, non-null `originating_task_id` backfilled from the parent Evaluation Task under fail-closed migration checks, same-Hypothesis ConfidenceChange evidence FKs, Task-attributed supersession Events, initial `low` confidence, the existing Signal-domain eligibility rule, append-only ConfidenceChange records, and staged Artifact/Consultation support. The six decisions were explicitly accepted by the Operator on 2026-11-16; their exact terms are recorded in proposal §9.
 
-RW-1 implementation entry remains blocked until the Operator explicitly accepts the physical design and resolves or assigns every design decision in proposal §9. In particular:
-- confirm the historical Task attribution source for existing EvidenceLinks before adding required provenance;
-- settle Hypothesis supersession successor/reason representation;
-- freeze initial confidence semantics;
-- define Signal Team eligibility without breaking existing Evaluation evidence;
-- confirm that Thread projections remain deferred to retrieval.
+RW-1 implementation is authorized as the current bounded slice. The accepted design requires typed EvidenceLink subject FKs; strict non-null legacy Task-attribution backfill with transactional failure on any integrity/hash mismatch; Task-attributed supersession Events; initial `low` confidence; the existing Signal-domain eligibility rule; and deferred projections. Implement only these accepted decisions and the remaining proposal requirements. The empty disposable audit does not establish that persistent historical rows pass migration validation.
 
 D133 mapping is now explicit: both minimum D99 capabilities are assigned to the planned RW-4-KU sub-slice, with proposed test modules recorded in the proof matrix. These test paths must be confirmed and the proof rows completed before RW-4-KU authorization. This assignment is not implementation authorization and does not create a separate R7-C programme.
 
@@ -200,7 +195,7 @@ Stop and return to the Operator before proceeding if:
 - One bounded slice at a time; code, migration, tests, docs, and proof evidence belong in the same slice PR.
 - Write or identify the regression proof before the implementation change; demonstrate the defect/failure before fixing it where applicable.
 - Use the repository's exact-head and disposable-PostgreSQL operating rules. Never run migrations/tests against a persistent user database.
-- Do not begin RW-1 schema or migration implementation until the RW-D132 physical EvidenceLink design gate is explicitly accepted.
+- RW-D132 is accepted. Keep all RW-1 schema and migration work within the accepted physical design and fail-closed legacy-data migration gate; stop if implementation would require changing an accepted decision.
 - Before authorizing a slice that implements D99 capabilities, assign the relevant RW-KU proof rows to that named slice and replace their placeholders with exact test nodes or approved non-automated evidence.
 - Report both the verified implementation SHA and current PR head, each with its CI evidence. Never transfer a test result to a different SHA.
 - Re-audit implementation markers after B6 and after each RW slice. A specification or Task allow-list is not implementation evidence.
