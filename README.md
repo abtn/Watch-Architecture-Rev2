@@ -21,11 +21,12 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 - **R7-B3:** added immutable lifecycle assessments and their narrow assessment Tasks.
 - **R7-B4:** implemented the trusted revise/revalidate commit path and completed the integrated G1–G6 regression proofs.
 - **R7-B5.0–B5.4:** implemented candidate creation, supersession, and retirement, then completed the integrated lifecycle verification and formal closeout.
+- **R7-B6:** completed the legacy lifecycle reconstruction and trusted-retirement regression proofs; test-only PR [#124](https://github.com/abtn/Watch-Architecture-Rev2/pull/124) merged on 2026-11-16. See the [B6 closeout](docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md).
 
 ## Work in progress
 
-- **R7-B6 — final step of R7:** legacy lifecycle hardening. It begins with exact baseline verification and a read-only audit; implementation scope is determined only by demonstrated defects or proof gaps and requires explicit approval. See the [B6 delivery plan](docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md).
-- **R7-C** remains separately gated and is not silently included in B6. RW-0 will determine whether any R7-C capability is needed for the reasoning value harness.
+- **RW-0 — next foundation track:** settle the remaining reasoning-loop decisions and freeze the newsroom value-harness scenario before RW implementation. The [RW-0 decision record](docs/development/rw-0-decision-record.md) tracks the open decisions and authorization boundary.
+- **R7-C** remains separately gated; B6 closure does not authorize it. RW-0 will determine whether any R7-C capability is necessary for the reasoning value harness.
 
 The active checkpoint, exact status, authorization, and verification evidence are maintained in [PLAN.md](PLAN.md) and [docs/testing.md](docs/testing.md).
 

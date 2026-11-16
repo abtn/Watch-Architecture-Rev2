@@ -1,8 +1,23 @@
 # R7-B B6 — Legacy Lifecycle Hardening Delivery Plan
 
-**Status:** Planned next lifecycle track. This document defines the delivery method; it does not authorize production changes.
-**Starting baseline:** `29c954fe8685e0a5ddb9b205277a28b1a158c57e`.
-**Implementation branch (create only after audit and scope freeze):** `r7b-b6-legacy-lifecycle-hardening-20261115`.
+**Status:** COMPLETE — Operator accepted 2026-11-16; PR #124 merged.
+**Code baseline:** `29c954fe8685e0a5ddb9b205277a28b1a158c57e` (B5.4 merge).
+**Implementation branch base:** `2f5bba245f4440d009e5123f1689098e64350e2e` (B6 documentation-plan merge).
+**Implementation branch:** `r7b-b6-legacy-lifecycle-hardening-20261115`.
+
+## Completion record — 2026-11-16
+
+B6 is complete. The read-only audit led to a bounded, test-only scope: prove unique pointerless legacy review reconstruction, repeated review/revalidation reconstruction, and trusted-path retirement of a post-0015 legacy-root/backfilled-pointer representation. No production defect requiring a code change, schema change, or migration was established; the accepted gap was regression-proof coverage.
+
+- **Implementation/test head:** `485db7f91fab0a0d17e32fdbb470ee10f63fe07a`.
+- **Files changed:** `tests/test_learning_history.py`, `tests/test_experience_distiller.py` only; 230 additions, no deletions.
+- **Local verification:** locked dependency sync; disposable PostgreSQL migration to the single `0018_r7b_lifecycle_review_date` head; Ruff; Mypy (38 source files); full suite **1,002 passed, 113 Alembic `path_separator` deprecation warnings in 356.84s**; container cleanup, environment restoration, exact-HEAD and clean-worktree checks all passed.
+- **Hosted CI:** [run #1218](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43733711342) passed on the exact implementation/test head.
+- **Operator acceptance:** granted 2026-11-16.
+- **Merge:** PR [#124](https://github.com/abtn/Watch-Architecture-Rev2/pull/124) merged at `419312bc678901e2d22179313e6285086bee42da` using a merge commit. Local `main` was fast-forwarded to this exact SHA and verified clean.
+
+The 0014 → 0015 migration remains covered by the existing populated migration tests. The trusted-path retirement integration test simulates the post-migration row representation; it does not itself execute that migration. R7-C and R8 were not part of B6. The next planned track is RW-0, subject to its existing decision/authorization boundaries.
+
 
 ## Goal
 
@@ -13,12 +28,12 @@ B6 has no established sub-milestones or detailed acceptance criteria yet. Do not
 ## Phase 0 — Establish baseline
 
 1. Verify repository root, current branch, HEAD, origin, and clean worktree.
-2. Fetch `origin/main` and verify it is exactly `29c954fe8685e0a5ddb9b205277a28b1a158c57e`. If remote main has moved, stop and reconcile the expected baseline; do not silently substitute another SHA.
+2. Verify the B5.4 code baseline `29c954fe8685e0a5ddb9b205277a28b1a158c57e` and reconcile the B6 planning-document merge `2f5bba245f4440d009e5123f1689098e64350e2e`; the implementation branch was created from the latter, which contains the former. If either relationship differs, stop and reconcile the expected baseline; do not silently substitute another SHA.
 3. Fast-forward local `main` only after preflight passes. No reset, discard, force update, or automatic stash.
 4. Confirm Python environment, Alembic current/head, and migration consistency.
 5. Record the exact baseline SHA and environment.
 
-**Exit:** local `main` is exactly at the verified merge commit; worktree is clean; environment and migration baseline are recorded.
+**Exit:** local `main` is at the verified B6 planning baseline `2f5bba245f4440d009e5123f1689098e64350e2e` (with the B5.4 code baseline as its ancestor); worktree is clean; environment and migration baseline are recorded.
 
 ## Phase 1 — Read-only B6 audit
 
@@ -111,11 +126,11 @@ Use disposable PostgreSQL only, with a unique container and dynamic host port. P
 
 **Exit:** hosted CI is green on the exact final head; scope review passes; no unresolved critical findings are hidden.
 
-## Phase 7 — Acceptance and squash merge
+## Phase 7 — Acceptance and merge
 
 1. Present the accepted checklist and evidence.
 2. Obtain explicit Operator acceptance.
-3. Squash-merge only after acceptance.
+3. Merge only after acceptance; record the actual merge method and resulting SHA.
 4. Verify the merge SHA and that `main` points to it.
 5. Sync the local repository without destructive Git operations.
 6. Record B6 completion and remaining limitations in `PLAN.md` and `docs/testing.md`.
@@ -140,6 +155,6 @@ The tracks may overlap after the audit and branch setup. Local verification must
 - Separate PRs for closely related tiny fixes.
 - Weakening acceptance criteria to protect a date.
 
-## First action
+## Historical first action
 
-Phase 0 baseline synchronization and verification, followed by the Phase 1 read-only audit. Do not begin implementation until the audit has produced a bounded acceptance checklist and the Operator has approved the B6 implementation contract.
+Phase 0 baseline synchronization and verification, followed by the Phase 1 read-only audit. This was the entry sequence for the completed B6 track; it is retained as historical delivery guidance.
