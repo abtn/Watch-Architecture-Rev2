@@ -1771,6 +1771,8 @@ class ExperienceDistiller:
             )
             if not links or len(links) > MAX_DISTILLATION_EVIDENCE_LINKS:
                 raise ExperienceDistillerError("evaluation_evidence_count_invalid")
+            if any(link.originating_task_id != evaluator_task.id for link in links):
+                raise ExperienceDistillerError("evaluation_evidence_task_mismatch")
             total_links += len(links)
             if total_links > MAX_DISTILLATION_EVIDENCE_LINKS:
                 raise ExperienceDistillerError(
