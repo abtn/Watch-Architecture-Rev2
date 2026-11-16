@@ -1,6 +1,6 @@
 # RW-1 — Physical World-Memory and EvidenceLink Design Proposal
 
-**Status:** physical design accepted under D132 on 2026-11-16; RW-1 implementation authorized as a bounded slice
+**Status:** physical design accepted under D132 on 2026-11-16; RW-1 implementation merged by PR #128; formal Operator acceptance pending
 **Parent milestone:** RW-0 documentation closeout, squash-merged PR [#126](https://github.com/abtn/Watch-Architecture-Rev2/pull/126)
 **Design authority:** RW-D131/RW-D132; ADR-0007, ADR-0009, ADR-0011, ADR-0014, ADR-0020, ADR-0021
 **Implementation authority:** RW-1's bounded schema/ORM/migration/test implementation was explicitly authorized on 2026-11-16 after D132 acceptance. This authority is limited to the scope and proof obligations in this proposal and the implementation plan; it does not authorize RW-2–RW-5, R7-C, provider changes, persistent-database access, or scored execution.
@@ -237,4 +237,6 @@ The Operator explicitly accepted all six recommendations on 2026-11-16. They are
 
 The D132 design gate is satisfied by explicit Operator acceptance of all six decisions above. The implementation slice is separately authorized on 2026-11-16 and is limited to the RW-1 scope and proof obligations in this proposal and `docs/development/rw-implementation-plan.md`.
 
-**Current boundary:** RW-1 implementation is authorized but not complete. This authorization does not close RW-1, authorize RW-2–RW-5, authorize R7-C, permit persistent-database access, or authorize newsroom scored runs.
+**Implementation disposition:** RW-1 implementation was merged by PR [#128](https://github.com/abtn/Watch-Architecture-Rev2/pull/128) at `7213a17e5ae96c3cae22ec1082af05d47b9c0d1d`. Operator-local verification and its exact-tree qualification are recorded in `docs/testing.md`. No hosted status checks were recorded for the final PR code/test commit. Formal Operator acceptance of RW-1 remains pending; this proposal's design acceptance under D132 is not a substitute for implementation acceptance.
+
+**Boundary retained:** the RW-1 merge does not authorize RW-2–RW-5, R7-C, persistent-database access, or newsroom scored runs.
