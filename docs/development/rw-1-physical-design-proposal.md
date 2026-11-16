@@ -3,7 +3,7 @@
 **Status:** physical design accepted under D132 on 2026-11-16; RW-1 implementation authorized as a bounded slice
 **Parent milestone:** RW-0 documentation closeout, squash-merged PR [#126](https://github.com/abtn/Watch-Architecture-Rev2/pull/126)
 **Design authority:** RW-D131/RW-D132; ADR-0007, ADR-0009, ADR-0011, ADR-0014, ADR-0020, ADR-0021
-**Implementation authority:** none. This document does not authorize schema, ORM, migration, production code, tests, provider changes, or scored execution.
+**Implementation authority:** RW-1's bounded schema/ORM/migration/test implementation was explicitly authorized on 2026-11-16 after D132 acceptance. This authority is limited to the scope and proof obligations in this proposal and the implementation plan; it does not authorize RW-2–RW-5, R7-C, provider changes, persistent-database access, or scored execution.
 
 ## 1. Purpose
 
