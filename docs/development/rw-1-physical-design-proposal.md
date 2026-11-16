@@ -233,15 +233,8 @@ The Operator explicitly accepted all six recommendations on 2026-11-16. They are
 5. **Signal eligibility — accepted: preserve the existing domain rule.** For both Evaluation and Hypothesis links in RW-1/RW-2, require `Signal.domain == Team.domain`, exactly as `EvaluationService._normalize_evidence()` and `_revalidate_link()` do today. SignalDisposition may add later triage context in RW-4, but must not silently narrow or invalidate this existing eligibility rule.
 6. **Projection timing — accepted: defer projections to the retrieval slice.** Thread summaries, embeddings, and retrieval projections remain outside RW-1's authoritative schema and are introduced only with the accepted retrieval slice.
 
-## 10. Entry and exit gates
+## 10. RW-1 implementation gate
 
-RW-1 documentation/design PR is complete only when:
-- this proposal is reconciled with ADR-0007/ADR-0020/ADR-0021 and current architecture/Task specifications;
-- each review point above is explicitly accepted, rejected, or assigned to a later named gate;
-- the implementation plan and proof matrix name the exact RW-1 scope and test nodes;
-- the migration/backfill/downgrade strategy is internally consistent with existing Evaluation evidence;
-- the Operator explicitly accepts the physical design under D132.
+The D132 design gate is satisfied by explicit Operator acceptance of all six decisions above. The implementation slice is separately authorized on 2026-11-16 and is limited to the RW-1 scope and proof obligations in this proposal and `docs/development/rw-implementation-plan.md`.
 
-RW-1 implementation remains separately authorized. After design acceptance, prepare a bounded implementation instruction and local preflight; do not silently begin coding as part of this documentation PR.
-
-**Current boundary:** this is a design/planning artifact only. It does not close RW-1, implement Hypothesis, authorize any migration or production code, authorize RW-2–RW-5, authorize R7-C, or authorize newsroom scored runs.
+**Current boundary:** RW-1 implementation is authorized but not complete. This authorization does not close RW-1, authorize RW-2–RW-5, authorize R7-C, permit persistent-database access, or authorize newsroom scored runs.
