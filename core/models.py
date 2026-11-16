@@ -991,6 +991,10 @@ class ConfidenceChange(Base):
             name="ck_confidence_changes_cause_kind",
         ),
         CheckConstraint(
+            "length(btrim(idempotency_key)) > 0",
+            name="ck_confidence_changes_idempotency_key",
+        ),
+        CheckConstraint(
             "(cause_kind = 'evidence' AND evidence_link_id IS NOT NULL) OR "
             "(cause_kind = 'decay' AND evidence_link_id IS NULL)",
             name="ck_confidence_changes_cause",
@@ -1102,6 +1106,11 @@ class EvidenceLink(Base):
             ["originating_task_id", "team_id"],
             ["tasks.id", "tasks.team_id"],
             name="fk_evidence_links_originating_task_team",
+        ),
+        ForeignKeyConstraint(
+            ["signal_id"],
+            ["signals.id"],
+            name="fk_evidence_links_signal",
         ),
         ForeignKeyConstraint(
             ["outcome_id", "team_id"],
