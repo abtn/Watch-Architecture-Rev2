@@ -310,7 +310,8 @@ def test_0019_refuses_proposal_hash_mismatch_and_rolls_back_schema(
     with rw1_migration_schema.engine.connect() as connection:
         revision = connection.scalar(
             text(
-                f'SELECT version_num FROM "{rw1_migration_schema.schema}".alembic_version'
+                f'SELECT version_num FROM "{rw1_migration_schema.schema}".'
+                "alembic_version"
             )
         )
         assert revision == "0018_r7b_lifecycle_review_date"
@@ -390,7 +391,8 @@ def test_0019_downgrade_refuses_world_memory_then_restores_legacy_shape(
         assert row["reference_key"] == legacy.reference_key
         revision = connection.scalar(
             text(
-                f'SELECT version_num FROM "{rw1_migration_schema.schema}".alembic_version'
+                f'SELECT version_num FROM "{rw1_migration_schema.schema}".'
+                "alembic_version"
             )
         )
         assert revision == "0018_r7b_lifecycle_review_date"
