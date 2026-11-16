@@ -1,8 +1,8 @@
 # RW-1 — Physical World-Memory and EvidenceLink Design Proposal
 
-**Status:** design proposal for Operator review; not accepted for implementation  
-**Parent milestone:** RW-0 documentation closeout, squash-merged PR [#126](https://github.com/abtn/Watch-Architecture-Rev2/pull/126)  
-**Design authority:** RW-D131/RW-D132; ADR-0007, ADR-0009, ADR-0011, ADR-0014, ADR-0020, ADR-0021  
+**Status:** design proposal for Operator review; not accepted for implementation
+**Parent milestone:** RW-0 documentation closeout, squash-merged PR [#126](https://github.com/abtn/Watch-Architecture-Rev2/pull/126)
+**Design authority:** RW-D131/RW-D132; ADR-0007, ADR-0009, ADR-0011, ADR-0014, ADR-0020, ADR-0021
 **Implementation authority:** none. This document does not authorize schema, ORM, migration, production code, tests, provider changes, or scored execution.
 
 ## 1. Purpose
