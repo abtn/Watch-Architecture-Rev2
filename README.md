@@ -31,4 +31,4 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 - **R7-C** remains separately gated. Neither R7-B6 nor RW-0 closeout authorizes R7-C implementation.
 - **RWN-01 newsroom scenario preparation:** source capture, corpus freeze, reviewer materials, and final harness/test configuration are deferred from the immediate foundation critical path. They remain required before newsroom scored runs and the foundation exit/R8 gate; no scored runs are currently authorized.
 
-The active checkpoint, exact status, authorization, and verification evidence are maintained in [PLAN.md](PLAN.md) and [docs/testing.md](docs/testing.md). 
+The active checkpoint, exact status, authorization, and verification evidence are maintained in [PLAN.md](PLAN.md) and [docs/testing.md](docs/testing.md).
