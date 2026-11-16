@@ -28,12 +28,12 @@ B6 has no established sub-milestones or detailed acceptance criteria yet. Do not
 ## Phase 0 — Establish baseline
 
 1. Verify repository root, current branch, HEAD, origin, and clean worktree.
-2. Fetch `origin/main` and verify it is exactly `29c954fe8685e0a5ddb9b205277a28b1a158c57e`. If remote main has moved, stop and reconcile the expected baseline; do not silently substitute another SHA.
+2. Verify the B5.4 code baseline `29c954fe8685e0a5ddb9b205277a28b1a158c57e` and reconcile the B6 planning-document merge `2f5bba245f4440d009e5123f1689098e64350e2e`; the implementation branch was created from the latter, which contains the former. If either relationship differs, stop and reconcile the expected baseline; do not silently substitute another SHA.
 3. Fast-forward local `main` only after preflight passes. No reset, discard, force update, or automatic stash.
 4. Confirm Python environment, Alembic current/head, and migration consistency.
 5. Record the exact baseline SHA and environment.
 
-**Exit:** local `main` is exactly at the verified merge commit; worktree is clean; environment and migration baseline are recorded.
+**Exit:** local `main` is at the verified B6 planning baseline `2f5bba245f4440d009e5123f1689098e64350e2e` (with the B5.4 code baseline as its ancestor); worktree is clean; environment and migration baseline are recorded.
 
 ## Phase 1 — Read-only B6 audit
 
