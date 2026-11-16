@@ -18,6 +18,8 @@ The model proposes. Application code validates. The existing Kernel/commit path 
 
 The newsroom is the first value-harness domain. The exact beat and source corpus are selected and frozen during RW-0. Other domains belong to R8 after the foundation exit gate.
 
+The minimum R7-C capabilities approved by RW-D99—claim-level `TaskKnowledgeReference` and typed `KnowledgeUseAssessment`—are required only to the extent defined by the frozen newsroom claim. Before authorizing any RW slice that implements them, this plan must assign each capability to a named slice and proof obligations. This plan does not authorize R7-C or RW implementation.
+
 ## 2. Baseline implementation audit
 
 The following status is a static source audit at the code baseline above. It is not a runtime verification and must be repeated after B6.
@@ -47,6 +49,7 @@ The strings for future Task types in core/ingestion.py's Event-scope allow-list 
 
 **Purpose:** create the canonical records required for world memory and align the existing EvidenceLink implementation with ADR-0007 and ADR-0020.
 
+**Pre-implementation design gate (RW-D131/RW-D132):** RW-0 freezes the shared EvidenceLink contract and vocabulary, not its physical relational design. Before any RW-1 schema, migration, or production-code implementation, prepare and obtain explicit Operator acceptance of the exact relational representation, columns/keys, foreign-key strategy, constraints, indexes, Team ownership enforcement, quote/Snapshot validation, uniqueness/replay behavior, compatibility/backfill behavior, forward migration, staged Artifact/Consultation handling, and downgrade/data-preservation behavior. Preserve current Evaluation→Signal/Outcome evidence and ADR-0007/ADR-0020. No related implementation begins before this design gate passes.
 **Proposed scope:**
 - Add Thread, Hypothesis, and ConfidenceChange persistence with same-Team ownership, explicit status/confidence/cause constraints, and the indexes needed by the first newsroom scenario.
 - Add SignalDisposition in this slice only if RW-4 triage remains in the accepted scope; otherwise defer its schema with the triage slice.
@@ -147,6 +150,8 @@ The matrix defines required proof obligations, not tests that already exist. Eac
 | RW-TR-01 | Triage is explicit and one-per-(Signal, Team). | Unique disposition, deferred refinement, dedup/noise/match/new-thread tests for frozen scope. | RW-1/RW-4 |
 | RW-CT-01 | Task Context includes only bounded, current, same-Team accepted world memory. | Context manifest, active-status, scope, bound, and stale-reference tests. | RW-4 |
 | RW-VAL-01 | The newsroom scenario demonstrates a repeatable end-to-end reasoning and retained-experience path. | Frozen corpus, baseline/experience-assisted runs, independent scoring, exact run artifacts and results. | All / exit gate |
+| RW-KU-01 | Each claim-level TaskKnowledgeReference is application-written and immutable, binds an identified output claim to the exact KnowledgeItem ID/version, originating LearningChange, relevant Team eligibility, and Task Context evidence. | Exact-identity, version, Team/eligibility, immutable-reference, Context-manifest linkage, replay, and invalid-reference rejection proofs. The implementing RW slice and exact test nodes must be assigned before that slice is authorized. | Named RW slice required before authorization |
+| RW-KU-02 | KnowledgeUseAssessment is typed and application-validated against the exact claim reference/knowledge version and the later Task's terminal Outcome; it grants no mutation or decision authority. | Positive and negative identity/Outcome/Context-linkage tests; immutable record and forbidden-write/scope tests. The implementing RW slice and exact test nodes must be assigned before that slice is authorized. | Named RW slice required before authorization |
 
 ## 5. Foundation exit gate
 
@@ -181,6 +186,8 @@ Stop and return to the Operator before proceeding if:
 - One bounded slice at a time; code, migration, tests, docs, and proof evidence belong in the same slice PR.
 - Write or identify the regression proof before the implementation change; demonstrate the defect/failure before fixing it where applicable.
 - Use the repository's exact-head and disposable-PostgreSQL operating rules. Never run migrations/tests against a persistent user database.
+- Do not begin RW-1 schema or migration implementation until the RW-D132 physical EvidenceLink design gate is explicitly accepted.
+- Before authorizing a slice that implements D99 capabilities, assign the relevant RW-KU proof rows to that named slice and replace their placeholders with exact test nodes or approved non-automated evidence.
 - Report both the verified implementation SHA and current PR head, each with its CI evidence. Never transfer a test result to a different SHA.
 - Re-audit implementation markers after B6 and after each RW slice. A specification or Task allow-list is not implementation evidence.
 - Do not begin R8 until the foundation exit gate is explicitly accepted.
