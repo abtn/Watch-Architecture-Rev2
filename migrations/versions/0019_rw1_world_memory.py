@@ -61,12 +61,18 @@ def _validate_legacy_evidence(connection: sa.Connection) -> int:
                 evaluation.idempotency_key,
                 evaluation.proposal_hash,
                 task.id AS originating_task_id,
-                task.team_id AS task_team_id
+                task.team_id AS task_team_id,
+                team.domain AS team_domain,
+                signal.domain AS signal_domain
             FROM evidence_links AS link
             LEFT JOIN evaluations AS evaluation
                 ON evaluation.id = link.subject_id
             LEFT JOIN tasks AS task
                 ON task.id = evaluation.created_by_task_id
+            LEFT JOIN teams AS team
+                ON team.id = link.team_id
+            LEFT JOIN signals AS signal
+                ON signal.id = link.signal_id
             ORDER BY link.id
             """
         )
@@ -94,9 +100,13 @@ def _validate_legacy_evidence(connection: sa.Connection) -> int:
         if (
             row["evaluation_team_id"] != row["team_id"]
             or row["task_team_id"] != row["team_id"]
+            or (
+                row["source_kind"] == "signal"
+                and row["signal_domain"] != row["team_domain"]
+            )
         ):
             raise RuntimeError(
-                f"RW-1 migration: Team mismatch for legacy link {link_id}"
+                f"RW-1 migration: Team/domain mismatch for legacy link {link_id}"
             )
 
         item: dict[str, object] = {
