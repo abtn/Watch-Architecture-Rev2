@@ -17,7 +17,7 @@ RW-1 is a schema-and-contract slice. It does not implement triage, human or mode
 
 ## 2. Source baseline and observed gap
 
-The design is based on the repository state at the RW-0 squash merge, `cac63a01380624bbaf0c9965a363a352e46960d7`.
+The design is based on the RW-0 squash merge, `cac63a01380624bbaf0c9965a363a352e46960d7`, and a source/schema audit of the RW-1 planning branch at `a8c6b489cfa9dba05ae143474d7a86399b4382a6`.
 
 Static source inspection confirms:
 
@@ -26,10 +26,12 @@ Static source inspection confirms:
 - Its subject constraint permits only `evaluation`; its source constraint permits only `signal` or `outcome`.
 - The Evaluation subject and Outcome source have composite Team foreign keys. Signal has a direct foreign key, but is not itself Team-owned.
 - `core/evaluations.py` is the existing application validation path for Evaluation evidence. It must remain valid and must not be replaced by a parallel evidence service.
-- Migration `0012_learning_foundation.py` created the existing EvidenceLink table. The static migration audit records the repository migration chain through `0018_r7b_lifecycle_review_date`; the live Alembic head must be checked locally before implementation.
+- `EvaluationService.propose()` creates the Evaluation with `created_by_task_id=task.id`, flushes it, creates its EvidenceLinks, and records `evaluation_proposed` in one database transaction. This establishes a source-supported originating-Task value for Evaluation evidence links.
+- `core/task_runtime.py` and `core/experience_distiller.py` both query EvidenceLinks using `subject_kind='evaluation'` and the Evaluation ID. Both are compatibility-sensitive consumers that must be updated without changing their Evaluation behavior.
+- Migration `0012_learning_foundation.py` created the existing EvidenceLink table. A disposable PostgreSQL database successfully migrated to `0018_r7b_lifecycle_review_date`; its Evaluation-only subject FK, Outcome same-Team FK, Signal FK, source/stance/Snapshot/quote checks, and reference-key uniqueness were inspected.
 - ADR-0007 defines subjects `hypothesis | evaluation`, sources `signal | outcome | artifact`, and stances `supports | challenges | mentions`. ADR-0020 adds `consultation` as a source. Only `supports` and `challenges` may anchor a ConfidenceChange.
 
-This is a static design review, not runtime or database verification.
+This audit verifies source paths and the migrated schema on an empty disposable PostgreSQL database. It does not inspect the user's persistent database or prove the integrity, quantity, or provenance of its historical rows. Those rows must be validated by the forward migration before any old representation is removed.
 
 ## 3. RW-1 scope boundary
 
@@ -96,7 +98,7 @@ Constraints/indexes:
 - Index `(team_id, status, last_touched_at)` for later decay selection.
 - No physical delete path. Rejection and supersession are explicit state transitions with reason and Task-attributed Event, as required by INV-07.
 
-The current architecture contract does not yet define a dedicated `superseded_by_hypothesis_id` column or a separate transition table. Do not add one merely for convenience. Before implementation, decide whether the existing Task-attributed Event payload is the canonical durable record of the successor/reason, or whether a narrowly justified typed relation is required to make the invariant queryable. Either choice must preserve the exact affected and surviving Hypothesis IDs.
+The current architecture does not require a dedicated `superseded_by_hypothesis_id` column or a separate transition table. The RW-1 recommendation is to use one immutable, Task-attributed Event as the canonical supersession record, with an event type such as `hypothesis_superseded` and payload fields for the superseded Hypothesis ID, successor Hypothesis ID, and non-empty reason. The Event's Task supplies Team and actor attribution. Do not add a second successor relation unless a concrete invariant or query cannot be enforced through the canonical Event and Hypothesis status. The commit service must validate that both Hypotheses belong to the same Team and that the successor is not the superseded Hypothesis.
 
 ### 4.3 `confidence_changes`
 
@@ -109,17 +111,17 @@ The current architecture contract does not yet define a dedicated `superseded_by
 | `to_confidence` | New ordinal band |
 | `cause_kind` | `evidence | decay` |
 | `evidence_link_id` | Nullable same-Team EvidenceLink FK |
-| `decay_task_id` | Nullable same-Team Task FK |
 | `created_by_task_id` | Task responsible for the change |
 | `idempotency_key` | Stable per-Task operation key |
 | `created_at` | UTC-aware timestamp |
 
 Constraints/indexes:
 - Composite FK `(hypothesis_id, team_id) → hypotheses(id, team_id)`.
-- Composite FK `(evidence_link_id, team_id) → evidence_links(id, team_id)` once EvidenceLink has a unique `(id, team_id)`.
-- Composite FK `(decay_task_id, team_id) → tasks(id, team_id)` and a Task-attribution FK for `created_by_task_id`.
-- A CHECK must enforce exactly one cause: `cause_kind='evidence'` iff `evidence_link_id` is non-null and `decay_task_id` is null; `cause_kind='decay'` iff the reverse holds.
-- The application validator must additionally require an evidence cause to reference a `supports` or `challenges` EvidenceLink, and a decay cause to originate from an `apply_decay` Task. The DB check alone cannot prove the referenced row's stance or Task type.
+- Composite FK `(evidence_link_id, hypothesis_id, team_id) → evidence_links(id, hypothesis_id, team_id)`; this requires a matching unique key on EvidenceLink and ensures an evidence cause belongs to the same Hypothesis.
+- Composite FK `(created_by_task_id, team_id) → tasks(id, team_id)` for Task attribution. For `cause_kind='decay'`, this same Task is the decay Task; do not store a redundant `decay_task_id`.
+- A CHECK must enforce exactly one cause: `cause_kind='evidence'` iff `evidence_link_id` is non-null; `cause_kind='decay'` iff `evidence_link_id` is null. `created_by_task_id` is always required.
+- The application validator must additionally require an evidence cause to reference a `supports` or `challenges` EvidenceLink attached to this Hypothesis, and a decay cause's `created_by_task_id` to be an `apply_decay` Task. The DB check/FKs cannot prove the referenced row's stance or Task type.
+- Require `from_confidence` and `to_confidence` to be valid bands and different. Under the proposed initial-confidence rule, the first state is `low`; every later change records the exact previous and next bands. The service must lock/re-read the Hypothesis and verify `from_confidence` equals its current value before appending the change and updating current confidence atomically.
 - Unique `(created_by_task_id, idempotency_key)` for replay-safe append operations.
 - Index by `(team_id, hypothesis_id, created_at)`.
 - Append-only: no update/delete service. Confidence changes are historical facts, not mutable current-state rows.
@@ -136,8 +138,8 @@ The current table's single `subject_id` FK cannot represent two subject tables w
 - Add composite same-Team FKs for both `evaluation_id` and `hypothesis_id`.
 - A CHECK enforces exactly one subject FK and its agreement with `subject_kind`.
 - Keep the application/domain representation polymorphic (`subject_kind`, logical `subject_id`) through one repository/model adapter; do not leak two competing EvidenceLink concepts into callers.
-- Add unique `(id, team_id)` for ConfidenceChange's composite FK.
-- Preserve `reference_key` uniqueness separately for each subject type, using unique constraints on `(evaluation_id, reference_key)` and `(hypothesis_id, reference_key)`. Null semantics must be verified on PostgreSQL.
+- Add unique `(id, team_id)` for ConfidenceChange's composite FK, plus unique `(id, hypothesis_id, team_id)` so a ConfidenceChange evidence cause can be constrained to the same Hypothesis.
+- Preserve `reference_key` uniqueness separately for each subject type, using unique constraints on `(evaluation_id, reference_key)` and `(hypothesis_id, reference_key)`. PostgreSQL NULL behavior must be covered by the real-database proof.
 - Preserve existing `team_id`, source, stance, Snapshot, quote, offset, and timestamp data.
 
 For the source side in RW-1:
@@ -151,7 +153,7 @@ Quote/Snapshot rules:
 - Keep the existing paired Snapshot reference/hash and quote/offset CHECK constraints.
 - The application commit service must load the immutable Snapshot, verify its content hash, and verify that the quote equals the exact substring at the supplied offsets. SQL CHECK constraints validate shape, not the actual content-addressed object.
 - Keep `mentions` valid as a descriptive link, but reject it as a ConfidenceChange cause.
-- Add `added_by_task_id` (or one agreed equivalent) as a same-Team Task FK if required by the accepted EvidenceLink contract. Before implementation, verify the backfill source for existing Evaluation links—likely the creating Evaluation Task—and refuse migration if any historical row cannot be attributed honestly. Do not fabricate provenance.
+- Add non-null `originating_task_id` as a same-Team Task FK. Define it as the Task that originated the subject's evidence association: for an Evaluation subject, it is the parent Evaluation's `created_by_task_id`; for a Hypothesis subject, it is the Task that commits the EvidenceLink association. This does not claim to identify a physical SQL inserter outside the application contract. `EvaluationService.propose()` creates the Evaluation and all its links in one transaction, so the parent Task is the source-supported legacy mapping. The migration must verify every legacy EvidenceLink joins to exactly one Evaluation, that the Evaluation and Task Team IDs agree, and that no row remains unmapped. If any check fails, abort the migration transaction and preserve the old representation. Do not make the field nullable for legacy rows and do not fabricate a Task ID. The empty disposable database audit does not establish that the user's historical rows pass these checks.
 
 The typed-column approach is intentionally explicit. It trades a small number of nullable columns for real foreign keys and Team constraints, while preserving one logical polymorphic model. A pure `subject_kind + subject_id` pair with no typed FK cannot provide the same database-level referential guarantee. A generic target registry table would add another entity and write path and is not recommended unless the typed-FK design proves unworkable.
 
@@ -172,19 +174,18 @@ The implementation PR must first run local preflight and verify the actual Alemb
 
 Recommended forward sequence (one migration unless PostgreSQL constraint/backfill safety requires a staged sequence):
 1. Create `threads`, `hypotheses`, and `confidence_changes` with constraints and indexes.
-2. Add `evaluation_id` and `hypothesis_id` to `evidence_links`.
-3. Backfill `evaluation_id = subject_id` for every existing Evaluation row; verify row counts and no null/unmapped rows.
-4. Add composite FKs, unique constraints, and the subject-kind/exactly-one check.
-5. Add the EvidenceLink `(id, team_id)` unique key required by ConfidenceChange.
-6. Add Task attribution only after its historical backfill source has been verified; if provenance cannot be reconstructed, preserve the field as explicitly nullable for legacy rows only if the accepted contract permits that distinction, and require non-null for every new row. Do not invent a Task ID.
-7. Remove the old Evaluation-only subject FK/column only after the replacement mapping and application code are ready in the same release.
-8. Keep current source columns and supported source vocabulary unchanged in RW-1. Stage Artifact/Consultation source support with their future canonical tables.
+2. Add `evaluation_id`, `hypothesis_id`, and non-null `originating_task_id` to `evidence_links` while retaining the old `subject_kind`/`subject_id` columns and FK.
+3. Backfill `evaluation_id = subject_id` and `originating_task_id = evaluations.created_by_task_id` through the existing parent Evaluation. Check that every old EvidenceLink has exactly one parent Evaluation, every parent Task exists, and all Team IDs agree. Verify pre/post row counts and zero null/unmapped values. Where practical, recompute each Evaluation proposal hash from its normalized EvidenceLink set using the existing canonicalization contract; any mismatch is a migration blocker, not a repair opportunity.
+4. Add the typed same-Team subject FKs, `originating_task_id` same-Team Task FK, `(id, team_id)` and `(id, hypothesis_id, team_id)` unique keys, per-subject reference-key uniqueness, and subject-kind/exactly-one CHECK.
+5. Add ConfidenceChange's same-Hypothesis EvidenceLink FK and Task attribution FK; omit a redundant `decay_task_id`.
+6. Only after all backfill checks and replacement constraints succeed, remove the old Evaluation-only subject FK/column. The migration must execute transactionally on PostgreSQL so any failed assertion rolls back the DDL and data changes together.
+7. Keep current source columns and supported source vocabulary unchanged in RW-1. Stage Artifact/Consultation source support with their future canonical tables.
 
 Downgrade:
 - Never cascade-delete or silently discard Thread, Hypothesis, ConfidenceChange, or Hypothesis-subject EvidenceLink history.
 - Refuse downgrade with a clear exception if any RW-created world-memory records or Hypothesis-subject links exist.
-- For a clean empty RW installation, restore the previous Evaluation-only EvidenceLink representation and constraints without changing historical Evaluation link IDs, source IDs, hashes, quotes, offsets, stances, reference keys, or timestamps.
-- Test upgrade and downgrade on disposable PostgreSQL, including a populated pre-RW fixture and a post-RW fixture that must cause downgrade refusal.
+- For a clean installation with no Thread, Hypothesis, ConfidenceChange, or Hypothesis-subject EvidenceLink rows, restore the previous Evaluation-only EvidenceLink representation and constraints without changing historical Evaluation link IDs, source IDs, hashes, quotes, offsets, stances, reference keys, or timestamps. The `originating_task_id` column is removed on downgrade with the new schema.
+- Test upgrade against a populated pre-RW fixture containing Evaluation→Signal/Outcome links; include invalid parent, missing Task, cross-Team mismatch, unmapped row, and proposal-hash mismatch fixtures that must abort with no partial DDL/data change. Test downgrade refusal when new world-memory rows exist and safe downgrade when they do not.
 
 No migration number is assigned here. Use the revision that follows the verified live Alembic head at implementation time; never infer the next revision from filenames alone.
 
@@ -223,14 +224,14 @@ Use real disposable PostgreSQL for database-backed constraints, migration, race,
 
 ## 9. Design decisions requiring Operator acceptance before implementation
 
-The following are the review points. The proposal recommends a direction but does not mark them accepted:
+The source/schema audit supports the following six proposed decisions. They remain recommendations for Operator acceptance under D132; this document does not accept them on the Operator's behalf:
 
-1. **Typed EvidenceLink subject FKs:** accept `evaluation_id` + `hypothesis_id` physical columns behind one logical polymorphic model, replacing the current Evaluation-only `subject_id` FK after a verified backfill.
-2. **Legacy EvidenceLink Task attribution:** confirm the valid historical source for `added_by_task_id`; accept the migration only if every old row can be attributed without fabrication or if the contract explicitly permits a legacy-null distinction.
-3. **Hypothesis supersession provenance:** decide whether the Task-attributed Event payload is sufficient as the canonical record of successor/reason, or whether a typed successor reference is necessary.
-4. **Initial confidence semantics:** the current contracts say an unsubstantiated Hypothesis starts at `low`, but do not fully specify whether an evidence-backed Hypothesis may be created above `low` or must always start at `low` and move through ConfidenceChange. Freeze one rule before schema/service implementation.
-5. **Signal Team eligibility:** preserve existing Evaluation evidence behavior and define the precise Team relevance check for new Hypothesis links before the RW-2 commit path; complete the SignalDisposition-backed proof when RW-4 triage is implemented.
-6. **Projection timing:** keep Thread summaries/embeddings out of RW-1's authoritative schema unless an accepted RW-4 retrieval requirement proves they are needed earlier.
+1. **Typed EvidenceLink subject FKs — recommend accept.** Use `evaluation_id` and `hypothesis_id` physical columns behind one logical polymorphic EvidenceLink model. Keep the old Evaluation-only representation until the transactional backfill and replacement constraints pass.
+2. **Legacy EvidenceLink attribution — recommend accept with a strict migration gate.** Use non-null `originating_task_id`, backfilled from the parent Evaluation's `created_by_task_id`. The existing service creates the Evaluation and its EvidenceLinks atomically. The migration must verify parent/Task existence, Team equality, complete row mapping, and (where practical) proposal-hash consistency. Any failure aborts; no legacy-null exception and no guessed Task ID. This is a source-supported mapping, not a claim that the actual persistent database has already passed it.
+3. **Hypothesis supersession — recommend Task-attributed Event only.** Record the old Hypothesis ID, successor Hypothesis ID, and non-empty reason in one canonical immutable Event. Do not add a redundant successor FK or transition table unless a later concrete invariant cannot be enforced through the Event and status validation.
+4. **Initial confidence — recommend every new Hypothesis starts at `low`.** This applies even when creation includes evidence. A higher band can only result from a later ConfidenceChange, with an explicit cause and Task attribution. This avoids an unrecorded initial confidence jump.
+5. **Signal eligibility — recommend preserve the existing domain rule.** For both Evaluation and Hypothesis links in RW-1/RW-2, require `Signal.domain == Team.domain`, exactly as `EvaluationService._normalize_evidence()` and `_revalidate_link()` do today. SignalDisposition may add later triage context in RW-4, but must not silently narrow or invalidate this existing eligibility rule.
+6. **Projection timing — recommend defer.** Thread summaries, embeddings, and retrieval projections remain outside RW-1's authoritative schema and are introduced only with the accepted retrieval slice.
 
 ## 10. Entry and exit gates
 
