@@ -165,12 +165,22 @@ def _seed_legacy_evaluation(
                 VALUES (
                     :id, :team_id, 'evaluate_outcome', 'running', 1, 1,
                     '["Evaluation", "EvidenceLink"]'::jsonb,
-                    '{"max_tool_calls":0,"max_cost_usd":0,"deadline_seconds":30}'::jsonb,
+                    CAST(:budget AS jsonb),
                     3
                 )
                 """
             ),
-            {"id": task_id, "team_id": team_id},
+            {
+                "id": task_id,
+                "team_id": team_id,
+                "budget": json.dumps(
+                    {
+                        "max_tool_calls": 0,
+                        "max_cost_usd": 0,
+                        "deadline_seconds": 30,
+                    }
+                ),
+            },
         )
         connection.execute(
             text(
