@@ -1,7 +1,9 @@
 # Watch — R8 Delivery Plan
 
 **Planned start:** Monday, November 23, 2026.
-**Completion date:** not set. November 23 is the day R8 starts, not a deadline to finish R8.
+**Completion date:** not set. November 23 is the planned start date, not a deadline to finish R8.
+
+> **Schedule and baseline correction (2026-11-16):** This document supersedes the earlier 2026-11-12 `R8-Delivery-Plan.txt` draft. That draft's November 23 completion deadline, November 16–18 domain execution dates, G5/G6-outstanding status, and B5/B6 deferrals are stale. B4.4 (including G1–G6), B5.4, and B6 are recorded complete in [PLAN.md](../../PLAN.md). R8 cannot begin until RW-0 through RW-5 and the foundation exit gate are accepted. November 23 remains a planned start only; no R8 completion date or day-by-day execution calendar is approved. `PLAN.md` remains the sole authority for milestone status and authorization.
 
 ## 1. Objective
 
@@ -9,7 +11,7 @@ R8 is the three-domain pressure test of the completed foundational Watch archite
 
 R8 tests the architecture that exists at its entry baseline. It must not be used to add a missing fundamental layer. If a foundational dependency is incomplete on November 23, R8 does not start; the schedule is re-baselined rather than weakening the entry gate or compressing unfinished architecture into the test phase.
 
-The RW value harness uses **newsroom as its first real-world domain** (Operator-confirmed 2026-11-15). RW-0 decision groups 1–8 freeze the measurement methodology, rubric, thresholds, and execution/reporting rules. The actual completed story, corpus/manifest, task brief, answer key, independent outcome set, story-specific scoring examples, and execution configuration must be frozen before scored runs; any item deferred from documentation closeout must have a named owner and explicit acceptance gate. This first harness does not silently expand R8 scope; see [the newsroom value harness](rw-value-harness.md) and [RW-0 decision record](rw-0-decision-record.md).
+The RW value harness uses **newsroom as its first real-world domain** (Operator-confirmed 2026-11-15). RW-0 decision groups 1–8 were approved on 2026-11-16, freezing the measurement methodology, rubric, thresholds, run design, and execution/reporting rules. The Operator selected **RWN-01**, the LEAP perovskite-additive study, as the newsroom story identity on 2026-11-16. Its source/experiment package remains a draft: the publisher PDF binary and Supplementary Material still require capture/review, and the corpus manifest, task brief, answer key, independent outcome set, story-specific scoring examples, reviewer calibration, and execution configuration must be frozen before scored runs. Any deferred pre-execution item must have a named owner and explicit acceptance gate. Story selection does not authorize scored runs or implementation. This first harness does not silently expand R8 scope; see [the newsroom value harness](rw-value-harness.md), [RWN-01 package draft](rw-newsroom-scenario-package-draft.md), and [RW-0 decision record](rw-0-decision-record.md).
 
 R8 must demonstrate:
 
@@ -27,15 +29,16 @@ R8 must demonstrate:
 
 The active path is:
 
-1. **R7-B B5.4 — complete and closed.** Do not reopen it without a demonstrated defect.
-2. **R7-B B6 — legacy lifecycle hardening.** Follow [the B6 delivery plan](r7-b-b6-legacy-lifecycle-hardening-plan.md): verified baseline, read-only audit, frozen scope, minimal implementation if justified, integrated verification, hosted/local verification, and explicit acceptance.
-3. **RW-0 — reasoning-loop decision freeze and value harness.** Reconcile the approved RW-0 decision record, implementation plan/proof matrix, value harness, and this R8 plan; freeze the newsroom measurement methodology and capability boundaries; and prepare the actual experiment package (selected completed story, source corpus/manifest, scored brief, answer key, independent outcome reference, story-specific scoring examples, and execution configuration) or explicitly track each remaining pre-execution deliverable with a named owner and acceptance gate. RW-0 freezes the EvidenceLink architectural contract; the exact physical relational/migration design is a separately accepted RW-1 pre-implementation gate under D132. RW-0 decision approval does not authorize implementation.
-4. **RW-1 — minimum durable world-memory model.** Implement only the accepted Thread, competing Hypothesis, evidence, confidence-change, and immutable source-reference contract. Add SignalDisposition only if the vertical slice requires it.
-5. **RW-2 — deterministic Operator update and commit path.** Prove provenance, confidence, cause, rival-preservation, atomicity, replay, and concurrency rules without model nondeterminism.
-6. **RW-3 — model reasoning worker.** Add `update_thread` behind the existing generation-provider and cost-accounting boundaries. Model output remains an untrusted proposal.
-7. **RW-4 — signal triage and reasoning retrieval.** Implement the minimum accepted signal-intake path and expose current, relevant Hypotheses to bounded Task Context with Team isolation.
-8. **RW-5 — confidence decay.** Implement the accepted deterministic decay behavior and its proofs before the foundation exit gate.
-9. **Foundation exit gate.** Verify all required layers end-to-end, including the value harness, migrations, tests, docs, exact-head local verification, and hosted CI. Record explicit Operator acceptance.
+1. **R7-B B4.4 — complete and closed.** G1–G6, exact-head verification, documentation reconciliation, and explicit Operator acceptance were completed on 2026-11-13.
+2. **R7-B B5.4 — complete and closed.** Do not reopen it without a demonstrated defect.
+3. **R7-B B6 — complete and formally closed on 2026-11-16.** Test-only PR #124 merged at `419312bc678901e2d22179313e6285086bee42da`; exact-head local and hosted verification are recorded in `docs/testing.md` and the [B6 delivery/closeout record](r7-b-b6-legacy-lifecycle-hardening-plan.md). Do not treat B6 as outstanding R8 work.
+4. **RW-0 — reasoning-loop decision freeze and value harness.** Reconcile the approved RW-0 decision record, implementation plan/proof matrix, value harness, and this R8 plan; freeze the newsroom measurement methodology and capability boundaries; and prepare the actual experiment package (selected completed story, source corpus/manifest, scored brief, answer key, independent outcome reference, story-specific scoring examples, and execution configuration) or explicitly track each remaining pre-execution deliverable with a named owner and acceptance gate. RW-0 freezes the EvidenceLink architectural contract; the exact physical relational/migration design is a separately accepted RW-1 pre-implementation gate under D132. RW-0 decision approval does not authorize implementation.
+5. **RW-1 — minimum durable world-memory model.** Implement only the accepted Thread, competing Hypothesis, evidence, confidence-change, and immutable source-reference contract. Add SignalDisposition only if the vertical slice requires it.
+6. **RW-2 — deterministic Operator update and commit path.** Prove provenance, confidence, cause, rival-preservation, atomicity, replay, and concurrency rules without model nondeterminism.
+7. **RW-3 — model reasoning worker.** Add `update_thread` behind the existing generation-provider and cost-accounting boundaries. Model output remains an untrusted proposal.
+8. **RW-4 — signal triage and reasoning retrieval.** Implement the minimum accepted signal-intake path and expose current, relevant Hypotheses to bounded Task Context with Team isolation.
+9. **RW-5 — confidence decay.** Implement the accepted deterministic decay behavior and its proofs before the foundation exit gate.
+10. **Foundation exit gate.** Verify all required layers end-to-end, including the value harness, migrations, tests, docs, exact-head local verification, and hosted CI. Record explicit Operator acceptance.
 
 RW-D99 freezes only the minimum R7-C capabilities required for auditable claim-level attribution: immutable TaskKnowledgeReference and minimal typed KnowledgeUseAssessment. Under D133, the implementation plan must map each capability to a named RW slice and proof obligations before authorizing any slice that implements it. This does not authorize the separate R7-C milestone or a broader evaluation/learning loop. RW-D11–D15 and D100 retain the exclusions for persistent Artifacts/publishing, operational Consultation workflows, self-service setup, and expanded domain-pack machinery unless the frozen product claim demonstrates a necessary dependency and the Operator explicitly approves a scope change. Do not treat every specified future feature as an automatic prerequisite.
 
