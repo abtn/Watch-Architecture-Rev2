@@ -1,9 +1,10 @@
 # RW — Implementation Plan and Proof Matrix
 
-**Status:** proposed plan; no RW implementation is authorized
+**Status:** RW-0 is closed by docs-only squash merge PR #126; RW-1 physical design is under Operator review; no RW implementation is authorized
 **Sequence:** B6 → RW-0 → RW-1 → RW-2 → RW-3 → RW-4 → RW-5 → foundation exit gate → R8
-**Code audit basis:** post-B6 `main` at `91169b4931e48cb7b2803ed2066ec365f563a0ea` (B6 PR #124 is test-only; RW-0 docs closeout PR #125 changes documentation only)
+**Code audit basis:** post-B6 static source/spec audit at `91169b4931e48cb7b2803ed2066ec365f563a0ea`; RW-0 docs-only closeout squash-merged by PR #126 at `cac63a01380624bbaf0c9965a363a352e46960d7`
 **Decision record:** [RW-0 decision record](rw-0-decision-record.md)
+**RW-1 physical design:** [RW-1 physical world-memory and EvidenceLink design proposal](rw-1-physical-design-proposal.md) — proposed, not accepted
 **Value harness:** [Newsroom value harness](rw-value-harness.md)
 
 This plan turns the accepted architecture and the RW proposal into bounded implementation slices. It does not authorize schema, code, tests, migrations, or provider changes. RW-0 must freeze unresolved decisions and the Operator must authorize each implementation slice.
@@ -150,8 +151,21 @@ The matrix defines required proof obligations, not tests that already exist. Eac
 | RW-TR-01 | Triage is explicit and one-per-(Signal, Team). | Unique disposition, deferred refinement, dedup/noise/match/new-thread tests for frozen scope. | RW-1/RW-4 |
 | RW-CT-01 | Task Context includes only bounded, current, same-Team accepted world memory. | Context manifest, active-status, scope, bound, and stale-reference tests. | RW-4 |
 | RW-VAL-01 | The newsroom scenario demonstrates a repeatable end-to-end reasoning and retained-experience path. | Frozen corpus, baseline/experience-assisted runs, independent scoring, exact run artifacts and results. | All / exit gate |
-| RW-KU-01 | Each claim-level TaskKnowledgeReference is application-written and immutable, binds an identified output claim to the exact KnowledgeItem ID/version, originating LearningChange, relevant Team eligibility, and Task Context evidence. | Exact-identity, version, Team/eligibility, immutable-reference, Context-manifest linkage, replay, and invalid-reference rejection proofs. The implementing RW slice and exact test nodes must be assigned before that slice is authorized. | Named RW slice required before authorization |
-| RW-KU-02 | KnowledgeUseAssessment is typed and application-validated against the exact claim reference/knowledge version and the later Task's terminal Outcome; it grants no mutation or decision authority. | Positive and negative identity/Outcome/Context-linkage tests; immutable record and forbidden-write/scope tests. The implementing RW slice and exact test nodes must be assigned before that slice is authorized. | Named RW slice required before authorization |
+| RW-KU-01 | Each claim-level TaskKnowledgeReference is application-written and immutable, binds an identified output claim to the exact KnowledgeItem ID/version, originating LearningChange, relevant Team eligibility, and Task Context evidence. | RW-4-KU: exact-identity/version, LearningChange, Team eligibility, Context-manifest linkage, immutability, replay, and stale/invalid-reference rejection. Proposed test node: `tests/test_task_knowledge_reference.py`; finalize before RW-4-KU authorization. | RW-4-KU (planned; not authorized) |
+| RW-KU-02 | KnowledgeUseAssessment is typed and application-validated against the exact claim reference/knowledge version and the later Task's terminal Outcome; it grants no mutation or decision authority. | RW-4-KU: typed-value validation, exact claim/version/terminal-Outcome/Team/Context binding, immutability, replay, and forbidden-write/scope rejection. Proposed test node: `tests/test_knowledge_use_assessment.py`; finalize before RW-4-KU authorization. | RW-4-KU (planned; not authorized) |
+
+## 4.1 RW-1 physical design preparation
+
+The [RW-1 physical design proposal](rw-1-physical-design-proposal.md) is the current design artifact for D132. A source/schema audit was completed against branch head `a8c6b489cfa9dba05ae143474d7a86399b4382a6`, including `core/models.py`, `core/evaluations.py`, `core/task_runtime.py`, and `core/experience_distiller.py`, plus a disposable PostgreSQL migration/schema audit through `0018_r7b_lifecycle_review_date`. No persistent database rows were inspected. The revised proposal records these source findings and recommends typed subject foreign keys behind one logical EvidenceLink model, non-null `originating_task_id` backfilled from the parent Evaluation Task under fail-closed migration checks, same-Hypothesis ConfidenceChange evidence FKs, Task-attributed supersession Events, initial `low` confidence, the existing Signal-domain eligibility rule, append-only ConfidenceChange records, and staged Artifact/Consultation support. These recommendations remain unaccepted pending D132 Operator review.
+
+RW-1 implementation entry remains blocked until the Operator explicitly accepts the physical design and resolves or assigns every design decision in proposal §9. In particular:
+- confirm the historical Task attribution source for existing EvidenceLinks before adding required provenance;
+- settle Hypothesis supersession successor/reason representation;
+- freeze initial confidence semantics;
+- define Signal Team eligibility without breaking existing Evaluation evidence;
+- confirm that Thread projections remain deferred to retrieval.
+
+D133 mapping is now explicit: both minimum D99 capabilities are assigned to the planned RW-4-KU sub-slice, with proposed test modules recorded in the proof matrix. These test paths must be confirmed and the proof rows completed before RW-4-KU authorization. This assignment is not implementation authorization and does not create a separate R7-C programme.
 
 ## 5. Foundation exit gate
 
