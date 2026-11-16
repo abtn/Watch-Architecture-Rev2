@@ -272,6 +272,26 @@ def test_evaluation_task_cannot_finalize_as_no_change(
         assert task is not None and task.status == "running"
 
 
+def test_evaluation_record_rejects_changed_originating_task(
+    session_factory, snapshot_store, evaluation_context
+):
+    service = EvaluationService(session_factory, snapshot_store)
+    proposed = _propose(service, evaluation_context)
+    with session_factory.begin() as session:
+        link = session.scalar(
+            select(EvidenceLink).where(
+                EvidenceLink.subject_id == proposed.evaluation_id
+            )
+        )
+        assert link is not None
+        link.originating_task_id = evaluation_context["source_task_id"]
+    with pytest.raises(
+        EvaluationValidationError,
+        match="evidence_link_originating_task_mismatch",
+    ):
+        service.record(evaluation_context["task_id"], proposed.evaluation_id)
+
+
 def test_changed_evidence_link_is_rejected_before_recording(
     session_factory, snapshot_store, evaluation_context
 ):
