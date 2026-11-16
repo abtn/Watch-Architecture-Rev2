@@ -7,7 +7,7 @@
 
 This record is the decision index for the world-memory reasoning loop (RW). It does not authorize RW implementation. The required sequence remains **B6 → RW-0 through RW-5 → foundation exit gate → R8**.
 
-## 1. Operator story selection — 2026-11-16
+## Operator story selection — 2026-11-16
 
 The Operator selected **RWN-01**, the LEAP study “A closed-loop framework for perovskite precursor additive discovery” by Xin-De Wang, Zhi-Rui Chen, Ze-Feng Gao, Peng-Jie Guo, Cheng Mu, and Zhong-Yi Lu, *Communications Materials* (2026), DOI [10.1038/s43246-026-01407-3](https://doi.org/10.1038/s43246-026-01407-3). The selected source identity is the publisher's 4 November 2026 Article in Press version, not the earlier May 2026 arXiv preprint. A later Version of Record is a distinct source version and must not be substituted silently.
 
