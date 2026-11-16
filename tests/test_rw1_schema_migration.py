@@ -308,7 +308,7 @@ def _add_second_legacy_outcome_link(
     }
     second_reference_key = _digest(second_payload)
     with sandbox.engine.begin() as connection:
-        original = connection.execute(
+        connection.execute(
             text("SELECT * FROM evidence_links WHERE id = :id"),
             {"id": legacy.link_id},
         ).mappings().one()
