@@ -211,7 +211,9 @@ class EvaluationService:
             if not links:
                 raise EvaluationValidationError("evaluation_evidence_required")
             if any(link.originating_task_id != task.id for link in links):
-                raise EvaluationValidationError("evidence_link_originating_task_mismatch")
+                raise EvaluationValidationError(
+                    "evidence_link_originating_task_mismatch"
+                )
             if (
                 not any(link.source_kind == "outcome"
                 and link.outcome_id == evaluation.outcome_id for link in links)
