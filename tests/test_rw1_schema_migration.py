@@ -573,9 +573,8 @@ def test_0019_backfills_multiple_links_in_canonical_reference_order(
         assert all(row["evaluation_id"] == legacy.evaluation_id for row in rows)
         assert all(row["hypothesis_id"] is None for row in rows)
         assert all(row["originating_task_id"] == legacy.task_id for row in rows)
-        assert [row["reference_key"] for row in rows] == sorted(
-            row["reference_key"] for row in rows
-        )
+        ordered_by_primary_key = [row["reference_key"] for row in rows]
+        assert ordered_by_primary_key[0] > ordered_by_primary_key[1]
 
 
 def test_0019_downgrade_refuses_hypothesis_confidence_history(
