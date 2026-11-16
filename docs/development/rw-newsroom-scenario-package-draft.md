@@ -1,15 +1,15 @@
-# RW Newsroom Scenario Package — Draft Candidate RWN-01 (LEAP)
+# RW Newsroom Scenario Package — Selected Story RWN-01 (LEAP), Draft
 
-**Status:** candidate only; not selected by the Operator; source corpus not frozen; no scored runs authorized  
+**Status:** RWN-01 story identity selected by the Operator on 2026-11-16; source corpus and scored package not frozen; no scored runs authorized  
 **Prepared:** 2026-11-16  
 **Decision authority:** Operator, under RW-D101–D105 and RW-D135  
 **Scope:** candidate story, proposed source manifest, draft assignment, answer-key outline, independent outcome-reference candidates, and remaining freeze gates
 
 > This document is a preparation artifact, not a corpus manifest and not an authorization. Do not use it as a frozen scored packet. The publisher article is currently an Article in Press whose version will be replaced automatically by the final Version of Record. Any later publisher version must be treated as a new corpus version, not silently substituted.
 
-## 1. Candidate story
+## 1. Selected story
 
-### Proposed story identity
+### Approved story identity
 
 **Working headline:** *Can a literature-trained AI help select better perovskite additives? A three-round experiment shows promise—and important limits.*
 
@@ -17,7 +17,7 @@
 
 **Publisher version observed:** Article in Press, 13-page reference PDF. The publisher states that this version is citable and has a permanent DOI, but will be replaced automatically by the final Version of Record. Received 29 May 2026; accepted 5 October 2026; published 4 November 2026. Article licence shown by the publisher: CC BY-NC-ND 4.0. Preserve and cite the exact version used. Do not adapt or publicly redistribute altered article material.
 
-### D101 eligibility assessment — provisional
+### D101 eligibility assessment — provisional pending final source review
 
 | Criterion | Assessment |
 |---|---|
@@ -28,7 +28,7 @@
 | Bounded scope | Strong: one published proof-of-concept, one perovskite device platform, three validation rounds, and three prospective additives. |
 | Preservation/reproducibility | Conditional: public data release can be pinned to a Git commit; publisher PDF and supplementary material still require local preservation, metadata capture, and SHA-256 hashing. |
 
-**Recommendation:** retain this as the leading candidate. The Operator has not yet selected it. Before freeze, verify the exact publisher version and decide whether the Supplementary Information is needed to make the numerical claims independently checkable at the level required by the assignment.
+**Operator selection — 2026-11-16:** the Operator approved RWN-01 as the selected newsroom story identity. This approval does not freeze the source corpus, final assignment, answer key, outcome reference, or execution configuration. Before corpus freeze, preserve and inspect the exact publisher Article in Press PDF and acquire the publisher-listed Supplementary Material: the article explicitly says that Welch-test confidence intervals are reported there. Assess whether any claims retained in the final assignment also require the author-requested raw device data.
 
 ### Why this story is useful for the harness
 
@@ -41,19 +41,40 @@ The key distinction is that LEAP is reported as an expert-in-the-loop framework,
 **Proposed corpus ID:** RWN-01-LEAP-AIP  
 **Proposed corpus version:** 0.1-draft  
 **Proposed retrieval date:** 2026-11-16  
-**Freeze status:** pending Operator story selection, binary source capture, source review, and SHA-256 verification.
+**Freeze status:** story identity selected; publisher binary capture, Supplementary Material acquisition/review, complete source inventory, packet archive, and final corpus review remain outstanding.
 
-The exact article file and public data files must be preserved as immutable bytes or stable archived copies. GitHub commit/blob identifiers below are source locators; they are not substitutes for computing the required SHA-256 hashes over the actual preserved files.
+The exact article and included public data files must be preserved as immutable bytes or stable archived copies. For the enumerated GitHub files below, exact byte streams were retrieved from the GitHub file API at the pinned commit and SHA-256 was computed over the Base64-decoded bytes. Git blob SHA-1 identifiers remain separate from packet SHA-256 values. The identified GitHub file hashes are now recorded; the publisher PDF/Supplementary Material and additional benchmark response files remain unacquired or unverified.
 
 | Source ID | Source and intended contents | Version/identity | Status |
 |---|---|---|---|
-| SRC-001 | Publisher research article; full text, methods, results, figures/captions, discussion, limitations, data availability, and licence. | DOI 10.1038/s43246-026-01407-3; Article in Press reference PDF URL above; 13-page version observed 2026-11-16. | Text extraction available; exact PDF binary, byte-preserved archive, retrieval metadata, and SHA-256 still required. |
-| SRC-002 | Official author data-release repository README and licence. | WD928/LEAP, pinned commit f25fbe8238422439db10877ea79295ec233c4867. | README and Apache-2.0 licence inspected at pinned commit; capture exact files and SHA-256 locally. |
-| SRC-003 | Candidate-selection data and definitions, including round-specific top-50 shortlists, shortlist ranks, GP predictions, uncertainty, expected improvement, descriptor scores, and experimental-advancement status. | candidate_selection/top50_validation_shortlists_mechanism_scores.csv; Git blob SHA-1 7143342e0d864db71e71da442f47a227bce9f633; candidate_selection/README.md, blob SHA-1 9fff092854e0bfb1253bf8ac592dd4a32a4cb110. | Inspected at pinned commit; raw byte capture and SHA-256 required. |
-| SRC-004 | Hot-start data, descriptor definitions, and data dictionary. | data/hot_start_additives.csv, blob SHA-1 69ff60da0210d8eabf475b3081f229e47cc90b18; data/hot_start_data_dictionary.json, blob SHA-1 d52ed76b5606c37d9e1c60a40c26fdd6f3fa7749; data/README.md, blob SHA-1 81d34a2f610d49b2f98b1384ef3f4ed2f9826c9b. | Inspected at pinned commit; raw byte capture and SHA-256 required. |
-| SRC-005 | Mechanism-consistency benchmark, model responses, and summary statistics. | benchmark/questions.csv; benchmark/benchmark_sources.csv, blob SHA-1 72d5f2b346833feb2494c027297426a2d735f924; benchmark/model_results/; benchmark/statistics/model_summary_with_ci.csv, blob SHA-1 132ca58cf4e8ec71683011425df62b47b82f0665; exact McNemar/Holm files in the same directory. | Repository paths/summary inspected; capture exact question, response, and statistical files and SHA-256 before deciding final packet membership. |
-| SRC-006 | Publisher Supplementary Information PDF, including the tables/figures referenced from the main text (notably Tables S3/S5 and Figure S5/S6/S9). | Linked by the publisher from the article DOI page; exact direct file URL and version not retrieved in this session. | Required acquisition/inspection gate if it contains confidence intervals, raw device data, or details needed to verify numerical claims; not yet included in the scored packet. |
-| SRC-007 | Publisher Transparent Peer Review file. | Listed by the publisher on the article page; exact direct file URL and version not retrieved in this session. | Optional corroborating context, not required for the core analysis unless it materially qualifies the paper’s methods or claims. Do not include until acquired, reviewed, and explicitly approved. |
+| SRC-001 | Publisher research article; full text, methods, results, figures/captions, discussion, limitations, data availability, and licence. | DOI 10.1038/s43246-026-01407-3; Article in Press reference PDF URL above; 13-page version extracted 2026-11-16. | Publisher page and PDF text extraction inspected; binary download and page screenshots were unavailable (cache miss); exact PDF byte length/archive and SHA-256 remain pending. The final Version of Record must be treated as a new version. |
+| SRC-002 | Official author data-release repository README and licence. | WD928/LEAP, pinned commit `f25fbe8238422439db10877ea79295ec233c4867`; root `README.md` and `LICENSE`. | Exact byte streams retrieved at the pinned commit and hashed: README 4,307 bytes, SHA-256 `9667b9c5f3f502b95bc2059e2b9f152eb30a1aa56f0ae197d49c88a08164c2c3`; LICENSE 11,547 bytes, SHA-256 `325e363ee2fd1a9efce65cdaa58c9cca365129d5b6ebe2aa206c239f1156a6cb`. Stable commit/path locators recorded; local packet archive remains to be staged. |
+| SRC-003 | Candidate-selection data and definitions, including round-specific top-50 shortlists, ranks, GP predictions, uncertainty, expected improvement, descriptor scores, and advancement status. | `candidate_selection/top50_validation_shortlists_mechanism_scores.csv` (Git blob SHA-1 `7143342e0d864db71e71da442f47a227bce9f633`); `candidate_selection/README.md` (Git blob SHA-1 `9fff092854e0bfb1253bf8ac592dd4a32a4cb110`). | Exact bytes retrieved at pinned commit. README: 2,275 bytes, SHA-256 `a4ae89691aa727b88fb8f9794ead23224c49fdd35998abdbe745c7491c6217cb`. Shortlist CSV: 61,461 bytes, SHA-256 `625535a4e197ceb0fd26ac79fbe8f590ef0ab621de713e362b6bd3b53c603b04`. |
+| SRC-004 | Hot-start data, descriptor definitions, and data dictionary. | `data/hot_start_additives.csv` (Git blob SHA-1 `69ff60da0210d8eabf475b3081f229e47cc90b18`); `data/hot_start_data_dictionary.json` (SHA-1 `d52ed76b5606c37d9e1c60a40c26fdd6f3fa7749`); `data/README.md` (SHA-1 `81d34a2f610d49b2f98b1384ef3f4ed2f9826c9b`). | Exact bytes retrieved at pinned commit. `data/README.md`: 405 bytes, SHA-256 `195ec1e39a3e6db59c0b934ada709fd123cf2732fdec1f4e943b678acab2b6df`; hot-start CSV: 13,466 bytes, SHA-256 `7dc9ea48f65b3c32724ae0460fef1306ac8c5eb2c70bfb009b5e789b20f2357c`; dictionary JSON: 8,421 bytes, SHA-256 `773156bc6304b3c77398da4c80a58611160278900536dcef4ddc395c76b9726f`. |
+| SRC-005 | Mechanism-consistency benchmark, released benchmark questions/source list, summary statistics, and representation-ablation confidence intervals. | `benchmark/benchmark_sources.csv` (Git blob SHA-1 `72d5f2b346833feb2494c027297426a2d735f924`); `benchmark/questions.csv` (SHA-1 `ee1ac1c97cafa6fac530aec122d0a7eba37be1e4`); `benchmark/statistics/model_summary_with_ci.csv` (SHA-1 `132ca58cf4e8ec71683011425df62b47b82f0665`); `benchmark/statistics/mcnemar_vs_reference_holm.csv` (SHA-1 `f063293656cfd8f5cd2d7f495aa7dbc8eb87e84f`); `ablation/representation/figure3_bootstrap_ci_table.csv` (SHA-1 `283d40f85a3a10c290a227da78fa3a4609eb2318`). | Exact bytes retrieved and SHA-256 hashed at pinned commit: benchmark sources, 2,607 bytes, `ada005499999ee3d673fa38317e5a32f5a9a31e938857555c23441d81a94037f`; questions, 53,478 bytes, `479a64729d82e346b253c25fb7bcac856d59dbe77e7607a5c9ab24b35df72dea`; model summary, 771 bytes, `80e8344b8225806c4156f46498853394d6a516be09f8c2de9da56d59b8d1eb7c`; McNemar/Holm table, 540 bytes, `11aaea3369649ff58f241ccc8e6b079494c992a848df672dbb7b871a0d34d248`; representation CI table, 997 bytes, `741d7c3f7ecd8d335b1018d2398bdcc0621699cb2695047976ae1e6bf71fefdc`. The individual `benchmark/model_results/` files and any other statistics files remain to be inventoried before deciding whether to include them. |
+| SRC-006 | Publisher Supplementary Information PDF, including the tables/figures referenced from the main text (notably Tables S3/S5 and Figure S5/S6/S9). | Listed as “Supplemental Material (download PDF)” on the official article page; the PDF also says device-comparison confidence intervals are reported in Supplementary Information. Exact direct file URL/version not captured. | Required before freezing any assignment that reports the paper’s Welch-test confidence intervals or supplementary device analyses. Binary/direct URL not acquired; review and inclusion decision remain open. |
+| SRC-007 | Publisher Transparent Peer Review file. | Listed as “Transparent Peer Review file (download PDF)” on the official article page; exact direct file URL/version not captured. | Optional corroborating context. Acquire only if needed to assess a material methodological qualification; if excluded, record that decision and rationale. |
+
+### Exact-byte hash capture log — author data-release repository
+
+The following bytes were retrieved from the GitHub file API at commit `f25fbe8238422439db10877ea79295ec233c4867` on 2026-11-16 using Base64 content responses. SHA-256 was computed over the decoded bytes. Git blob SHA-1 is shown separately. These are exact-byte hashes, not claims that a local archive has already been staged in the Watch repository.
+
+| Path | Bytes | Git blob SHA-1 | SHA-256 |
+|---|---:|---|---|
+| `README.md` | 4,307 | `0c2a9a10fc4c09e6f11bacd4bd523eb2b48e8e21` | `9667b9c5f3f502b95bc2059e2b9f152eb30a1aa56f0ae197d49c88a08164c2c3` |
+| `LICENSE` | 11,547 | `261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64` | `325e363ee2fd1a9efce65cdaa58c9cca365129d5b6ebe2aa206c239f1156a6cb` |
+| `candidate_selection/README.md` | 2,275 | `9fff092854e0bfb1253bf8ac592dd4a32a4cb110` | `a4ae89691aa727b88fb8f9794ead23224c49fdd35998abdbe745c7491c6217cb` |
+| `candidate_selection/top50_validation_shortlists_mechanism_scores.csv` | 61,461 | `7143342e0d864db71e71da442f47a227bce9f633` | `625535a4e197ceb0fd26ac79fbe8f590ef0ab621de713e362b6bd3b53c603b04` |
+| `data/README.md` | 405 | `81d34a2f610d49b2f98b1384ef3f4ed2f9826c9b` | `195ec1e39a3e6db59c0b934ada709fd123cf2732fdec1f4e943b678acab2b6df` |
+| `data/hot_start_additives.csv` | 13,466 | `69ff60da0210d8eabf475b3081f229e47cc90b18` | `7dc9ea48f65b3c32724ae0460fef1306ac8c5eb2c70bfb009b5e789b20f2357c` |
+| `data/hot_start_data_dictionary.json` | 8,421 | `d52ed76b5606c37d9e1c60a40c26fdd6f3fa7749` | `773156bc6304b3c77398da4c80a58611160278900536dcef4ddc395c76b9726f` |
+| `benchmark/benchmark_sources.csv` | 2,607 | `72d5f2b346833feb2494c027297426a2d735f924` | `ada005499999ee3d673fa38317e5a32f5a9a31e938857555c23441d81a94037f` |
+| `benchmark/questions.csv` | 53,478 | `ee1ac1c97cafa6fac530aec122d0a7eba37be1e4` | `479a64729d82e346b253c25fb7bcac856d59dbe77e7607a5c9ab24b35df72dea` |
+| `benchmark/statistics/model_summary_with_ci.csv` | 771 | `132ca58cf4e8ec71683011425df62b47b82f0665` | `80e8344b8225806c4156f46498853394d6a516be09f8c2de9da56d59b8d1eb7c` |
+| `benchmark/statistics/mcnemar_vs_reference_holm.csv` | 540 | `f063293656cfd8f5cd2d7f495aa7dbc8eb87e84f` | `11aaea3369649ff58f241ccc8e6b079494c992a848df672dbb7b871a0d34d248` |
+| `ablation/representation/figure3_bootstrap_ci_table.csv` | 997 | `283d40f85a3a10c290a227da78fa3a4609eb2318` | `741d7c3f7ecd8d335b1018d2398bdcc0621699cb2695047976ae1e6bf71fefdc` |
+
+The repository README says it is a data release, not a complete reproduction package. The exact `benchmark/model_results/` file list was not available through the inspected directory/file responses and remains un-inventoried; do not claim those individual response files were captured or hashed.
 
 ### Source inclusion/exclusion notes
 
@@ -70,7 +91,7 @@ The exact article file and public data files must be preserved as immutable byte
 
 For every included source preserve: stable source ID; exact title; author/organization; publication/version date; DOI or stable URI; retrieval timestamp; licence/access terms; exact original file or stable archived copy; byte length; SHA-256 algorithm and lowercase digest; repository commit/blob locator where relevant; and inclusion rationale. Record important candidate sources excluded and why. Keep GitHub’s Git blob SHA-1 separate from the packet SHA-256.
 
-**Current binary capture limitation:** publisher article text has been extracted from the reference PDF, but the PDF page-screenshot service returned cache-miss errors. The PDF binary itself has not been captured or hashed in this session. The Supplementary Information and Transparent Peer Review binaries and direct download URLs have also not been obtained. This is an explicit freeze blocker, not a completed source-verification claim.
+**Current binary capture limitation:** the publisher page and 13-page Article in Press PDF text extraction were inspected, but attempts to retrieve the PDF binary and screenshots of pages 1, 12, and 13 returned cache-miss/download failures. The PDF binary, its byte length, local preservation, and SHA-256 are therefore still missing. The official page lists both the Supplementary Material PDF and Transparent Peer Review PDF, but their direct URLs and binaries were not obtained. These are explicit freeze blockers, not completed source-verification claims. The public data-file hashes above were computed from exact byte responses, but the files have not yet been staged into a local corpus archive.
 
 ## 3. Draft scored assignment brief (proposed; not frozen)
 
@@ -206,12 +227,12 @@ For the final outcome reference, keep the difference between contradicted (evide
 
 | Item | Current state | Owner / required acceptance |
 |---|---|---|
-| Operator selection of the LEAP story | Candidate recommended; not selected | Operator selects or rejects RWN-01. |
-| Publisher PDF | Text extraction inspected; PDF visual screenshots and binary capture not completed; no SHA-256 | Programmer/Operator captures exact Article in Press PDF, checks all pages/metadata, stores original bytes, records SHA-256 and retrieval timestamp. |
-| Supplementary Information | Publisher-listed; direct file URL/binary not acquired | Programmer/Operator acquires exact file and checks whether Tables S3/S5 and referenced figures are required for the frozen claims; if omitted, record explicit exclusion rationale. |
+| Operator selection of the LEAP story | **Complete:** Operator approved RWN-01 on 2026-11-16. | Selection is limited to story identity. It does not freeze the source corpus, assignment, answer key, outcome reference, or execution configuration. |
+| Publisher PDF | Publisher text extraction inspected; binary download and requested page screenshots failed with cache-miss errors; no byte length or SHA-256. | Programmer/Operator obtains the exact Article in Press PDF through a working publisher/local route, preserves original bytes, visually checks all pages/metadata, and records direct URL, retrieval time, byte length, and SHA-256. |
+| Supplementary Information | Publisher-listed; direct URL/binary not acquired. The paper places Welch-test confidence intervals in this file. | Programmer/Operator acquires and reviews the exact PDF. Include it when the final brief asks for confidence intervals or supplementary device analyses; otherwise record a reasoned exclusion and restrict the claims accordingly. |
 | Transparent Peer Review | Publisher-listed; file not acquired | Optional. Include only if it adds material methodological qualification; record explicit include/exclude decision. |
-| Public data repository | Exact commit pinned; selected file/blob IDs identified | Programmer captures exact files and SHA-256; preserve commit f25fbe8238422439db10877ea79295ec233c4867. Do not claim Git blob SHA-1 is SHA-256. |
-| Raw device-level data | Article says institutional data are available from corresponding authors on reasonable request; no raw-data file in public release inspected | Operator decides whether the Supplementary Information suffices for the selected claims or whether a request to corresponding authors is necessary. |
+| Public data repository | Commit `f25fbe8238422439db10877ea79295ec233c4867` pinned; exact bytes and SHA-256 verified for 12 identified files (full table above). | Preserve the pinned Git commit/path locators and stage the exact files into the corpus archive. Inventory `benchmark/model_results/` and any other chosen files before final membership is frozen; do not treat Git blob SHA-1 as SHA-256. |
+| Raw device-level data | Not obtained; article says additional raw experimental data are stored on institutional servers and available from corresponding authors on reasonable request. | Operator decides whether author-reported aggregates plus the Supplementary Material suffice, or whether to request the additional raw data. Do not claim independent recomputation from raw device values unless acquired. |
 | Source packet review and freeze | Not complete | Operator reviews all sources, inclusions/exclusions, corpus manifest, and exact versions; then records corpus ID/version and SHA-256 manifest. |
 | Scored brief and exact word limit | Draft brief, proposed 700 words | Operator approves/edits final brief and exact word limit; freeze before scored runs. |
 | Answer key and outcome reference | Draft outline only | Independent reviewers refine source locations, resolution criteria, accepted alternatives, and fixed evidence cutoff before freeze. |
@@ -220,9 +241,9 @@ For the final outcome reference, keep the difference between contradicted (evide
 
 ## 7. Explicit freeze checklist
 
-Do not mark this candidate as a frozen corpus or authorize scored execution until every required item is resolved:
+Do not mark this selected story as a frozen corpus or authorize scored execution until every required item is resolved:
 
-- [ ] Operator selects this completed story as the first newsroom scenario.
+- [x] Operator selects RWN-01 as the first newsroom story (2026-11-16; story identity only).
 - [ ] Exact publisher Article in Press PDF is preserved byte-for-byte, visually/textually checked, and SHA-256 hashed.
 - [ ] Supplementary Information is acquired and assessed; include it or document why it is unnecessary for the frozen claims.
 - [ ] Official data-release repository commit and required files are preserved; SHA-256 computed over each exact file.
@@ -234,4 +255,4 @@ Do not mark this candidate as a frozen corpus or authorize scored execution unti
 - [ ] Baseline and treatment fixture, accepted-experience snapshot identity/hash, execution configuration, 10 matched pairs in five randomized blocks, randomization seed/order, operational windows, and retry/replacement rules are frozen.
 - [ ] Operator explicitly accepts the frozen experiment package before any scored runs.
 
-**Authority boundary:** this draft does not select the story on the Operator’s behalf, freeze the source corpus, authorize scored runs, authorize RW-1 or R7-C implementation, or close RW-0. See PLAN.md and the RW-0 decision record for authoritative status and authorization.
+**Authority boundary:** the Operator has selected the RWN-01 story identity on 2026-11-16. This draft does not freeze the source corpus or authorize scored runs, RW-1, R7-C implementation, or RW-0 closeout. See PLAN.md and the RW-0 decision record for authoritative status and authorization.
