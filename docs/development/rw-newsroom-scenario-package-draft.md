@@ -1,9 +1,9 @@
 # RW Newsroom Scenario Package — Selected Story RWN-01 (LEAP), Draft
 
-**Status:** RWN-01 story identity selected by the Operator on 2026-11-16; source corpus and scored package not frozen; no scored runs authorized  
-**Prepared:** 2026-11-16  
-**Decision authority:** Operator, under RW-D101–D105 and RW-D135  
-**Scope:** candidate story, proposed source manifest, draft assignment, answer-key outline, independent outcome-reference candidates, and remaining freeze gates
+- **Status:** RWN-01 story identity selected by the Operator on 2026-11-16; source corpus and scored package not frozen; no scored runs authorized
+- **Prepared:** 2026-11-16
+- **Decision authority:** Operator, under RW-D101–D105 and RW-D135
+- **Scope:** candidate story, proposed source manifest, draft assignment, answer-key outline, independent outcome-reference candidates, and remaining freeze gates
 
 > This document is a preparation artifact, not a corpus manifest and not an authorization. Do not use it as a frozen scored packet. The publisher article is currently an Article in Press whose version will be replaced automatically by the final Version of Record. Any later publisher version must be treated as a new corpus version, not silently substituted.
 
@@ -38,9 +38,9 @@ The key distinction is that LEAP is reported as an expert-in-the-loop framework,
 
 ## 2. Proposed source corpus manifest (not frozen)
 
-**Proposed corpus ID:** RWN-01-LEAP-AIP  
-**Proposed corpus version:** 0.1-draft  
-**Proposed retrieval date:** 2026-11-16  
+**Proposed corpus ID:** RWN-01-LEAP-AIP
+**Proposed corpus version:** 0.1-draft
+**Proposed retrieval date:** 2026-11-16
 **Freeze status:** story identity selected; publisher binary capture, Supplementary Material acquisition/review, complete source inventory, packet archive, and final corpus review remain outstanding.
 
 The exact article and included public data files must be preserved as immutable bytes or stable archived copies. For the enumerated GitHub files below, exact byte streams were retrieved from the GitHub file API at the pinned commit and SHA-256 was computed over the Base64-decoded bytes. Git blob SHA-1 identifiers remain separate from packet SHA-256 values. The identified GitHub file hashes are now recorded; the publisher PDF and Supplementary Material remain unacquired or unverified.
