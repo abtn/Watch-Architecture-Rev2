@@ -2,7 +2,7 @@
 
 **Status:** proposed plan; no RW implementation is authorized
 **Sequence:** B6 → RW-0 → RW-1 → RW-2 → RW-3 → RW-4 → RW-5 → foundation exit gate → R8
-**Code audit basis:** 29c954fe8685e0a5ddb9b205277a28b1a158c57e (the Checkpoint B PR changes documentation only)
+**Code audit basis:** post-B6 `main` at `91169b4931e48cb7b2803ed2066ec365f563a0ea` (B6 PR #124 is test-only; RW-0 docs closeout PR #125 changes documentation only)
 **Decision record:** [RW-0 decision record](rw-0-decision-record.md)
 **Value harness:** [Newsroom value harness](rw-value-harness.md)
 
@@ -20,28 +20,28 @@ The newsroom is the first value-harness domain. RW-0 freezes the measurement met
 
 The minimum R7-C capabilities approved by RW-D99—claim-level `TaskKnowledgeReference` and typed `KnowledgeUseAssessment`—are required only to the extent defined by the frozen newsroom claim. Before authorizing any RW slice that implements them, this plan must assign each capability to a named slice and proof obligations. This plan does not authorize R7-C or RW implementation.
 
-## 2. Baseline implementation audit
+## 2. Post-B6 implementation audit
 
-The following status is a static source audit at the pre-B6 code baseline above, not a runtime verification or a current post-B6 baseline. It must be repeated read-only against the verified post-B6 main head before RW-1 design/implementation; this plan does not claim that re-audit has been completed.
+The following is a read-only static source audit of post-B6 `main` at exact commit `91169b4931e48cb7b2803ed2066ec365f563a0ea`. It inspects source, migration files, tests, and architecture/Task specifications; it is not a runtime verification. No tests, Alembic commands, database migrations, or provider calls were run during this audit.
 
-| Entity / flow | Code state at audit baseline | Evidence / qualification |
+| Entity / flow | Code state at post-B6 audit SHA | Evidence / qualification |
 |---|---|---|
-| Signal | Implemented | core/models.py; deterministic ingestion in core/ingestion.py. This is ingestion, not triage. |
-| SignalDisposition | Not implemented | No ORM model in core/models.py; specified in architecture and Task contracts. |
-| Thread | Not implemented | No ORM model in core/models.py. |
-| Hypothesis | Not implemented | No ORM model in core/models.py. |
-| EvidenceLink | Partial | ORM supports Evaluation subjects and Signal/Outcome sources only. Hypothesis subjects and Artifact/Consultation sources are absent. |
-| ConfidenceChange | Not implemented | No ORM model in core/models.py. |
-| Artifact | Not implemented | No ORM model in core/models.py. |
-| Consultation | Not implemented | No ORM model in core/models.py. |
-| F1 ingestion | Partial | Signal ingestion exists; deterministic triage and disposition path are not implemented. |
-| F2 update / update_thread | Not implemented | Task specification only; no implementation service/worker found in the audited source. |
-| operator_update | Not implemented | Accepted Task contract exists; no dedicated implementation path found. Other Operator adapters do not implement this Task type. |
-| F3 decay / apply_decay | Not implemented | Task specification only; no implementation service found. |
-| F4 render / Artifact output | Not implemented | Task specification only. |
-| F8 Consultation | Not implemented | Accepted ADR/specification exists; no Consultation model or Task implementation found. |
+| Signal | Implemented — ingestion only | `core/models.py`; `core/ingestion.py` `IngestionService`; immutable Snapshot path. This does not implement triage. |
+| SignalDisposition | Not implemented | No ORM model, triage service, or commit path found. `tests/test_ingestion.py` has a negative scope test rejecting `allowed_writes=["SignalDisposition"]` for `ingest_source`; that is not an implementation proof. |
+| Thread | Not implemented | No ORM model, repository/service, or worker found in the audited source tree. |
+| Hypothesis | Not implemented | No ORM model, repository/service, or worker found in the audited source tree. |
+| EvidenceLink | Partial — Evaluation path only | `core/models.py` constrains `subject_kind` to `evaluation` and sources to `signal` or `outcome`; `core/evaluations.py` accepts only those source kinds and revalidates source Snapshot identity/quote data when supplied. Hypothesis subjects and Artifact/Consultation sources are absent. |
+| ConfidenceChange | Not implemented | No ORM model or cause-validation/commit path found. |
+| Artifact | Not implemented | No ORM entity or render path found. |
+| Consultation | Not implemented | No ORM entity or Consultation Task path found; ADR-0020's source contract remains an accepted target. |
+| F1 — ingestion and triage | Partial | Deterministic Signal ingestion exists; `triage_signal`, Thread matching, and per-Team dispositions are not implemented. |
+| F2 — update / update_thread | Not implemented | `docs/tasks.md` specifies the contract; no `update_thread` service/worker/commit path found. |
+| operator_update | Not implemented | ADR-0021 and Task contract exist; no dedicated manual Task adapter or world-memory commit path found. Existing learning approval adapters do not implement this Task type. |
+| F3 — decay / apply_decay | Not implemented | Task contract exists; no deterministic decay service or commit path found. |
+| F4 — render / Artifact output | Not implemented | No Artifact model or rendering worker/path found. |
+| F8 — Consultation | Not implemented | Accepted ADR/specification exists; no Consultation model or request/answer Task path found. |
 
-The strings for future Task types in core/ingestion.py's Event-scope allow-list are not proof that those Tasks exist. Architecture and Task specifications describe target behavior; code, migrations, and tests establish implementation. Recheck all rows through a fresh read-only audit of the verified post-B6 main head before RW-1; do not use this pre-B6 table as current implementation evidence.
+The `triage_signal`, `update_thread`, `operator_update`, and `apply_decay` strings in `core/ingestion.py` are members of an Event-scope allow-list only. `IngestionService` still limits its business scope to `ingest_source`, and `core/dispatcher.py` supports only the configured-source `ingest_source` worker. The repository migration files end at `0018_r7b_lifecycle_review_date` (revision `0018_r7b_lifecycle_review_date`, down-revision `0017_r7b_assessments`); this migration changes the R7-B lifecycle-assessment constraint and adds no RW entities. Runtime `alembic heads/current` was not executed. The test tree has no dedicated RW model/worker/commit test modules. Architecture and Task specifications describe intended behavior; source code, migrations, and focused tests establish implementation.
 
 ## 3. Proposed slice sequence
 
