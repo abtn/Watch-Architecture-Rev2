@@ -1217,8 +1217,8 @@ class EvidenceLink(Base):
             raise ValueError("EvidenceLink subject is not set")
         return subject_id
 
-    @subject_id.setter
-    def subject_id(self, value: UUID) -> None:
+    @subject_id.inplace.setter
+    def _set_subject_id(self, value: UUID) -> None:
         if self.subject_kind == "evaluation":
             self.evaluation_id = value
             self.hypothesis_id = None
@@ -1228,8 +1228,9 @@ class EvidenceLink(Base):
         else:
             raise ValueError("Unsupported EvidenceLink subject kind")
 
-    @subject_id.expression
-    def subject_id(cls):
+    @subject_id.inplace.expression
+    @classmethod
+    def _subject_id_expression(cls) -> sa.ColumnElement[UUID | None]:
         return sa.case(
             (cls.subject_kind == "evaluation", cls.evaluation_id),
             (cls.subject_kind == "hypothesis", cls.hypothesis_id),
