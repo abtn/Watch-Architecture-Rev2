@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import delete, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.evaluations import (
@@ -422,9 +423,7 @@ def test_hypothesis_cannot_reference_another_teams_thread(
     session_factory, evaluation_context
 ):
     team_id = evaluation_context["team_id"]
-    thread_id, other_team_id, other_policy_id, hypothesis_id = (
-        uuid4() for _ in range(4)
-    )
+    thread_id, other_team_id, hypothesis_id = (uuid4() for _ in range(3))
     with session_factory.begin() as session:
         session.add(
             Thread(
