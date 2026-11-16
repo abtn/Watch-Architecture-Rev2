@@ -1110,4 +1110,31 @@ The first CI attempt found a test setup error: the retirement helper had already
 
 Hosted CI [#1173](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43696425996) passed on exact code/test head `2a2f222ec43d88a38d993fe8737d54aa89f9b915`: fresh disposable PostgreSQL migration and single-head verification, Ruff, Mypy, patch whitespace, full pytest (**999 passed, 113 Alembic `path_separator` deprecation warnings in 172.04s**), and disposable-container cleanup. The full suite includes B5.4, B5.1–B5.3 lifecycle regressions, and relevant R7-B regressions.
 
-**B5.4.5 status:** Hosted verification passed. Operator-local verification against the final documentation-inclusive PR head, final complete-diff review, and explicit technical acceptance remain pending. PR #122 remains Draft and unmerged. No production modules, migrations, schemas, models, dependencies, runtime, dispatcher, scheduler, authentication boundary, or canonical write paths changed.
+**B5.4.5 status:** B5.4 is formally complete and closed by PR [#122](https://github.com/abtn/Watch-Architecture-Rev2/pull/122), merged at `29c954fe8685e0a5ddb9b205277a28b1a158c57e`. Its final local/hosted verification and Operator acceptance are recorded in the B5.4 closeout above and `PLAN.md`. No production modules, migrations, schemas, models, dependencies, runtime, dispatcher, scheduler, authentication boundary, or canonical write paths changed.
+
+
+## R7-B B6 — legacy lifecycle hardening (COMPLETE — PR #124 merged 2026-11-16)
+
+**Operator-approved scope and disposition:** B6 was limited to regression proofs for legacy lifecycle reconstruction and retirement. The implementation is test-only; no production code, migration, schema, dependency, or runtime boundary changed. The Operator explicitly accepted B6 after reviewing the exact-head local and hosted verification evidence.
+
+**Regression proofs added:**
+- `test_legacy_review_event_with_unique_state_match_is_applied` in `tests/test_learning_history.py`: a pointerless legacy review Event is applied when its item/version/review-date evidence identifies one unambiguous history node. The existing ambiguous-match rejection remains covered.
+- `test_repeated_legacy_review_and_revalidation_cycles_reconstruct_in_order` in `tests/test_learning_history.py`: repeated review/revalidation cycles reconstruct in history order.
+- `test_b6_legacy_create_root_with_backfilled_pointer_can_be_retired` in `tests/test_experience_distiller.py`: a post-0015 legacy-root/backfilled-pointer representation is retired through the existing trusted proposal, assessment, Operator approval, LearningCommitService, and TaskRuntime path. The proof checks immutable snapshot preservation, pointer advancement, history reconstruction, and replay without duplicate durable effects.
+
+The actual 0014 → 0015 migration remains covered by the existing populated migration tests. The B6 retirement integration test separately reproduces the post-backfill row representation for the trusted lifecycle path; it does not claim to rerun the migration itself.
+
+**Exact implementation/test head:** `485db7f91fab0a0d17e32fdbb470ee10f63fe07a` on `r7b-b6-legacy-lifecycle-hardening-20261115`.
+
+**Operator-local verification on that exact head:**
+- `uv sync --locked` passed.
+- Fresh disposable PostgreSQL migration reached the single head `0018_r7b_lifecycle_review_date`; Alembic current/head verification passed.
+- `uv run ruff check core tests migrations` passed.
+- `uv run mypy core` passed with no issues in 38 source files.
+- `uv run pytest -q` passed: **1,002 passed, 113 warnings in 356.84s**.
+- The 113 warnings are Alembic deprecations for the unset `path_separator` configuration; they did not fail checks.
+- The disposable PostgreSQL container was removed, database environment variables were restored, and exact HEAD/clean-worktree checks passed.
+
+**Hosted verification:** GitHub Actions [run #1218](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43733711342) passed on the exact implementation/test head, including fresh PostgreSQL migrations and single-head verification, Ruff, Mypy, patch whitespace, and the full test suite.
+
+**Review and closure:** PR [#124](https://github.com/abtn/Watch-Architecture-Rev2/pull/124) contained only `tests/test_learning_history.py` and `tests/test_experience_distiller.py` (230 additions, no deletions). The Operator accepted B6 on 2026-11-16. The PR was merged with a merge commit—not squash-merged—at `419312bc678901e2d22179313e6285086bee42da`. Local `main` was subsequently fast-forwarded to that exact merge commit and verified clean. No R7-C or R8 work was included.
