@@ -9,7 +9,7 @@ R8 is the three-domain pressure test of the completed foundational Watch archite
 
 R8 tests the architecture that exists at its entry baseline. It must not be used to add a missing fundamental layer. If a foundational dependency is incomplete on November 23, R8 does not start; the schedule is re-baselined rather than weakening the entry gate or compressing unfinished architecture into the test phase.
 
-The RW value harness uses **newsroom as its first real-world domain** (Operator-confirmed 2026-11-15). The exact beat, corpus, task brief, independent outcome set, and scoring thresholds are frozen during RW-0. This first harness does not silently expand R8 scope; see [the newsroom value harness](rw-value-harness.md) and [RW-0 decision record](rw-0-decision-record.md).
+The RW value harness uses **newsroom as its first real-world domain** (Operator-confirmed 2026-11-15). RW-0 decision groups 1–8 freeze the measurement methodology, rubric, thresholds, and execution/reporting rules. The actual completed story, corpus/manifest, task brief, answer key, independent outcome set, story-specific scoring examples, and execution configuration must be frozen before scored runs; any item deferred from documentation closeout must have a named owner and explicit acceptance gate. This first harness does not silently expand R8 scope; see [the newsroom value harness](rw-value-harness.md) and [RW-0 decision record](rw-0-decision-record.md).
 
 R8 must demonstrate:
 
