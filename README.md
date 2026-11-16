@@ -22,25 +22,13 @@ AI workers can suggest what to do, but they do not make decisions on their own. 
 - **R7-B4:** implemented the trusted revise/revalidate commit path and completed the integrated G1–G6 regression proofs.
 - **R7-B5.0–B5.4:** implemented candidate creation, supersession, and retirement, then completed the integrated lifecycle verification and formal closeout.
 - **R7-B6:** completed the legacy lifecycle reconstruction and trusted-retirement regression proofs; test-only PR [#124](https://github.com/abtn/Watch-Architecture-Rev2/pull/124) merged on 2026-11-16. See the [B6 closeout](docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md).
+- **RW-0:** closed the reasoning-loop decision phase and established the handoff into the world-memory foundation track; documentation closeout PR [#126](https://github.com/abtn/Watch-Architecture-Rev2/pull/126) was squash-merged.
 
 ## Work in progress
 
-- **RW-0 — next foundation track:** settle the remaining reasoning-loop decisions and freeze the newsroom value-harness scenario before RW implementation. The [RW-0 decision record](docs/development/rw-0-decision-record.md) tracks the open decisions and authorization boundary.
-- **R7-C** remains separately gated; B6 closure does not authorize it. RW-0 will determine whether any R7-C capability is necessary for the reasoning value harness.
+- **RW-1 — physical design and planning:** the proposed Thread, Hypothesis, ConfidenceChange, and shared EvidenceLink model is documented in the [RW-1 physical design proposal](docs/development/rw-1-physical-design-proposal.md). It is under Operator review; its design decisions must be accepted before RW-1 implementation is authorized. The current documentation/planning work is tracked in [PR #127](https://github.com/abtn/Watch-Architecture-Rev2/pull/127).
+- **RW-1 through RW-5:** these are the remaining world-memory reasoning-loop foundation slices. Implementation will proceed in bounded, separately authorized steps, followed by the foundation exit gate.
+- **R7-C** remains separately gated. Neither R7-B6 nor RW-0 closeout authorizes R7-C implementation.
+- **RWN-01 newsroom scenario preparation:** source capture, corpus freeze, reviewer materials, and final harness/test configuration are deferred from the immediate foundation critical path. They remain required before newsroom scored runs and the foundation exit/R8 gate; no scored runs are currently authorized.
 
-The active checkpoint, exact status, authorization, and verification evidence are maintained in [PLAN.md](PLAN.md) and [docs/testing.md](docs/testing.md).
-
-## Future plan
-
-- **RW — world-memory reasoning loop:** complete RW-0 through RW-5 and pass the foundation exit gate before cross-domain testing.
-- **R8 (planned start: November 23, 2026):** pressure-test the completed architecture across newsroom, development-team, and generalist domains. November 23 is a planned start, not a completion deadline; R8 waits for the foundation exit gate. See the [R8 delivery plan](docs/development/r8-delivery-plan.md).
-- **R9:** make the development and review process more repeatable and reliable.
-
-## Project documentation
-
-- [PLAN.md](PLAN.md) — current project status and next steps.
-- [Plain-language overview](docs/simple-explain.md) — the whole Watch concept in one read; orientation only.
-- [Architecture overview](docs/architecture.md) — how the system is structured.
-- [Architecture decisions](docs/decisions.md) — the decisions that guide the project.
-- [Contributor instructions](AGENTS.md) — how to work safely in this repository.
-- [Documentation guide](docs/documentation-guide.md) — document authority, active reading order, and historical-record policy.
+The active checkpoint, exact status, authorization, and verification evidence are maintained in [PLAN.md](PLAN.md) and [docs/testing.md](docs/testing.md). 
