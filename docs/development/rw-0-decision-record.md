@@ -1,6 +1,7 @@
 # RW-0 — Decision Record
 
 **Recorded:** 2026-11-15
+**Updated:** 2026-11-16
 **Status:** RW-0 decision groups 1–8 approved; cross-document reconciliation and formal closeout remain in progress. No RW implementation is authorized.
 **Authority:** Operator decisions are identified separately from accepted ADR constraints, recommendations, and unresolved questions.
 
