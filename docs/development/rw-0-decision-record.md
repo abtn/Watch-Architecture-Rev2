@@ -16,8 +16,11 @@ This record is the decision index for the world-memory reasoning loop (RW). It d
 | RW-D04 | R8 is planned to start on November 23, 2026. This is not a completion deadline; no completion date is set. If the foundation gate has not passed, R8 does not start on that date. | Confirmed |
 | RW-D05 | The first real-world value-harness domain is **newsroom**. | Confirmed |
 | RW-D06 | This Checkpoint B work belongs on the existing documentation PR #123. It is documentation and contract definition only; it does not authorize production code, tests, migrations, schema changes, or RW implementation. | Confirmed |
+| RW-D07 | The first newsroom demonstration should aim to establish all three distinct claims: relevant retained experience is available through retrieval, its use can be attributed to specific claims, and access to it improves later work under independent evaluation. These claims require separate evidence; a KnowledgeUseAssessment does not by itself establish causation. | Confirmed |
 
 The exact newsroom beat, source corpus, task brief, and independent outcome set are not selected here. They must be frozen before the first scored harness run.
+
+The Operator has also confirmed the target product claim (RW-D07). The working design direction is to treat application-written, claim-level TaskKnowledgeReference as a likely foundation dependency if the demonstration claims identifiable use, while deciding separately whether the full KnowledgeUseAssessment workflow is needed before R8. Retrieval quality, exposure, claim-level attribution, and downstream benefit must remain distinct measurements. No individual assessment or correlation may be presented as causal proof.
 
 ## 2. Accepted architecture constraints
 
