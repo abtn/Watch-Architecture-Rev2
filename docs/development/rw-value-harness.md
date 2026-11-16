@@ -1,6 +1,6 @@
 # RW Value Harness — Newsroom First
 
-**Status:** methodology approved during RW-0 on 2026-11-16; candidate RWN-01 and experiment-package draft prepared but not Operator-selected or frozen; no scored runs authorized
+**Status:** methodology approved during RW-0 on 2026-11-16; RWN-01 story identity selected by the Operator on 2026-11-16; source corpus and experiment package remain unfrozen; no scored runs authorized
 **First domain:** science-and-technology newsroom research
 **Decision authority:** the Operator freezes the actual story package and execution configuration before scored runs and explicitly accepts the final harness result.
 
@@ -18,13 +18,13 @@ These are separate measurements. Context availability is not proof of actual cla
 
 The harness is a repeatable product-value check. It does not replace database/contract proofs, and a passing test suite does not establish newsroom value.
 
-The first scenario is one completed, bounded science-and-technology story. A leading candidate is the 4 November 2026 Communications Materials Article in Press, “A closed-loop framework for perovskite precursor additive discovery” (LEAP), DOI 10.1038/s43246-026-01407-3. The candidate rationale, pinned public data-release source identities, draft assignment, answer-key outline, independent outcome-reference candidates, and source-capture blockers are recorded in [the RWN-01 scenario-package draft](rw-newsroom-scenario-package-draft.md). This is not Operator selection, a frozen corpus, or authority to score outputs. The exact story, publication/source packet, brief, answer key, and outcome reference must be approved and frozen before scored execution. Do not infer that draft candidate materials are the final source set.
+The first scenario is one completed, bounded science-and-technology story. The Operator selected RWN-01 on 2026-11-16: the 4 November 2026 *Communications Materials* Article in Press, “A closed-loop framework for perovskite precursor additive discovery” (LEAP), DOI 10.1038/s43246-026-01407-3. The selected version is the publisher's Article in Press, not the earlier arXiv preprint; a later Version of Record must be treated as a new corpus version. The story identity is selected, but the source corpus and experiment package are not frozen and no scored runs are authorized. The [RWN-01 scenario-package draft](rw-newsroom-scenario-package-draft.md) records the source inventory, exact-byte SHA-256 capture log for 12 identified files at pinned author-repository commit `f25fbe8238422439db10877ea79295ec233c4867`, assignment draft, reviewer-only answer-key outline, outcome-reference candidates, and unresolved gates. The Article in Press PDF binary/byte length/visual verification/SHA-256 remain pending. The publisher-listed Supplementary Material PDF has not been acquired and must be assessed because the paper directs readers there for Welch-test confidence intervals. The Transparent Peer Review PDF is optional pending a methodological-need decision. The individual `benchmark/model_results/` files remain un-inventoried; additional raw device data are held on institutional servers and available from corresponding authors on reasonable request. Story selection is not corpus freeze, approval of the final brief/key/outcome reference, or authority to score outputs. Do not infer that draft candidate materials are the final source set.
 
 ## 2. Scenario and source package
 
 The frozen scenario should exercise this path:
 
-1. Select one completed story that meets the RW-D101 eligibility criteria.
+1. Use the Operator-selected completed story RWN-01, subject to final confirmation of its source accessibility and the remaining D101 evidence-preservation checks.
 2. Collect, review, preserve, and freeze a fixed source corpus and manifest.
 3. Prepare the scored assignment brief using only the frozen packet.
 4. Prepare the source-grounded answer key independently of model outputs.
