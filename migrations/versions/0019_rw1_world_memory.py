@@ -464,6 +464,21 @@ def downgrade() -> None:
         table_name="confidence_changes",
     )
     op.drop_table("confidence_changes")
+    op.drop_constraint(
+        "fk_evidence_links_hypothesis_team",
+        "evidence_links",
+        type_="foreignkey",
+    )
+    op.drop_constraint(
+        "fk_evidence_links_evaluation_subject_team",
+        "evidence_links",
+        type_="foreignkey",
+    )
+    op.drop_constraint(
+        "fk_evidence_links_originating_task_team",
+        "evidence_links",
+        type_="foreignkey",
+    )
     op.drop_index(
         "ix_hypotheses_team_status_touched", table_name="hypotheses"
     )
@@ -525,19 +540,6 @@ def downgrade() -> None:
     )
     op.drop_constraint(
         "uq_evidence_links_id_team", "evidence_links", type_="unique"
-    )
-    op.drop_constraint(
-        "fk_evidence_links_originating_task_team",
-        "evidence_links",
-        type_="foreignkey",
-    )
-    op.drop_constraint(
-        "fk_evidence_links_hypothesis_team", "evidence_links", type_="foreignkey"
-    )
-    op.drop_constraint(
-        "fk_evidence_links_evaluation_subject_team",
-        "evidence_links",
-        type_="foreignkey",
     )
     op.drop_column("evidence_links", "evaluation_id")
     op.drop_column("evidence_links", "hypothesis_id")
