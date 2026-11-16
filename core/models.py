@@ -1186,9 +1186,15 @@ class EvidenceLink(Base):
         Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False
     )
     subject_kind: Mapped[str] = mapped_column(String, nullable=False)
-    evaluation_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
-    hypothesis_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
-    originating_task_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    evaluation_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    hypothesis_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    originating_task_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), nullable=False
+    )
     source_kind: Mapped[str] = mapped_column(String, nullable=False)
     outcome_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     signal_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
