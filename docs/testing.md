@@ -1138,3 +1138,23 @@ The actual 0014 → 0015 migration remains covered by the existing populated mig
 **Hosted verification:** GitHub Actions [run #1218](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43733711342) passed on the exact implementation/test head, including fresh PostgreSQL migrations and single-head verification, Ruff, Mypy, patch whitespace, and the full test suite.
 
 **Review and closure:** PR [#124](https://github.com/abtn/Watch-Architecture-Rev2/pull/124) contained only `tests/test_learning_history.py` and `tests/test_experience_distiller.py` (230 additions, no deletions). The Operator accepted B6 on 2026-11-16. The PR was merged with a merge commit—not squash-merged—at `419312bc678901e2d22179313e6285086bee42da`. Local `main` was subsequently fast-forwarded to that exact merge commit and verified clean. No R7-C or R8 work was included.
+
+
+## RW-1 — world-memory schema and EvidenceLink implementation (PR #128; 2026-11-16)
+
+**Disposition:** implementation PR [#128](https://github.com/abtn/Watch-Architecture-Rev2/pull/128) was merged to `main` at `7213a17e5ae96c3cae22ec1082af05d47b9c0d1d`. The final PR code/test commit was `aa947983fc72f771946ebf5b0d9a781aba80d7f3`; its parent was `7dfa57f37e71a739d44085fc2268e849212fbe9b`. Migration `0019_rw1_world_memory` is included. This record documents implementation and local verification; **formal Operator acceptance remains pending**.
+
+**Operator-local verification (reported from the local Windows checkout):**
+- The local branch HEAD at test time was `7dfa57f37e71a739d44085fc2268e849212fbe9b`, with one unstaged change in `tests/test_rw1_schema_migration.py`: removal of an unused `original =` assignment from a query call.
+- That one-line correction is exactly the change committed in final PR code/test commit `aa947983fc72f771946ebf5b0d9a781aba80d7f3`. The tested working-tree content therefore matches the final PR code/test tree, but the Git HEAD used for the run was the parent commit, not `aa947983`. Do not describe this as a test run whose HEAD was `aa947983`.
+- Fresh disposable PostgreSQL migration to `0019_rw1_world_memory` passed. The disposable container was removed; no persistent database was used.
+- Ruff passed.
+- Mypy passed: 38 source files.
+- Focused migration tests passed: **7 passed**.
+- Full test suite passed: **1,013 passed**.
+- The full suite reported **130 Alembic `path_separator` deprecation warnings**; these were warnings, not test failures.
+- `git diff --check` passed.
+
+**Hosted CI qualification:** GitHub's commit-status endpoint for final PR code/test commit `aa947983fc72f771946ebf5b0d9a781aba80d7f3` returned no statuses (`total_count = 0`, state `pending`). Therefore this closeout does **not** claim hosted CI passed on the final code/test commit. The earlier hosted run on an older commit is not transferable to this SHA.
+
+**Scope and boundary:** the PR implements the accepted RW-1 physical design only. It does not implement RW-2–RW-5, R7-C, persistent-database operations, newsroom scored execution, a new runtime/scheduler/authentication path, or provider changes. Merge and local verification do not themselves constitute formal Operator acceptance.
