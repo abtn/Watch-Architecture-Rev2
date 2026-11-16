@@ -298,7 +298,7 @@ def upgrade() -> None:
         )
 
     op.create_foreign_key(
-        "fk_evidence_links_evaluation_team",
+        "fk_evidence_links_evaluation_subject_team",
         "evidence_links",
         "evaluations",
         ["evaluation_id", "team_id"],
@@ -346,7 +346,7 @@ def upgrade() -> None:
     )
     op.alter_column("evidence_links", "originating_task_id", nullable=False)
     op.drop_constraint(
-        "fk_evidence_links_evaluation_team", "evidence_links", type_="foreignkey"
+        "fk_evidence_links_evaluation_subject_team", "evidence_links", type_="foreignkey"
     )
     op.drop_constraint(
         "ck_evidence_links_subject_kind", "evidence_links", type_="check"
@@ -413,7 +413,7 @@ def upgrade() -> None:
             name="ck_confidence_changes_cause",
         ),
         sa.CheckConstraint(
-            "cause_kind IN ('evidence', 'decay)",
+            "cause_kind IN ('evidence', 'decay')",
             name="ck_confidence_changes_cause_kind",
         ),
     )
