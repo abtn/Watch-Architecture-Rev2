@@ -23,7 +23,7 @@ Source-capture state recorded on 2026-11-16:
 
 The source packet, brief, answer key, outcome set, reviewer calibration, and execution configuration remain pre-execution deliverables. No scored output may be generated until the frozen package is independently reviewable and explicitly accepted by the Operator. The RWN-01 selection does not alter the approved methodology or any RW capability boundary.
 
-## 2. Operator-confirmed decisions
+## 1. Operator-confirmed decisions
 
 | ID | Decision | Status |
 |---|---|---|
