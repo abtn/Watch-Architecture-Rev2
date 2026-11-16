@@ -2,25 +2,25 @@
 Every durable write in Watch is performed by a Task. This document is the spec for each v1 task type: what it reads, what it may write, how it runs, what is validated at commit time, and how it fails.
 ## RW implementation status and evidence contract
 
-The following status is a static source audit at baseline **29c954fe8685e0a5ddb9b205277a28b1a158c57e**. The current documentation PR does not change code. Re-audit after B6 and before RW-1.
+The following status is a static source audit of post-B6 `main` at exact commit **91169b4931e48cb7b2803ed2066ec365f563a0ea**. B6 PR #124 changed only test files; the subsequent PR #125 is documentation-only. No tests, Alembic commands, database migrations, or provider calls were run as part of this source audit.
 
-| Task / entity | Implementation state at audit baseline |
+| Task / entity | Implementation state at post-B6 audit SHA |
 |---|---|
 | ingest_source | Implemented for the existing deterministic Signal-ingestion path. This does not include triage. |
 | triage_signal | Specified here; not implemented. |
 | update_thread | Specified here; not implemented. |
 | operator_update | Specified here and governed by ADR-0021; no dedicated implementation path found. |
 | apply_decay | Specified here; not implemented. |
-| Thread / Hypothesis / ConfidenceChange / SignalDisposition | Specified by architecture and Task contracts; no ORM models in the audited baseline. |
+| Thread / Hypothesis / ConfidenceChange / SignalDisposition | Specified by architecture and Task contracts; no ORM models found in the audited source tree. |
 | EvidenceLink | Partial ORM implementation: Evaluation subject with Signal/Outcome sources only. |
 
-The Event-scope allow-list in core/ingestion.py contains future Task type names so that bounded Task-attributed Events can be recorded. Its entries do **not** implement those Tasks or establish that their business entities and services exist.
+The Event-scope allow-list in `core/ingestion.py` contains future Task type names so bounded Task-attributed Events can be recorded. Its entries do **not** implement those Tasks or establish that their business entities and services exist. The current `core/dispatcher.py` supports only the configured-source `ingest_source` worker.
 
 ### EvidenceLink contract for RW
 
 - ADR-0007 accepts one polymorphic EvidenceLink model with subjects **hypothesis | evaluation** and sources **signal | outcome | artifact**. Quotes must match exact offsets in immutable hashed Snapshots. Only **supports** and **challenges** may anchor a ConfidenceChange.
 - ADR-0020 adds **consultation** as a source kind; an answer is an immutable hashed Snapshot and is quote-verifiable.
-- The ORM in the audited baseline is narrower: it constrains the subject to **evaluation** and sources to **signal | outcome**.
+- The current ORM is narrower: it constrains the subject to **evaluation** and sources to **signal | outcome**. `core/evaluations.py` accepts and revalidates only those Evaluation-scoped sources; it does not implement the Hypothesis subject path.
 - RW must extend the existing EvidenceLink model/table to the accepted contract. Do not create a sibling evidence model or weaken current Evaluation evidence. Preserve same-Team ownership, deterministic quote/hash validation, stance rules, uniqueness, and replay behavior.
 - Artifact and Consultation source rows must not be treated as valid references before their canonical source records and validation paths exist. Their staging order belongs in the RW-1 migration design. If implementation requires changing an accepted ADR contract, stop for an ADR addendum and Operator decision.
 
