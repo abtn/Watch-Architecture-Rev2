@@ -42,12 +42,15 @@ This record is the decision index for the world-memory reasoning loop (RW). It d
 | RW-D30 | Use two independent reviewers for every newsroom output. Reviewers receive anonymized outputs without control/treatment labels and score independently before discussing disagreements. Preserve both original scores. Material disagreements must be adjudicated by a third reviewer or resolved through a documented process; retain the original scores and the resolution record. | Confirmed |
 | RW-D31 | Trigger formal reviewer-disagreement resolution if (1) total scores differ by more than 10 points out of 100, (2) reviewers disagree on whether a critical factual error occurred, or (3) reviewers disagree on whether a central claim is unsupported or materially misleading. Preserve both original assessments and the adjudication/documented resolution. | Confirmed |
 | RW-D32 | Reviewers must have sufficient science/technology literacy and evidence-evaluation ability, but need not be professional journalists. For claim verification, they must be able to inspect the fixed source packet and verify claims against it. For editorial assessment, they must understand scientific communication, uncertainty, and evidence-based reasoning. | Confirmed |
+| RW-D33 | Use the same two reviewers for all 20 newsroom outputs. Present anonymized outputs in randomized order and distribute review across balanced batches with breaks to reduce fatigue and condition/order effects. Preserve the presentation order and batch assignment as evaluation metadata. | Confirmed |
 
 Two-reviewer protocol (RW-D30): every output is independently scored by two reviewers who receive anonymized outputs without condition labels. They submit scores before discussion; both original scores are retained. Material disagreements are adjudicated by a third reviewer or resolved using a documented process, with the resolution preserved rather than overwriting the initial assessments.
 
 Reviewer-disagreement triggers (RW-D31): require formal resolution when total scores differ by more than 10/100, reviewers disagree on the presence of a critical factual error, or they disagree on whether a central claim is unsupported or materially misleading. Preserve both initial assessments and the resolution record.
 
 Reviewer qualifications (RW-D32): reviewers need relevant science/technology literacy and evidence-evaluation ability, but need not be professional journalists. Claim verification requires the ability to inspect the fixed source packet and verify claims against it; editorial assessment requires understanding of scientific communication, uncertainty, and evidence-based reasoning.
+
+Reviewer assignment (RW-D33): use the same two reviewers for all 20 outputs. Randomize anonymized presentation order and distribute work across balanced batches with breaks. Preserve order and batch metadata so fatigue and order effects can be examined.
 
 The exact newsroom beat, source corpus, task brief, and independent outcome set are not selected here. They must be frozen before the first scored harness run.
 
