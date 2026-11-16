@@ -1,132 +1,261 @@
 # RW Value Harness — Newsroom First
 
-**Status:** proposed measurement contract; not yet frozen for scored runs
-**First domain:** newsroom (Operator-confirmed 2026-11-15)
-**Decision authority:** the Operator freezes the exact scenario, rubric, and thresholds during RW-0 / before the R8 entry gate.
+**Status:** methodology approved during RW-0 on 2026-11-16; RWN-01 story identity selected by the Operator on 2026-11-16; source corpus and experiment package remain unfrozen; no scored runs authorized
+**First domain:** science-and-technology newsroom research
+**Decision authority:** the Operator freezes the actual story package and execution configuration before scored runs and explicitly accepts the final harness result.
 
 ## 1. What the harness measures
 
-The harness asks whether a Watch Team becomes more reliable at a bounded newsroom task because it retains and retrieves verified experience—not merely whether the code can store records or pass tests.
+The harness evaluates whether a Watch Team produces better evidence-grounded newsroom analysis when it receives relevant, accepted, retained experience through the normal retrieval and Context path.
 
-It is a repeatable product-value check across RW slices. It does not replace database/contract proofs, and a passing test suite does not establish newsroom value.
+It separates three claims:
 
-The first scenario is a **newsroom research desk tracking one bounded beat**. The exact beat, publication/source set, task brief, and outcome checks are deliberately left for RW-0 to select and freeze. Do not infer a topic or source list from this document.
+1. Relevant, accepted experience is available through retrieval and enters the later Task Context.
+2. Specific output claims can be audibly attributed to an exact retained KnowledgeItem version through application-validated evidence and independent review.
+3. Treatment outputs improve under independent evaluation compared with matched control outputs.
 
-## 2. Scenario shape
+These are separate measurements. Context availability is not proof of actual claim-level use. Claim-level use is not proof of output improvement. A higher output score alone does not establish that retained knowledge caused the improvement.
+
+The harness is a repeatable product-value check. It does not replace database/contract proofs, and a passing test suite does not establish newsroom value.
+
+The first scenario is one completed, bounded science-and-technology story. The Operator selected RWN-01 on 2026-11-16: the 4 November 2026 *Communications Materials* Article in Press, “A closed-loop framework for perovskite precursor additive discovery” (LEAP), DOI 10.1038/s43246-026-01407-3. The selected version is the publisher's Article in Press, not the earlier arXiv preprint; a later Version of Record must be treated as a new corpus version. The story identity is selected, but the source corpus and experiment package are not frozen and no scored runs are authorized. The [RWN-01 scenario-package draft](rw-newsroom-scenario-package-draft.md) records the source inventory, exact-byte SHA-256 capture log for 18 identified files, including all six per-model benchmark-response CSVs, at pinned author-repository commit `f25fbe8238422439db10877ea79295ec233c4867`, assignment draft, reviewer-only answer-key outline, outcome-reference candidates, and unresolved gates. The Article in Press PDF binary/byte length/visual verification/SHA-256 remain pending. The publisher-listed Supplementary Material PDF has not been acquired and must be assessed because the paper directs readers there for Welch-test confidence intervals. The Transparent Peer Review PDF is optional pending a methodological-need decision. All six `benchmark/model_results/` response CSVs are inventoried and hashed; additional raw device data are held on institutional servers and available from corresponding authors on reasonable request. Story selection is not corpus freeze, approval of the final brief/key/outcome reference, or authority to score outputs. Do not infer that draft candidate materials are the final source set.
+
+## 2. Scenario and source package
 
 The frozen scenario should exercise this path:
 
-1. A fixed set of source material is ingested or supplied through the approved Signal path.
-2. The Team maintains a Thread for the developing story/beat.
-3. The system records multiple plausible Hypotheses where the evidence warrants alternatives; it does not force a single narrative.
-4. Each material claim is linked to exact quotes from immutable, hashed source Snapshots.
-5. Confidence changes are justified by supporting/challenging evidence or by the separate deterministic decay rule.
-6. A later Task receives bounded Context containing the current Thread, active Hypotheses, verified evidence, and any accepted Team Experience that is eligible for retrieval.
-7. An independently checkable outcome is recorded. Evaluation and any resulting Team Experience follow the existing accepted R6/R7 gates; no model may directly write Team memory.
-8. A subsequent run tests whether accepted and retrieved experience improves the work on a matched task.
+1. Use the Operator-selected completed story RWN-01, subject to final confirmation of its source accessibility and the remaining D101 evidence-preservation checks.
+2. Collect, review, preserve, and freeze a fixed source corpus and manifest.
+3. Prepare the scored assignment brief using only the frozen packet.
+4. Prepare the source-grounded answer key independently of model outputs.
+5. Prepare and freeze the independent outcome reference set, resolution criteria, and evidence cutoff.
+6. Establish the pre-experiment accepted experience state and freeze its canonical snapshot.
+7. Run the matched control/treatment comparison using identical source and assignment inputs; treatment alone receives the frozen retained-experience snapshot through normal retrieval and Context.
+8. Identify claims from immutable outputs and independently assess any explicit claim-to-knowledge relationships.
+9. Report newsroom quality, evidence errors, retained-knowledge attribution, independent outcomes, and operational measures separately.
 
-The first harness measures reasoning, evidence discipline, and retained-experience effects. It does **not** claim to prove production publishing/delivery, public distribution, or consultation workflows unless RW-0 explicitly includes and implements those capabilities.
+### Story eligibility
 
-## 3. Controlled comparison
+Choose one completed science-and-technology story with accessible primary evidence, important claims that can be directly verified against the proposed source packet, meaningful interpretive depth, bounded scope, and sources that can be preserved and independently checked.
 
-Use two equivalent Team states or isolated fixtures with the same frozen policy, source corpus, task brief, model/provider revision, tool budget, and evaluation set:
+Exclude breaking or rapidly changing stories; stories primarily dependent on anonymous or inaccessible sources; stories without sufficient evidence to distinguish established findings from speculation; and stories whose necessary specialist knowledge cannot be represented in the packet.
 
-- **Baseline condition:** receives the current source material and ordinary allowed Context, but no prior accepted newsroom experience item relevant to the target task.
-- **Experience-assisted condition:** receives the same inputs plus the exact accepted, current, eligible newsroom Experience item(s) produced by the first run and retrieved through the normal Context path.
+### Corpus composition and freeze
 
-The comparison must prevent contamination:
-- Do not let the baseline Team receive the experience item through shared storage, prompt text, or operator hints.
-- Do not let the experience-assisted Team receive extra source material or a different task brief.
-- Keep model/provider revision and generation settings fixed within a comparison pair, or record the difference and treat the pair as non-comparable.
-- Preserve the complete Context manifest, source Snapshot hashes, Task IDs, model/provider identity, and evaluation record for each run.
-- Repeat the paired scenario enough times to distinguish a durable effect from one lucky generation; the required repeat count is an RW-0 decision.
+Determine corpus size by evidentiary sufficiency, not a fixed source count. Prefer original research, official datasets, and direct institutional material. Add independent expert/institutional sources and reputable secondary reporting only where they contribute necessary context, independent verification, qualifications, limitations, or alternative interpretations.
 
-If the same Team is used sequentially, reset/replay rules must be proven to avoid hidden state leakage. Prefer isolated, equivalent Team fixtures for controlled comparisons.
+Every included source must contribute relevant evidence or necessary context. Exclude duplicative sources without additional evidence, irrelevant or unverifiable sources, and primarily promotional material. Do not exclude disagreement merely because it challenges a preferred interpretation. Record important candidate sources excluded and the reason.
 
-## 4. Measures
+Freeze the source corpus before writing the final scored brief. Assign a unique corpus ID/version and preserve stable source IDs, metadata, retrieval dates, cryptographic hashes, and exact source files or stable archived copies where possible. No post-freeze additions or silent replacements are allowed. Document corrections explicitly; a material source-set change creates a new corpus version and requires validity assessment and possibly a new experiment instance.
 
-The proposal's three core measures are retained, with operational definitions below. Exact thresholds remain open until the Operator freezes them.
+### Assignment brief
 
-### 4.1 Deterministic validation acceptance and rejection
+Use an identical brief for all 20 original runs. It must specify the task, intended audience, scope and exclusions, evidence rule, required analytical elements, output structure, and one common word limit. The audience is educated general readers without assuming specialist knowledge. The evidence rule limits claims to the supplied packet and requires distinctions between source-supported findings, interpretation, and uncertainty.
 
-Report:
-- number of material claim/evidence proposals submitted;
-- number accepted by deterministic validation;
-- number rejected;
-- rejection counts by stable reason;
-- acceptance rate and rejection rate.
+Require a headline, central finding, why it matters, evidence/source comparison, limitations and uncertainty, and what remains unknown. Identify sources consistently by packet IDs. Do not disclose the answer key, preferred conclusions, or detailed scoring rubric to generation. Do not reward verbosity or prescribe identical wording or conclusions. The exact word limit is a story-package item and must be frozen before scored runs.
 
-The denominator is all in-scope proposals presented to the validator, not only the successful ones. A rejected proposal is not silently dropped from the report. Acceptance means the proposal satisfied the specified structural, scope, quote/hash, stance, transition, and cause checks; it does not prove the claim is true.
+## 3. Controlled comparison and execution structure
 
-### 4.2 Retained-experience effect on the second run
+Use **10 matched pairs**, each containing one control run and one treatment run, for 10 original control outputs and 10 original treatment outputs.
 
-Score the baseline and experience-assisted runs against the same independent newsroom rubric. Report the paired difference per rubric dimension and overall.
+Within each pair, use the same frozen assignment, source corpus, model/provider configuration, generation settings, tool budget, and baseline identity. Each run starts from an equivalent copy of the same frozen baseline. Control receives no relevant prior accepted newsroom experience. Treatment alone receives the exact frozen retained-experience snapshot through the normal retrieval and Context path.
 
-The rubric should assess at least:
-- factual correctness against the frozen outcome/reference set;
-- evidence traceability (every material claim has a verifiable source quote);
-- coverage of material facts and relevant counter-evidence;
-- treatment of uncertainty and competing explanations;
-- consistency with the accepted prior lesson without treating it as unquestionable truth.
+Prevent contamination:
 
-The primary value question is whether the experience-assisted condition improves independently scored work without increasing unsupported claims or hiding contrary evidence. A model's own self-rating is not an independent score and must never be the sole judge.
+- Do not let control receive the treatment snapshot through shared storage, prompt text, operator hints, or hidden state.
+- Do not give treatment extra source material, different instructions, or a different tool budget.
+- Do not let experience written by any scored run become available to another scored run.
+- Preserve the complete Context manifest, source Snapshot hashes, Task IDs, provider/model identity, and execution evidence.
+- Verify that every treatment run was configured with access to the exact same frozen snapshot identity and hash. Snapshot membership is distinct from what retrieval selects for a Task.
+- Do not silently repair an incorrect/missing Context manifest or rerun a protocol-compromised output.
 
-### 4.3 Confidence calibration against recorded outcomes
+### Matched pairs and balanced blocks
 
-For Hypotheses that later resolve against the frozen outcome set, report the observed resolution rate separately for low, moderate, and high confidence bands. Preserve unresolved cases as unresolved; do not count them as correct or incorrect.
+Arrange the 10 pairs as **five blocks of four run slots**. Each block contains two complete matched pairs and therefore exactly two control and two treatment slots.
 
-Do not convert the ordinal bands into numeric probabilities or calculate a Brier score unless RW-0 explicitly defines and justifies that mapping. The report must include the sample count per band so a small sample is not presented as strong calibration evidence.
+Before the first scored run, freeze the randomization algorithm and version, initial 20 run-slot IDs and assignments, seed, block order, pair order within each block, condition order within each pair, and complete planned execution order. Execute each randomized four-run block within one predefined operational window. Keep the provider, model version, generation settings, and infrastructure configuration fixed. Preserve the actual order and timestamps. Do not rerandomize or selectively pause/accelerate a condition in response to output quality.
 
-### 4.4 Operational guardrails
+Report condition-level comparisons as primary and all 10 within-pair differences as descriptive evidence. Pairing and blocking improve balance and transparency; they do not establish statistical proof or broad causal identification.
 
-Record cost, latency, provider/model revision, number of tool calls, and task failures for each run. These are guardrails and comparability metadata, not substitutes for quality.
+## 4. Measures and predeclared acceptance gates
 
-## 5. Independent outcome and scoring controls
+### 4.1 Newsroom output score — 100 points
 
-Before any scored run, RW-0 must freeze:
-- the exact newsroom beat and task brief;
-- the source corpus, source timestamps, immutable content hashes, and allowed-source rules;
-- material facts, known counter-evidence, and outcome/resolution conditions;
-- the scoring rubric, scoring instructions, and independent reviewer role;
-- the run count, paired comparison method, and exclusion rules;
-- acceptance thresholds for each measure and any minimum sample size.
+Use two distinct scoring components:
 
-Where feasible, the reviewer should be blind to whether a run is baseline or experience-assisted. A human reviewer or independently verified reference set must anchor factual scoring. Automated deterministic checks may score quote validity, scope, and record consistency. Model-generated evaluations may contribute evidence but cannot be the only judge of model quality.
+| Component | Points |
+|---|---:|
+| Structured claim verification | 50 |
+| Independent editorial assessment | 50 |
+| **Total** | **100** |
 
-## 6. What counts as retained experience
+**Claim verification — 50 points**
 
-Only accepted, versioned Team Experience eligible under current lifecycle/review rules counts. A proposed LearningChange, unapproved KnowledgeItem, stale/retired item, embedding match alone, or transcript text does not count.
+| Category | Points |
+|---|---:|
+| Factual accuracy against the source packet | 20 |
+| Evidence traceability | 15 |
+| Quotation and attribution accuracy | 7 |
+| Numerical and temporal accuracy, including figures, dates, and units | 8 |
+| **Total** | **50** |
 
-The harness must record:
-- the source Outcome/Evaluation and accepted LearningChange that produced the item;
-- the KnowledgeItem ID/version and current status;
-- its review eligibility at retrieval time;
-- the retrieval result and Context manifest proving it entered the later Task Context.
+**Editorial assessment — 50 points**
 
-A Context manifest proves that an item was retrieved and made available; it does not prove that the worker actually used it. Direct use attribution requires a validated knowledge-use reference or equivalent accepted mechanism. RW-0 must decide whether R7-C supplies a necessary part of that mechanism. If no such mechanism is in scope, report retrieval/availability and the independently measured paired outcome effect, but do not claim direct use attribution.
+| Category | Points |
+|---|---:|
+| Interpretation of findings | 12 |
+| Significance without exaggeration | 10 |
+| Uncertainty and limitations | 15 |
+| Synthesis across sources | 13 |
+| **Total** | **50** |
 
-This makes the causal claim testable at the level supported by the evidence: the second run received a specific accepted lesson through the real retrieval path.
+Score each category using five anchored levels:
 
-## 7. Capability gate
+| Level | Anchor |
+|---:|---|
+| 4 | Complete — accurate and adequately supported; material requirements satisfied |
+| 3 | Strong — substantially correct, with limited non-material omissions or weaknesses |
+| 2 | Partial — mixed performance; important elements incomplete or weakly supported |
+| 1 | Weak — major deficiencies, unsupported elements, or substantial omissions |
+| 0 | Absent/incorrect — requirement is not meaningfully satisfied or treatment is materially wrong |
 
-The first scenario should remain within the minimum accepted RW foundation. During RW-0, decide explicitly whether the newsroom value claim requires:
-- R7-C capabilities;
-- persistent Artifact/output and delivery;
-- Consultation requests/answers;
-- the setup advisor and TeamDraft;
-- expanded domain-pack machinery.
+For a category, calculate points as:
 
-Do not build any of these merely because they appear in the architecture specification. If the selected newsroom scenario cannot be meaningfully scored without one, record the dependency and obtain approval before adding it to a slice. If the first scenario intentionally excludes publication and consultation, state that limitation in the R8 product claim.
+`category maximum × selected level ÷ 4`
 
-## 8. Acceptance and reporting
+This allows quarter-point increments. Freeze story-specific examples, detailed anchors, scoring instructions, and answer-key references before scored runs. Do not reward verbosity, preferred wording, or preferred conclusions. Concise answers receive full credit when they satisfy the requirements.
 
-The harness is ready for scored use only when the Operator has frozen the scenario, corpus, rubric, run count, exclusions, and thresholds. The report for each run must include exact code/PR SHA, CI evidence, source hashes, Context manifest, Task/Outcome/Evaluation references, provider revision, costs, scores, and limitations.
+### 4.2 Critical factual errors
 
-A harness pass requires:
-- all deterministic contract proofs to pass independently of the value score;
-- no critical evidence-integrity, cross-Team, replay, or scope violation;
-- the pre-agreed newsroom quality and retained-experience thresholds to be met;
-- confidence-band results to be reported with adequate sample counts and unresolved cases kept separate;
-- explicit Operator acceptance.
+A critical factual error is a materially consequential false, unsupported, or misleading claim that changes the reader's understanding of the central finding, its strength, implications, or evidentiary basis.
 
-No numeric threshold is invented in this draft. Until thresholds are frozen, results are descriptive and cannot be labelled a formal pass.
+Examples include reversing the central finding; presenting correlation as demonstrated causation; inventing or materially altering a result, quotation, or statistic; omitting a limitation in a way that materially changes the conclusion; or misattributing a finding. Minor wording issues and non-material inaccuracies do not qualify.
+
+Count each distinct underlying critical error once per output, even if repeated; count genuinely different errors separately. Report separately for control and treatment:
+
+- total distinct critical factual errors;
+- number of outputs affected by at least one critical factual error;
+- descriptions, evidence references, and material effect;
+- reviewer disagreements and adjudication, if any.
+
+### 4.3 The three primary acceptance gates
+
+All three gates are predeclared and must be reported separately.
+
+**Gate 1 — Downstream quality improvement**
+
+Calculate each condition's mean total score from 10 valid completed outputs. Treatment must exceed control by at least 10 points out of 100:
+
+`mean(treatment) − mean(control) ≥ 10`
+
+Report individual scores and category-level results. The condition-level mean difference is the primary comparison; paired differences are also reported but do not create another threshold.
+
+**Gate 2 — Critical factual errors**
+
+Treatment must not exceed control in either total distinct critical factual errors or the number of outputs affected by at least one critical error. Disclose and examine every critical error in both conditions; aggregate scores cannot conceal them.
+
+**Gate 3 — Claim-level retained-knowledge use**
+
+Independently assess all 10 treatment outputs. At least one independently verified qualifying claim-to-knowledge relationship across the treatment condition is required. This minimum proves only that claim-level attribution occurred in the experiment; it does not imply consistent use across all outputs. Report the full distribution and unsupported attribution attempts. Do not invent a percentage threshold.
+
+### 4.4 Deterministic validation and confidence calibration
+
+Report validation proposal counts: all in-scope proposals submitted, accepted, rejected, rejection counts by stable reason, and acceptance/rejection rates. The denominator is every in-scope proposal presented to validation. Acceptance proves that defined structural/scope/quote/hash/stance/transition/cause checks passed; it does not prove the underlying claim is true. This is descriptive, not an additional pass/fail gate.
+
+For Hypotheses that later resolve against the independent outcome reference, report observed resolution rates separately for Low, Moderate, and High confidence bands, with resolved and unresolved counts per band. Unresolved cases are neither correct nor incorrect. Do not convert ordinal bands into numerical probabilities or calculate a Brier score without a separately justified and explicitly approved probability mapping. This is descriptive, not an additional pass/fail gate.
+
+### 4.5 Operational guardrails
+
+Record provider/model identity and revision, cost, latency, tool-call count, failures, retries, incomplete slots, and relevant infrastructure incidents for every run and attempt. These are comparability/operational measures, not substitutes for quality.
+
+## 5. Independent answer key, outcome reference, and reviewers
+
+### Source-grounded answer key
+
+Prepare the answer key before scored runs and independently of model-generated outputs. For each expected factual claim, record its source and exact location, supported statement, qualifications/limitations, central-or-secondary importance, and known ambiguity or source disagreement. Identify important facts the packet does not establish, potentially unsupported/misleading claims, and acceptable alternative interpretations. Do not make the key a closed list of approved wording: a novel claim may receive credit when its underlying factual content is accurate and supported by the frozen packet.
+
+### Independent outcome reference set
+
+Prepare a separate, versioned reference set before scored execution. For each material tracked finding/Hypothesis, record a stable reference ID, the statement and scope evaluated, supporting and challenging evidence with exact source references, resolution conditions, status, and rationale.
+
+Use three classifications: **supported**, **contradicted**, and **unresolved**. Support or contradiction requires the predefined evidence and resolution conditions to be met. Insufficient or conflicting evidence remains unresolved; absence of evidence is not contradiction. Define resolution criteria before observing scored outputs and freeze them with a fixed evidence cutoff. Later discoveries do not silently change the original result; preserve them as subsequent evidence and assess whether a new reference-set version or experiment is required. Determine outcomes independently of scored outputs; human outcome reviewers should be blind to condition where feasible. Model-generated evaluation may contribute evidence but cannot be the sole authority.
+
+### Independent output review
+
+Use two independent reviewers for every output. Use the same two reviewers for all 20 outputs. They must have sufficient science/technology literacy and evidence-evaluation ability; professional journalism credentials are not required. Reviewers must not have generated scored outputs and should, where practicable, be independent of story/source selection and answer-key preparation. Disclose qualifications, conflicts, experiment relationships, and limitations.
+
+Give reviewers anonymized outputs without condition labels. Randomize presentation order, use balanced batches and breaks, and preserve batch/order metadata. Before scored review, conduct calibration on sample analyses excluded from the 20 experimental runs. Reviewers independently score the same examples, discuss discrepancies, and clarify anchors. Accept calibration qualitatively when the critical-error definition and both 50-point components are applied consistently and no materially consequential anchor ambiguity remains; do not impose a numerical inter-rater reliability threshold.
+
+Reviewers submit independent scores before discussing disagreements. Preserve both original assessments. Require formal disagreement resolution when total scores differ by more than 10 points, reviewers disagree about a critical error, or they disagree whether a central claim is unsupported or materially misleading. Reconcile against the frozen answer key/rubric; a third qualified reviewer adjudicates unresolved material scoring disagreements. Do not automatically average scores to conceal disagreements. Preserve original judgments, rationale, adjudication, and final score.
+
+### Claim-level retained-knowledge review
+
+Only accepted, versioned Team Experience eligible under current lifecycle/review rules counts. A proposed LearningChange, unapproved/stale/retired KnowledgeItem, embedding match alone, or transcript text does not count.
+
+A qualifying claim-level relationship requires:
+
+- an identified claim in the immutable output;
+- exact KnowledgeItem ID/version and originating LearningChange;
+- immutable application-written TaskKnowledgeReference;
+- relevant Team eligibility and immutable Task Context evidence proving the same version entered that Task's Context;
+- application validation of identity, version, eligibility, and Context linkage; and
+- independent reviewer judgment that the knowledge materially supported, qualified, or corrected/prevented a misleading interpretation in that claim.
+
+Mere topical similarity, passing mention, irrelevant citation, or an unsupported model assertion does not count. A Context manifest proves availability, not use.
+
+Reviewers identify claims from the actual immutable output, including substantive headlines/headings and meaningful uncertainty assertions. Split independently evaluable compound claims; do not count repeated statements of the same underlying claim separately. Both reviewers independently create claim inventories and reconcile differences; unresolved inventory disputes go to a third qualified reviewer. Keep claim inventory and claim-to-knowledge relationship records separate.
+
+Report unique relationships as qualifying, non-qualifying, or indeterminate; relationship counts and technical validation failures; output-level qualifying-use distribution across all 10 treatment outputs; and treatment-level aggregate results. Preserve both reviewers' original classifications and any adjudication. Do not impose a percentage threshold beyond the minimum in Gate 3.
+
+## 6. Frozen retained-experience snapshot
+
+Only accepted, current, eligible Team Experience is included. The canonical snapshot manifest must enumerate every KnowledgeItem ID and exact version, originating LearningChange ID, Team, freeze time, and eligibility state used during construction. Serialize as deterministic versioned canonical JSON, preserve exact bytes, and compute SHA-256 over those bytes. Record the algorithm and lowercase hexadecimal digest.
+
+Before the first treatment run, independently recompute and verify the digest. Verify every treatment run references the same frozen snapshot identity and digest through the intended retrieval path. Hash verification establishes identity and consistency, not relevance or actual claim-level use.
+
+After freeze, the manifest, canonical bytes, hash, and membership are immutable. Any addition, removal, replacement, or change to a KnowledgeItem requires a new snapshot identity. Before the first scored run, a corrected snapshot may be frozen if all pre-run verification is repeated. After the first scored run, do not silently change remaining runs to another snapshot: stop the affected experiment and obtain an explicit Operator decision whether to restart under a new experiment ID and repeat all 10 control and 10 treatment runs. Do not pool runs across experiment instances.
+
+## 7. Execution failures, retries, and deviations
+
+Assign stable IDs to the 20 original run slots and distinct attempt IDs. Preserve every attempt, partial output, configuration, logs, timestamp, cost, and failure reason.
+
+A returned response is evidence and is retained/evaluated even if poor, incomplete, malformed, or refused. It is never retried because of content or score. Permit one retry after the initial attempt only for an objectively evidenced technical failure before a complete output artifact exists, such as transient provider/server unavailability, network failure/timeout, rate limiting, or worker interruption. Apply the same rule to both conditions.
+
+If the original slot remains technically incomplete after its permitted retry, at most one separately identified replacement slot may be used under the predeclared replacement schedule and explicit Operator disposition. It remains in the same condition and uses the same frozen inputs/configuration/snapshot; it receives the same one-retry limit. It inherits the original slot's matched-pair ID and block ID for analysis, while retaining a new run-slot ID and a separately scheduled execution position. No valid output may be replaced; no replacement may depend on output quality or score; no replacement of a replacement is permitted. Preserve the original slot and all attempts. If fewer than 10 valid outputs per condition are obtained under these rules, the experiment is incomplete and cannot pass the mean-score gate.
+
+Do not stop early because results look unusually good or poor. Material execution changes (provider/model/weights, generation settings, prompts, Context construction, retrieval/embedding configuration, or consequential infrastructure changes) require a pause and validity assessment before resumption. Preserve before/after configuration, affected runs, independent reviewer assessment, Operator decision, uncertainties, and deviation register. The Operator alone authorizes resumption, stopping, or restart. Disclose every deviation. Critical deviations require stopping or restarting. Follow the frozen incident and restart rules; never rerandomize or combine different experiment instances.
+
+## 8. Reporting and gate disposition
+
+Use the final reconciled/adjudicated score as the official score while preserving both original reviewer assessments, critical-error judgments, disagreements, and adjudication rationale.
+
+For each condition, report mean, median, minimum, maximum, category-level scores, and every individual output score. Report all 10 matched-pair differences, observed distributions/spread, incomplete slots, and relevant uncertainty/limitations. Do not add a p-value, statistical-significance test, confidence-interval threshold, or inferential-statistics requirement as an acceptance gate. Ten runs per condition are a bounded engineering evaluation, not proof of general statistical superiority or broad causal effectiveness.
+
+The final report must include:
+
+1. Experiment ID and frozen protocol/configuration.
+2. Story, corpus/version/manifest, source hashes, and assignment/word-limit identities.
+3. Baseline and treatment-snapshot identities/hashes and verification results.
+4. Planned run slots, pairs/blocks, randomization record, attempts, retries, replacements, and incomplete slots.
+5. Reviewer qualifications/conflicts, calibration, blinding, batch/order, original assessments, disagreements, and adjudications.
+6. Total/category/individual scores and matched-pair differences.
+7. Critical factual errors and affected outputs.
+8. Claim-level retained-knowledge relationships and output-level distribution.
+9. Independent outcome classifications and confidence-band results.
+10. Validation proposal counts/rates and operational cost, latency, tool calls, failures, and deviations.
+11. Limitations, sensitivity analyses where required, and interpretation boundaries.
+12. Pass/fail/not-assessable disposition for each of the three primary gates and the Operator's final decision.
+
+A gate is **pass** when its required evidence is available and the predeclared condition is met; **fail** when evidence shows it was not met; and **not assessable** when evidence is missing, incomplete, or insufficient. An unassessable primary gate cannot be reported as a successful harness pass. Final acceptance remains with the Operator.
+
+## 9. Capability and authorization boundaries
+
+The first newsroom scenario is limited to reasoning quality, retained-experience retrieval/reuse, claim-level attribution, and independently evaluated downstream benefit.
+
+Include only D99's minimum R7-C capabilities: application-written immutable TaskKnowledgeReference and minimal typed, application-validated KnowledgeUseAssessment. The implementation plan must map them to named RW slice(s) and proof obligations before authorizing any slice that implements them. This does not authorize a separate R7-C milestone or broader retrieval benchmark/label-provenance/autonomous evaluation subsystem; those remain harness responsibilities.
+
+Exclude persistent production Artifacts, general-purpose rendering, publishing, distribution, and delivery from the first newsroom scenario and RW foundation. Preserve experiment records as harness evidence without implying a production Artifact subsystem. Preserve the accepted Artifact source vocabulary in the EvidenceLink target contract; operational Artifact support may remain staged until an entity/use case is authorized.
+
+Operational Consultation entities and Tasks are not a prerequisite for the first newsroom scenario. Preserve ADR-0020's accepted Consultation EvidenceLink source vocabulary. Defer broad human input-curation/domain-guidance design until after R8 tests. Use a human-configured Team and existing generalist defaults; do not add setup-advisor, TeamDraft, or expanded domain-pack machinery without a demonstrated requirement and explicit approval.
+
+This document freezes the measurement methodology, not the actual story package. The selected story, frozen source corpus, scored brief, answer key, independent outcome reference, story-specific scoring examples, reviewer calibration samples, and exact execution configuration remain to be prepared and frozen (or explicitly tracked as pre-execution deliverables with named owners and acceptance gates) before scored runs. This document does not authorize RW implementation or scored execution.
