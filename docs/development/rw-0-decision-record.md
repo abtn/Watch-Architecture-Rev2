@@ -2,7 +2,7 @@
 
 **Recorded:** 2026-11-15
 **Updated:** 2026-11-16
-**Status:** RW-0 decision groups 1–8 approved; RWN-01 story identity selected on 2026-11-16; source corpus and experiment package remain unfrozen; cross-document reconciliation and formal closeout remain in progress. No RW implementation or scored execution is authorized.
+**Status:** RW-0 decision groups 1–8 approved; RWN-01 story identity selected on 2026-11-16; post-B6 audit and cross-document reconciliation complete; D135 pre-execution ownership/gate register prepared. RW-0 documentation closeout is proposed in the current closeout PR; the source corpus and experiment package remain unfrozen. No RW implementation or scored execution is authorized.
 **Authority:** Operator decisions are identified separately from accepted ADR constraints, recommendations, and unresolved questions.
 
 This record is the decision index for the world-memory reasoning loop (RW). It does not authorize RW implementation. The required sequence remains **B6 → RW-0 through RW-5 → foundation exit gate → R8**.
@@ -441,35 +441,38 @@ The current planning proposal is:
 
 This is a proposed sequence for RW-0 to freeze. It is not implementation authorization.
 
-## 5. RW-0 completion checklist
+## 5. RW-0 completion checklist and closeout disposition
 
-RW-0 decision groups 1–8 have been approved and recorded. This completes the decision freeze, but does not by itself complete the RW-0 milestone or authorize implementation.
+RW-0 decision groups 1–8 were approved on 2026-11-16. The post-B6 static implementation audit is complete at exact `main` SHA `91169b4931e48cb7b2803ed2066ec365f563a0ea`; its scope and limitations are recorded in the implementation plan, `docs/architecture.md`, `docs/tasks.md`, and `CHANGE_MAP.md`. This was source/spec inspection only, not test, migration, or runtime verification.
 
-Documentation closeout requires the authoritative documents to be reconciled and each remaining pre-execution artifact to be either frozen or explicitly tracked with a named owner and acceptance gate. Before any scored run, the actual newsroom experiment package must be frozen, including:
+Under RW-D135, RW-0 documentation closeout does **not** require the newsroom experiment package itself to be frozen, provided every deferred pre-execution deliverable has an accountable owner and an explicit acceptance gate. The [RWN-01 package draft](rw-newsroom-scenario-package-draft.md) now contains that register. The owners are assigned by project role: Programmer for local capture/archive/execution preparation; Operator for source decisions and final acceptance; and two independent reviewers appointed and recorded by the Operator before answer-key finalization and calibration. The register identifies the acceptance evidence required for every item. The source corpus and scored package remain unfrozen, and no scored run is authorized.
 
-- the selected completed story and eligibility rationale;
-- the versioned source corpus, manifest, preserved source files/archives, retrieval dates, and hashes;
-- the final scored assignment brief, output structure, and exact common word limit;
-- the source-grounded answer key and known ambiguity/acceptable alternative interpretations;
-- the independent, versioned outcome reference set, resolution criteria, and evidence cutoff;
-- story-specific scoring examples, reviewer calibration materials, and frozen review instructions;
-- baseline/treatment fixture identities, frozen experience-snapshot manifest/hash, execution configuration, run slots, pair/block assignments, randomization seed/order, retry/replacement schedule, and operational window;
-- an explicit owner and acceptance gate for any package component deferred from documentation closeout.
+### RW-0 documentation-closeout criteria
 
-Before RW-1 implementation is authorized, the Operator must also accept the physical EvidenceLink design gate defined by D132. Before any later slice containing D99 capabilities is authorized, the plan must map those capabilities to named slices and proofs under D133.
+The following closeout criteria are satisfied by the current documentation set and this closeout PR:
 
-The remaining RW-0 acceptance items are:
+- Decision groups 1–8 and the methodology, rubric, thresholds, run design, reporting, and authority boundaries are recorded.
+- RWN-01 is selected as the first newsroom story; the selected publisher version and all unresolved source-capture limitations are explicit.
+- Every outstanding pre-execution newsroom deliverable is assigned an accountable owner and an acceptance gate under D135.
+- The post-B6 source/spec audit and implementation-state distinctions are recorded against the exact audited `main` SHA.
+- RW-1 through RW-5 have bounded purposes, ordering, dependencies, stop conditions, and a requirement-to-test proof matrix.
+- The shared EvidenceLink conceptual contract is reconciled with ADR-0007 and ADR-0020; the current Evaluation-only implementation gap is explicit.
+- The value-harness methodology and its three acceptance gates are frozen; the actual story-specific packet, fixtures, and run configuration remain pre-execution deliverables.
+- The foundation exit gate and separate slice-authorization boundaries are explicit.
 
-- the exact newsroom scenario and pre-execution package status described above;
-- the minimum R7-C capability set and its named-slice mapping;
-- the EvidenceLink conceptual contract and RW-1 physical design gate;
-- RW-1 through RW-5 slice boundaries and dependencies;
-- the mandatory proof matrix and CI/local enforcement method;
-- the frozen value metrics, rubric, acceptance thresholds, and reporting rules;
-- the provider test split and rejection/re-proposal behavior;
-- the foundation exit gate, stop conditions, and separate implementation authorization boundaries.
+The current PR is the **RW-0 documentation closeout vehicle**. RW-0 documentation closeout becomes effective when that PR is accepted and merged. This does not freeze the RWN-01 corpus or authorize scored runs, RW-1 implementation, R7-C implementation, or any other RW implementation.
 
-PLAN.md remains the single authority for current milestone status. Until the remaining closeout criteria are accepted and the current status is updated there, RW-0 remains active. No RW implementation starts merely because the decision record or this documentation exists.
+### Gates that remain after RW-0 closeout
+
+These are deliberately assigned to later gates rather than left as ambiguous RW-0 blockers:
+
+1. **Before scored runs:** complete and explicitly accept the RWN-01 corpus manifest, scored brief and word limit, answer key, independent outcome reference, reviewer calibration, baseline/treatment fixtures, and execution configuration. Every gate in the package's §6 ownership register must pass.
+2. **RW-1 documentation/design gate:** prepare the physical EvidenceLink relational design under D132, including representation, columns/keys, foreign keys, constraints, indexes, same-Team enforcement, quote/Snapshot validation, uniqueness/replay, compatibility/backfill, staged Artifact/Consultation handling, migration, downgrade, and data preservation. Obtain explicit Operator acceptance before RW-1 schema, migration, or production-code implementation.
+3. **Before any slice implementing D99 capabilities:** map immutable `TaskKnowledgeReference` and typed `KnowledgeUseAssessment` to named RW slice(s) and exact proof obligations under D133. This mapping must be present before the relevant slice is authorized; it does not create a separate R7-C implementation track.
+4. **Before each implementation slice:** obtain explicit Operator authorization for that slice. Approval of RW-0 and merge of this documentation PR do not authorize code, schema, tests, migrations, provider changes, or merges for RW-1–RW-5.
+
+`PLAN.md` remains the sole authority for current milestone status and authorization. Until the closeout PR is merged, RW-0 remains the active track. After merge, the next track is RW-1 documentation/design preparation; implementation remains separately gated.
+
 ## 6. Authority and review
 
 - PLAN.md remains the sole authority for current milestone status and authorization.
