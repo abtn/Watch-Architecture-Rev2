@@ -19,7 +19,7 @@ The model proposes. Application code validates. The existing Kernel/commit path 
 
 The newsroom is the first value-harness domain. RW-0 freezes the measurement methodology and eligibility rules. The exact completed story and source package must be prepared and frozen before scored runs; any item deferred from documentation closeout must be tracked with a named owner and acceptance gate. Other domains belong to R8 after the foundation exit gate.
 
-The minimum R7-C capabilities approved by RW-D99—claim-level `TaskKnowledgeReference` and typed `KnowledgeUseAssessment`—are required only to the extent defined by the frozen newsroom claim. Before authorizing any RW slice that implements them, this plan must assign each capability to a named slice and proof obligations. This plan does not authorize R7-C or RW implementation.
+The minimum R7-C capabilities approved by RW-D99—claim-level `TaskKnowledgeReference` and typed `KnowledgeUseAssessment`—are required only to the extent defined by the frozen newsroom claim. Before authorizing any RW slice that implements them, this plan must assign each capability to a named slice and proof obligations. The historical post-B6 audit did not authorize R7-C or RW implementation; RW-1 was subsequently authorized under D132 and is the only current RW implementation slice. RW-2–RW-5 remain separately gated.
 
 ## 2. Post-B6 implementation audit
 
