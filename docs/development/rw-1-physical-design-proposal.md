@@ -164,7 +164,7 @@ The typed-column approach is intentionally explicit. It trades a small number of
 - EvidenceLink subject and Team must match the referenced Evaluation or Hypothesis.
 - ConfidenceChange, Hypothesis, EvidenceLink, and Task causes must share one Team.
 - Outcome source must match EvidenceLink Team using the existing composite FK.
-- Signal is global. The existing EvidenceLink Team association is not a direct Signal ownership relation. The application must validate that the Signal is admissible for the linking Team under the Signal/triage contract; when SignalDisposition is implemented in RW-4, the exact eligibility relationship must be enforced and tested there. Existing Evaluation→Signal behavior must not be silently narrowed or broken during RW-1.
+- Signal is global. The existing EvidenceLink Team association is not a direct Signal ownership relation. The application must require `Signal.domain == Team.domain`, matching `EvaluationService._normalize_evidence()` and `_revalidate_link()`. Apply that same deterministic rule to new Hypothesis links in RW-1/RW-2. SignalDisposition is a later triage record; it may add context in RW-4 but does not replace or silently narrow this existing domain-eligibility rule.
 - Artifact and Consultation references are rejected until their canonical entities and source-validation services exist.
 - No query may accept a Team ID supplied only by a model proposal as proof of ownership. Resolve ownership from canonical rows at commit time.
 
@@ -210,14 +210,14 @@ The RW-1 implementation PR must identify exact test nodes for at least:
 | Hypothesis ownership | Hypothesis must reference a Thread in the same Team; competing active Hypotheses coexist. |
 | Hypothesis lifecycle | Invalid status transitions and delete attempts rejected; rejection/supersession requires reason and Task-attributed Event. |
 | Confidence bands | Only low/moderate/high accepted. |
-| Confidence cause | Missing, dual, mismatched, cross-Team, mentions-only, or wrong-Task causes rejected. |
+| Confidence cause | Missing, dual, mismatched, cross-Team, wrong-Hypothesis, mentions-only, or wrong-Task causes rejected; evidence cause is constrained to the same Hypothesis by a composite FK. |
 | Evidence subject | Evaluation and Hypothesis subjects both accepted through one logical EvidenceLink API; invalid/missing/dual typed subject rejected. |
 | Evidence source | Signal and Outcome remain supported; invalid/missing/dual source rejected. Artifact/Consultation remain rejected until later source slices. |
-| Legacy preservation | Existing Evaluation→Signal/Outcome rows retain IDs and all provenance fields; current evaluation service behavior remains green. |
-| Team isolation | Cross-Team subject, Outcome, Hypothesis, Task and ConfidenceChange references rejected. Signal follows the explicit Team-eligibility rule. |
+| Legacy preservation | Existing Evaluation→Signal/Outcome rows retain IDs and all provenance fields; `originating_task_id` backfills from the parent Evaluation Task; parent/Task/Team mapping and proposal-hash checks pass; current evaluation service behavior remains green. |
+| Team isolation | Cross-Team subject, Outcome, Hypothesis, Task and ConfidenceChange references rejected. Signal domain must equal the linking Team's domain for both subject kinds. |
 | Quote integrity | Exact quote/offset/hash accepted; altered quote, offset, Snapshot ref, or hash rejected. |
 | Uniqueness/replay | Duplicate reference keys and same-Task replay handled deterministically; concurrent conflicting commits cannot corrupt records. |
-| Migration | Upgrade on populated pre-RW DB, fresh upgrade, migration head, downgrade refusal with new records, safe downgrade on empty RW tables. |
+| Migration | Upgrade on populated pre-RW DB and fresh DB; verify complete Task attribution, row counts, Team consistency, and proposal hashes; all invalid fixtures abort transactionally without partial DDL/data changes; verify migration head, downgrade refusal with new records, and safe downgrade on empty RW tables. |
 | Immutability | EvidenceLink and ConfidenceChange history cannot be rewritten or deleted through application paths. |
 
 Use real disposable PostgreSQL for database-backed constraints, migration, race, and mutation proofs. Unit-only SQLite substitutes are not sufficient for PostgreSQL-specific constraints.
