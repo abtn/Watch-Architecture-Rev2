@@ -162,6 +162,19 @@ RW-1 implementation is authorized as the current bounded slice. The accepted des
 
 D133 mapping is now explicit: both minimum D99 capabilities are assigned to the planned RW-4-KU sub-slice, with proposed test modules recorded in the proof matrix. These test paths must be confirmed and the proof rows completed before RW-4-KU authorization. This assignment is not implementation authorization and does not create a separate R7-C programme.
 
+### RW-1 implementation proof nodes (PR #128; verification pending)
+
+- `tests/test_evaluations.py::test_evaluation_propose_record_and_replay` — legacy Evaluation subject is stored through `evaluation_id`, with Task provenance, while the logical `subject_id` query remains compatible.
+- `tests/test_evaluations.py::test_evaluation_record_rejects_changed_originating_task` — Task attribution cannot be changed before Evaluation recording.
+- `tests/test_evaluations.py::test_hypothesis_evidence_uses_one_typed_evidence_link` — Hypothesis subject uses the same EvidenceLink model and the initial confidence default is `low`.
+- `tests/test_evaluations.py::test_hypothesis_cannot_reference_another_teams_thread` — composite Thread/Team ownership FK rejects cross-Team Hypotheses.
+- `tests/test_evaluations.py::test_confidence_change_evidence_fk_is_bound_to_same_hypothesis` — composite EvidenceLink/Hypothesis/Team FK rejects a mismatched evidence cause.
+- `tests/test_rw1_schema_migration.py::test_0019_backfills_typed_subject_and_task_without_changing_legacy_rows` — populated legacy EvidenceLink identity and provenance survive upgrade.
+- `tests/test_rw1_schema_migration.py::test_0019_refuses_proposal_hash_mismatch_and_rolls_back_schema` — a legacy proposal-hash mismatch aborts and leaves revision/schema at 0018.
+- `tests/test_rw1_schema_migration.py::test_0019_downgrade_refuses_world_memory_then_restores_legacy_shape` — downgrade refuses to discard world-memory history and safely restores the Evaluation-only shape when empty.
+
+These are authored proof nodes, not passing results. Exact tested SHA, disposable-PostgreSQL results, Ruff, Mypy, full-suite results, and hosted CI must be recorded only after they actually pass.
+
 ## 5. Foundation exit gate
 
 R8 may start only when all of the following are true:
