@@ -426,6 +426,10 @@ def upgrade() -> None:
             "cause_kind IN ('evidence', 'decay')",
             name="ck_confidence_changes_cause_kind",
         ),
+        sa.CheckConstraint(
+            "length(btrim(idempotency_key)) > 0",
+            name="ck_confidence_changes_idempotency_key",
+        ),
     )
     op.create_index(
         "ix_confidence_changes_team_hypothesis_created",
