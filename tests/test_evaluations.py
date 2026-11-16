@@ -136,7 +136,9 @@ def test_evaluation_propose_record_and_replay(session_factory, snapshot_store,
         assert row is not None and row.status == "recorded"
         assert row.evaluator_identity == "r6f-checkpoint-1-tests" and row.evaluator_revision == "1"  # noqa: E501
         links = list(session.scalars(
-            select(EvidenceLink).where(EvidenceLink.subject_id == proposed.evaluation_id)
+            select(EvidenceLink).where(
+                EvidenceLink.subject_id == proposed.evaluation_id
+            )
         ))
         assert len(links) == 1
         assert links[0].evaluation_id == proposed.evaluation_id
