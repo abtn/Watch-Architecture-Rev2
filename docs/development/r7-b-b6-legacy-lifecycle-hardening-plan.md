@@ -126,11 +126,11 @@ Use disposable PostgreSQL only, with a unique container and dynamic host port. P
 
 **Exit:** hosted CI is green on the exact final head; scope review passes; no unresolved critical findings are hidden.
 
-## Phase 7 — Acceptance and squash merge
+## Phase 7 — Acceptance and merge
 
 1. Present the accepted checklist and evidence.
 2. Obtain explicit Operator acceptance.
-3. Squash-merge only after acceptance.
+3. Merge only after acceptance; record the actual merge method and resulting SHA.
 4. Verify the merge SHA and that `main` points to it.
 5. Sync the local repository without destructive Git operations.
 6. Record B6 completion and remaining limitations in `PLAN.md` and `docs/testing.md`.
