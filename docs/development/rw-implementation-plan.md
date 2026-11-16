@@ -22,7 +22,7 @@ The minimum R7-C capabilities approved by RW-D99—claim-level `TaskKnowledgeRef
 
 ## 2. Baseline implementation audit
 
-The following status is a static source audit at the code baseline above. It is not a runtime verification and must be repeated after B6.
+The following status is a static source audit at the pre-B6 code baseline above, not a runtime verification or a current post-B6 baseline. It must be repeated read-only against the verified post-B6 main head before RW-1 design/implementation; this plan does not claim that re-audit has been completed.
 
 | Entity / flow | Code state at audit baseline | Evidence / qualification |
 |---|---|---|
@@ -41,7 +41,7 @@ The following status is a static source audit at the code baseline above. It is 
 | F4 render / Artifact output | Not implemented | Task specification only. |
 | F8 Consultation | Not implemented | Accepted ADR/specification exists; no Consultation model or Task implementation found. |
 
-The strings for future Task types in core/ingestion.py's Event-scope allow-list are not proof that those Tasks exist. Architecture and Task specifications describe target behavior; code, migrations, and tests establish implementation. Recheck all rows after B6 before RW-1.
+The strings for future Task types in core/ingestion.py's Event-scope allow-list are not proof that those Tasks exist. Architecture and Task specifications describe target behavior; code, migrations, and tests establish implementation. Recheck all rows through a fresh read-only audit of the verified post-B6 main head before RW-1; do not use this pre-B6 table as current implementation evidence.
 
 ## 3. Proposed slice sequence
 
