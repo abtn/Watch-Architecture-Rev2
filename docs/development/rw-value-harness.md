@@ -1,6 +1,6 @@
 # RW Value Harness — Newsroom First
 
-**Status:** methodology approved during RW-0 on 2026-11-16; concrete experiment package not yet frozen; no scored runs authorized
+**Status:** methodology approved during RW-0 on 2026-11-16; candidate RWN-01 and experiment-package draft prepared but not Operator-selected or frozen; no scored runs authorized
 **First domain:** science-and-technology newsroom research
 **Decision authority:** the Operator freezes the actual story package and execution configuration before scored runs and explicitly accepts the final harness result.
 
@@ -18,7 +18,7 @@ These are separate measurements. Context availability is not proof of actual cla
 
 The harness is a repeatable product-value check. It does not replace database/contract proofs, and a passing test suite does not establish newsroom value.
 
-The first scenario is one completed, bounded science-and-technology story. The exact story, publication/source set, task brief, and independent outcome reference are not yet selected. They must be prepared and frozen before scored execution. Do not infer a topic or source list from this document.
+The first scenario is one completed, bounded science-and-technology story. A leading candidate is the 4 November 2026 Communications Materials Article in Press, “A closed-loop framework for perovskite precursor additive discovery” (LEAP), DOI 10.1038/s43246-026-01407-3. The candidate rationale, pinned public data-release source identities, draft assignment, answer-key outline, independent outcome-reference candidates, and source-capture blockers are recorded in [the RWN-01 scenario-package draft](rw-newsroom-scenario-package-draft.md). This is not Operator selection, a frozen corpus, or authority to score outputs. The exact story, publication/source packet, brief, answer key, and outcome reference must be approved and frozen before scored execution. Do not infer that draft candidate materials are the final source set.
 
 ## 2. Scenario and source package
 
