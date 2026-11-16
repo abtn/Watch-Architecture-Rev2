@@ -42,7 +42,7 @@ The active path is:
 
 RW-D99 freezes only the minimum R7-C capabilities required for auditable claim-level attribution: immutable TaskKnowledgeReference and minimal typed KnowledgeUseAssessment. Under D133, the implementation plan must map each capability to a named RW slice and proof obligations before authorizing any slice that implements it. This does not authorize the separate R7-C milestone or a broader evaluation/learning loop. RW-D11–D15 and D100 retain the exclusions for persistent Artifacts/publishing, operational Consultation workflows, self-service setup, and expanded domain-pack machinery unless the frozen product claim demonstrates a necessary dependency and the Operator explicitly approves a scope change. Do not treat every specified future feature as an automatic prerequisite.
 
-The B6 audit must resolve the F8 legacy-snapshot retirement question before any B6 implementation contract is frozen. B6 is not an excuse for speculative schema or lifecycle refactoring.
+The F8 legacy-snapshot retirement question was resolved during the completed B6 audit and closeout; it is not an outstanding R8 entry task. The B6 closeout record documents the test-only proof and confirms that no production, schema, or migration change was required. Do not reopen B6 or introduce speculative schema/lifecycle refactoring without a demonstrated defect and separate authorization.
 
 ## 3. R8 entry gate — November 23 target
 
