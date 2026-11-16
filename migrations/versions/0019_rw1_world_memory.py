@@ -153,7 +153,8 @@ def _validate_legacy_evidence(connection: sa.Connection) -> int:
             for item in evaluation_links
         ):
             raise RuntimeError(
-                f"RW-1 migration: Evaluation {evaluation_id} lacks primary Outcome evidence"
+                "RW-1 migration: Evaluation "
+                f"{evaluation_id} lacks primary Outcome evidence"
             )
         evaluation_links.sort(key=lambda item: str(item["reference_key"]))
         payload = {
