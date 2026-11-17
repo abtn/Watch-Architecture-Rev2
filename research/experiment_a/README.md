@@ -1,0 +1,72 @@
+# Experiment A canonical fixtures (offline only)
+
+This package defines the first three canonical sample fixtures and their JSON
+renderers. It is isolated from Watch application code: no core imports, network
+calls, provider calls, database access, or production edits.
+
+## Files
+
+- canonical-fixture.schema.json: canonical fixture schema.
+- evidence-assessment.schema.json: closed assessment enums and reference kinds.
+- model-output.schema.json: RW-3 output contract, including hold/no_update.
+- canonical_fixtures.py: fixture validation, renderers, hashing, and Invariant #7.
+- tests/test_experiment_a_fixtures.py: tests for RW3-03, RW3-13, and SP-01.
+
+## Representations
+
+- Flat: flat JSON arrays; no stance grouping or temporal partitioning.
+  Timestamped records are ordered chronologically; untimed records retain
+  canonical input order.
+- Structured: evidence stance groups, provenance, temporal-state groups, and
+  uncertainty notes.
+- SP-01: a separate StrategyProposer diagnostic. Both renderers preserve the
+  exact same StateAssessment projection. Evaluator metadata is never model input.
+  Renderer labels are not included in the model-facing JSON.
+
+SP-01 mirrors StateAssessment fields: objective, team, policies, tasks, events,
+signals, basis, and created_at. It deliberately has no outcomes or
+source_identity_visibility field. TeamPolicy sources are objects containing
+origin_url and source_type. AssessmentPolicy.version and AssessmentTask.policy_version
+are integers. The policy's rules_json string is preserved as exposed by the
+actual projection.
+
+The SP-01 single-source fact is evaluator metadata, not a model-facing field.
+It is true because the policy contains exactly one configured source.
+
+## Evidence assessment and proposal output
+
+The closed vocabularies are:
+
+- relevance: direct, indirect, out_of_scope, tangential
+- reliability: high, moderate, low, unknown
+- independence: independent, related, unknown
+- temporal_status: completed, pending, missing
+
+Reference kinds are evidence_link, proposed_link, source, observation, and task.
+The task kind is included so an in-flight Task such as task-014 can be assessed
+without pretending it is an EvidenceLink or an observation.
+
+hold means relevant evidence or an in-flight state was assessed but no
+ConfidenceChange is proposed. A relevant new source may still receive a mentions
+EvidenceLink. no_update means no material new evidence or state change: neither
+an EvidenceLink nor a ConfidenceChange is proposed.
+
+A ConfidenceChange references either a pre-existing evidence_link_id or a
+same-batch evidence_link_ref. Newly proposed EvidenceLinks contain source_kind,
+source_id, stance, and subject_hypothesis_id. They do not ask the model to echo
+snapshot_ref, snapshot_hash, or reference_key; those belong to canonical source
+and database validation.
+
+The SHA-256 value in SP-01's StateAssessment basis is input context, not a value
+the model must reproduce in its output.
+
+## Run
+
+From the repository root, run:
+
+uv run pytest tests/test_experiment_a_fixtures.py -q
+
+No model calls or database setup are needed. Passing these tests proves only the
+fixture and renderer contract for these three samples. It does not authorize or
+constitute Experiment A execution, RW-2/RW-3 implementation, scored RWN-01 runs,
+or RW-1 formal Operator closeout.
