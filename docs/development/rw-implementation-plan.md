@@ -1,13 +1,13 @@
 # RW — Implementation Plan and Proof Matrix
 
-**Status:** RW-0 is closed by PR #126; RW-1 physical design/planning is merged by PR #127 at `9ac259bb5fd5986a89955dc06cb8a185e2599993`; all six D132 decisions were accepted on 2026-11-16; RW-1 implementation is authorized as one bounded slice only
+**Status:** RW-0 is closed by PR #126; RW-1 physical design/planning is merged by PR #127 at `9ac259bb5fd5986a89955dc06cb8a185e2599993`; all six D132 decisions were accepted on 2026-11-16; RW-1 implementation PR #128 is merged at `7213a17e5ae96c3cae22ec1082af05d47b9c0d1d`; Operator-local verification is recorded, and formal RW-1 acceptance remains pending
 **Sequence:** B6 → RW-0 → RW-1 → RW-2 → RW-3 → RW-4 → RW-5 → foundation exit gate → R8
 **Code audit basis:** post-B6 static source/spec audit at `91169b4931e48cb7b2803ed2066ec365f563a0ea`; RW-0 docs-only closeout squash-merged by PR #126 at `cac63a01380624bbaf0c9965a363a352e46960d7`
 **Decision record:** [RW-0 decision record](rw-0-decision-record.md)
 **RW-1 physical design:** [RW-1 physical world-memory and EvidenceLink design proposal](rw-1-physical-design-proposal.md) — accepted under D132 on 2026-11-16
 **Value harness:** [Newsroom value harness](rw-value-harness.md)
 
-This plan turns the accepted architecture and RW proposal into bounded implementation slices. RW-1 is authorized as the current implementation slice only; RW-2–RW-5 require their own explicit authorization. No R7-C implementation, persistent-database access, or newsroom scored execution is authorized.
+This plan turns the accepted architecture and RW proposal into bounded implementation slices. RW-1 implementation is merged; this documentation records its verification and pending formal Operator disposition. RW-2–RW-5 require their own explicit authorization. No R7-C implementation, persistent-database access, or newsroom scored execution is authorized.
 
 ## 1. Purpose and boundary
 
@@ -158,11 +158,11 @@ The matrix defines required proof obligations, not tests that already exist. Eac
 
 The [RW-1 physical design proposal](rw-1-physical-design-proposal.md) is the current design artifact for D132. A source/schema audit was completed against branch head `a8c6b489cfa9dba05ae143474d7a86399b4382a6`, including `core/models.py`, `core/evaluations.py`, `core/task_runtime.py`, and `core/experience_distiller.py`, plus a disposable PostgreSQL migration/schema audit through `0018_r7b_lifecycle_review_date`. No persistent database rows were inspected. The revised proposal records these source findings and recommends typed subject foreign keys behind one logical EvidenceLink model, non-null `originating_task_id` backfilled from the parent Evaluation Task under fail-closed migration checks, same-Hypothesis ConfidenceChange evidence FKs, Task-attributed supersession Events, initial `low` confidence, the existing Signal-domain eligibility rule, append-only ConfidenceChange records, and staged Artifact/Consultation support. The six decisions were explicitly accepted by the Operator on 2026-11-16; their exact terms are recorded in proposal §9.
 
-RW-1 implementation is authorized as the current bounded slice. The accepted design requires typed EvidenceLink subject FKs; strict non-null legacy Task-attribution backfill with transactional failure on any integrity/hash mismatch; Task-attributed supersession Events; initial `low` confidence; the existing Signal-domain eligibility rule; and deferred projections. Implement only these accepted decisions and the remaining proposal requirements. The empty disposable audit does not establish that persistent historical rows pass migration validation.
+RW-1 implementation was delivered by PR [#128](https://github.com/abtn/Watch-Architecture-Rev2/pull/128), merged at `7213a17e5ae96c3cae22ec1082af05d47b9c0d1d`. The merged slice adds Thread, Hypothesis, and ConfidenceChange persistence with PostgreSQL constraints; changes EvidenceLink to typed Evaluation/Hypothesis subject FKs; and backfills non-null legacy Task attribution with fail-closed validation. Migration proofs cover proposal-hash, Signal-domain, and EvidenceLink reference-hash failures; a focused model proof covers the initial `low` confidence default. This remains the RW-1 schema/ORM/migration slice: it does not implement the Operator or model commit path, triage, decay, or retrieval. Operator-local verification is recorded below and in `docs/testing.md`. Formal Operator acceptance remains pending. The earlier empty disposable audit did not establish that persistent historical rows pass migration validation; no persistent database was inspected for RW-1.
 
 D133 mapping is now explicit: both minimum D99 capabilities are assigned to the planned RW-4-KU sub-slice, with proposed test modules recorded in the proof matrix. These test paths must be confirmed and the proof rows completed before RW-4-KU authorization. This assignment is not implementation authorization and does not create a separate R7-C programme.
 
-### RW-1 implementation proof nodes (PR #128; verification pending)
+### RW-1 implementation proof nodes (PR #128; locally verified)
 
 - `tests/test_evaluations.py::test_evaluation_propose_record_and_replay` — legacy Evaluation subject is stored through `evaluation_id`, with Task provenance, while the logical `subject_id` query remains compatible.
 - `tests/test_evaluations.py::test_evaluation_record_rejects_changed_originating_task` — Task attribution cannot be changed before Evaluation recording.
@@ -177,7 +177,7 @@ D133 mapping is now explicit: both minimum D99 capabilities are assigned to the 
 - `tests/test_rw1_schema_migration.py::test_0019_downgrade_refuses_hypothesis_confidence_history` — downgrade refuses to discard Hypothesis EvidenceLink and ConfidenceChange history.
 - `tests/test_rw1_schema_migration.py::test_0019_downgrade_refuses_world_memory_then_restores_legacy_shape` — downgrade refuses to discard Thread history and safely restores the Evaluation-only shape when empty.
 
-These are authored proof nodes, not passing results. Exact tested SHA, disposable-PostgreSQL results, Ruff, Mypy, full-suite results, and hosted CI must be recorded only after they actually pass.
+These proof nodes are present in the merged implementation. Operator-local verification is recorded in `docs/testing.md`. The local run was performed with branch HEAD `7dfa57f37e71a739d44085fc2268e849212fbe9b` plus one unstaged one-line Ruff correction; that exact correction is the sole change in final PR code/test commit `aa947983fc72f771946ebf5b0d9a781aba80d7f3`, whose parent is `7dfa57f37e71a739d44085fc2268e849212fbe9b`. Thus the tested working-tree content matches the final PR code/test tree, but the tested Git HEAD itself was not `aa947983`. GitHub recorded no status checks for that final code/test commit. Formal Operator acceptance remains pending; do not infer acceptance from merge or green local checks.
 
 ## 5. Foundation exit gate
 
