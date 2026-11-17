@@ -177,7 +177,17 @@ D133 mapping is now explicit: both minimum D99 capabilities are assigned to the 
 - `tests/test_rw1_schema_migration.py::test_0019_downgrade_refuses_hypothesis_confidence_history` — downgrade refuses to discard Hypothesis EvidenceLink and ConfidenceChange history.
 - `tests/test_rw1_schema_migration.py::test_0019_downgrade_refuses_world_memory_then_restores_legacy_shape` — downgrade refuses to discard Thread history and safely restores the Evaluation-only shape when empty.
 
-These proof nodes are present in the merged implementation. They do not exhaustively exercise every new database CHECK/FK constraint; the remaining focused PostgreSQL negative-test gaps are explicitly listed in the RW-1 proposal §8 and must be closed or explicitly dispositioned before formal RW-1 acceptance. Operator-local and exact-SHA hosted verification are recorded in `docs/testing.md`. The local run was performed with branch HEAD `7dfa57f37e71a739d44085fc2268e849212fbe9b` plus one unstaged one-line Ruff correction; that exact correction is the sole change in final PR code/test commit `aa947983fc72f771946ebf5b0d9a781aba80d7f3`, whose parent is `7dfa57f37e71a739d44085fc2268e849212fbe9b`. Thus the tested working-tree content matches the final PR code/test tree, but the tested Git HEAD itself was not `aa947983`. Separately, hosted GitHub Actions run [#1247](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43901592622) passed on that exact final code/test commit. Formal Operator acceptance remains pending; do not infer acceptance from merge or green local checks.
+The PR #128 proof nodes above are supplemented by test-only PR [#132](https://github.com/abtn/Watch-Architecture-Rev2/pull/132), which adds focused PostgreSQL negative proofs in `tests/test_evaluations.py`:
+
+- `test_rw1_thread_status_check_rejects_invalid_values`
+- `test_rw1_hypothesis_vocabulary_checks_reject_invalid_values`
+- `test_rw1_evidence_subject_check_rejects_missing_dual_and_mismatched_subjects`
+- `test_rw1_evidence_source_check_rejects_missing_dual_and_mismatched_sources`
+- `test_rw1_confidence_change_cause_check_rejects_invalid_cause_shapes`
+- `test_rw1_confidence_change_checks_reject_unknown_cause_kind`
+- `test_rw1_evidence_subject_and_task_fks_enforce_team_ownership`
+
+Hosted CI run [#1269](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44087840152) passed on exact test head `61fa0a214e05993637695e75d8aa019449fc540d`, including fresh disposable PostgreSQL migration/single-head checks, Ruff, Mypy, patch whitespace, and the full suite (**1,029 passed, 130 existing Alembic deprecation warnings**). The new tests add 16 parameterized database-negative cases across the declared CHECK/FK constraints. The change is test-only. Operator-local exact-head verification remains pending, so the hosted result must not be described as local verification. Formal Operator acceptance remains pending; do not infer acceptance from merge or green CI.
 
 ## 5. Foundation exit gate
 
