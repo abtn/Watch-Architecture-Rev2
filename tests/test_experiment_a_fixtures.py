@@ -180,6 +180,24 @@ def test_machine_readable_schemas_freeze_enums_and_omit_hash_echo_fields():
         (schema_dir / "model-output.schema.json").read_text(encoding="utf-8")
     )
     assert fixture_schema["$schema"].endswith("2020-12/schema")
+    strategy_rule = next(
+        rule["then"] for rule in fixture_schema["allOf"]
+        if rule["if"]["properties"]["role"]["const"] == "strategy_proposer"
+    )
+    assert strategy_rule["properties"]["hypothesis"]["type"] == "null"
+    assert all(
+        strategy_rule["properties"][name]["maxItems"] == 0
+        for name in (
+            "confidence_changes", "evidence_links", "unlinked_sources",
+            "observations", "tasks", "outcomes", "lineage_pairs", "uncertainty_notes",
+        )
+    )
+    state = fixture_schema["$defs"]["stateAssessment"]["properties"]
+    assert set(state["objective"]["properties"]) == {"id", "team_id", "statement", "status"}
+    assert set(state["team"]["properties"]) == {"id", "domain", "status"}
+    assert set(state["signals"]["items"]["properties"]) == {
+        "id", "source_type", "origin_url", "fetched_at", "content_hash", "snapshot_ref",
+    }
     assert assessment_schema["properties"]["relevance"]["enum"] == [
         "direct", "indirect", "out_of_scope", "tangential",
     ]
