@@ -43,7 +43,29 @@
       "items": {
         "type": "object",
         "minProperties": 1,
-        "description": "Extensible case-specific record; common identifiers and semantics are checked by validate_fixture."
+        "anyOf": [
+          {
+            "required": [
+              "evidence_link_id"
+            ]
+          },
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "source_id"
+            ]
+          },
+          {
+            "required": [
+              "observation_id"
+            ]
+          }
+        ],
+        "description": "Extensible case-specific confidence-change record with a required identifier."
       },
       "description": "Case-specific confidence-change evidence. The canonical envelope is strict; this record payload remains extensible until the complete cross-case field vocabulary is frozen."
     },
@@ -76,7 +98,41 @@
       "items": {
         "type": "object",
         "minProperties": 1,
-        "description": "Extensible case-specific record; common identifiers and semantics are checked by validate_fixture."
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "pending",
+              "missing"
+            ]
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "evidence_link_id"
+            ]
+          },
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "source_id"
+            ]
+          },
+          {
+            "required": [
+              "observation_id"
+            ]
+          }
+        ],
+        "description": "Extensible case-specific outcome record with required status and identifier."
       },
       "description": "Case-specific outcome evidence. The canonical envelope is strict; this record payload remains extensible until the complete cross-case field vocabulary is frozen."
     },
@@ -85,7 +141,29 @@
       "items": {
         "type": "object",
         "minProperties": 1,
-        "description": "Extensible case-specific record; common identifiers and semantics are checked by validate_fixture."
+        "anyOf": [
+          {
+            "required": [
+              "evidence_link_id"
+            ]
+          },
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "source_id"
+            ]
+          },
+          {
+            "required": [
+              "observation_id"
+            ]
+          }
+        ],
+        "description": "Extensible case-specific lineage record with a required identifier."
       },
       "description": "Case-specific lineage-pair evidence. The canonical envelope is strict; this record payload remains extensible until the complete cross-case field vocabulary is frozen."
     },
@@ -94,7 +172,29 @@
       "items": {
         "type": "object",
         "minProperties": 1,
-        "description": "Extensible case-specific record; common identifiers and semantics are checked by validate_fixture."
+        "anyOf": [
+          {
+            "required": [
+              "evidence_link_id"
+            ]
+          },
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "source_id"
+            ]
+          },
+          {
+            "required": [
+              "observation_id"
+            ]
+          }
+        ],
+        "description": "Extensible case-specific uncertainty record with a required identifier."
       },
       "description": "Case-specific uncertainty annotations. The canonical envelope is strict; this record payload remains extensible until the complete cross-case field vocabulary is frozen."
     },
@@ -139,6 +239,30 @@
         "properties": {
           "hypothesis": {
             "type": "null"
+          },
+          "confidence_changes": {
+            "maxItems": 0
+          },
+          "evidence_links": {
+            "maxItems": 0
+          },
+          "unlinked_sources": {
+            "maxItems": 0
+          },
+          "observations": {
+            "maxItems": 0
+          },
+          "tasks": {
+            "maxItems": 0
+          },
+          "outcomes": {
+            "maxItems": 0
+          },
+          "lineage_pairs": {
+            "maxItems": 0
+          },
+          "uncertainty_notes": {
+            "maxItems": 0
           }
         },
         "required": [
@@ -329,11 +453,47 @@
       "properties": {
         "objective": {
           "type": "object",
-          "description": "StateAssessment objective projection; the current canonical fixture validator checks its exact Watch projection fields."
+          "required": [
+            "id",
+            "team_id",
+            "statement",
+            "status"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "team_id": {
+              "type": "string"
+            },
+            "statement": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
         },
         "team": {
           "type": "object",
-          "description": "StateAssessment team projection; the current canonical fixture validator checks its exact Watch projection fields."
+          "required": [
+            "id",
+            "domain",
+            "status"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "domain": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
         },
         "policies": {
           "type": "array",
@@ -427,7 +587,38 @@
           "type": "array",
           "items": {
             "type": "object",
-            "description": "StateAssessment signal projection; exact Watch projection fields are checked by validate_fixture."
+            "required": [
+              "id",
+              "source_type",
+              "origin_url",
+              "fetched_at",
+              "content_hash",
+              "snapshot_ref"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "source_type": {
+                "type": "string"
+              },
+              "origin_url": {
+                "type": "string"
+              },
+              "fetched_at": {
+                "type": "string"
+              },
+              "content_hash": {
+                "type": "string"
+              },
+              "snapshot_ref": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
           }
         },
         "basis": {
