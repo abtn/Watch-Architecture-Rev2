@@ -1,6 +1,5 @@
 """Draft 2020-12 validation for Experiment A's machine-readable contracts."""
 
-from copy import deepcopy
 import json
 from pathlib import Path
 
