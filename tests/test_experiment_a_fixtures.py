@@ -196,6 +196,40 @@ def test_machine_readable_schemas_freeze_enums_and_omit_hash_echo_fields():
     link_fields = output_schema["$defs"]["proposedEvidenceLink"]["properties"]
     assert not {"snapshot_ref", "snapshot_hash", "reference_key"} & set(link_fields)
 
+    confidence_change = output_schema["$defs"]["confidenceChange"]
+    proposed_rule = confidence_change["allOf"][0]["then"]["properties"]
+    assert proposed_rule["from_confidence"]["type"] == "string"
+    assert proposed_rule["to_confidence"]["type"] == "string"
+
+    direction_rules = {
+        rule["if"]["properties"]["decision"]["const"]: rule["then"]
+        for rule in output_schema["allOf"]
+        if "const" in rule.get("if", {}).get("properties", {}).get("decision", {})
+    }
+    expected_increase = {
+        ("low", "moderate"), ("low", "high"), ("moderate", "high"),
+    }
+    expected_decrease = {
+        ("high", "moderate"), ("high", "low"), ("moderate", "low"),
+    }
+    for decision, expected in (
+        ("increase", expected_increase), ("decrease", expected_decrease),
+    ):
+        variants = direction_rules[decision]["properties"]["confidence_change"]["oneOf"]
+        actual = {
+            (
+                variant["properties"]["from_confidence"]["const"],
+                variant["properties"]["to_confidence"]["const"],
+            )
+            for variant in variants
+        }
+        assert actual == expected
+
+    assert output_schema["$defs"]["proposedEvidenceLink"]["properties"]["stance"]["enum"] == [
+        "supports", "challenges", "mentions",
+    ]
+    assert "intentionally extensible" in fixture_schema["properties"]["outcomes"]["description"]
+
 
 def test_flat_arrays_order_timestamped_records_chronologically(fixtures):
     fixture = deepcopy(fixtures["RW3-13"])
