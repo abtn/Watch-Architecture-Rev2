@@ -226,12 +226,17 @@ The following requirements remain binding. They are not RW-1 schema/ORM/migratio
 
 | Behavior | Required proof | Allocation |
 |---|---|---|
+| Hypothesis EvidenceLink quote and Snapshot validation | For Hypothesis evidence, load the immutable Snapshot, verify its content hash, and require the supplied quote to equal the exact substring at the supplied offsets. RW-1 preserves the existing Evaluation path and stores the typed fields; the Hypothesis commit path is not present yet. | RW-2, `RW-EV-01` |
+| Hypothesis Signal eligibility and Team/Snapshot references | Require `Signal.domain == Team.domain` for Hypothesis links; resolve Signal and Snapshot references from canonical records and reject cross-Team or stale references. The RW-1 schema proves relational ownership where composite FKs exist, not these application checks. | RW-2/RW-4, `RW-TS-01` |
+| ConfidenceChange cause semantics and history | DB constraints enforce the structural cause shape and same-Hypothesis evidence FK. The application must additionally reject `mentions`, missing/dual/mismatched or wrong-Task causes, and must preserve ConfidenceChange history as append-only. | RW-2/RW-5, `RW-EV-02`/`RW-EV-03` |
+| Competing Hypotheses | Multiple active Hypotheses may coexist without implicit demotion or deletion. The RW-1 schema permits this; the application path must prove it. | RW-2, `RW-HY-01` |
 | Hypothesis lifecycle | Legal status transitions; rejection and supersession require a non-empty reason; supersession identifies a valid same-Team successor; no silent deletion; canonical Task-attributed Event. | RW-2, `RW-HY-02` |
 | Atomic proposal commit and rejection | Valid proposal sets commit atomically; invalid proposals produce attributable rejection Events; failed transactions leave no partial business writes. | RW-2, `RW-AT-01` |
 | Task/proposal replay | Replaying the same Task does not duplicate evidence or repeat a state transition. | RW-2/RW-3/RW-4/RW-5, `RW-RP-01` |
 | Concurrent Thread updates | Conflicting updates serialize or one is rejected without lost updates. | RW-2/RW-3, `RW-RC-01` |
 | Initial confidence through commit paths | Every new Hypothesis starts at `low`; any higher band is a later, valid Task-attributed ConfidenceChange through Operator and model paths. RW-1 proves only the persistence default. | RW-2/RW-3, `RW-HY-03` |
 | Evidence-driven touch time | Only accepted evidence changes `last_touched_at`; mentions, rejected proposals, and replay do not. | RW-2/RW-3, `RW-LT-01` |
+| Signal triage/disposition | Per-(Signal, Team) disposition and triage behavior are deferred; RW-1 intentionally creates no SignalDisposition model or triage path. | RW-4, `RW-TR-01` |
 
 In particular, D132 decision 3 remains unchanged: supersession must be represented by one canonical Task-attributed Event containing the old Hypothesis ID, successor Hypothesis ID, and non-empty reason. Deferring its commit path to RW-2 does not weaken or waive that requirement.
 
