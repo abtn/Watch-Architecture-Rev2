@@ -3,8 +3,9 @@
 import json
 from pathlib import Path
 
-import pytest
 from jsonschema import Draft202012Validator, ValidationError
+
+import pytest
 
 from research.experiment_a.canonical_fixtures import sample_fixtures
 
