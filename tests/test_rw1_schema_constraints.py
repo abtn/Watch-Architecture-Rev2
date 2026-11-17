@@ -399,6 +399,7 @@ def test_confidence_change_cause_checks_reject_unknown_value(
         )
     )
 
+
 @pytest.mark.parametrize(
     ("team_id", "evaluation_id", "hypothesis_id", "task_id", "outcome_id", "constraint"),
     [
@@ -440,8 +441,12 @@ def test_evidence_link_subject_and_originating_task_fks_enforce_team_ownership(
 ):
     context = rw1_schema_context
     values = {
-        "subject_kind": "hypothesis" if hypothesis_id == "hypothesis" else "evaluation",
-        "team_id": context["other_team_id"] if team_id == "other" else context["team_id"],
+        "subject_kind": (
+            "hypothesis" if hypothesis_id == "hypothesis" else "evaluation"
+        ),
+        "team_id": (
+            context["other_team_id"] if team_id == "other" else context["team_id"]
+        ),
         "evaluation_id": (
             context["evaluation_id"] if evaluation_id == "evaluation" else None
         ),
@@ -452,7 +457,9 @@ def test_evidence_link_subject_and_originating_task_fks_enforce_team_ownership(
             context["other_task_id"] if task_id == "other" else context["task_id"]
         ),
         "outcome_id": (
-            context["other_outcome_id"] if outcome_id == "other" else context["outcome_id"]
+            context["other_outcome_id"]
+            if outcome_id == "other"
+            else context["outcome_id"]
         ),
     }
     _expect_constraint(
