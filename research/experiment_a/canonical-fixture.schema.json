@@ -62,7 +62,7 @@
         "evidence_link_id": {"type": "string"},
         "source_kind": {"enum": ["signal", "outcome"]},
         "source_id": {"type": "string"},
-        "stance": {"enum": ["supports", "challenges", "mentions"},
+        "stance": {"enum": ["supports", "challenges", "mentions"]},
         "snapshot_ref": {"type": ["string", "null"]},
         "snapshot_hash": {"type": ["string", "null"]},
         "reference_key": {"type": ["string", "null"]}
