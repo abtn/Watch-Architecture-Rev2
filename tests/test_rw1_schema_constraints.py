@@ -382,16 +382,22 @@ def test_confidence_change_cause_check_rejects_missing_or_dual_causes(
     )
 
 
-def test_confidence_change_cause_kind_check_rejects_unknown_value(
+def test_confidence_change_cause_checks_reject_unknown_value(
     session_factory, rw1_schema_context
 ):
     context = rw1_schema_context
-    _expect_constraint(
-        session_factory,
-        _confidence_change(context, cause_kind="unsupported"),
-        "ck_confidence_changes_cause_kind",
+    with session_factory() as session:
+        with pytest.raises(IntegrityError) as error:
+            with session.begin_nested():
+                session.add(_confidence_change(context, cause_kind="unsupported"))
+                session.flush()
+    assert any(
+        name in str(error.value.orig)
+        for name in (
+            "ck_confidence_changes_cause",
+            "ck_confidence_changes_cause_kind",
+        )
     )
-
 
 @pytest.mark.parametrize(
     ("team_id", "evaluation_id", "hypothesis_id", "task_id", "outcome_id", "constraint"),
@@ -434,6 +440,7 @@ def test_evidence_link_subject_and_originating_task_fks_enforce_team_ownership(
 ):
     context = rw1_schema_context
     values = {
+        "subject_kind": "hypothesis" if hypothesis_id == "hypothesis" else "evaluation",
         "team_id": context["other_team_id"] if team_id == "other" else context["team_id"],
         "evaluation_id": (
             context["evaluation_id"] if evaluation_id == "evaluation" else None
