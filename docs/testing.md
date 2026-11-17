@@ -1157,3 +1157,23 @@ The actual 0014 → 0015 migration remains covered by the existing populated mig
 **Hosted CI:** GitHub Actions [run #1247](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43901592622) ran on the exact final PR code/test commit `aa947983fc72f771946ebf5b0d9a781aba80d7f3` and completed successfully. Its disposable PostgreSQL migration, Alembic single-head verification, Ruff, Mypy, patch-whitespace check, and full test suite all passed. This is exact-SHA hosted verification; it is separate from the Operator-local run above.
 
 **Scope and boundary:** the PR implements the accepted RW-1 physical design only. It does not implement RW-2–RW-5, R7-C, persistent-database operations, newsroom scored execution, a new runtime/scheduler/authentication path, or provider changes. Merge and local verification do not themselves constitute formal Operator acceptance.
+
+
+## RW-1 schema-level negative-test follow-up (PR #132; 2026-11-17)
+
+Test-only PR [#132](https://github.com/abtn/Watch-Architecture-Rev2/pull/132) extends `tests/test_evaluations.py` with 16 parameterized PostgreSQL negative cases covering:
+
+- Thread status and Hypothesis status/confidence CHECK constraints.
+- EvidenceLink subject and source exclusivity, including missing, dual, and kind/column-mismatch combinations.
+- ConfidenceChange cause shape and rejection of unsupported cause kinds.
+- Same-Team EvidenceLink Evaluation subject, Hypothesis subject, and originating Task foreign keys.
+
+The exact test nodes are listed in the RW-1 proposal §8 and the RW implementation proof matrix.
+
+**Hosted exact-head verification:** GitHub Actions [run #1269](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44087840152) passed on `61fa0a214e05993637695e75d8aa019449fc540d`:
+- Fresh disposable PostgreSQL migration and Alembic single-head/current verification passed.
+- Ruff, Mypy, and PR patch-whitespace checks passed.
+- Full suite: **1,029 passed, 130 warnings in 229.32s**. The warnings are existing Alembic `path_separator` deprecations.
+- The disposable PostgreSQL container and network were removed successfully.
+
+**Scope:** tests only. No production code, ORM model, migration, schema, provider, runtime, or persistent database changed. Operator-local exact-head verification and formal RW-1 acceptance remain pending. This closes the identified schema-level negative-test coverage gap in hosted CI; it does not authorize RW-2 or establish that any persistent database has passed migration validation.
