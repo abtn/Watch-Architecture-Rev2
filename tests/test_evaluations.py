@@ -877,7 +877,9 @@ def test_rw1_evidence_subject_and_task_fks_enforce_team_ownership(
                 context["other_task_id"] if task == "other" else context["task_id"]
             ),
             outcome_id=(
-                context["other_outcome_id"] if outcome == "other" else context["outcome_id"]
+                context["other_outcome_id"]
+                if outcome == "other"
+                else context["outcome_id"]
             ),
         ),
         constraint,
