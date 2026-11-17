@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:watch:experiment-a:evidence-assessment:v1",
+  "title": "Experiment A evidence assessment item",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "reference_kind", "reference", "relevance", "reliability", "independence",
+    "temporal_status"
+  ],
+  "properties": {
+    "reference_kind": {
+      "enum": ["evidence_link", "proposed_link", "source", "observation", "task"]
+    },
+    "reference": {"type": "string", "minLength": 1},
+    "relevance": {"enum": ["direct", "indirect", "out_of_scope", "tangential"]},
+    "reliability": {"enum": ["high", "moderate", "low", "unknown"]},
+    "independence": {"enum": ["independent", "related", "unknown"]},
+    "temporal_status": {"enum": ["completed", "pending", "missing"]}
+  }
+}
