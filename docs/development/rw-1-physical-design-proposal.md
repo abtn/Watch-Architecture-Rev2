@@ -233,7 +233,7 @@ The initial PR #128 suite declared the following database constraints in the ORM
 
 Hosted GitHub Actions run [#1269](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44087840152) passed on exact test head `61fa0a214e05993637695e75d8aa019449fc540d`: fresh PostgreSQL migration and single-head/current verification, Ruff, Mypy, patch whitespace, and the full suite (**1,029 passed, 130 existing Alembic deprecation warnings**). CI removed its disposable PostgreSQL container and network. The follow-up changes tests only; no production code, ORM model, migration, or schema changed.
 
-This closes the identified RW-1 schema-level negative-test coverage gap at the hosted exact-head level. Operator-local exact-head verification and formal RW-1 acceptance remain pending. These proofs do not establish that the user's persistent database has passed migration validation, and they do not authorize RW-2.
+This closes the identified RW-1 schema-level negative-test coverage gap at the hosted exact-head level. Operator-local exact-head verification also passed on exact head `61fa0a214e05993637695e75d8aa019449fc540d`: disposable PostgreSQL migration/current-head checks, Ruff, Mypy (38 source files), 31 focused Evaluation/schema tests, and the full suite (**1,029 passed, 130 existing Alembic deprecation warnings**). The disposable container was removed and environment variables restored. Formal RW-1 acceptance remains pending. These proofs do not establish that the user's persistent database has passed migration validation, and they do not authorize RW-2.
 
 ### Application-level proofs deferred to later slices
 
