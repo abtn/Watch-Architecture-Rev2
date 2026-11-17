@@ -1139,7 +1139,6 @@ The actual 0014 → 0015 migration remains covered by the existing populated mig
 
 **Review and closure:** PR [#124](https://github.com/abtn/Watch-Architecture-Rev2/pull/124) contained only `tests/test_learning_history.py` and `tests/test_experience_distiller.py` (230 additions, no deletions). The Operator accepted B6 on 2026-11-16. The PR was merged with a merge commit—not squash-merged—at `419312bc678901e2d22179313e6285086bee42da`. Local `main` was subsequently fast-forwarded to that exact merge commit and verified clean. No R7-C or R8 work was included.
 
-
 ## RW-1 — world-memory schema and EvidenceLink implementation (PR #128; 2026-11-16)
 
 **Disposition:** implementation PR [#128](https://github.com/abtn/Watch-Architecture-Rev2/pull/128) was merged to `main` at `7213a17e5ae96c3cae22ec1082af05d47b9c0d1d`. The final PR code/test commit was `aa947983fc72f771946ebf5b0d9a781aba80d7f3`; its parent was `7dfa57f37e71a739d44085fc2268e849212fbe9b`. Migration `0019_rw1_world_memory` is included. This record documents implementation and local verification; **formal Operator acceptance remains pending**.
