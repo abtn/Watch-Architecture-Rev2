@@ -1154,6 +1154,6 @@ The actual 0014 → 0015 migration remains covered by the existing populated mig
 - The full suite reported **130 Alembic `path_separator` deprecation warnings**; these were warnings, not test failures.
 - `git diff --check` passed.
 
-**Hosted CI qualification:** GitHub's commit-status endpoint for final PR code/test commit `aa947983fc72f771946ebf5b0d9a781aba80d7f3` returned no statuses (`total_count = 0`, state `pending`). Therefore this closeout does **not** claim hosted CI passed on the final code/test commit. The earlier hosted run on an older commit is not transferable to this SHA.
+**Hosted CI:** GitHub Actions [run #1247](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43901592622) ran on the exact final PR code/test commit `aa947983fc72f771946ebf5b0d9a781aba80d7f3` and completed successfully. Its disposable PostgreSQL migration, Alembic single-head verification, Ruff, Mypy, patch-whitespace check, and full test suite all passed. This is exact-SHA hosted verification; it is separate from the Operator-local run above.
 
 **Scope and boundary:** the PR implements the accepted RW-1 physical design only. It does not implement RW-2–RW-5, R7-C, persistent-database operations, newsroom scored execution, a new runtime/scheduler/authentication path, or provider changes. Merge and local verification do not themselves constitute formal Operator acceptance.
