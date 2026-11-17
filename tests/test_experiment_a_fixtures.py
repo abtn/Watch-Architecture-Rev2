@@ -251,7 +251,8 @@ def test_machine_readable_schemas_freeze_enums_and_omit_hash_echo_fields():
         "supports", "challenges", "mentions",
     ]
     outcome_description = fixture_schema["properties"]["outcomes"]["description"]
-    assert "intentionally extensible" in outcome_description
+    assert "record payload remains extensible" in outcome_description
+    assert "complete cross-case field vocabulary is frozen" in outcome_description
 
 
 def test_flat_arrays_order_timestamped_records_chronologically(fixtures):
