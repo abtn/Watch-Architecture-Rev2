@@ -200,27 +200,42 @@ D99's two minimum retained-knowledge attribution capabilities are assigned to a 
 
 RW-4-KU is part of the existing RW-4 retrieval/Context slice; it is not a new runtime or a separate R7-C programme. The implementation plan and proof matrix must be updated with exact test nodes before RW-4-KU is authorized. Any additional benchmark, blinded review, adjudication, statistical reporting, or score aggregation remains in the experiment harness, not production Watch.
 
-## 8. RW-1 proof plan
+## 8. RW-1 proof boundary
 
-The RW-1 implementation PR must identify exact test nodes for at least:
+RW-1 is the physical schema/ORM/migration slice. Its proof obligations are limited to persistence shape, relational ownership and cause references, legacy preservation, and migration behavior. The merged PR #128 implementation identifies these exact proof nodes:
 
-| Proof | Required assertion |
-|---|---|
-| Thread ownership | Cross-Team Thread access/reference rejected; status vocabulary enforced. |
-| Hypothesis ownership | Hypothesis must reference a Thread in the same Team; competing active Hypotheses coexist. |
-| Hypothesis lifecycle | Invalid status transitions and delete attempts rejected; rejection/supersession requires reason and Task-attributed Event. |
-| Confidence bands | Only low/moderate/high accepted. |
-| Confidence cause | Missing, dual, mismatched, cross-Team, wrong-Hypothesis, mentions-only, or wrong-Task causes rejected; evidence cause is constrained to the same Hypothesis by a composite FK. |
-| Evidence subject | Evaluation and Hypothesis subjects both accepted through one logical EvidenceLink API; invalid/missing/dual typed subject rejected. |
-| Evidence source | Signal and Outcome remain supported; invalid/missing/dual source rejected. Artifact/Consultation remain rejected until later source slices. |
-| Legacy preservation | Existing Evaluation→Signal/Outcome rows retain IDs and all provenance fields; `originating_task_id` backfills from the parent Evaluation Task; parent/Task/Team mapping and proposal-hash checks pass; current evaluation service behavior remains green. |
-| Team isolation | Cross-Team subject, Outcome, Hypothesis, Task and ConfidenceChange references rejected. Signal domain must equal the linking Team's domain for both subject kinds. |
-| Quote integrity | Exact quote/offset/hash accepted; altered quote, offset, Snapshot ref, or hash rejected. |
-| Uniqueness/replay | Duplicate reference keys and same-Task replay handled deterministically; concurrent conflicting commits cannot corrupt records. |
-| Migration | Upgrade on populated pre-RW DB and fresh DB; verify complete Task attribution, row counts, Team consistency, and proposal hashes; reachable invalid legacy fixtures abort transactionally without partial DDL/data changes; document legacy FK guarantees for impossible orphan/cross-Team states; verify migration head, downgrade refusal with new records, and safe downgrade on empty RW tables. |
-| Immutability | EvidenceLink and ConfidenceChange history cannot be rewritten or deleted through application paths. |
+| Proof | Test node | What it establishes |
+|---|---|---|
+| Evaluation compatibility and Task provenance | `tests/test_evaluations.py::test_evaluation_propose_record_and_replay` | Existing Evaluation evidence remains recordable through the typed subject representation, with Task provenance and logical subject compatibility. |
+| Evaluation Task attribution stability | `tests/test_evaluations.py::test_evaluation_record_rejects_changed_originating_task` | The originating Task cannot be changed before Evaluation evidence recording. |
+| Shared Hypothesis EvidenceLink and initial confidence | `tests/test_evaluations.py::test_hypothesis_evidence_uses_one_typed_evidence_link` | Hypothesis evidence uses the shared EvidenceLink model and a newly created Hypothesis defaults to `low`. |
+| Hypothesis/Thread Team ownership | `tests/test_evaluations.py::test_hypothesis_cannot_reference_another_teams_thread` | A Hypothesis cannot reference a Thread owned by another Team. |
+| ConfidenceChange evidence ownership | `tests/test_evaluations.py::test_confidence_change_evidence_fk_is_bound_to_same_hypothesis` | The composite foreign key prevents a ConfidenceChange from citing an EvidenceLink attached to another Hypothesis. |
+| Populated legacy-row preservation and Task backfill | `tests/test_rw1_schema_migration.py::test_0019_backfills_typed_subject_and_task_without_changing_legacy_rows` | Existing Evaluation EvidenceLink identity/provenance is preserved and originating Task attribution is backfilled. |
+| Proposal-hash migration failure | `tests/test_rw1_schema_migration.py::test_0019_refuses_proposal_hash_mismatch_and_rolls_back_schema` | A legacy proposal-hash mismatch aborts the migration without leaving the new schema partially applied. |
+| Signal-domain migration failure | `tests/test_rw1_schema_migration.py::test_0019_refuses_signal_domain_mismatch_and_rolls_back_schema` | A legacy Signal from another domain aborts the migration transactionally. |
+| Evidence reference-hash migration failure | `tests/test_rw1_schema_migration.py::test_0019_refuses_evidence_reference_hash_mismatch_and_rolls_back_schema` | A tampered legacy EvidenceLink reference hash aborts the migration transactionally. |
+| Canonical multi-link backfill | `tests/test_rw1_schema_migration.py::test_0019_backfills_multiple_links_in_canonical_reference_order` | Multiple legacy links are backfilled in canonical reference order with complete typed-subject and Task attribution. |
+| Downgrade data-loss protection | `tests/test_rw1_schema_migration.py::test_0019_downgrade_refuses_hypothesis_confidence_history` and `tests/test_rw1_schema_migration.py::test_0019_downgrade_refuses_world_memory_then_restores_legacy_shape` | Downgrade refuses to discard world-memory history and restores the legacy Evaluation-only shape only when the new records are absent. |
 
-Use real disposable PostgreSQL for database-backed constraints, migration, race, and mutation proofs. Unit-only SQLite substitutes are not sufficient for PostgreSQL-specific constraints.
+The exact local verification qualification and hosted-CI evidence are recorded in the implementation plan and `docs/testing.md`. They establish the delivered schema/ORM/migration tree; they do not establish that the user's persistent database has passed the migration.
+
+### Application-level proofs deferred to later slices
+
+The following requirements remain binding. They are not RW-1 schema/ORM/migration acceptance criteria and are not satisfied by PR #128's merge or its migration tests.
+
+| Behavior | Required proof | Allocation |
+|---|---|---|
+| Hypothesis lifecycle | Legal status transitions; rejection and supersession require a non-empty reason; supersession identifies a valid same-Team successor; no silent deletion; canonical Task-attributed Event. | RW-2, `RW-HY-02` |
+| Atomic proposal commit and rejection | Valid proposal sets commit atomically; invalid proposals produce attributable rejection Events; failed transactions leave no partial business writes. | RW-2, `RW-AT-01` |
+| Task/proposal replay | Replaying the same Task does not duplicate evidence or repeat a state transition. | RW-2/RW-3/RW-4/RW-5, `RW-RP-01` |
+| Concurrent Thread updates | Conflicting updates serialize or one is rejected without lost updates. | RW-2/RW-3, `RW-RC-01` |
+| Initial confidence through commit paths | Every new Hypothesis starts at `low`; any higher band is a later, valid Task-attributed ConfidenceChange through Operator and model paths. RW-1 proves only the persistence default. | RW-2/RW-3, `RW-HY-03` |
+| Evidence-driven touch time | Only accepted evidence changes `last_touched_at`; mentions, rejected proposals, and replay do not. | RW-2/RW-3, `RW-LT-01` |
+
+In particular, D132 decision 3 remains unchanged: supersession must be represented by one canonical Task-attributed Event containing the old Hypothesis ID, successor Hypothesis ID, and non-empty reason. Deferring its commit path to RW-2 does not weaken or waive that requirement.
+
+Use real disposable PostgreSQL for database-backed constraints and migration proofs. The later application-level race and mutation proofs must also use the database behavior they are intended to verify; unit-only SQLite substitutes are not sufficient for PostgreSQL-specific guarantees.
 
 ## 9. D132 Operator decisions — accepted 2026-11-16
 
