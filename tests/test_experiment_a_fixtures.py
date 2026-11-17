@@ -193,7 +193,9 @@ def test_machine_readable_schemas_freeze_enums_and_omit_hash_echo_fields():
         )
     )
     state = fixture_schema["$defs"]["stateAssessment"]["properties"]
-    assert set(state["objective"]["properties"]) == {"id", "team_id", "statement", "status"}
+    assert set(state["objective"]["properties"]) == {
+        "id", "team_id", "statement", "status",
+    }
     assert set(state["team"]["properties"]) == {"id", "domain", "status"}
     assert set(state["signals"]["items"]["properties"]) == {
         "id", "source_type", "origin_url", "fetched_at", "content_hash", "snapshot_ref",
@@ -243,10 +245,12 @@ def test_machine_readable_schemas_freeze_enums_and_omit_hash_echo_fields():
         }
         assert actual == expected
 
-    assert output_schema["$defs"]["proposedEvidenceLink"]["properties"]["stance"]["enum"] == [
+    stance_enum = output_schema["$defs"]["proposedEvidenceLink"]["properties"]["stance"]["enum"]
+    assert stance_enum == [
         "supports", "challenges", "mentions",
     ]
-    assert "intentionally extensible" in fixture_schema["properties"]["outcomes"]["description"]
+    outcome_description = fixture_schema["properties"]["outcomes"]["description"]
+    assert "intentionally extensible" in outcome_description
 
 
 def test_flat_arrays_order_timestamped_records_chronologically(fixtures):
