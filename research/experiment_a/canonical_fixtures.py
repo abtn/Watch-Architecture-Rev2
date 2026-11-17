@@ -37,7 +37,11 @@ RW3_ARRAYS = (
 
 def canonical_json(value: Any) -> str:
     return json.dumps(
-        value, ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":")
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
     )
 
 
@@ -82,7 +86,9 @@ def _validate_state_assessment(value: dict[str, Any]) -> None:
     for policy in value["policies"]:
         if set(policy) != {"id", "team_id", "version", "rules_json"}:
             raise ValueError("AssessmentPolicy fields do not match Watch projection")
-        if not isinstance(policy["version"], int) or isinstance(policy["version"], bool):
+        if not isinstance(policy["version"], int) or isinstance(
+            policy["version"], bool
+        ):
             raise ValueError("AssessmentPolicy.version must be an integer")
         rules = json.loads(policy["rules_json"])
         for source in rules.get("sources", []):
@@ -251,7 +257,10 @@ def _record_multiset(value: dict[str, Any], structured: bool) -> Counter[str]:
         records.append(("state_assessment", value["state_assessment"]))
     else:
         records.append(("hypothesis", value["hypothesis"]))
-        records.extend(("confidence_change", item) for item in value["confidence_changes"])
+        records.extend(
+            ("confidence_change", item)
+            for item in value["confidence_changes"]
+        )
         if structured:
             for stance in ("supporting", "challenging", "mentions"):
                 records.extend(
@@ -324,7 +333,9 @@ def validate_evidence_assessment(
         "task": {task["id"] for task in fixture["tasks"]},
     }
     if reference not in valid[kind]:
-        raise ValueError("evidence assessment reference not present in fixture or batch")
+        raise ValueError(
+            "evidence assessment reference not present in fixture or batch"
+        )
     for field, values in EVIDENCE_ASSESSMENT_ENUMS.items():
         if item.get(field) not in values:
             raise ValueError(f"invalid evidence assessment {field}")
@@ -337,7 +348,9 @@ def sample_fixtures() -> dict[str, dict[str, Any]]:
         "role": "update_thread",
         "hypothesis": {
             "id": "hyp-003",
-            "statement": "The intervention produces the specified effect under C1, C2, and C3.",
+            "statement": (
+                "The intervention produces the specified effect under C1, C2, and C3."
+            ),
             "scope": {"population": "population-P", "conditions": ["C1", "C2", "C3"]},
             "current_confidence": "low",
             "confidence_history": [],
@@ -394,7 +407,9 @@ def sample_fixtures() -> dict[str, dict[str, Any]]:
             "status": "pending",
             "expected_source_kind": "signal",
             "expected_source_id": None,
-            "description": "A measurement under C1 has been requested; no result is available.",
+            "description": (
+                "A measurement under C1 has been requested; no result is available."
+            ),
             "result_available": False,
         }],
         "tasks": [{
