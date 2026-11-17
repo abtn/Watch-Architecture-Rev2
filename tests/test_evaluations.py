@@ -653,6 +653,7 @@ def rw1_schema_records(session_factory, snapshot_store, evaluation_context):
         "other_team_id": other_team_id,
         "other_task_id": other_task_id,
         "other_outcome_id": other_outcome_id,
+        "thread_id": thread_id,
         "hypothesis_id": hypothesis_id,
         "hypothesis_link_id": link_id,
         "signal_id": signal_id,
