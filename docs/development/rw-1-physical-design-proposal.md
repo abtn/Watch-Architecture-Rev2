@@ -220,17 +220,20 @@ RW-1 is the physical schema/ORM/migration slice. Its proof obligations are limit
 
 The exact local verification qualification and hosted-CI evidence are recorded in the implementation plan and `docs/testing.md`. They establish the delivered schema/ORM/migration tree; they do not establish that the user's persistent database has passed the migration.
 
-### RW-1 schema-level proof gaps
+### RW-1 schema-level negative-test follow-up (PR #132)
 
-The merged model and migration define the following database checks, but the PR #128 test modules do not contain focused negative tests for each of them:
+The initial PR #128 suite declared the following database constraints in the ORM/migration but did not contain focused negative tests for each of them. Test-only PR [#132](https://github.com/abtn/Watch-Architecture-Rev2/pull/132) now adds those PostgreSQL proofs in `tests/test_evaluations.py`:
 
-- Thread status vocabulary: `ck_threads_status`.
-- Hypothesis status and confidence vocabularies: `ck_hypotheses_status` and `ck_hypotheses_confidence`.
-- EvidenceLink typed subject and source exclusivity: `ck_evidence_links_subject` and `ck_evidence_links_source`, including missing, dual, and kind/column-mismatch cases.
-- ConfidenceChange cause shape: `ck_confidence_changes_cause` and `ck_confidence_changes_cause_kind`, including missing, dual, and invalid cause cases.
-- Same-Team EvidenceLink subject and Task-attribution foreign keys beyond the currently named Hypothesis/Thread and ConfidenceChange/evidence negative tests.
+- `test_rw1_thread_status_check_rejects_invalid_values` — `ck_threads_status`.
+- `test_rw1_hypothesis_vocabulary_checks_reject_invalid_values` — `ck_hypotheses_status` and `ck_hypotheses_confidence`.
+- `test_rw1_evidence_subject_check_rejects_missing_dual_and_mismatched_subjects` — `ck_evidence_links_subject`, covering missing, dual, and kind/column-mismatch subjects.
+- `test_rw1_evidence_source_check_rejects_missing_dual_and_mismatched_sources` — `ck_evidence_links_source`, covering missing, dual, and kind/column-mismatch sources.
+- `test_rw1_confidence_change_cause_check_rejects_invalid_cause_shapes` and `test_rw1_confidence_change_checks_reject_unknown_cause_kind` — `ck_confidence_changes_cause` and `ck_confidence_changes_cause_kind`.
+- `test_rw1_evidence_subject_and_task_fks_enforce_team_ownership` — `fk_evidence_links_evaluation_subject_team`, `fk_evidence_links_hypothesis_team`, and `fk_evidence_links_originating_task_team`.
 
-These are verification gaps, not observed failures of the declared constraints: the constraints are present in the ORM/migration, and exact-head hosted CI passes the existing suite. However, a green suite cannot prove constraint cases that it does not exercise. Before formal RW-1 acceptance, add focused PostgreSQL negative tests for these cases, or obtain explicit Operator approval for a narrower proof disposition. Do not silently treat the presence of a constraint declaration as a completed behavioral proof.
+Hosted GitHub Actions run [#1269](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44087840152) passed on exact test head `61fa0a214e05993637695e75d8aa019449fc540d`: fresh PostgreSQL migration and single-head/current verification, Ruff, Mypy, patch whitespace, and the full suite (**1,029 passed, 130 existing Alembic deprecation warnings**). CI removed its disposable PostgreSQL container and network. The follow-up changes tests only; no production code, ORM model, migration, or schema changed.
+
+This closes the identified RW-1 schema-level negative-test coverage gap at the hosted exact-head level. Operator-local exact-head verification and formal RW-1 acceptance remain pending. These proofs do not establish that the user's persistent database has passed migration validation, and they do not authorize RW-2.
 
 ### Application-level proofs deferred to later slices
 
