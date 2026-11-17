@@ -557,13 +557,21 @@ def rw1_schema_records(session_factory, snapshot_store, evaluation_context):
     proposed = _propose(
         EvaluationService(session_factory, snapshot_store), evaluation_context
     )
-    other_team_id, other_task_id, other_outcome_id = (uuid4() for _ in range(3))
+    other_team_id, other_policy_id, other_task_id, other_outcome_id = (
+        uuid4() for _ in range(4)
+    )
     thread_id, hypothesis_id, link_id, signal_id = (uuid4() for _ in range(4))
     now = datetime.now(timezone.utc)
     ref, digest = snapshot_store.put(b"RW-1 schema constraint fixture.")
 
     with session_factory.begin() as session:
         session.add(Team(id=other_team_id, domain="other", status="active"))
+        session.flush()
+        session.add(
+            TeamPolicy(
+                id=other_policy_id, team_id=other_team_id, version=1, rules={}
+            )
+        )
         session.flush()
         session.add(
             Task(
@@ -661,6 +669,9 @@ def rw1_schema_records(session_factory, snapshot_store, evaluation_context):
                 delete(Outcome).where(Outcome.id == other_outcome_id)
             )
             session.execute(delete(Task).where(Task.id == other_task_id))
+            session.execute(
+                delete(TeamPolicy).where(TeamPolicy.id == other_policy_id)
+            )
             session.execute(delete(Team).where(Team.id == other_team_id))
 
 
