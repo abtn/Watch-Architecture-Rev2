@@ -245,7 +245,9 @@ def test_machine_readable_schemas_freeze_enums_and_omit_hash_echo_fields():
         }
         assert actual == expected
 
-    stance_enum = output_schema["$defs"]["proposedEvidenceLink"]["properties"]["stance"]["enum"]
+    stance_enum = output_schema["$defs"]["proposedEvidenceLink"]["properties"]["stance"][
+        "enum"
+    ]
     assert stance_enum == [
         "supports", "challenges", "mentions",
     ]
