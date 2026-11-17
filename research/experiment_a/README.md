@@ -6,11 +6,17 @@ calls, provider calls, database access, or production edits.
 
 ## Files
 
-- canonical-fixture.schema.json: canonical fixture schema.
+- canonical-fixture.schema.json: strict top-level fixture envelope with explicitly extensible case-specific record payloads.
 - evidence-assessment.schema.json: closed assessment enums and reference kinds.
-- model-output.schema.json: RW-3 output contract, including hold/no_update.
+- model-output.schema.json: closed RW-3 output contract, including confidence-transition direction and hold/no_update.
 - canonical_fixtures.py: fixture validation, renderers, hashing, and Invariant #7.
 - tests/test_experiment_a_fixtures.py: tests for RW3-03, RW3-13, and SP-01.
+
+## Schema boundaries
+
+The canonical fixture schema closes the top-level envelope and fixes shared record identifiers/status fields where defined. Some scientific evidence details (for example measurement descriptions, confidence-history entries, lineage details, and uncertainty annotations) remain intentionally extensible because the current three fixtures do not establish a complete shared vocabulary for them. Do not treat those payloads as fully closed. The model-facing evidence-assessment and proposal-output schemas are closed.
+
+For model output, `increase` requires a strictly higher confidence band and `decrease` a strictly lower band (`low < moderate < high`). A proposed ConfidenceChange requires non-null source and target bands. `hold` and `no_update` prohibit a ConfidenceChange; `no_update` also prohibits new EvidenceLinks. A `hold` may include a `mentions` EvidenceLink, and stance alone does not determine whether confidence changes.
 
 ## Representations
 
