@@ -134,6 +134,12 @@ def validate_fixture(fixture: dict[str, Any]) -> None:
         if any(fixture[name] for name in RW3_ARRAYS):
             raise ValueError("StrategyProposer fixture contains RW-3-only records")
         _validate_state_assessment(fixture["state_assessment"])
+        source_count = sum(
+            len(json.loads(policy["rules_json"]).get("sources", []))
+            for policy in fixture["state_assessment"]["policies"]
+        )
+        if source_count != 1:
+            raise ValueError("StrategyProposer diagnostic requires exactly one source")
     else:
         raise ValueError("unsupported fixture role")
 
