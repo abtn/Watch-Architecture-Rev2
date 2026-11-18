@@ -526,15 +526,9 @@ class OperatorApplicationAdapter:
         operator_id = _canonical_operator_identity(principal)
 
         with self._session_factory.begin() as session:
-            thread = session.scalar(
-                select(Thread)
-                .where(Thread.id == request.thread_id)
-                .with_for_update(read=True)
-            )
+            thread = session.get(Thread, request.thread_id)
             if thread is None:
                 raise OperatorApplicationError("operator_update_thread_not_found")
-            if thread.status == "resolved":
-                raise OperatorApplicationError("operator_update_thread_not_available")
             team_id = thread.team_id
             _require_team_grant(principal, team_id, action=TASK_TYPE)
             team = session.scalar(
@@ -542,6 +536,13 @@ class OperatorApplicationAdapter:
             )
             if team is None or team.status != "active":
                 raise OperatorApplicationError("operator_update_team_not_active")
+            thread = session.scalar(
+                select(Thread)
+                .where(Thread.id == request.thread_id, Thread.team_id == team_id)
+                .with_for_update()
+            )
+            if thread is None or thread.status == "resolved":
+                raise OperatorApplicationError("operator_update_thread_not_available")
             policy = session.scalar(
                 select(TeamPolicy)
                 .where(TeamPolicy.team_id == team_id)
