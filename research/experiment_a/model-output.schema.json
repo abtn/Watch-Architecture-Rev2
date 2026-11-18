@@ -1,0 +1,494 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:watch:experiment-a:model-output:v1",
+  "title": "Experiment A update_thread model output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id",
+    "decision",
+    "confidence_change",
+    "evidence_links",
+    "evidence_assessment",
+    "justification"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "enum": [
+        "increase",
+        "decrease",
+        "hold",
+        "no_update"
+      ]
+    },
+    "confidence_change": {
+      "$ref": "#/$defs/confidenceChange"
+    },
+    "evidence_links": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/proposedEvidenceLink"
+      }
+    },
+    "evidence_assessment": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceAssessment"
+      }
+    },
+    "justification": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "hold",
+              "no_update"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "confidence_change": {
+            "properties": {
+              "proposed": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "no_update"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "evidence_links": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "increase",
+              "decrease"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "confidence_change": {
+            "properties": {
+              "proposed": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "increase"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "confidence_change": {
+            "oneOf": [
+              {
+                "properties": {
+                  "proposed": {
+                    "const": true
+                  },
+                  "from_confidence": {
+                    "const": "low"
+                  },
+                  "to_confidence": {
+                    "const": "moderate"
+                  }
+                },
+                "required": [
+                  "proposed",
+                  "from_confidence",
+                  "to_confidence"
+                ]
+              },
+              {
+                "properties": {
+                  "proposed": {
+                    "const": true
+                  },
+                  "from_confidence": {
+                    "const": "low"
+                  },
+                  "to_confidence": {
+                    "const": "high"
+                  }
+                },
+                "required": [
+                  "proposed",
+                  "from_confidence",
+                  "to_confidence"
+                ]
+              },
+              {
+                "properties": {
+                  "proposed": {
+                    "const": true
+                  },
+                  "from_confidence": {
+                    "const": "moderate"
+                  },
+                  "to_confidence": {
+                    "const": "high"
+                  }
+                },
+                "required": [
+                  "proposed",
+                  "from_confidence",
+                  "to_confidence"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "decrease"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "confidence_change": {
+            "oneOf": [
+              {
+                "properties": {
+                  "proposed": {
+                    "const": true
+                  },
+                  "from_confidence": {
+                    "const": "high"
+                  },
+                  "to_confidence": {
+                    "const": "moderate"
+                  }
+                },
+                "required": [
+                  "proposed",
+                  "from_confidence",
+                  "to_confidence"
+                ]
+              },
+              {
+                "properties": {
+                  "proposed": {
+                    "const": true
+                  },
+                  "from_confidence": {
+                    "const": "high"
+                  },
+                  "to_confidence": {
+                    "const": "low"
+                  }
+                },
+                "required": [
+                  "proposed",
+                  "from_confidence",
+                  "to_confidence"
+                ]
+              },
+              {
+                "properties": {
+                  "proposed": {
+                    "const": true
+                  },
+                  "from_confidence": {
+                    "const": "moderate"
+                  },
+                  "to_confidence": {
+                    "const": "low"
+                  }
+                },
+                "required": [
+                  "proposed",
+                  "from_confidence",
+                  "to_confidence"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "confidence": {
+      "enum": [
+        "low",
+        "moderate",
+        "high"
+      ]
+    },
+    "confidenceChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proposed",
+        "from_confidence",
+        "to_confidence",
+        "cause_kind",
+        "evidence_link_id",
+        "evidence_link_ref"
+      ],
+      "properties": {
+        "proposed": {
+          "type": "boolean"
+        },
+        "from_confidence": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/confidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "to_confidence": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/confidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cause_kind": {
+          "enum": [
+            "evidence",
+            null
+          ]
+        },
+        "evidence_link_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence_link_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "proposed": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cause_kind": {
+                "const": "evidence"
+              },
+              "from_confidence": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "moderate",
+                  "high"
+                ]
+              },
+              "to_confidence": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "moderate",
+                  "high"
+                ]
+              }
+            },
+            "oneOf": [
+              {
+                "properties": {
+                  "evidence_link_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "evidence_link_ref": {
+                    "type": "null"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "evidence_link_id": {
+                    "type": "null"
+                  },
+                  "evidence_link_ref": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            ]
+          },
+          "else": {
+            "properties": {
+              "from_confidence": {
+                "type": "null"
+              },
+              "to_confidence": {
+                "type": "null"
+              },
+              "cause_kind": {
+                "type": "null"
+              },
+              "evidence_link_id": {
+                "type": "null"
+              },
+              "evidence_link_ref": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "proposedEvidenceLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "link_ref",
+        "source_kind",
+        "source_id",
+        "stance",
+        "subject_hypothesis_id"
+      ],
+      "properties": {
+        "operation": {
+          "const": "create"
+        },
+        "link_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_kind": {
+          "enum": [
+            "signal",
+            "outcome"
+          ]
+        },
+        "source_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stance": {
+          "enum": [
+            "supports",
+            "challenges",
+            "mentions"
+          ]
+        },
+        "subject_hypothesis_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "evidenceAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference_kind",
+        "reference",
+        "relevance",
+        "reliability",
+        "independence",
+        "temporal_status"
+      ],
+      "properties": {
+        "reference_kind": {
+          "enum": [
+            "evidence_link",
+            "proposed_link",
+            "source",
+            "observation",
+            "task"
+          ]
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relevance": {
+          "enum": [
+            "direct",
+            "indirect",
+            "out_of_scope",
+            "tangential"
+          ]
+        },
+        "reliability": {
+          "enum": [
+            "high",
+            "moderate",
+            "low",
+            "unknown"
+          ]
+        },
+        "independence": {
+          "enum": [
+            "independent",
+            "related",
+            "unknown"
+          ]
+        },
+        "temporal_status": {
+          "enum": [
+            "completed",
+            "pending",
+            "missing"
+          ]
+        }
+      }
+    }
+  }
+}

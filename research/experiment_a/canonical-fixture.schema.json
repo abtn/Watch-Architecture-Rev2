@@ -1,0 +1,680 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:watch:experiment-a:canonical-fixture:v1",
+  "title": "Experiment A canonical fixture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id",
+    "role",
+    "hypothesis",
+    "confidence_changes",
+    "evidence_links",
+    "unlinked_sources",
+    "observations",
+    "tasks",
+    "outcomes",
+    "lineage_pairs",
+    "uncertainty_notes"
+  ],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "role": {
+      "enum": [
+        "update_thread",
+        "strategy_proposer"
+      ]
+    },
+    "hypothesis": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hypothesis"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "confidence_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "minProperties": 1,
+        "anyOf": [
+          {
+            "required": [
+              "evidence_link_id"
+            ]
+          },
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "source_id"
+            ]
+          },
+          {
+            "required": [
+              "observation_id"
+            ]
+          }
+        ],
+        "description": "Extensible case-specific confidence-change record with a required identifier."
+      },
+      "description": "Case-specific confidence-change evidence. The canonical envelope is strict; this record payload remains extensible until the complete cross-case field vocabulary is frozen."
+    },
+    "evidence_links": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceLink"
+      }
+    },
+    "unlinked_sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source"
+      }
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/observation"
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/task"
+      }
+    },
+    "outcomes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "minProperties": 1,
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "enum": [
+              "completed",
+              "pending",
+              "missing"
+            ]
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "evidence_link_id"
+            ]
+          },
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "source_id"
+            ]
+          },
+          {
+            "required": [
+              "observation_id"
+            ]
+          }
+        ],
+        "description": "Extensible case-specific outcome record with required status and identifier."
+      },
+      "description": "Case-specific outcome evidence. The canonical envelope is strict; this record payload remains extensible until the complete cross-case field vocabulary is frozen."
+    },
+    "lineage_pairs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "minProperties": 1,
+        "anyOf": [
+          {
+            "required": [
+              "evidence_link_id"
+            ]
+          },
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "source_id"
+            ]
+          },
+          {
+            "required": [
+              "observation_id"
+            ]
+          }
+        ],
+        "description": "Extensible case-specific lineage record with a required identifier."
+      },
+      "description": "Case-specific lineage-pair evidence. The canonical envelope is strict; this record payload remains extensible until the complete cross-case field vocabulary is frozen."
+    },
+    "uncertainty_notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "minProperties": 1,
+        "anyOf": [
+          {
+            "required": [
+              "evidence_link_id"
+            ]
+          },
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "source_id"
+            ]
+          },
+          {
+            "required": [
+              "observation_id"
+            ]
+          }
+        ],
+        "description": "Extensible case-specific uncertainty record with a required identifier."
+      },
+      "description": "Case-specific uncertainty annotations. The canonical envelope is strict; this record payload remains extensible until the complete cross-case field vocabulary is frozen."
+    },
+    "state_assessment": {
+      "$ref": "#/$defs/stateAssessment"
+    },
+    "evaluator_metadata": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "role": {
+            "const": "update_thread"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "hypothesis": {
+            "$ref": "#/$defs/hypothesis"
+          }
+        },
+        "not": {
+          "required": [
+            "state_assessment"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "role": {
+            "const": "strategy_proposer"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "hypothesis": {
+            "type": "null"
+          },
+          "confidence_changes": {
+            "maxItems": 0
+          },
+          "evidence_links": {
+            "maxItems": 0
+          },
+          "unlinked_sources": {
+            "maxItems": 0
+          },
+          "observations": {
+            "maxItems": 0
+          },
+          "tasks": {
+            "maxItems": 0
+          },
+          "outcomes": {
+            "maxItems": 0
+          },
+          "lineage_pairs": {
+            "maxItems": 0
+          },
+          "uncertainty_notes": {
+            "maxItems": 0
+          }
+        },
+        "required": [
+          "state_assessment"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "hypothesis": {
+      "type": "object",
+      "required": [
+        "id",
+        "statement",
+        "scope",
+        "current_confidence",
+        "confidence_history"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "statement": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "object",
+          "description": "Extensible hypothesis-scope representation; exact domain-specific dimensions vary by case."
+        },
+        "current_confidence": {
+          "enum": [
+            "low",
+            "moderate",
+            "high"
+          ]
+        },
+        "confidence_history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "Extensible historical confidence record; the current canonical samples do not yet exercise this collection."
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidenceLink": {
+      "type": "object",
+      "required": [
+        "evidence_link_id",
+        "source_kind",
+        "source_id",
+        "stance"
+      ],
+      "properties": {
+        "evidence_link_id": {
+          "type": "string"
+        },
+        "source_kind": {
+          "enum": [
+            "signal",
+            "outcome"
+          ]
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "stance": {
+          "enum": [
+            "supports",
+            "challenges",
+            "mentions"
+          ]
+        },
+        "snapshot_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "snapshot_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reference_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "description": "Extensible canonical evidence record; model proposal output uses the separately closed proposedEvidenceLink schema."
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "source_kind",
+        "source_id",
+        "status"
+      ],
+      "properties": {
+        "source_kind": {
+          "enum": [
+            "signal",
+            "outcome"
+          ]
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "pending",
+            "missing"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "description": "Extensible source-evidence record; case-specific measurement and provenance details are preserved."
+    },
+    "observation": {
+      "type": "object",
+      "required": [
+        "observation_id",
+        "status"
+      ],
+      "properties": {
+        "observation_id": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "pending",
+            "missing"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "description": "Extensible observation record; case-specific measurement and temporal details are preserved."
+    },
+    "task": {
+      "type": "object",
+      "required": [
+        "id",
+        "task_type",
+        "status",
+        "policy_version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "task_type": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "running",
+            "completed"
+          ]
+        },
+        "policy_version": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": true,
+      "description": "Extensible task record; the required task identity, type, status, and policy version are fixed."
+    },
+    "stateAssessment": {
+      "type": "object",
+      "required": [
+        "objective",
+        "team",
+        "policies",
+        "tasks",
+        "events",
+        "signals",
+        "basis",
+        "created_at"
+      ],
+      "properties": {
+        "objective": {
+          "type": "object",
+          "required": [
+            "id",
+            "team_id",
+            "statement",
+            "status"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "team_id": {
+              "type": "string"
+            },
+            "statement": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "team": {
+          "type": "object",
+          "required": [
+            "id",
+            "domain",
+            "status"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "domain": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "policies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "team_id",
+              "version",
+              "rules_json"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "team_id": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer"
+              },
+              "rules_json": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "task_type",
+              "status",
+              "policy_version"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "task_type": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "policy_version": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "task_id",
+              "event_type",
+              "created_at",
+              "signal_id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "task_id": {
+                "type": "string"
+              },
+              "event_type": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string"
+              },
+              "signal_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "source_type",
+              "origin_url",
+              "fetched_at",
+              "content_hash",
+              "snapshot_ref"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "source_type": {
+                "type": "string"
+              },
+              "origin_url": {
+                "type": "string"
+              },
+              "fetched_at": {
+                "type": "string"
+              },
+              "content_hash": {
+                "type": "string"
+              },
+              "snapshot_ref": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "basis": {
+          "type": "object",
+          "required": [
+            "objective_id",
+            "team_id",
+            "policy_ids",
+            "task_ids",
+            "event_ids",
+            "signal_ids",
+            "sha256"
+          ],
+          "properties": {
+            "objective_id": {
+              "type": "string"
+            },
+            "team_id": {
+              "type": "string"
+            },
+            "policy_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "task_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "event_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "signal_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "created_at": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
