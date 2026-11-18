@@ -238,7 +238,8 @@ class OperatorApplicationAdapter:
                 target_id=learning_change.target_id,
             ):
                 raise LearningChangeNotApprovable(
-                    "only_knowledge_item_create_revise_revalidate_retire_or_supersede_is_supported"
+                    "only_knowledge_item_create_revise_revalidate_retire_or_"
+                    "supersede_is_supported"
                 )
 
             team_id = learning_change.team_id
@@ -588,7 +589,8 @@ class OperatorApplicationAdapter:
                 )
                 if (
                     stored.operator_id != operator_id
-                    or stored.request_fingerprint != event_payload["request_fingerprint"]
+                    or stored.request_fingerprint
+                    != event_payload["request_fingerprint"]
                     or len(request_events) != 1
                     or request_events[0].payload != event_payload
                 ):
@@ -694,7 +696,9 @@ class OperatorApplicationAdapter:
                 )
             )
             if marker is None or not isinstance(marker.payload, dict):
-                raise OperatorTaskRequestCorrupt("operator_update_result_marker_missing")
+                raise OperatorTaskRequestCorrupt(
+                    "operator_update_result_marker_missing"
+                )
             committed_count = len(marker.payload.get("committed_proposal_keys", []))
             rejected_count = len(marker.payload.get("rejected_proposal_keys", []))
 
