@@ -10,7 +10,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import select
@@ -32,6 +32,9 @@ from core.operator_approval import (
     validate_decision_reason,
 )
 from core.snapshot_store import SnapshotStore
+
+if TYPE_CHECKING:
+    from core.world_memory import OperatorUpdateRequest
 
 _APPROVAL_ACTION = "approve_learning_change"
 _APPROVAL_TASK_TYPE = "approve_learning_change"
@@ -489,7 +492,11 @@ class OperatorApplicationAdapter:
                 replayed=False,
             )
 
-    def operator_update(self, principal, request):
+    def operator_update(
+        self,
+        principal: TrustedOperatorPrincipal,
+        request: "OperatorUpdateRequest",
+    ) -> OperatorUpdateResult:
         """Commit one deterministic Operator proposal set through an ordinary Task."""
         from core.world_memory import (
             ALLOWED_WRITES,
@@ -526,6 +533,8 @@ class OperatorApplicationAdapter:
             )
             if thread is None:
                 raise OperatorApplicationError("operator_update_thread_not_found")
+            if thread.status == "resolved":
+                raise OperatorApplicationError("operator_update_thread_not_available")
             team_id = thread.team_id
             _require_team_grant(principal, team_id, action=TASK_TYPE)
             team = session.scalar(
