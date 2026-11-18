@@ -824,6 +824,9 @@ class WorldMemoryCommitService:
                         )
                     )
 
+            if created_hypothesis_ids:
+                session.flush()
+
             touched_hypothesis_ids: set[UUID] = set()
             for proposal in proposals:
                 if proposal.key not in valid_evidence:
