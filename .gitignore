@@ -8,3 +8,7 @@ __pycache__/
 .vscode/
 .zcodeignore
 *.patch
+
+# Retained/failed environments created by scripts/align-ci-python.ps1
+.venv.backup-*/
+.venv.failed-*/
