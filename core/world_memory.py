@@ -184,6 +184,66 @@ class WorldMemoryCommitResult:
     replayed: bool = False
 
 
+def _record_all_rejected(
+    session: Session,
+    task: Task,
+    envelope: OperatorUpdateEnvelope,
+    attempt: int,
+    reasons: dict[str, str],
+) -> WorldMemoryCommitResult:
+    """Persist one rejection Event per proposal and the Task-level failure proof."""
+    proposals = envelope.request.proposals
+    if set(reasons) != {proposal.key for proposal in proposals}:
+        raise WorldMemoryError("operator_update_rejection_set_incomplete")
+    committed_at = datetime.now(timezone.utc)
+    rejected_keys = [proposal.key for proposal in proposals]
+    for proposal in proposals:
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=task.id,
+                type="proposal_rejected",
+                payload={
+                    "task_id": str(task.id),
+                    "team_id": str(task.team_id),
+                    "operator_id": envelope.operator_id,
+                    "request_fingerprint": envelope.request_fingerprint,
+                    "proposal_key": proposal.key,
+                    "reason": reasons[proposal.key],
+                },
+                created_at=committed_at,
+            )
+        )
+    session.add(
+        Event(
+            id=uuid4(),
+            task_id=task.id,
+            type=REJECTED_EVENT_TYPE,
+            payload={
+                "schema_version": 1,
+                "task_id": str(task.id),
+                "team_id": str(task.team_id),
+                "thread_id": str(envelope.request.thread_id),
+                "attempt_count": attempt,
+                "operator_id": envelope.operator_id,
+                "request_fingerprint": envelope.request_fingerprint,
+                "rejected_proposal_keys": rejected_keys,
+                "failure_reason": "all_operator_update_proposals_rejected",
+            },
+            created_at=committed_at,
+        )
+    )
+    session.flush()
+    return WorldMemoryCommitResult(
+        task_id=task.id,
+        status="rejected",
+        committed_count=0,
+        rejected_count=len(rejected_keys),
+        committed_at=committed_at,
+        request_fingerprint=envelope.request_fingerprint,
+    )
+
+
 def task_id_for_request(team_id: UUID, idempotency_key: UUID) -> UUID:
     return uuid5(
         _TASK_ID_NAMESPACE,
@@ -453,9 +513,27 @@ class WorldMemoryCommitService:
                 .with_for_update()
             )
             if team is None or team.status != "active":
-                raise WorldMemoryError("operator_update_team_not_active")
+                return _record_all_rejected(
+                    session,
+                    task,
+                    envelope,
+                    attempt,
+                    {
+                        proposal.key: "operator_update_team_not_active"
+                        for proposal in envelope.request.proposals
+                    },
+                )
             if thread is None or thread.status == "resolved":
-                raise WorldMemoryError("operator_update_thread_not_available")
+                return _record_all_rejected(
+                    session,
+                    task,
+                    envelope,
+                    attempt,
+                    {
+                        proposal.key: "operator_update_thread_not_available"
+                        for proposal in envelope.request.proposals
+                    },
+                )
 
             proposals = envelope.request.proposals
             rejected: dict[str, str] = {}
@@ -678,6 +756,11 @@ class WorldMemoryCommitService:
             ]
             committed_at = datetime.now(timezone.utc)
 
+            if not valid_proposal_keys:
+                return _record_all_rejected(
+                    session, task, envelope, attempt, rejected
+                )
+
             for proposal in proposals:
                 if proposal.key in rejected:
                     session.add(
@@ -696,36 +779,6 @@ class WorldMemoryCommitService:
                             created_at=committed_at,
                         )
                     )
-
-            if not valid_proposal_keys:
-                session.add(
-                    Event(
-                        id=uuid4(),
-                        task_id=task.id,
-                        type=REJECTED_EVENT_TYPE,
-                        payload={
-                            "schema_version": 1,
-                            "task_id": str(task.id),
-                            "team_id": str(task.team_id),
-                            "thread_id": str(envelope.request.thread_id),
-                            "attempt_count": attempt,
-                            "operator_id": operator_id,
-                            "request_fingerprint": envelope.request_fingerprint,
-                            "rejected_proposal_keys": rejected_keys,
-                            "failure_reason": "all_operator_update_proposals_rejected",
-                        },
-                        created_at=committed_at,
-                    )
-                )
-                session.flush()
-                return WorldMemoryCommitResult(
-                    task_id=task.id,
-                    status="rejected",
-                    committed_count=0,
-                    rejected_count=len(rejected_keys),
-                    committed_at=committed_at,
-                    request_fingerprint=envelope.request_fingerprint,
-                )
 
             created_hypothesis_ids: list[str] = []
             evidence_link_ids: list[str] = []
