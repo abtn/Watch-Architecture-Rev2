@@ -27,6 +27,16 @@ Model-facing inputs and outputs are explicit, role-specific, and closed. Their a
 
 The evidence-assessment and RW-3 proposal-output schemas are examples of this strict boundary. Their closed vocabularies and output constraints must not be loosened merely to accommodate a new scientific fixture field.
 
+The current offline renderers produce research representations, not a separately
+schema-validated production model request. The repository does not define a
+dedicated JSON Schema for the rendered flat or structured representations.
+Canonical-fixture schema validation, renderer behavior, and the closed
+model-output/evidence-assessment schemas therefore prove different things:
+they do not, by themselves, prove that every extensible nested fixture field is
+excluded from a future model request. Any later model-integration layer must
+define and validate an explicit allowlisted projection before sending context
+to a provider; these research renderers must not be treated as that boundary.
+
 #### 2. Extensible scientific fixture payload
 
 Scientific fixture payloads preserve case-specific research content, including observations, measurements, assumptions, provenance, confidence history, lineage, uncertainty annotations, and other domain details. These details may remain extensible only where the canonical fixture schema explicitly permits extension. This is intentional: the current fixture corpus does not establish a complete universal vocabulary for every scientific record.
