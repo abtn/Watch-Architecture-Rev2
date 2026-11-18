@@ -1,0 +1,990 @@
+"""Deterministic Operator world-memory proposal validation and commit.
+
+The host authenticates the Operator. This module receives only the canonical
+principal identity and an ordinary, admitted `operator_update` Task. It never
+writes Task lifecycle state.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Annotated, Literal, Union
+from uuid import UUID, uuid4, uuid5
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
+
+from core.models import (
+    ConfidenceChange,
+    EvidenceLink,
+    Event,
+    Hypothesis,
+    Outcome,
+    Signal,
+    Task,
+    Team,
+    Thread,
+)
+from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
+
+TASK_TYPE = "operator_update"
+REQUEST_EVENT_TYPE = "operator_update_requested"
+COMMITTED_EVENT_TYPE = "operator_update_committed"
+REJECTED_EVENT_TYPE = "operator_update_rejected"
+ALLOWED_WRITES = ["EvidenceLink", "Hypothesis", "ConfidenceChange"]
+MAX_ATTEMPTS = 3
+TASK_BUDGET = {"max_tool_calls": 0, "max_cost_usd": 0.0}
+_TASK_ID_NAMESPACE = UUID("e17c32e7-16e0-4cc7-9c62-8cdeed0e17d1")
+
+
+class WorldMemoryError(ValueError):
+    """A malformed or inconsistent world-memory request or commit."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class _Proposal(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: str
+    key: str = Field(min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_key(self):
+        if not self.key.strip():
+            raise ValueError("proposal_key_required")
+        return self
+
+
+class HypothesisCreateProposal(_Proposal):
+    kind: Literal["hypothesis_create"]
+    hypothesis_id: UUID
+    statement: str = Field(min_length=1, max_length=4000)
+    confidence: Literal["low", "moderate", "high"] = "low"
+
+    @model_validator(mode="after")
+    def validate_statement(self):
+        if not self.statement.strip():
+            raise ValueError("hypothesis_statement_required")
+        return self
+
+
+class EvidenceLinkProposal(_Proposal):
+    kind: Literal["evidence_link_add"]
+    hypothesis_id: UUID
+    source_kind: Literal["signal", "outcome"]
+    signal_id: UUID | None = None
+    outcome_id: UUID | None = None
+    stance: Literal["supports", "challenges", "mentions"]
+    snapshot_ref: str | None = None
+    snapshot_hash: str | None = None
+    quote_text: str | None = Field(default=None, max_length=4000)
+    quote_start: int | None = None
+    quote_end: int | None = None
+
+    @model_validator(mode="after")
+    def validate_shape(self):
+        if self.source_kind == "signal":
+            if self.signal_id is None or self.outcome_id is not None:
+                raise ValueError("signal_evidence_requires_only_signal_id")
+        elif self.outcome_id is None or self.signal_id is not None:
+            raise ValueError("outcome_evidence_requires_only_outcome_id")
+        if (self.snapshot_ref is None) != (self.snapshot_hash is None):
+            raise ValueError("snapshot_ref_and_hash_must_be_paired")
+        quote = (self.quote_text, self.quote_start, self.quote_end)
+        if any(value is not None for value in quote) and not all(
+            value is not None for value in quote
+        ):
+            raise ValueError("quote_text_and_offsets_must_be_paired")
+        if self.quote_start is not None and (
+            self.quote_start < 0
+            or self.quote_end is None
+            or self.quote_end <= self.quote_start
+        ):
+            raise ValueError("invalid_quote_offsets")
+        return self
+
+
+class ConfidenceChangeProposal(_Proposal):
+    kind: Literal["confidence_change"]
+    hypothesis_id: UUID
+    evidence_link_id: UUID
+    to_confidence: Literal["low", "moderate", "high"]
+
+
+class HypothesisTransitionProposal(_Proposal):
+    kind: Literal["hypothesis_transition"]
+    hypothesis_id: UUID
+    action: Literal["reject", "supersede"]
+    reason: str = Field(min_length=1, max_length=2000)
+    successor_hypothesis_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def validate_transition(self):
+        if not self.reason.strip():
+            raise ValueError("hypothesis_transition_reason_required")
+        if self.action == "supersede" and self.successor_hypothesis_id is None:
+            raise ValueError("hypothesis_successor_required")
+        if self.action == "reject" and self.successor_hypothesis_id is not None:
+            raise ValueError("hypothesis_rejection_successor_not_allowed")
+        return self
+
+
+Proposal = Annotated[
+    Union[
+        HypothesisCreateProposal,
+        EvidenceLinkProposal,
+        ConfidenceChangeProposal,
+        HypothesisTransitionProposal,
+    ],
+    Field(discriminator="kind"),
+]
+
+
+class OperatorUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    thread_id: UUID
+    idempotency_key: UUID
+    proposals: list[Proposal] = Field(min_length=1, max_length=64)
+
+    @model_validator(mode="after")
+    def validate_proposal_keys(self):
+        keys = [proposal.key for proposal in self.proposals]
+        if len(keys) != len(set(keys)):
+            raise ValueError("duplicate_proposal_key")
+        return self
+
+
+@dataclass(frozen=True)
+class OperatorUpdateEnvelope:
+    request: OperatorUpdateRequest
+    task_id: UUID
+    team_id: UUID
+    operator_id: str
+    policy_version: int
+    request_fingerprint: str
+
+
+@dataclass(frozen=True)
+class WorldMemoryCommitResult:
+    task_id: UUID
+    status: Literal["committed", "rejected"]
+    committed_count: int
+    rejected_count: int
+    committed_at: datetime
+    request_fingerprint: str
+    replayed: bool = False
+
+
+def task_id_for_request(team_id: UUID, idempotency_key: UUID) -> UUID:
+    return uuid5(
+        _TASK_ID_NAMESPACE,
+        f"{team_id}:{TASK_TYPE}:{idempotency_key}",
+    )
+
+
+def _sha256_json(value: dict[str, object]) -> str:
+    raw = json.dumps(
+        value, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def build_request_event_payload(
+    *,
+    task_id: UUID,
+    team_id: UUID,
+    policy_version: int,
+    operator_id: str,
+    request: OperatorUpdateRequest,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "operation": TASK_TYPE,
+        "task_id": str(task_id),
+        "team_id": str(team_id),
+        "thread_id": str(request.thread_id),
+        "policy_version": policy_version,
+        "operator_id": operator_id,
+        "idempotency_key": str(request.idempotency_key),
+        "idempotency_key_hash": "sha256:"
+        + hashlib.sha256(str(request.idempotency_key).encode("ascii")).hexdigest(),
+        "proposals": [
+            proposal.model_dump(mode="json") for proposal in request.proposals
+        ],
+    }
+    payload["request_fingerprint"] = _sha256_json(payload)
+    return payload
+
+
+def validate_operator_update_task_request(
+    session: Session, task: Task
+) -> OperatorUpdateEnvelope:
+    """Validate the immutable request Event and exact ordinary Task envelope."""
+    if (
+        task.task_type != TASK_TYPE
+        or task.objective_id is not None
+        or task.plan_id is not None
+        or task.plan_action_id is not None
+        or task.allowed_writes != ALLOWED_WRITES
+        or task.budget != TASK_BUDGET
+        or task.max_attempts != MAX_ATTEMPTS
+        or isinstance(task.attempt_count, bool)
+        or not isinstance(task.attempt_count, int)
+        or not 0 <= task.attempt_count <= MAX_ATTEMPTS
+        or (task.status in {"running", "done", "failed"} and task.attempt_count < 1)
+        or (task.completed_at is not None and task.status != "done")
+        or task.thread_id is None
+    ):
+        raise WorldMemoryError("operator_update_task_shape_invalid")
+
+    events = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+    )
+    if len(events) != 1 or not isinstance(events[0].payload, dict):
+        raise WorldMemoryError("operator_update_request_event_invalid")
+    payload = events[0].payload
+    expected_keys = {
+        "schema_version",
+        "operation",
+        "task_id",
+        "team_id",
+        "thread_id",
+        "policy_version",
+        "operator_id",
+        "idempotency_key",
+        "idempotency_key_hash",
+        "proposals",
+        "request_fingerprint",
+    }
+    if (
+        set(payload) != expected_keys
+        or payload.get("schema_version") != 1
+        or payload.get("operation") != TASK_TYPE
+        or payload.get("task_id") != str(task.id)
+        or payload.get("team_id") != str(task.team_id)
+        or payload.get("thread_id") != str(task.thread_id)
+        or payload.get("policy_version") != task.policy_version
+        or not isinstance(payload.get("operator_id"), str)
+        or not payload["operator_id"]
+        or len(payload["operator_id"]) > 255
+        or not isinstance(payload.get("idempotency_key"), str)
+    ):
+        raise WorldMemoryError("operator_update_request_event_invalid")
+
+    try:
+        idempotency_key = UUID(payload["idempotency_key"])
+        request = OperatorUpdateRequest.model_validate(
+            {
+                "thread_id": payload["thread_id"],
+                "idempotency_key": str(idempotency_key),
+                "proposals": payload["proposals"],
+            }
+        )
+    except (TypeError, ValueError) as error:
+        raise WorldMemoryError("operator_update_request_payload_invalid") from error
+    if str(idempotency_key) != payload["idempotency_key"]:
+        raise WorldMemoryError("operator_update_idempotency_key_invalid")
+    expected_key_hash = "sha256:" + hashlib.sha256(
+        str(idempotency_key).encode("ascii")
+    ).hexdigest()
+    if payload.get("idempotency_key_hash") != expected_key_hash:
+        raise WorldMemoryError("operator_update_idempotency_hash_mismatch")
+    if task.id != task_id_for_request(task.team_id, idempotency_key):
+        raise WorldMemoryError("operator_update_task_id_mismatch")
+
+    unsigned = {key: value for key, value in payload.items() if key != "request_fingerprint"}
+    fingerprint = payload.get("request_fingerprint")
+    if not isinstance(fingerprint, str) or fingerprint != _sha256_json(unsigned):
+        raise WorldMemoryError("operator_update_request_fingerprint_mismatch")
+
+    thread = session.get(Thread, task.thread_id)
+    if thread is None or thread.team_id != task.team_id or thread.status == "resolved":
+        raise WorldMemoryError("operator_update_thread_not_available")
+    return OperatorUpdateEnvelope(
+        request=request,
+        task_id=task.id,
+        team_id=task.team_id,
+        operator_id=payload["operator_id"],
+        policy_version=task.policy_version,
+        request_fingerprint=fingerprint,
+    )
+
+
+def _snapshot_for_source(
+    session: Session,
+    team: Team,
+    proposal: EvidenceLinkProposal,
+) -> tuple[str, str, UUID | None, UUID | None]:
+    if proposal.source_kind == "signal":
+        source = session.get(Signal, proposal.signal_id)
+        if source is None or source.domain != team.domain:
+            raise WorldMemoryError("evidence_signal_team_domain_mismatch")
+        snapshot_ref, snapshot_hash = source.snapshot_ref, source.content_hash
+        signal_id, outcome_id = source.id, None
+    else:
+        source = session.get(Outcome, proposal.outcome_id)
+        if (
+            source is None
+            or source.team_id != team.id
+            or source.observation_snapshot_ref is None
+            or source.observation_hash is None
+        ):
+            raise WorldMemoryError("evidence_outcome_team_mismatch")
+        snapshot_ref, snapshot_hash = (
+            source.observation_snapshot_ref,
+            source.observation_hash,
+        )
+        signal_id, outcome_id = None, source.id
+    if (
+        proposal.snapshot_ref is not None
+        and (
+            proposal.snapshot_ref != snapshot_ref
+            or proposal.snapshot_hash != snapshot_hash
+        )
+    ):
+        raise WorldMemoryError("source_snapshot_reference_mismatch")
+    if snapshot_ref is None or snapshot_hash is None:
+        raise WorldMemoryError("evidence_snapshot_required")
+    return snapshot_ref, snapshot_hash, signal_id, outcome_id
+
+
+def _verify_snapshot(
+    snapshot_store: SnapshotStore,
+    reference: str,
+    expected_hash: str,
+    quote: str | None,
+    start: int | None,
+    end: int | None,
+) -> None:
+    try:
+        content = snapshot_store.read(reference)
+    except SnapshotIntegrityError as error:
+        raise WorldMemoryError(str(error)) from error
+    actual_hash = "sha256:" + hashlib.sha256(content).hexdigest()
+    if actual_hash != expected_hash:
+        raise WorldMemoryError("snapshot_hash_mismatch")
+    if quote is not None:
+        try:
+            decoded = content.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise WorldMemoryError("quoted_snapshot_not_utf8") from error
+        if start is None or end is None or decoded[start:end] != quote:
+            raise WorldMemoryError("quote_text_offset_mismatch")
+
+
+class WorldMemoryCommitService:
+    """Validate and commit one complete Operator proposal set atomically."""
+
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        snapshot_store: SnapshotStore,
+    ) -> None:
+        self._session_factory = session_factory
+        self._snapshot_store = snapshot_store
+
+    def commit(
+        self, task_id: UUID, attempt: int, operator_id: str
+    ) -> WorldMemoryCommitResult:
+        with self._session_factory.begin() as session:
+            task = session.scalar(
+                select(Task).where(Task.id == task_id).with_for_update()
+            )
+            if task is None or task.status != "running" or task.attempt_count != attempt:
+                raise WorldMemoryError("operator_update_task_not_running")
+            envelope = validate_operator_update_task_request(session, task)
+            if envelope.operator_id != operator_id:
+                raise WorldMemoryError("operator_update_principal_mismatch")
+
+            prior = self._existing_result(session, task, envelope)
+            if prior is not None:
+                return prior
+
+            team = session.scalar(
+                select(Team)
+                .where(Team.id == task.team_id)
+                .with_for_update()
+            )
+            thread = session.scalar(
+                select(Thread)
+                .where(Thread.id == task.thread_id, Thread.team_id == task.team_id)
+                .with_for_update()
+            )
+            if team is None or team.status != "active":
+                raise WorldMemoryError("operator_update_team_not_active")
+            if thread is None or thread.status == "resolved":
+                raise WorldMemoryError("operator_update_thread_not_available")
+
+            proposals = envelope.request.proposals
+            by_key = {proposal.key: proposal for proposal in proposals}
+            rejected: dict[str, str] = {}
+            valid_creates: dict[UUID, HypothesisCreateProposal] = {}
+            for proposal in proposals:
+                if not isinstance(proposal, HypothesisCreateProposal):
+                    continue
+                if proposal.confidence != "low":
+                    rejected[proposal.key] = "initial_hypothesis_confidence_must_be_low"
+                elif session.get(Hypothesis, proposal.hypothesis_id) is not None:
+                    rejected[proposal.key] = "hypothesis_id_already_exists"
+                elif proposal.hypothesis_id in valid_creates:
+                    rejected[proposal.key] = "duplicate_hypothesis_id"
+                else:
+                    valid_creates[proposal.hypothesis_id] = proposal
+
+            existing_hypothesis_ids = {
+                proposal.hypothesis_id
+                for proposal in proposals
+                if hasattr(proposal, "hypothesis_id")
+            }
+            locked_hypotheses = {
+                item.id: item
+                for item in session.scalars(
+                    select(Hypothesis)
+                    .where(
+                        Hypothesis.id.in_(existing_hypothesis_ids or {UUID(int=0)}),
+                        Hypothesis.team_id == task.team_id,
+                    )
+                    .order_by(Hypothesis.id)
+                    .with_for_update()
+                )
+            }
+
+            valid_evidence: dict[str, tuple[EvidenceLink, str]] = {}
+            evidence_reference_keys: set[tuple[UUID, str]] = set()
+            for proposal in proposals:
+                if not isinstance(proposal, EvidenceLinkProposal):
+                    continue
+                hypothesis = locked_hypotheses.get(proposal.hypothesis_id)
+                if hypothesis is None and proposal.hypothesis_id not in valid_creates:
+                    rejected[proposal.key] = "evidence_hypothesis_not_owned_by_task_thread"
+                    continue
+                if hypothesis is not None and hypothesis.thread_id != task.thread_id:
+                    rejected[proposal.key] = "evidence_hypothesis_not_in_task_thread"
+                    continue
+                try:
+                    snapshot_ref, snapshot_hash, signal_id, outcome_id = (
+                        _snapshot_for_source(session, team, proposal)
+                    )
+                    _verify_snapshot(
+                        self._snapshot_store,
+                        snapshot_ref,
+                        snapshot_hash,
+                        proposal.quote_text,
+                        proposal.quote_start,
+                        proposal.quote_end,
+                    )
+                except WorldMemoryError as error:
+                    rejected[proposal.key] = error.reason
+                    continue
+                normalized: dict[str, object] = {
+                    "source_kind": proposal.source_kind,
+                    "outcome_id": str(outcome_id) if outcome_id else None,
+                    "signal_id": str(signal_id) if signal_id else None,
+                    "snapshot_ref": snapshot_ref,
+                    "snapshot_hash": snapshot_hash,
+                    "stance": proposal.stance,
+                    "quote_text": proposal.quote_text,
+                    "quote_start": proposal.quote_start,
+                    "quote_end": proposal.quote_end,
+                }
+                reference_key = _sha256_json(normalized)
+                identity = (proposal.hypothesis_id, reference_key)
+                if identity in evidence_reference_keys:
+                    rejected[proposal.key] = "duplicate_evidence_reference_in_request"
+                    continue
+                evidence_reference_keys.add(identity)
+                prior_link = session.scalar(
+                    select(EvidenceLink.id).where(
+                        EvidenceLink.subject_kind == "hypothesis",
+                        EvidenceLink.hypothesis_id == proposal.hypothesis_id,
+                        EvidenceLink.team_id == task.team_id,
+                        EvidenceLink.reference_key == reference_key,
+                    )
+                )
+                if prior_link is not None:
+                    rejected[proposal.key] = "evidence_link_already_exists"
+                    continue
+                link = EvidenceLink(
+                    id=uuid4(),
+                    team_id=task.team_id,
+                    subject_kind="hypothesis",
+                    hypothesis_id=proposal.hypothesis_id,
+                    originating_task_id=task.id,
+                    source_kind=proposal.source_kind,
+                    signal_id=signal_id,
+                    outcome_id=outcome_id,
+                    snapshot_ref=snapshot_ref,
+                    snapshot_hash=snapshot_hash,
+                    stance=proposal.stance,
+                    quote_text=proposal.quote_text,
+                    quote_start=proposal.quote_start,
+                    quote_end=proposal.quote_end,
+                    reference_key=reference_key,
+                )
+                valid_evidence[proposal.key] = (link, reference_key)
+
+            valid_confidence: list[tuple[ConfidenceChangeProposal, Hypothesis, EvidenceLink, str]] = []
+            current_bands = {
+                item.id: item.confidence for item in locked_hypotheses.values()
+            }
+            for proposal in proposals:
+                if not isinstance(proposal, ConfidenceChangeProposal):
+                    continue
+                hypothesis = locked_hypotheses.get(proposal.hypothesis_id)
+                if hypothesis is None or hypothesis.thread_id != task.thread_id:
+                    rejected[proposal.key] = "confidence_hypothesis_not_owned_by_task_thread"
+                    continue
+                if hypothesis.status != "active":
+                    rejected[proposal.key] = "hypothesis_not_active"
+                    continue
+                evidence = session.scalar(
+                    select(EvidenceLink).where(
+                        EvidenceLink.id == proposal.evidence_link_id,
+                        EvidenceLink.subject_kind == "hypothesis",
+                        EvidenceLink.hypothesis_id == hypothesis.id,
+                        EvidenceLink.team_id == task.team_id,
+                    )
+                )
+                if evidence is None:
+                    rejected[proposal.key] = "confidence_evidence_not_for_hypothesis"
+                    continue
+                if evidence.stance == "mentions":
+                    rejected[proposal.key] = "mentions_evidence_cannot_change_confidence"
+                    continue
+                if evidence.stance not in {"supports", "challenges"}:
+                    rejected[proposal.key] = "confidence_evidence_stance_invalid"
+                    continue
+                from_band = current_bands[hypothesis.id]
+                if from_band == proposal.to_confidence:
+                    rejected[proposal.key] = "confidence_change_must_change_band"
+                    continue
+                valid_confidence.append((proposal, hypothesis, evidence, from_band))
+                current_bands[hypothesis.id] = proposal.to_confidence
+
+            valid_transitions: list[
+                tuple[HypothesisTransitionProposal, Hypothesis, Hypothesis | None]
+            ] = []
+            transitioned: set[UUID] = set()
+            for proposal in proposals:
+                if not isinstance(proposal, HypothesisTransitionProposal):
+                    continue
+                hypothesis = locked_hypotheses.get(proposal.hypothesis_id)
+                if (
+                    hypothesis is None
+                    or hypothesis.thread_id != task.thread_id
+                    or hypothesis.status != "active"
+                    or hypothesis.id in transitioned
+                ):
+                    rejected[proposal.key] = "hypothesis_transition_precondition_failed"
+                    continue
+                successor = None
+                if proposal.action == "supersede":
+                    successor = locked_hypotheses.get(proposal.successor_hypothesis_id)
+                    if successor is None:
+                        successor_create = valid_creates.get(
+                            proposal.successor_hypothesis_id
+                        )
+                        if successor_create is None:
+                            rejected[proposal.key] = "hypothesis_successor_not_owned_by_team"
+                            continue
+                    elif successor.status != "active":
+                        rejected[proposal.key] = "hypothesis_successor_not_active"
+                        continue
+                    if proposal.successor_hypothesis_id == proposal.hypothesis_id:
+                        rejected[proposal.key] = "hypothesis_cannot_supersede_itself"
+                        continue
+                valid_transitions.append((proposal, hypothesis, successor))
+                transitioned.add(hypothesis.id)
+
+            valid_keys = (
+                set(valid_creates.values())  # replaced below with stable key mapping
+            )
+            valid_proposal_keys: set[str] = set()
+            valid_proposal_keys.update(
+                proposal.key
+                for proposal in proposals
+                if isinstance(proposal, HypothesisCreateProposal)
+                and proposal.hypothesis_id in valid_creates
+                and proposal.key not in rejected
+            )
+            valid_proposal_keys.update(valid_evidence)
+            valid_proposal_keys.update(item[0].key for item in valid_confidence)
+            valid_proposal_keys.update(item[0].key for item in valid_transitions)
+            rejected_keys = [proposal.key for proposal in proposals if proposal.key in rejected]
+            committed_keys = [
+                proposal.key for proposal in proposals if proposal.key in valid_proposal_keys
+            ]
+            committed_at = datetime.now(timezone.utc)
+
+            for proposal in proposals:
+                if proposal.key in rejected:
+                    session.add(
+                        Event(
+                            id=uuid4(),
+                            task_id=task.id,
+                            type="proposal_rejected",
+                            payload={
+                                "task_id": str(task.id),
+                                "team_id": str(task.team_id),
+                                "operator_id": operator_id,
+                                "request_fingerprint": envelope.request_fingerprint,
+                                "proposal_key": proposal.key,
+                                "reason": rejected[proposal.key],
+                            },
+                            created_at=committed_at,
+                        )
+                    )
+
+            if not valid_proposal_keys:
+                session.add(
+                    Event(
+                        id=uuid4(),
+                        task_id=task.id,
+                        type=REJECTED_EVENT_TYPE,
+                        payload={
+                            "schema_version": 1,
+                            "task_id": str(task.id),
+                            "team_id": str(task.team_id),
+                            "thread_id": str(task.thread_id),
+                            "attempt_count": attempt,
+                            "operator_id": operator_id,
+                            "request_fingerprint": envelope.request_fingerprint,
+                            "rejected_proposal_keys": rejected_keys,
+                            "failure_reason": "all_operator_update_proposals_rejected",
+                        },
+                        created_at=committed_at,
+                    )
+                )
+                session.flush()
+                return WorldMemoryCommitResult(
+                    task_id=task.id,
+                    status="rejected",
+                    committed_count=0,
+                    rejected_count=len(rejected_keys),
+                    committed_at=committed_at,
+                    request_fingerprint=envelope.request_fingerprint,
+                )
+
+            created_hypothesis_ids: list[str] = []
+            evidence_link_ids: list[str] = []
+            confidence_change_ids: list[str] = []
+            for proposal in proposals:
+                if (
+                    isinstance(proposal, HypothesisCreateProposal)
+                    and proposal.key in valid_proposal_keys
+                ):
+                    session.add(
+                        Hypothesis(
+                            id=proposal.hypothesis_id,
+                            team_id=task.team_id,
+                            thread_id=task.thread_id,
+                            statement=proposal.statement.strip(),
+                            status="active",
+                            confidence="low",
+                            created_at=committed_at,
+                            last_touched_at=committed_at,
+                        )
+                    )
+                    created_hypothesis_ids.append(str(proposal.hypothesis_id))
+                    session.add(
+                        Event(
+                            id=uuid4(),
+                            task_id=task.id,
+                            type="hypothesis_created",
+                            payload={
+                                "task_id": str(task.id),
+                                "team_id": str(task.team_id),
+                                "operator_id": operator_id,
+                                "request_fingerprint": envelope.request_fingerprint,
+                                "proposal_key": proposal.key,
+                                "hypothesis_id": str(proposal.hypothesis_id),
+                                "thread_id": str(task.thread_id),
+                                "confidence": "low",
+                            },
+                            created_at=committed_at,
+                        )
+                    )
+
+            touched_hypothesis_ids: set[UUID] = set()
+            for proposal in proposals:
+                if proposal.key not in valid_evidence:
+                    continue
+                link, _ = valid_evidence[proposal.key]
+                session.add(link)
+                evidence_link_ids.append(str(link.id))
+                if proposal.stance in {"supports", "challenges"}:
+                    touched_hypothesis_ids.add(proposal.hypothesis_id)
+                session.add(
+                    Event(
+                        id=uuid4(),
+                        task_id=task.id,
+                        type="evidence_link_added",
+                        payload={
+                            "task_id": str(task.id),
+                            "team_id": str(task.team_id),
+                            "operator_id": operator_id,
+                            "request_fingerprint": envelope.request_fingerprint,
+                            "proposal_key": proposal.key,
+                            "evidence_link_id": str(link.id),
+                            "hypothesis_id": str(link.hypothesis_id),
+                            "source_kind": link.source_kind,
+                            "stance": link.stance,
+                            "reference_key": link.reference_key,
+                        },
+                        created_at=committed_at,
+                    )
+                )
+
+            for proposal, hypothesis, evidence, from_band in valid_confidence:
+                if proposal.key not in valid_proposal_keys:
+                    continue
+                change = ConfidenceChange(
+                    id=uuid4(),
+                    team_id=task.team_id,
+                    hypothesis_id=hypothesis.id,
+                    from_confidence=from_band,
+                    to_confidence=proposal.to_confidence,
+                    cause_kind="evidence",
+                    evidence_link_id=evidence.id,
+                    created_by_task_id=task.id,
+                    idempotency_key=proposal.key,
+                    created_at=committed_at,
+                )
+                session.add(change)
+                confidence_change_ids.append(str(change.id))
+                hypothesis.confidence = proposal.to_confidence
+                session.add(
+                    Event(
+                        id=uuid4(),
+                        task_id=task.id,
+                        type="confidence_changed",
+                        payload={
+                            "task_id": str(task.id),
+                            "team_id": str(task.team_id),
+                            "operator_id": operator_id,
+                            "request_fingerprint": envelope.request_fingerprint,
+                            "proposal_key": proposal.key,
+                            "hypothesis_id": str(hypothesis.id),
+                            "confidence_change_id": str(change.id),
+                            "evidence_link_id": str(evidence.id),
+                            "from_confidence": from_band,
+                            "to_confidence": proposal.to_confidence,
+                        },
+                        created_at=committed_at,
+                    )
+                )
+
+            for proposal, hypothesis, successor in valid_transitions:
+                if proposal.key not in valid_proposal_keys:
+                    continue
+                hypothesis.status = (
+                    "rejected" if proposal.action == "reject" else "superseded"
+                )
+                event_type = (
+                    "hypothesis_rejected"
+                    if proposal.action == "reject"
+                    else "hypothesis_superseded"
+                )
+                payload: dict[str, object] = {
+                    "task_id": str(task.id),
+                    "team_id": str(task.team_id),
+                    "operator_id": operator_id,
+                    "request_fingerprint": envelope.request_fingerprint,
+                    "proposal_key": proposal.key,
+                    "hypothesis_id": str(hypothesis.id),
+                    "reason": proposal.reason.strip(),
+                }
+                if successor is not None:
+                    payload["successor_hypothesis_id"] = str(
+                        proposal.successor_hypothesis_id
+                    )
+                session.add(
+                    Event(
+                        id=uuid4(),
+                        task_id=task.id,
+                        type=event_type,
+                        payload=payload,
+                        created_at=committed_at,
+                    )
+                )
+
+            for hypothesis_id in touched_hypothesis_ids:
+                hypothesis = locked_hypotheses.get(hypothesis_id)
+                if hypothesis is None:
+                    hypothesis = next(
+                        item
+                        for item in session.new
+                        if isinstance(item, Hypothesis) and item.id == hypothesis_id
+                    )
+                hypothesis.last_touched_at = committed_at
+
+            session.add(
+                Event(
+                    id=uuid4(),
+                    task_id=task.id,
+                    type=COMMITTED_EVENT_TYPE,
+                    payload={
+                        "schema_version": 1,
+                        "task_id": str(task.id),
+                        "team_id": str(task.team_id),
+                        "thread_id": str(task.thread_id),
+                        "attempt_count": attempt,
+                        "operator_id": operator_id,
+                        "request_fingerprint": envelope.request_fingerprint,
+                        "committed_proposal_keys": committed_keys,
+                        "rejected_proposal_keys": rejected_keys,
+                        "hypothesis_ids": created_hypothesis_ids,
+                        "evidence_link_ids": evidence_link_ids,
+                        "confidence_change_ids": confidence_change_ids,
+                    },
+                    created_at=committed_at,
+                )
+            )
+            session.flush()
+            return WorldMemoryCommitResult(
+                task_id=task.id,
+                status="committed",
+                committed_count=len(valid_proposal_keys),
+                rejected_count=len(rejected_keys),
+                committed_at=committed_at,
+                request_fingerprint=envelope.request_fingerprint,
+            )
+
+    @staticmethod
+    def _existing_result(
+        session: Session,
+        task: Task,
+        envelope: OperatorUpdateEnvelope,
+    ) -> WorldMemoryCommitResult | None:
+        committed = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == COMMITTED_EVENT_TYPE,
+                )
+            )
+        )
+        rejected = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == REJECTED_EVENT_TYPE,
+                )
+            )
+        )
+        if committed and rejected:
+            raise WorldMemoryError("operator_update_commit_markers_conflict")
+        if committed:
+            if len(committed) != 1:
+                raise WorldMemoryError("operator_update_commit_marker_count_invalid")
+            payload = committed[0].payload
+            if (
+                not isinstance(payload, dict)
+                or payload.get("request_fingerprint") != envelope.request_fingerprint
+                or payload.get("attempt_count") != task.attempt_count
+            ):
+                raise WorldMemoryError("operator_update_commit_marker_invalid")
+            return WorldMemoryCommitResult(
+                task_id=task.id,
+                status="committed",
+                committed_count=len(payload.get("committed_proposal_keys", [])),
+                rejected_count=len(payload.get("rejected_proposal_keys", [])),
+                committed_at=committed[0].created_at,
+                request_fingerprint=envelope.request_fingerprint,
+                replayed=True,
+            )
+        if rejected:
+            if len(rejected) != 1:
+                raise WorldMemoryError("operator_update_rejection_marker_count_invalid")
+            payload = rejected[0].payload
+            if (
+                not isinstance(payload, dict)
+                or payload.get("request_fingerprint") != envelope.request_fingerprint
+                or payload.get("attempt_count") != task.attempt_count
+            ):
+                raise WorldMemoryError("operator_update_rejection_marker_invalid")
+            return WorldMemoryCommitResult(
+                task_id=task.id,
+                status="rejected",
+                committed_count=0,
+                rejected_count=len(payload.get("rejected_proposal_keys", [])),
+                committed_at=rejected[0].created_at,
+                request_fingerprint=envelope.request_fingerprint,
+                replayed=True,
+            )
+        return None
+
+
+def committed_operator_update_observation(
+    session: Session, task: Task
+):
+    """Reconstruct the terminal observation after a commit/failure before finalization."""
+    from core.task_runtime import TerminalObservation
+
+    envelope = validate_operator_update_task_request(session, task)
+    markers = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type.in_((COMMITTED_EVENT_TYPE, REJECTED_EVENT_TYPE)),
+            )
+        )
+    )
+    if not markers:
+        return None
+    if len(markers) != 1 or not isinstance(markers[0].payload, dict):
+        raise WorldMemoryError("operator_update_commit_marker_count_invalid")
+    marker = markers[0]
+    payload = marker.payload
+    if (
+        payload.get("task_id") != str(task.id)
+        or payload.get("team_id") != str(task.team_id)
+        or payload.get("thread_id") != str(task.thread_id)
+        or payload.get("operator_id") != envelope.operator_id
+        or payload.get("request_fingerprint") != envelope.request_fingerprint
+        or payload.get("attempt_count") != task.attempt_count
+    ):
+        raise WorldMemoryError("operator_update_commit_marker_invalid")
+    if marker.type == COMMITTED_EVENT_TYPE:
+        committed = payload.get("committed_proposal_keys")
+        rejected = payload.get("rejected_proposal_keys")
+        all_keys = {proposal.key for proposal in envelope.request.proposals}
+        if (
+            not isinstance(committed, list)
+            or not isinstance(rejected, list)
+            or not committed
+            or set(committed) & set(rejected)
+            or set(committed) | set(rejected) != all_keys
+        ):
+            raise WorldMemoryError("operator_update_commit_marker_invalid")
+        return TerminalObservation(
+            task_id=task.id,
+            attempt=task.attempt_count,
+            result_category="success_operator_update_committed",
+            observed_at=marker.created_at,
+        )
+    rejected_keys = payload.get("rejected_proposal_keys")
+    if (
+        not isinstance(rejected_keys, list)
+        or set(rejected_keys) != {proposal.key for proposal in envelope.request.proposals}
+        or payload.get("failure_reason") != "all_operator_update_proposals_rejected"
+    ):
+        raise WorldMemoryError("operator_update_rejection_marker_invalid")
+    return TerminalObservation(
+        task_id=task.id,
+        attempt=task.attempt_count,
+        result_category="terminal_failure",
+        observed_at=marker.created_at,
+        failure_reason="all_operator_update_proposals_rejected",
+    )
