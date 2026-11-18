@@ -182,6 +182,7 @@ class WorldMemoryCommitResult:
     committed_at: datetime
     request_fingerprint: str
     replayed: bool = False
+    failure_reason: str | None = None
 
 
 def _record_all_rejected(
@@ -241,6 +242,7 @@ def _record_all_rejected(
         rejected_count=len(rejected_keys),
         committed_at=committed_at,
         request_fingerprint=envelope.request_fingerprint,
+        failure_reason="all_operator_update_proposals_rejected",
     )
 
 
@@ -1026,6 +1028,7 @@ class WorldMemoryCommitService:
                 committed_at=rejected[0].created_at,
                 request_fingerprint=envelope.request_fingerprint,
                 replayed=True,
+                failure_reason=payload["failure_reason"],
             )
         return None
 
