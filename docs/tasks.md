@@ -9,12 +9,13 @@ The following status is a static source audit of post-B6 `main` at exact commit 
 | ingest_source | Implemented for the existing deterministic Signal-ingestion path. This does not include triage. |
 | triage_signal | Specified here; not implemented. |
 | update_thread | Specified here; not implemented. |
-| operator_update | Specified here and governed by ADR-0021; no dedicated implementation path found. |
+| operator_update | Deterministic host-invoked Operator path implemented in draft PR #134; hosted CI passed on exact implementation/test head; Programmer-local verification and formal acceptance pending. |
 | apply_decay | Specified here; not implemented. |
-| Thread / Hypothesis / ConfidenceChange / SignalDisposition | Specified by architecture and Task contracts; no ORM models found in the audited source tree. |
-| EvidenceLink | Partial ORM implementation: Evaluation subject with Signal/Outcome sources only. |
+| Thread / Hypothesis / ConfidenceChange | ORM persistence implemented in RW-1; the RW-2 Operator commit path is in draft PR #134. |
+| SignalDisposition | Deferred to RW-4 with signal triage; not implemented. |
+| EvidenceLink | Typed Evaluation/Hypothesis subjects with Signal/Outcome sources; Artifact/Consultation source rows remain staged and unusable until their canonical entities exist. |
 
-The Event-scope allow-list in `core/ingestion.py` contains future Task type names so bounded Task-attributed Events can be recorded. Its entries do **not** implement those Tasks or establish that their business entities and services exist. The current `core/dispatcher.py` supports only the configured-source `ingest_source` worker.
+The Event-scope allow-list in `core/ingestion.py` contains future Task type names so bounded Task-attributed Events can be recorded; an allow-list entry alone is not implementation. `operator_update` now has a dedicated host-invoked application path in the RW-2 draft implementation. The current `core/dispatcher.py` still supports only the configured-source `ingest_source` worker; `update_thread`, triage, and decay workers remain unimplemented.
 
 ### EvidenceLink contract for RW
 
@@ -87,7 +88,7 @@ is an upper bound on the Actions authorized by one Strategy, not a daily Task
 quota. It must not be compared with `max_tasks_per_day`.
 - **Scope:** This rule enforces a Task-start count quota only. It does not mean
 that daily cost quotas are enforced.
-**Creation sources:** Triggers (all three types), the scheduler (ingestion, decay, review, overdue scans), Task enqueues (triage → update; consultation follow-ups), and Task retries. Manual Operator Tasks are created by a thin in-repository application adapter invoked in-process by a host after it authenticates and authorizes the Operator. This is not a separate deployed Watch API/CLI. Checkpoint 3 implements the adapter first for `approve_learning_change`; other manual Task specifications do not imply implemented callers.
+**Creation sources:** Triggers (all three types), the scheduler (ingestion, decay, review, overdue scans), Task enqueues (triage → update; consultation follow-ups), and Task retries. Manual Operator Tasks are created by a thin in-repository application adapter invoked in-process by a host after it authenticates and authorizes the Operator. This is not a separate deployed Watch API/CLI. R6-F Checkpoint 3 implements the adapter for `approve_learning_change`; RW-2 adds `operator_update` through the same host boundary. Other manual Task specifications do not imply implemented callers.
 ## 2. Common validation rules (every commit path)
 1. Task status is `running` and budget is not exhausted (operator task types: no model cost, no enforced deadline).
 2. All referenced entities exist and belong to the Task's Team.
@@ -158,11 +159,13 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Invariants exercised:** INV-01, 02, 04, 05, 06, 07, 13, 14.
 ### `operator_update` — Operator via host-invoked application adapter
 
-**Implementation status:** specified and constrained by ADR-0021; not implemented at the audit baseline above.
-- **Purpose:** a human expert contributes directly to world memory — their own hypotheses, evidence, confidence judgments, rejections (ADR-0021).
-- **Reads/Writes:** identical scope to `update_thread`.
-- **Commit-time validation:** **identical to `update_thread`** — quotes checked against snapshots (INV-04), stance rule (INV-06), cause pairing (INV-05), explicit transitions (INV-07), scope (INV-14). An unsubstantiated expert hypothesis (no EvidenceLink) enters at `low` band, like any worker's.
-- **Failure:** invalid proposals rejected with Events carrying reasons; human identity is never a validation exemption (INV-15).
+**Implementation status:** the deterministic Operator path is implemented in draft PR #134. Hosted CI run #1355 passed on exact implementation/test head `c990c702cad39558b17819cb4970462e11aedfb1` (**1,103 passed**); Programmer-local verification and formal acceptance are pending.
+- **Purpose:** a human expert contributes directly to world memory — their own hypotheses, evidence, confidence judgments, and explicit transitions (ADR-0021).
+- **Shared contract:** Operator and model paths use the same proposal and commit-validation contract. RW-2 implements the deterministic human entry first; RW-3's model worker is not implemented.
+- **RW-2 implemented writes:** Hypothesis creation/transitions, EvidenceLink addition from Signal/Outcome, and evidence-caused ConfidenceChange. The Task's `allowed_writes` are exactly `["EvidenceLink", "Hypothesis", "ConfidenceChange"]`; the target Thread is bound by the immutable `operator_update_requested` Event. Event and Outcome writes are Kernel/TaskRuntime side effects, not worker `allowed_writes`.
+- **Commit-time validation:** exact Snapshot reference/hash/quote offsets (INV-04), stance rule (INV-06), cause pairing (INV-05), legal transitions with reasons (INV-07), Team/Thread ownership, idempotency, replay, concurrency, and atomic proposal-set commit (INV-14/INV-15). Every new Hypothesis starts at `low`; higher confidence requires a later Task-attributed ConfidenceChange.
+- **Explicit deferrals:** SignalDisposition refinement and triage remain RW-4; Thread summaries and retrieval projections remain deferred to the retrieval slice; Artifact/Consultation sources remain staged until their canonical entities and validation paths exist.
+- **Failure:** invalid proposals are rejected with attributable Events; the Task fails only when every proposal is rejected. Human identity is never a validation exemption (INV-15).
 ### `apply_decay` — deterministic, scheduled
 
 **Implementation status:** specified; not implemented at the audit baseline above.
@@ -580,8 +583,11 @@ to create an unrelated Snapshot, nor use `render_output` to store arbitrary
 world content. Task enqueue permissions are similarly limited to the named
 operations; they do not authorize arbitrary Task creation. All cells and K
 side effects are enforced at commit/runtime (INV-14).
-The `operator_update` row remains identical to `update_thread` — this is
-INV-15 expressed as a table.
+The `operator_update` row remains identical to `update_thread` as the
+shared target contract — this is INV-15 expressed as a table. The RW-2
+implementation is the first bounded slice of that contract: it writes
+Hypothesis, EvidenceLink, and ConfidenceChange only. Deferred SignalDisposition
+and projection cells are not implemented by RW-2.
 ## 5. Budget defaults
 Starting points, tuned during M2; per-Task values may override downward, never upward past policy ceilings (`budgets` rule group). Operator task types (`operator_update`, `answer_consultation`, `create_team`, `activate_team`, plus the other manual types) incur no model cost and have no enforced deadline (—).
 | Task type | max_tool_calls | max_cost_usd | deadline_s |

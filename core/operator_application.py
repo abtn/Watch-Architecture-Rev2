@@ -10,7 +10,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import select
@@ -21,7 +21,7 @@ from core.knowledge_approval import (
     KnowledgeApprovalBindingError,
     build_approval_binding,
 )
-from core.models import Event, LearningChange, Task, Team, TeamPolicy
+from core.models import Event, LearningChange, Task, Team, TeamPolicy, Thread
 from core.operator_approval import (
     _STALE_OPERATOR_APPROVAL_REASONS,
     OperatorApprovalValidationError,
@@ -32,6 +32,9 @@ from core.operator_approval import (
     validate_decision_reason,
 )
 from core.snapshot_store import SnapshotStore
+
+if TYPE_CHECKING:
+    from core.world_memory import OperatorUpdateRequest
 
 _APPROVAL_ACTION = "approve_learning_change"
 _APPROVAL_TASK_TYPE = "approve_learning_change"
@@ -110,6 +113,20 @@ class OperatorTaskRequestResult:
     team_id: UUID
     status: str
     replayed: bool
+
+
+@dataclass(frozen=True)
+class OperatorUpdateResult:
+    task_id: UUID
+    team_id: UUID
+    thread_id: UUID
+    task_status: str
+    attempt_count: int
+    committed_count: int
+    rejected_count: int
+    operator_id: str
+    outcome_id: UUID
+    replayed: bool = False
 
 
 @dataclass(frozen=True)
@@ -221,7 +238,8 @@ class OperatorApplicationAdapter:
                 target_id=learning_change.target_id,
             ):
                 raise LearningChangeNotApprovable(
-                    "only_knowledge_item_create_revise_revalidate_retire_or_supersede_is_supported"
+                    "only_knowledge_item_create_revise_revalidate_retire_or_"
+                    "supersede_is_supported"
                 )
 
             team_id = learning_change.team_id
@@ -475,6 +493,235 @@ class OperatorApplicationAdapter:
                 replayed=False,
             )
 
+    def operator_update(
+        self,
+        principal: TrustedOperatorPrincipal,
+        request: "OperatorUpdateRequest",
+    ) -> OperatorUpdateResult:
+        """Commit one deterministic Operator proposal set through an ordinary Task."""
+        from core.task_runtime import (
+            TaskNotEligible,
+            TaskRuntime,
+            TerminalObservation,
+        )
+        from core.world_memory import (
+            ALLOWED_WRITES,
+            MAX_ATTEMPTS,
+            REQUEST_EVENT_TYPE,
+            TASK_BUDGET,
+            TASK_TYPE,
+            OperatorUpdateRequest,
+            WorldMemoryCommitService,
+            build_request_event_payload,
+            committed_operator_update_observation,
+            task_id_for_request,
+            validate_operator_update_task_request,
+        )
+
+        if self._snapshot_store is None:
+            raise OperatorApplicationError(
+                "snapshot_store_required_for_operator_update"
+            )
+        if not isinstance(request, OperatorUpdateRequest):
+            raise OperatorApplicationError("typed_operator_update_request_required")
+        operator_id = _canonical_operator_identity(principal)
+
+        with self._session_factory.begin() as session:
+            thread = session.get(Thread, request.thread_id)
+            if thread is None:
+                raise OperatorApplicationError("operator_update_thread_not_found")
+            team_id = thread.team_id
+            _require_team_grant(principal, team_id, action=TASK_TYPE)
+            team = session.scalar(
+                select(Team).where(Team.id == team_id).with_for_update()
+            )
+            if team is None:
+                raise OperatorApplicationError("operator_update_team_not_found")
+
+            task_id = task_id_for_request(team_id, request.idempotency_key)
+            existing = session.get(Task, task_id)
+            thread = session.scalar(
+                select(Thread)
+                .where(Thread.id == request.thread_id, Thread.team_id == team_id)
+                .with_for_update()
+            )
+            if thread is None:
+                raise OperatorApplicationError("operator_update_thread_not_available")
+            if existing is None and (
+                team.status != "active" or thread.status == "resolved"
+            ):
+                raise OperatorApplicationError("operator_update_target_not_available")
+
+            if existing is not None:
+                policy_version = existing.policy_version
+            else:
+                if team.status != "active":
+                    raise OperatorApplicationError("operator_update_team_not_active")
+                policy = session.scalar(
+                    select(TeamPolicy)
+                    .where(TeamPolicy.team_id == team_id)
+                    .order_by(TeamPolicy.version.desc())
+                    .limit(1)
+                    .with_for_update(read=True)
+                )
+                if policy is None:
+                    raise OperatorApplicationError("team_policy_missing")
+                policy_version = policy.version
+            event_payload = build_request_event_payload(
+                task_id=task_id,
+                team_id=team_id,
+                policy_version=policy_version,
+                operator_id=operator_id,
+                request=request,
+            )
+            if existing is not None:
+                try:
+                    stored = validate_operator_update_task_request(session, existing)
+                except ValueError as error:
+                    raise OperatorTaskRequestCorrupt(str(error)) from error
+                request_events = list(
+                    session.scalars(
+                        select(Event).where(
+                            Event.task_id == task_id,
+                            Event.type == REQUEST_EVENT_TYPE,
+                        )
+                    )
+                )
+                if (
+                    stored.operator_id != operator_id
+                    or stored.request_fingerprint
+                    != event_payload["request_fingerprint"]
+                    or len(request_events) != 1
+                    or request_events[0].payload != event_payload
+                ):
+                    raise OperatorTaskRequestConflict(
+                        "idempotency_key_reused_with_different_operator_update"
+                    )
+                replayed_request = True
+            else:
+                session.add(
+                    Task(
+                        id=task_id,
+                        team_id=team_id,
+                        task_type=TASK_TYPE,
+                        status="pending",
+                        attempt_count=0,
+                        policy_version=policy_version,
+                        objective_id=None,
+                        plan_id=None,
+                        plan_action_id=None,
+                        allowed_writes=list(ALLOWED_WRITES),
+                        budget=dict(TASK_BUDGET),
+                        completed_at=None,
+                        max_attempts=MAX_ATTEMPTS,
+                    )
+                )
+                session.flush()
+                session.add(
+                    Event(
+                        id=uuid4(),
+                        task_id=task_id,
+                        type=REQUEST_EVENT_TYPE,
+                        payload=event_payload,
+                        created_at=datetime.now(timezone.utc),
+                    )
+                )
+                session.flush()
+                replayed_request = False
+
+        runtime = TaskRuntime(self._session_factory, self._snapshot_store)
+        with self._session_factory() as session:
+            task = session.get(Task, task_id)
+            if task is None:
+                raise OperatorTaskRequestCorrupt("operator_update_task_disappeared")
+            task_status = task.status
+            attempt = task.attempt_count
+
+        if task_status == "pending":
+            try:
+                admission = runtime.admit(task_id)
+                attempt = admission.attempt_count
+                task_status = "running"
+            except TaskNotEligible as error:
+                if str(error) != "task_not_pending":
+                    raise
+                with self._session_factory() as session:
+                    task = session.get(Task, task_id)
+                    if task is None or task.status not in {"running", "done", "failed"}:
+                        raise OperatorApplicationError(
+                            "operator_update_admission_race_lost"
+                        ) from error
+                    task_status = task.status
+                    attempt = task.attempt_count
+
+        commit_result = None
+        if task_status == "running":
+            commit_result = WorldMemoryCommitService(
+                self._session_factory, self._snapshot_store
+            ).commit(task_id, attempt, operator_id)
+            observation = TerminalObservation(
+                task_id=task_id,
+                attempt=attempt,
+                result_category=(
+                    "success_operator_update_committed"
+                    if commit_result.status == "committed"
+                    else "terminal_failure"
+                ),
+                observed_at=commit_result.committed_at,
+                failure_reason=(
+                    None
+                    if commit_result.status == "committed"
+                    else commit_result.failure_reason
+                ),
+            )
+        else:
+            with self._session_factory.begin() as session:
+                task = session.scalar(
+                    select(Task).where(Task.id == task_id).with_for_update()
+                )
+                if task is None:
+                    raise OperatorTaskRequestCorrupt("operator_update_task_disappeared")
+                recovered_observation = (
+                    committed_operator_update_observation(session, task)
+                )
+            if recovered_observation is None:
+                raise OperatorApplicationError("operator_update_task_not_replayable")
+            observation = recovered_observation
+
+        finalization = runtime.finalize(observation)
+        with self._session_factory() as session:
+            marker = session.scalar(
+                select(Event).where(
+                    Event.task_id == task_id,
+                    Event.type.in_(
+                        ("operator_update_committed", "operator_update_rejected")
+                    ),
+                )
+            )
+            if marker is None or not isinstance(marker.payload, dict):
+                raise OperatorTaskRequestCorrupt(
+                    "operator_update_result_marker_missing"
+                )
+            committed_count = len(marker.payload.get("committed_proposal_keys", []))
+            rejected_count = len(marker.payload.get("rejected_proposal_keys", []))
+
+        return OperatorUpdateResult(
+            task_id=task_id,
+            team_id=team_id,
+            thread_id=request.thread_id,
+            task_status=finalization.status,
+            attempt_count=finalization.attempt_count,
+            committed_count=committed_count,
+            rejected_count=rejected_count,
+            operator_id=operator_id,
+            outcome_id=finalization.outcome_id,
+            replayed=(
+                replayed_request
+                or (commit_result.replayed if commit_result is not None else True)
+                or finalization.replayed
+            ),
+        )
+
     def decide_learning_change(
         self,
         principal: TrustedOperatorPrincipal,
@@ -727,8 +974,10 @@ def _canonical_operator_identity(
 def _require_team_grant(
     principal: TrustedOperatorPrincipal,
     team_id: UUID,
+    *,
+    action: str = _APPROVAL_ACTION,
 ) -> None:
-    if OperatorGrant(team_id=team_id, action=_APPROVAL_ACTION) not in principal.grants:
+    if OperatorGrant(team_id=team_id, action=action) not in principal.grants:
         raise OperatorNotAuthorized("operator_not_authorized_for_team_action")
 
 

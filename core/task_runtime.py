@@ -125,6 +125,7 @@ _SUCCESS_CATEGORIES = (
     | _KNOWLEDGE_QUALITY_SUCCESS_CATEGORIES
     | _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES
     | _KNOWLEDGE_LIFECYCLE_SUCCESS_CATEGORIES
+    | frozenset({"success_operator_update_committed"})
     | _CONTROL_TASK_SUCCESS_CATEGORIES
 )
 _RESULT_CATEGORIES = _SUCCESS_CATEGORIES | {"terminal_failure"}
@@ -142,6 +143,8 @@ _INTERRUPTION_REASON = "interrupted_execution"
 _SKIPPED_FINALIZATION_REASONS = frozenset({"stale_attempt", "task_not_running"})
 
 _OPERATOR_TASK_TYPE = "approve_learning_change"
+_OPERATOR_UPDATE_TASK_TYPE = "operator_update"
+_OPERATOR_TASK_TYPES = frozenset({_OPERATOR_TASK_TYPE, _OPERATOR_UPDATE_TASK_TYPE})
 _OPERATOR_REQUEST_EVENT_TYPE = "operator_task_requested"
 _OPERATOR_ALLOWED_WRITES = ["LearningChange", "KnowledgeItem"]
 _OPERATOR_MAX_ATTEMPTS = 3
@@ -195,6 +198,7 @@ class TerminalObservation:
         "success_knowledge_quality_assessed",
         "success_knowledge_revalidation_assessed",
         "success_knowledge_lifecycle_assessed",
+        "success_operator_update_committed",
         "success_strategy_accepted",
         "success_strategy_rejected", "success_plan_created", "terminal_failure"
     ]
@@ -401,6 +405,8 @@ class TaskRuntime:
                     snapshot_store=self._snapshot_store,
                     session_factory=self._session_factory,
                 )
+            elif task.task_type == _OPERATOR_UPDATE_TASK_TYPE:
+                self._validate_operator_update_task_request(session, task)
             elif self._is_r6g_evaluation_task(session, task):
                 try:
                     self._validate_evaluation_task_request(session, task)
@@ -544,7 +550,7 @@ class TaskRuntime:
                 ):
                     raise TaskNotEligible("invalid_task_budget")
 
-            if task.task_type != _OPERATOR_TASK_TYPE:
+            if task.task_type not in _OPERATOR_TASK_TYPES:
                 deadline_seconds = task.budget.get("deadline_seconds")
                 if (
                     isinstance(deadline_seconds, bool)
@@ -925,6 +931,18 @@ class TaskRuntime:
                         raise TaskNotFinalizable(
                             "operator_conflict_failure_observation_mismatch"
                         )
+
+            if task.task_type == _OPERATOR_UPDATE_TASK_TYPE:
+                if observation.result_category not in {
+                    "success_operator_update_committed", "terminal_failure"
+                }:
+                    raise TaskNotFinalizable("operator_update_result_category_invalid")
+                self._validate_operator_update_result(
+                    session,
+                    task,
+                    observation,
+                    allow_completed=task.status in _TERMINAL_STATUSES,
+                )
 
             prior = self._prior_terminal(session, task.id)
             if prior is not None:
@@ -1496,6 +1514,10 @@ class TaskRuntime:
                 recovered_observation = (
                     self._committed_operator_decision_observation(session, task)
                 )
+            elif task.task_type == _OPERATOR_UPDATE_TASK_TYPE:
+                recovered_observation = self._committed_operator_update_observation(
+                    session, task
+                )
             elif self._is_knowledge_revalidation_task(session, task):
                 recovered_observation = (
                     self._committed_knowledge_revalidation_assessment_observation(
@@ -1549,6 +1571,15 @@ class TaskRuntime:
                 session.flush()
                 return "retried"
 
+            if (
+                recovered_observation is None
+                and task.task_type == _OPERATOR_UPDATE_TASK_TYPE
+            ):
+                recovered_observation = (
+                    self._record_interrupted_operator_update_failure(
+                        session, task, started_at
+                    )
+                )
             attempt = task.attempt_count
             observed_at = started_at
 
@@ -1670,6 +1701,75 @@ class TaskRuntime:
             observed_at=observed_at,
             knowledge_quality_assessment_id=assessment.id,
         )
+
+    @staticmethod
+    def _validate_operator_update_task_request(
+        session: Session, task: Task
+    ) -> None:
+        from core.world_memory import (
+            WorldMemoryError,
+            validate_operator_update_task_request,
+        )
+
+        try:
+            validate_operator_update_task_request(
+                session, task, require_thread_available=True
+            )
+        except WorldMemoryError as error:
+            raise TaskNotEligible(error.reason) from error
+
+    @staticmethod
+    def _validate_operator_update_result(
+        session: Session,
+        task: Task,
+        observation: TerminalObservation,
+        *,
+        allow_completed: bool = False,
+    ) -> None:
+        from core.world_memory import (
+            WorldMemoryError,
+            validate_operator_update_terminal,
+        )
+
+        try:
+            validate_operator_update_terminal(
+                session,
+                task,
+                observation,
+                allow_completed=allow_completed,
+            )
+        except WorldMemoryError as error:
+            raise TaskNotFinalizable(error.reason) from error
+
+    @staticmethod
+    def _record_interrupted_operator_update_failure(
+        session: Session, task: Task, observed_at: datetime
+    ) -> TerminalObservation:
+        from core.world_memory import (
+            WorldMemoryError,
+            record_interrupted_operator_update_failure,
+        )
+
+        try:
+            return record_interrupted_operator_update_failure(
+                session, task, observed_at
+            )
+        except WorldMemoryError as error:
+            raise TaskNotFinalizable(error.reason) from error
+
+    @staticmethod
+    def _committed_operator_update_observation(
+        session: Session, task: Task
+    ) -> TerminalObservation | None:
+        from core.world_memory import (
+            WorldMemoryError,
+            committed_operator_update_observation,
+        )
+
+        try:
+            return committed_operator_update_observation(session, task)
+        except WorldMemoryError as error:
+            raise TaskNotFinalizable(error.reason) from error
 
     def _committed_operator_decision_observation(
         self, session: Session, task: Task

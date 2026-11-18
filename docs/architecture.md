@@ -75,9 +75,9 @@ Humans enter the loop through three channels, all of which pass the same validat
 
 | Channel | Mechanism | Effect |
 |---|---|---|
-| Human as worker | `operator_update` Task | The expert's own hypotheses, evidence, and confidence judgments enter world memory with identical validation to a model worker |
+| Human as worker | `operator_update` Task | RW-2 implements the deterministic human path for Hypothesis creation/transitions, EvidenceLinks, and evidence-caused ConfidenceChanges through the shared proposal/commit validation contract; model-driven `update_thread` remains RW-3 |
 | Loop requests opinion | `Consultation` + `request_consultation` / `answer_consultation` | The answer is an immutable hashed snapshot, citable as evidence (`source_kind="consultation"`); waiting happens between Tasks, never inside one (ADR-0020) |
-| Human administers | Manual Operator Task types, created through a host-invoked in-repository application adapter | The host authenticates and authorizes the Operator, then passes a trusted principal context; Watch creates an ordinary Task and applies the same scope/commit gates. No separate deployed Watch API/CLI or Watch-owned authentication system is implied (ADR-0011). Checkpoint 3 implements this adapter first for `approve_learning_change`. |
+| Human administers | Manual Operator Task types, created through a host-invoked in-repository application adapter | The host authenticates and authorizes the Operator, then passes a trusted principal context; Watch creates an ordinary Task and applies the same scope/commit gates. No separate deployed Watch API/CLI or Watch-owned authentication system is implied (ADR-0011). R6-F Checkpoint 3 implements `approve_learning_change`; RW-2 adds `operator_update` through the same boundary. |
 
 ## 3. Entity reference
 

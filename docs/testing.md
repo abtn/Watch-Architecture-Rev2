@@ -1202,3 +1202,84 @@ The acceptance does not waive the application-level obligations assigned to late
 No persistent database was inspected or migrated. Disposable PostgreSQL verification does not establish the state or migratability of a persistent database. The local verification record also retains its qualification: the script's final environment-equality assertion reported a mismatch after cleanup, so exact restoration of the pre-run environment-variable state is not claimed.
 
 This disposition does not authorize RW-2–RW-5, R7-C, provider/model calls, persistent-database operations, Experiment A execution, or scored RWN-01 runs. Each remains subject to its own explicit gate. PR #132 (test-only schema-negative proofs) was squash-merged on 2026-11-18 at `a16a931ea79e915323447a1379cd0d9fe7063fb8`. PR #131 (documentation reconciliation, including the PowerShell local sync/test script guide) was squash-merged on 2026-11-18 at `db5f19928f0a853df244da465e50b26fa848309d`. These merges do not expand the RW-1 acceptance boundary or authorize any separately gated work.
+
+
+## RW-2 hosted CI verification — 2026-11-18
+
+Draft PR [#134](https://github.com/abtn/Watch-Architecture-Rev2/pull/134), branch `rw-2-operator-reasoning-commit-20261118`, passed hosted GitHub Actions run [#1355](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44308179367) on implementation/test head `c990c702cad39558b17819cb4970462e11aedfb1`. A later README-only commit advanced the PR to `d5bc764b8196cbed1bff1681fa8b55a88f8cfb83`; hosted CI run [#1357](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44313224977) passed on that exact current head.
+
+- Locked dependency installation — passed.
+- Fresh disposable PostgreSQL migration to `0019_rw1_world_memory` — passed.
+- Alembic single-head/current verification — passed.
+- Ruff — passed.
+- Mypy — passed.
+- Pull-request patch whitespace check — passed.
+- Full suite — **1,103 passed, 130 existing Alembic deprecation warnings**.
+
+The RW-2 tests cover exact quote/hash/offset validation, Signal/Outcome source eligibility, Team/Thread ownership, initial `low` confidence, evidence-caused ConfidenceChanges, legal Hypothesis transitions, competing Hypotheses, mixed/all-invalid proposal batches, atomic rollback, Task/proposal replay, concurrency, touch-time rules, and interrupted Task recovery.
+
+This was hosted CI on a fresh disposable database. It did not inspect or migrate a persistent database and made no provider/model calls.
+
+### Programmer-local verification — exact tested tree `9860281eff7e79c2a720df4b3d899884376f0b3e`
+
+Programmer-local Windows verification passed:
+
+- Fresh disposable PostgreSQL migration; Alembic reported exactly one head, `0019_rw1_world_memory`.
+- Focused RW-2 tests — **21 passed**.
+- Ruff — passed.
+- Mypy — no issues in 39 source files.
+- Full test suite — **1,103 passed**.
+- `git diff --check` — passed.
+- Disposable PostgreSQL container removed; `DATABASE_URL` and `TEST_DATABASE_URL` restored; branch/HEAD unchanged and worktree clean at the end of the run.
+- The run emitted 130 existing Alembic `path_separator` deprecation warnings; no test failures resulted.
+
+The local verification was performed on `9860281eff7e79c2a720df4b3d899884376f0b3e`. The current PR head `d5bc764b8196cbed1bff1681fa8b55a88f8cfb83` is a later README-only commit; implementation and test code are unchanged. Hosted CI run #1357 passed on that exact current head, including the full suite (**1,103 passed**). The PR remains draft and unmerged. These results do not establish formal RW-2 acceptance.
+
+
+## RW-2 formal acceptance and exact-head verification — 2026-11-18
+
+**Operator disposition: ACCEPT.** RW-2 is formally accepted within the bounded deterministic, host-invoked Operator reasoning commit path defined in §3 of the [RW implementation plan](development/rw-implementation-plan.md). This acceptance is based on the corrected exact implementation/test head `a8f453dec7a4668c91fd4df113bf597c1751dac8`, the two regression proofs below, and successful Programmer-local and hosted verification. It does not authorize RW-3–RW-5, R7-C, persistent-database access, provider/model calls, or scored newsroom execution.
+
+### Correctness findings and regression proofs
+
+1. **Cross-Thread Hypothesis supersession:** the commit validator now requires an existing successor Hypothesis to belong to the immutable Task request's target Thread. A PostgreSQL regression test proves that a successor in another Thread is rejected, both Hypotheses remain active, and no supersession Event/state transition is written.
+2. **Creation-time confidence validation:** terminal validation checks the immutable `hypothesis_created` Event's initial `low` confidence claim and verifies the created row's expected Team/Thread ownership. It does not incorrectly require the mutable Hypothesis row to remain `low`.
+3. **Deterministic interleaving:** a PostgreSQL regression test pauses the creator Task before terminal finalization, executes a second valid Operator Task that raises the new Hypothesis confidence to `moderate`, then resumes the creator. Both Tasks finalize successfully.
+
+The two original P1 review findings are resolved. These proofs are in `tests/test_world_memory.py`.
+
+### Programmer-local Windows verification — exact head `a8f453dec7a4668c91fd4df113bf597c1751dac8`
+
+The Programmer ran the verification script on the corrected exact head. The transcript confirms:
+
+- Fast-forward from `d5bc764` to the expected exact SHA; no rebase or reset.
+- `uv sync --locked` passed.
+- Fresh disposable PostgreSQL started on a dynamically assigned host port; migration completed.
+- Alembic reported exactly one head and current revision `0019_rw1_world_memory`.
+- Focused RW-2/world-memory tests: **23 passed in 4.80s**.
+- Ruff passed.
+- Mypy passed with no issues in 39 source files.
+- Full suite: **1,105 passed in 356.18s**.
+- `git diff --check` passed.
+- Disposable container `watch-rw2-verify-c2b9f6e1bb00` was removed.
+- Final branch was `rw-2-operator-reasoning-commit-20261118`; final HEAD was exactly `a8f453dec7a4668c91fd4df113bf597c1751dac8`; worktree was clean.
+- The script reported its final success line. The supplied output is consistent with successful environment restoration and cleanup.
+- The full suite emitted 130 existing Alembic `path_separator` deprecation warnings; they were warnings, not failures.
+
+### Hosted exact-head verification
+
+GitHub Actions [run #1359](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44322369751) completed successfully on exact head `a8f453dec7a4668c91fd4df113bf597c1751dac8`:
+
+- Locked dependency installation — passed.
+- Fresh disposable PostgreSQL migration and Alembic single-head/current verification — passed.
+- Ruff — passed.
+- Mypy — passed.
+- PR patch whitespace check — passed.
+- Full suite — **1,105 passed**, with 130 existing Alembic deprecation warnings.
+- Hosted disposable PostgreSQL service/network cleanup — passed.
+
+### Scope and merge disposition
+
+RW-2 adds no schema migration. Its Task business writes remain limited to Hypothesis, EvidenceLink, and ConfidenceChange; Event and Outcome remain Kernel/TaskRuntime side effects. SignalDisposition/triage remain RW-4; Thread-summary/retrieval projections remain deferred; Artifact/Consultation source rows remain staged until their canonical entities exist.
+
+This acceptance closes RW-2 only. The merge commit and resulting `main` SHA are recorded in the current milestone summary after GitHub confirms the merge. RW-3 is the next proposed slice and requires a separate explicit authorization.
