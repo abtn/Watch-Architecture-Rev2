@@ -363,6 +363,7 @@ def test_chronology_rejects_naive_or_malformed_timestamps(
     with pytest.raises(ValueError, match=error_message):
         render_flat(fixture)
 
+
 def test_structured_renderer_maps_every_evidence_stance_and_preserves_invariant(fixtures):
     fixture = deepcopy(fixtures["RW3-03"])
     fixture["evidence_links"] = [
