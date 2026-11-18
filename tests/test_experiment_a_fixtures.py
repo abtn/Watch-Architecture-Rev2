@@ -276,7 +276,7 @@ def test_flat_arrays_order_timestamped_records_chronologically(fixtures):
 
 
 
-def test_confidence_change_evidence_link_id_is_a_reference_not_record_identity(fixtures):
+def test_confidence_change_link_reference_is_not_record_identity(fixtures):
     fixture = deepcopy(fixtures["RW3-03"])
     fixture["evidence_links"] = [{
         "evidence_link_id": "ev-003",
