@@ -1265,6 +1265,90 @@ def validate_operator_update_terminal(
         raise WorldMemoryError("operator_update_rejection_event_set_invalid")
 
 
+def record_interrupted_operator_update_failure(
+    session: Session,
+    task: Task,
+    observed_at: datetime,
+):
+    """Record deterministic rejection when all Operator Task attempts expire."""
+    envelope = validate_operator_update_task_request(session, task)
+    if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+        raise WorldMemoryError("operator_update_interruption_time_invalid")
+    existing = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type.in_((COMMITTED_EVENT_TYPE, REJECTED_EVENT_TYPE)),
+            )
+        )
+    )
+    if existing:
+        raise WorldMemoryError("operator_update_interruption_marker_already_exists")
+    prior_writes = session.scalar(
+        select(Event.id).where(
+            Event.task_id == task.id,
+            Event.type.in_(
+                (
+                    "hypothesis_created",
+                    "evidence_link_added",
+                    "confidence_changed",
+                    "hypothesis_rejected",
+                    "hypothesis_superseded",
+                )
+            ),
+        ).limit(1)
+    )
+    if prior_writes is not None:
+        raise WorldMemoryError("operator_update_interrupted_with_partial_writes")
+
+    rejected_keys = [proposal.key for proposal in envelope.request.proposals]
+    for proposal in envelope.request.proposals:
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=task.id,
+                type="proposal_rejected",
+                payload={
+                    "task_id": str(task.id),
+                    "team_id": str(task.team_id),
+                    "operator_id": envelope.operator_id,
+                    "request_fingerprint": envelope.request_fingerprint,
+                    "proposal_key": proposal.key,
+                    "reason": "interrupted_execution",
+                },
+                created_at=observed_at,
+            )
+        )
+    session.add(
+        Event(
+            id=uuid4(),
+            task_id=task.id,
+            type=REJECTED_EVENT_TYPE,
+            payload={
+                "schema_version": 1,
+                "task_id": str(task.id),
+                "team_id": str(task.team_id),
+                "thread_id": str(envelope.request.thread_id),
+                "attempt_count": task.attempt_count,
+                "operator_id": envelope.operator_id,
+                "request_fingerprint": envelope.request_fingerprint,
+                "rejected_proposal_keys": rejected_keys,
+                "failure_reason": "interrupted_execution",
+            },
+            created_at=observed_at,
+        )
+    )
+    from core.task_runtime import TerminalObservation
+
+    return TerminalObservation(
+        task_id=task.id,
+        attempt=task.attempt_count,
+        result_category="terminal_failure",
+        observed_at=observed_at,
+        failure_reason="interrupted_execution",
+    )
+
+
 def committed_operator_update_observation(
     session: Session, task: Task
 ):
@@ -1318,7 +1402,10 @@ def committed_operator_update_observation(
         not isinstance(rejected_keys, list)
         or not all(isinstance(key, str) for key in rejected_keys)
         or rejected_keys != list(proposals)
-        or payload.get("failure_reason") != "all_operator_update_proposals_rejected"
+        or payload.get("failure_reason") not in {
+            "all_operator_update_proposals_rejected", "interrupted_execution"
+        }
+        or payload.get("failure_reason") != observation.failure_reason
     ):
         raise WorldMemoryError("operator_update_rejection_marker_invalid")
     return TerminalObservation(
@@ -1326,5 +1413,5 @@ def committed_operator_update_observation(
         attempt=task.attempt_count,
         result_category="terminal_failure",
         observed_at=marker.created_at,
-        failure_reason="all_operator_update_proposals_rejected",
+        failure_reason=payload["failure_reason"],
     )
