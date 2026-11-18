@@ -21,7 +21,7 @@ from core.knowledge_approval import (
     KnowledgeApprovalBindingError,
     build_approval_binding,
 )
-from core.models import Event, LearningChange, Task, Team, TeamPolicy
+from core.models import Event, LearningChange, Task, Team, TeamPolicy, Thread
 from core.operator_approval import (
     _STALE_OPERATOR_APPROVAL_REASONS,
     OperatorApprovalValidationError,
@@ -110,6 +110,20 @@ class OperatorTaskRequestResult:
     team_id: UUID
     status: str
     replayed: bool
+
+
+@dataclass(frozen=True)
+class OperatorUpdateResult:
+    task_id: UUID
+    team_id: UUID
+    thread_id: UUID
+    task_status: str
+    attempt_count: int
+    committed_count: int
+    rejected_count: int
+    operator_id: str
+    outcome_id: UUID
+    replayed: bool = False
 
 
 @dataclass(frozen=True)
@@ -665,22 +679,22 @@ class OperatorApplicationAdapter:
             committed_count = len(marker.payload.get("committed_proposal_keys", []))
             rejected_count = len(marker.payload.get("rejected_proposal_keys", []))
 
-        return {
-            "task_id": task_id,
-            "team_id": team_id,
-            "thread_id": request.thread_id,
-            "task_status": finalization.status,
-            "attempt_count": finalization.attempt_count,
-            "committed_count": committed_count,
-            "rejected_count": rejected_count,
-            "operator_id": operator_id,
-            "outcome_id": finalization.outcome_id,
-            "replayed": (
+        return OperatorUpdateResult(
+            task_id=task_id,
+            team_id=team_id,
+            thread_id=request.thread_id,
+            task_status=finalization.status,
+            attempt_count=finalization.attempt_count,
+            committed_count=committed_count,
+            rejected_count=rejected_count,
+            operator_id=operator_id,
+            outcome_id=finalization.outcome_id,
+            replayed=(
                 replayed_request
                 or (commit_result.replayed if commit_result is not None else True)
                 or finalization.replayed
             ),
-        }
+        )
 
     def decide_learning_change(
         self,
