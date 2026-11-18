@@ -273,3 +273,90 @@ def test_flat_arrays_order_timestamped_records_chronologically(fixtures):
     assert [item["observation_id"] for item in rendered["observations"]] == [
         "obs-earlier", "obs-later",
     ]
+
+
+
+def test_confidence_change_evidence_link_id_is_a_reference_not_record_identity(fixtures):
+    fixture = deepcopy(fixtures["RW3-03"])
+    fixture["evidence_links"] = [{
+        "evidence_link_id": "ev-003",
+        "hypothesis_id": "hyp-003",
+        "source_kind": "signal",
+        "source_id": "sig-old",
+        "stance": "supports",
+    }]
+    fixture["confidence_changes"] = [{
+        "evidence_link_id": "ev-003",
+        "from_confidence": "low",
+        "to_confidence": "moderate",
+    }]
+    validate_fixture(fixture)
+
+
+def test_duplicate_record_identity_is_still_rejected(fixtures):
+    fixture = deepcopy(fixtures["RW3-03"])
+    fixture["evidence_links"] = [
+        {
+            "evidence_link_id": "ev-003",
+            "hypothesis_id": "hyp-003",
+            "source_kind": "signal",
+            "source_id": "sig-a",
+            "stance": "supports",
+        },
+        {
+            "evidence_link_id": "ev-003",
+            "hypothesis_id": "hyp-003",
+            "source_kind": "signal",
+            "source_id": "sig-b",
+            "stance": "challenges",
+        },
+    ]
+    with pytest.raises(ValueError, match="duplicate fixture identifier"):
+        validate_fixture(fixture)
+
+
+def test_chronology_normalizes_offsets_and_preserves_equal_instant_order(fixtures):
+    fixture = deepcopy(fixtures["RW3-13"])
+    fixture["observations"] = [
+        {"observation_id": "same-z", "status": "completed",
+         "observed_at": "2026-11-17T10:00:00Z"},
+        {"observation_id": "same-offset", "status": "completed",
+         "observed_at": "2026-11-17T12:00:00+02:00"},
+        {"observation_id": "earlier", "status": "completed",
+         "observed_at": "2026-11-17T09:30:00Z"},
+    ]
+    rendered = render_flat(fixture)
+    assert [item["observation_id"] for item in rendered["observations"]] == [
+        "earlier", "same-z", "same-offset",
+    ]
+
+
+def test_chronology_uses_documented_timestamp_field_precedence(fixtures):
+    fixture = deepcopy(fixtures["RW3-13"])
+    fixture["observations"] = [
+        {"observation_id": "first", "status": "completed",
+         "occurred_at": "2026-11-17T11:00:00Z",
+         "created_at": "2026-11-17T08:00:00Z"},
+        {"observation_id": "second", "status": "completed",
+         "occurred_at": "2026-11-17T10:00:00Z",
+         "created_at": "2026-11-17T12:00:00Z"},
+    ]
+    rendered = render_flat(fixture)
+    assert [item["observation_id"] for item in rendered["observations"]] == [
+        "second", "first",
+    ]
+
+
+@pytest.mark.parametrize("timestamp", [
+    "2026-11-17T10:00:00",
+    "not-a-timestamp",
+])
+def test_chronology_rejects_naive_or_malformed_timestamps(fixtures, timestamp):
+    fixture = deepcopy(fixtures["RW3-13"])
+    fixture["observations"] = [{
+        "observation_id": "invalid-time",
+        "status": "completed",
+        "observed_at": timestamp,
+    }]
+    with pytest.raises(ValueError, match="timestamp"):
+        render_flat(fixture)
