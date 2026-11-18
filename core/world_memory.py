@@ -607,9 +607,6 @@ class WorldMemoryCommitService:
                 valid_transitions.append((proposal, hypothesis, successor))
                 transitioned.add(hypothesis.id)
 
-            valid_keys = (
-                set(valid_creates.values())  # replaced below with stable key mapping
-            )
             valid_proposal_keys: set[str] = set()
             valid_proposal_keys.update(
                 proposal.key
