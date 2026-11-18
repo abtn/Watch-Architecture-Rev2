@@ -243,7 +243,7 @@ def _create_pending_task(
     request: OperatorUpdateRequest,
     operator_id: str,
     *,
-    max_attempts: int = 3,
+    initial_attempt_count: int = 0,
 ) -> UUID:
     task_id = task_id_for_request(context.team_id, request.idempotency_key)
     payload = build_request_event_payload(
@@ -260,7 +260,7 @@ def _create_pending_task(
                 team_id=context.team_id,
                 task_type="operator_update",
                 status="pending",
-                attempt_count=0,
+                attempt_count=initial_attempt_count,
                 policy_version=1,
                 objective_id=None,
                 plan_id=None,
@@ -271,7 +271,7 @@ def _create_pending_task(
                     "ConfidenceChange",
                 ],
                 budget={"max_tool_calls": 0, "max_cost_usd": 0.0},
-                max_attempts=max_attempts,
+                max_attempts=3,
             )
         )
         session.flush()
@@ -1045,7 +1045,7 @@ def test_exhausted_interrupted_operator_update_fails_with_attributed_rejections(
         context,
         request,
         operator_id,
-        max_attempts=1,
+        initial_attempt_count=2,
     )
     runtime = TaskRuntime(session_factory, snapshot_store)
     runtime.admit(task_id)
