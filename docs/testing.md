@@ -1188,14 +1188,6 @@ PR [#133](https://github.com/abtn/Watch-Architecture-Rev2/pull/133) adds an offl
 **Hosted CI:** GitHub Actions [run #1307](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44263407392) completed successfully on the final PR head `82d5d618174c54d7f9946ebeda3b279b89f851b1`. The standard CI workflow passed its disposable PostgreSQL migration/single-head checks, Ruff, Mypy, whitespace check, and full test suite.
 
 **Earlier Operator-local verification record:** the recorded transcript is for earlier commit `51c24c0d4d29229ead57e8f06f6edd04a457d7be`, not the final PR head. It reported a disposable PostgreSQL migration to `0019_rw1_world_memory`, Ruff, Mypy across 38 source files, and **1,057 passed** with 130 existing Alembic deprecation warnings; the disposable container was removed, database URL variables were restored, and the worktree was clean. This evidence is retained with its original SHA and is not represented as a local run on the final PR head.
-- Clean repository preflight and exact branch/HEAD match.
-- Locked dependencies installed with uv sync --locked.
-- Disposable PostgreSQL on loopback port 51328; migrations and current revision check passed at 0019_rw1_world_memory.
-- Ruff passed.
-- Mypy passed across 38 source files.
-- Full suite: **1,057 passed, 130 warnings in 438.32 seconds**.
-- The disposable PostgreSQL container was removed, DATABASE_URL and TEST_DATABASE_URL were restored, and the final clean-worktree assertion passed.
-
 The 130 warnings are existing Alembic path_separator deprecation warnings: 36 from tests/test_r7b_assessment_migration.py, 65 from tests/test_r7b_history_migration.py, 17 from tests/test_rw1_schema_migration.py, and 12 from tests/test_team_experience_projection_migration.py. They did not fail the suite. They are recorded as existing maintenance debt; this research-artifact PR does not change Alembic configuration.
 
 **Boundary:** PR #133 is merged. Its passing checks establish only the offline fixture/schema/rendering contract at the exact SHA above. They do not establish that Experiment A has been run, that RWN-01 scored runs are authorized, or that RW-1 has been formally accepted. No provider/model calls, persistent database access, RW-2/RW-3 implementation, Experiment A execution, or scored newsroom runs are authorized by this PR.
