@@ -1,13 +1,13 @@
 # RW — Implementation Plan and Proof Matrix
 
-**Status:** RW-0 is closed by PR #126; RW-1 physical design/planning is merged by PR #127 at `9ac259bb5fd5986a89955dc06cb8a185e2599993`; all six D132 decisions were accepted on 2026-11-16; RW-1 implementation PR #128 is merged at `7213a17e5ae96c3cae22ec1082af05d47b9c0d1d`; Operator-local verification is recorded, and RW-1 was formally accepted by the Operator on 2026-11-18 within the documented physical schema/ORM/migration boundary
+**Status:** RW-0 is closed by PR #126; RW-1 physical design/planning is merged by PR #127 at `9ac259bb5fd5986a89955dc06cb8a185e2599993`; all six D132 decisions were accepted on 2026-11-16; RW-1 implementation PR #128 is merged at `7213a17e5ae96c3cae22ec1082af05d47b9c0d1d`; Operator-local verification is recorded, and RW-1 was formally accepted by the Operator on 2026-11-18 within the documented physical schema/ORM/migration boundary; RW-2 was explicitly authorized by the Operator on 2026-11-18 and is in implementation on `rw-2-operator-reasoning-commit-20261118`
 **Sequence:** B6 → RW-0 → RW-1 → RW-2 → RW-3 → RW-4 → RW-5 → foundation exit gate → R8
 **Code audit basis:** post-B6 static source/spec audit at `91169b4931e48cb7b2803ed2066ec365f563a0ea`; RW-0 docs-only closeout squash-merged by PR #126 at `cac63a01380624bbaf0c9965a363a352e46960d7`
 **Decision record:** [RW-0 decision record](rw-0-decision-record.md)
 **RW-1 physical design:** [RW-1 physical world-memory and EvidenceLink design proposal](rw-1-physical-design-proposal.md) — accepted under D132 on 2026-11-16
 **Value harness:** [Newsroom value harness](rw-value-harness.md)
 
-This plan turns the accepted architecture and RW proposal into bounded implementation slices. RW-1 implementation is merged and was formally accepted by the Operator on 2026-11-18 within the documented physical schema/ORM/migration boundary. RW-2–RW-5 require their own explicit authorization. No R7-C implementation, persistent-database access, or newsroom scored execution is authorized.
+This plan turns the accepted architecture and RW proposal into bounded implementation slices. RW-1 implementation is merged and was formally accepted by the Operator on 2026-11-18 within the documented physical schema/ORM/migration boundary. RW-2 is separately authorized on 2026-11-18 for the deterministic Operator reasoning commit path in §3 below. RW-3–RW-5 require their own explicit authorization. No R7-C implementation, persistent-database access, or newsroom scored execution is authorized.
 
 ## 1. Purpose and boundary
 
