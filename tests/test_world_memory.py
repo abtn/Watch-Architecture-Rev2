@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from threading import Barrier
 from typing import Iterator
 from uuid import UUID, uuid4
@@ -275,13 +273,14 @@ def test_operator_update_creates_low_hypothesis_and_verified_evidence(
         assert link.stance == "supports"
         assert link.quote_text == _QUOTE
         assert link.snapshot_hash == context.snapshot_hash
-        assert hypothesis.last_touched_at == link.created_at
-        assert session.scalar(
-            select(Event.id).where(
+        commit_event = session.scalar(
+            select(Event).where(
                 Event.task_id == result.task_id,
                 Event.type == "operator_update_committed",
             )
-        ) is not None
+        )
+        assert commit_event is not None
+        assert hypothesis.last_touched_at == commit_event.created_at
         assert session.scalar(
             select(Outcome.id).where(
                 Outcome.recorded_by_task_id == result.task_id,
