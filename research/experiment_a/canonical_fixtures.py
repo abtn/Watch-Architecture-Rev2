@@ -260,8 +260,13 @@ def render_structured(fixture: dict[str, Any]) -> dict[str, Any]:
     evidence: dict[str, list[dict[str, Any]]] = {
         "supporting": [], "challenging": [], "mentions": [], "unlinked_sources": [],
     }
+    stance_groups = {
+        "supports": "supporting",
+        "challenges": "challenging",
+        "mentions": "mentions",
+    }
     for link in _chronological(fixture["evidence_links"]):
-        evidence[link["stance"]].append(link)
+        evidence[stance_groups[link["stance"]]].append(link)
     evidence["unlinked_sources"] = _chronological(fixture["unlinked_sources"])
 
     temporal: dict[str, list[dict[str, Any]]] = {
