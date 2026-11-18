@@ -143,17 +143,27 @@ def validate_fixture(fixture: dict[str, Any]) -> None:
     else:
         raise ValueError("unsupported fixture role")
 
+    # Track record identities, not foreign-key/reference fields. In particular,
+    # confidence_changes.evidence_link_id points to an EvidenceLink; it is not
+    # the identity of the ConfidenceChange itself.
     identifiers: set[str] = set()
     if fixture["hypothesis"] is not None:
         identifiers.add(fixture["hypothesis"]["id"])
-    for collection in RW3_ARRAYS:
+    identity_fields = {
+        "confidence_changes": "id",
+        "evidence_links": "evidence_link_id",
+        "unlinked_sources": "source_id",
+        "observations": "observation_id",
+        "tasks": "id",
+        "outcomes": "id",
+        "lineage_pairs": "id",
+        "uncertainty_notes": "id",
+    }
+    for collection, identity_field in identity_fields.items():
         for record in fixture[collection]:
-            identifier = (
-                record.get("evidence_link_id") or record.get("id")
-                or record.get("source_id") or record.get("observation_id")
-            )
+            identifier = record.get(identity_field)
             if identifier is None:
-                raise ValueError(f"{collection} record has no identifier")
+                continue
             if identifier in identifiers:
                 raise ValueError(f"duplicate fixture identifier: {identifier}")
             identifiers.add(identifier)
@@ -184,17 +194,39 @@ def validate_fixture(fixture: dict[str, Any]) -> None:
 
 
 def _chronological(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Sort by the first available event-time field; keep ties/input order stable.
+
+    Timestamps must be ISO-8601 strings with an explicit UTC offset. Field
+    precedence is occurred_at, created_at, recorded_at, observed_at,
+    requested_at, fetched_at, then timestamp. Untimed records follow timed
+    records and retain their original relative order.
+    """
+    from datetime import datetime, timezone
+
     fields = (
         "occurred_at", "created_at", "recorded_at", "observed_at",
         "requested_at", "fetched_at", "timestamp",
     )
+
+    def sort_key(pair: tuple[int, dict[str, Any]]) -> tuple[bool, datetime, int]:
+        index, record = pair
+        for field in fields:
+            value = record.get(field)
+            if value is None:
+                continue
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"{field} must be an ISO-8601 timestamp string")
+            try:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValueError(f"invalid ISO-8601 timestamp in {field}: {value}") from exc
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                raise ValueError(f"{field} must include an explicit UTC offset")
+            return False, parsed.astimezone(timezone.utc), index
+        return True, datetime.max.replace(tzinfo=timezone.utc), index
+
     indexed = list(enumerate(records))
-    indexed.sort(
-        key=lambda pair: (
-            next((pair[1][key] for key in fields if pair[1].get(key)), "\uffff"),
-            pair[0],
-        )
-    )
+    indexed.sort(key=sort_key)
     return [deepcopy(record) for _, record in indexed]
 
 
