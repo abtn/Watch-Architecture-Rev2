@@ -1177,3 +1177,25 @@ The exact test nodes are listed in the RW-1 proposal §8 and the RW implementati
 - The disposable PostgreSQL container and network were removed successfully.
 
 **Scope:** tests only. No production code, ORM model, migration, schema, provider, runtime, or persistent database changed. Operator-local exact-head verification also passed on exact head `61fa0a214e05993637695e75d8aa019449fc540d`: disposable PostgreSQL migration/current-head checks, Ruff, Mypy (38 source files), 31 focused tests, and full suite (**1,029 passed, 130 existing Alembic deprecation warnings**). The disposable container was removed and environment variables restored. Formal RW-1 acceptance remains pending. This closes the identified schema-level negative-test coverage gap in hosted and local verification; it does not authorize RW-2 or establish that any persistent database has passed migration validation.
+
+
+## PR #133 — offline Experiment A canonical-fixture contract (2026-11-18)
+
+PR [#133](https://github.com/abtn/Watch-Architecture-Rev2/pull/133) adds an offline canonical-fixture contract for the accepted Experiment A research baseline. Its scope is limited to the canonical fixture JSON Schema, closed evidence-assessment and RW-3 model-output schemas, flat and decision-structured JSON renderers, Representation Invariant #7 multiset-equivalence assertions, and fixtures RW3-03, RW3-13, and SP-01. The PR adds no production code, migration, provider call, database access, or experiment execution.
+
+**Exact tested commit:** 51c24c0d4d29229ead57e8f06f6edd04a457d7be on branch research/experiment-a-canonical-fixtures.
+
+**Hosted CI:** GitHub Actions [run #1293](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44250675964) completed successfully on the exact tested commit. The standard CI workflow passed its disposable PostgreSQL migration/single-head checks, Ruff, Mypy, whitespace check, and full test suite.
+
+**Operator-local exact-head verification:** the Programmer ran the local sync/test script on the same exact SHA. The transcript reported:
+- Clean repository preflight and exact branch/HEAD match.
+- Locked dependencies installed with uv sync --locked.
+- Disposable PostgreSQL on loopback port 51328; migrations and current revision check passed at 0019_rw1_world_memory.
+- Ruff passed.
+- Mypy passed across 38 source files.
+- Full suite: **1,057 passed, 130 warnings in 438.32 seconds**.
+- The disposable PostgreSQL container was removed, DATABASE_URL and TEST_DATABASE_URL were restored, and the final clean-worktree assertion passed.
+
+The 130 warnings are existing Alembic path_separator deprecation warnings: 36 from tests/test_r7b_assessment_migration.py, 65 from tests/test_r7b_history_migration.py, 17 from tests/test_rw1_schema_migration.py, and 12 from tests/test_team_experience_projection_migration.py. They did not fail the suite. They are recorded as existing maintenance debt; this research-artifact PR does not change Alembic configuration.
+
+**Boundary:** PR #133 remains open, draft, and unmerged. Its passing checks establish only the offline fixture/schema/rendering contract at the exact SHA above. They do not establish that Experiment A has been run, that RWN-01 scored runs are authorized, or that RW-1 has been formally accepted. No provider/model calls, persistent database access, RW-2/RW-3 implementation, Experiment A execution, or scored newsroom runs are authorized by this PR.
