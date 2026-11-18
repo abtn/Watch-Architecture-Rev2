@@ -294,6 +294,16 @@ def validate_operator_update_task_request(
         raise WorldMemoryError("operator_update_request_payload_invalid") from error
     if str(idempotency_key) != payload["idempotency_key"]:
         raise WorldMemoryError("operator_update_idempotency_key_invalid")
+    try:
+        actor = json.loads(payload["operator_id"])
+        if not isinstance(actor, dict) or set(actor) != {"iss", "sub"}:
+            raise ValueError("operator_identity_shape_invalid")
+        from core.operator_approval import canonical_operator_identity
+
+        if canonical_operator_identity(actor["iss"], actor["sub"]) != payload["operator_id"]:
+            raise ValueError("operator_identity_not_canonical")
+    except (TypeError, ValueError, KeyError) as error:
+        raise WorldMemoryError("operator_update_operator_identity_invalid") from error
     expected_key_hash = "sha256:" + hashlib.sha256(
         str(idempotency_key).encode("ascii")
     ).hexdigest()
