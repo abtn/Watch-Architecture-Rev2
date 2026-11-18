@@ -1697,7 +1697,10 @@ class TaskRuntime:
     def _validate_operator_update_task_request(
         session: Session, task: Task
     ) -> None:
-        from core.world_memory import WorldMemoryError, validate_operator_update_task_request
+        from core.world_memory import (
+            WorldMemoryError,
+            validate_operator_update_task_request,
+        )
 
         try:
             validate_operator_update_task_request(
