@@ -932,13 +932,11 @@ class WorldMemoryCommitService:
                 )
 
             for hypothesis_id in touched_hypothesis_ids:
-                hypothesis = locked_hypotheses.get(hypothesis_id)
+                hypothesis = locked_hypotheses.get(hypothesis_id) or session.get(
+                    Hypothesis, hypothesis_id
+                )
                 if hypothesis is None:
-                    hypothesis = next(
-                        item
-                        for item in session.new
-                        if isinstance(item, Hypothesis) and item.id == hypothesis_id
-                    )
+                    raise WorldMemoryError("operator_update_touched_hypothesis_missing")
                 hypothesis.last_touched_at = committed_at
 
             session.add(
