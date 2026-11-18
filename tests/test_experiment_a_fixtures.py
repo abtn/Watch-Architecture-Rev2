@@ -362,3 +362,58 @@ def test_chronology_rejects_naive_or_malformed_timestamps(
     }]
     with pytest.raises(ValueError, match=error_message):
         render_flat(fixture)
+
+def test_structured_renderer_maps_every_evidence_stance_and_preserves_invariant(fixtures):
+    fixture = deepcopy(fixtures["RW3-03"])
+    fixture["evidence_links"] = [
+        {
+            "evidence_link_id": f"ev-{stance}",
+            "hypothesis_id": "hyp-003",
+            "source_kind": "signal",
+            "source_id": f"sig-{stance}",
+            "stance": stance,
+        }
+        for stance in ("supports", "challenges", "mentions")
+    ]
+
+    rendered = render_structured(fixture)
+    assert [item["stance"] for item in rendered["evidence"]["supporting"]] == [
+        "supports",
+    ]
+    assert [item["stance"] for item in rendered["evidence"]["challenging"]] == [
+        "challenges",
+    ]
+    assert [item["stance"] for item in rendered["evidence"]["mentions"]] == [
+        "mentions",
+    ]
+    assert_representation_invariant_7(fixture)
+
+
+def test_evidence_assessment_rejects_nonexistent_record_reference(fixtures):
+    with pytest.raises(ValueError, match="reference not present"):
+        validate_evidence_assessment(
+            {
+                "reference_kind": "source", "reference": "sig-does-not-exist",
+                "relevance": "direct", "reliability": "high",
+                "independence": "independent", "temporal_status": "completed",
+            },
+            fixtures["RW3-03"],
+        )
+
+
+def test_renderers_preserve_extensible_scientific_payload(fixtures):
+    fixture = deepcopy(fixtures["RW3-03"])
+    fixture["unlinked_sources"][0]["measurement_uncertainty"] = {
+        "interval": [0.12, 0.18],
+        "method": "replicate-derived",
+    }
+
+    flat = render_flat(fixture)
+    structured = render_structured(fixture)
+    expected = {"interval": [0.12, 0.18], "method": "replicate-derived"}
+    assert flat["unlinked_sources"][0]["measurement_uncertainty"] == expected
+    assert (
+        structured["evidence"]["unlinked_sources"][0]["measurement_uncertainty"]
+        == expected
+    )
+    assert_representation_invariant_7(fixture)
