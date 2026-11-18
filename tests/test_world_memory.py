@@ -374,6 +374,91 @@ def test_operator_update_creates_low_hypothesis_and_verified_evidence(
         ) == 1
 
 
+
+def test_created_hypothesis_can_change_confidence_before_creator_finalizes(
+    session_factory, snapshot_store, world_memory_context, monkeypatch
+):
+    context = world_memory_context
+    hypothesis_id = uuid4()
+    first_request = OperatorUpdateRequest(
+        thread_id=context.thread_id,
+        idempotency_key=uuid4(),
+        proposals=[
+            HypothesisCreateProposal(
+                kind="hypothesis_create",
+                key="create-hypothesis",
+                hypothesis_id=hypothesis_id,
+                statement="Supply is increasing.",
+            ),
+            _quote_proposal(
+                context, hypothesis_id, key="initial-supporting-evidence"
+            ),
+        ],
+    )
+    first_task_id = task_id_for_request(
+        context.team_id, first_request.idempotency_key
+    )
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    original_finalize = TaskRuntime.finalize
+    interleaved = False
+    second_result = None
+
+    def finalize_after_concurrent_update(runtime, observation):
+        nonlocal interleaved, second_result
+        if observation.task_id == first_task_id and not interleaved:
+            interleaved = True
+            with session_factory() as session:
+                evidence = session.scalar(
+                    select(EvidenceLink).where(
+                        EvidenceLink.originating_task_id == first_task_id
+                    )
+                )
+                assert evidence is not None
+                evidence_id = evidence.id
+            second_request = OperatorUpdateRequest(
+                thread_id=context.thread_id,
+                idempotency_key=uuid4(),
+                proposals=[
+                    ConfidenceChangeProposal(
+                        kind="confidence_change",
+                        key="raise-confidence",
+                        hypothesis_id=hypothesis_id,
+                        evidence_link_id=evidence_id,
+                        to_confidence="moderate",
+                    )
+                ],
+            )
+            second_result = adapter.operator_update(
+                _principal(context.team_id), second_request
+            )
+            assert second_result.task_status == "done"
+        return original_finalize(runtime, observation)
+
+    monkeypatch.setattr(TaskRuntime, "finalize", finalize_after_concurrent_update)
+    first_result = adapter.operator_update(
+        _principal(context.team_id), first_request
+    )
+
+    assert interleaved
+    assert second_result is not None
+    assert first_result.task_status == "done"
+    with session_factory() as session:
+        hypothesis = session.get(Hypothesis, hypothesis_id)
+        assert hypothesis is not None and hypothesis.confidence == "moderate"
+        created = session.scalar(
+            select(Event).where(
+                Event.task_id == first_task_id,
+                Event.type == "hypothesis_created",
+            )
+        )
+        assert created is not None
+        assert created.payload["confidence"] == "low"
+        creator_task = session.get(Task, first_task_id)
+        updater_task = session.get(Task, second_result.task_id)
+        assert creator_task is not None and creator_task.status == "done"
+        assert updater_task is not None and updater_task.status == "done"
+
+
 def test_invalid_quote_is_rejected_without_discarding_valid_proposal(
     session_factory, snapshot_store, world_memory_context
 ):
@@ -629,6 +714,91 @@ def test_hypothesis_supersession_requires_successor_and_reason(
                 )
             )
         ) == 1
+
+
+
+def test_supersession_rejects_successor_from_another_thread(
+    session_factory, snapshot_store, world_memory_context
+):
+    context = world_memory_context
+    target_id, successor_id, other_thread_id = uuid4(), uuid4(), uuid4()
+    now = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        session.add(
+            Thread(
+                id=other_thread_id,
+                team_id=context.team_id,
+                domain="world_memory_test",
+                title="Different thread",
+                status="active",
+            )
+        )
+        session.flush()
+        session.add_all(
+            [
+                Hypothesis(
+                    id=target_id,
+                    team_id=context.team_id,
+                    thread_id=context.thread_id,
+                    statement="Target explanation.",
+                    status="active",
+                    confidence="low",
+                    created_at=now,
+                    last_touched_at=now,
+                ),
+                Hypothesis(
+                    id=successor_id,
+                    team_id=context.team_id,
+                    thread_id=other_thread_id,
+                    statement="Foreign successor.",
+                    status="active",
+                    confidence="low",
+                    created_at=now,
+                    last_touched_at=now,
+                ),
+            ]
+        )
+    request = OperatorUpdateRequest(
+        thread_id=context.thread_id,
+        idempotency_key=uuid4(),
+        proposals=[
+            HypothesisTransitionProposal(
+                kind="hypothesis_transition",
+                key="cross-thread-supersession",
+                hypothesis_id=target_id,
+                action="supersede",
+                successor_hypothesis_id=successor_id,
+                reason="The proposed successor is from another thread.",
+            )
+        ],
+    )
+
+    result = OperatorApplicationAdapter(
+        session_factory, snapshot_store
+    ).operator_update(_principal(context.team_id), request)
+
+    assert result.task_status == "failed"
+    with session_factory() as session:
+        target = session.get(Hypothesis, target_id)
+        successor = session.get(Hypothesis, successor_id)
+        assert target is not None and target.status == "active"
+        assert successor is not None and successor.status == "active"
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == result.task_id,
+                Event.type == "hypothesis_superseded",
+            )
+        ) is None
+        rejection = session.scalar(
+            select(Event).where(
+                Event.task_id == result.task_id,
+                Event.type == "proposal_rejected",
+            )
+        )
+        assert rejection is not None
+        assert rejection.payload["reason"] == (
+            "hypothesis_successor_not_in_task_thread"
+        )
 
 
 def test_concurrent_operator_updates_serialize_competing_transitions(

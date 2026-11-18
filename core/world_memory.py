@@ -733,6 +733,11 @@ class WorldMemoryCommitService:
                                 "hypothesis_successor_not_owned_by_team"
                             )
                             continue
+                    elif successor.thread_id != envelope.request.thread_id:
+                        rejected[proposal.key] = (
+                            "hypothesis_successor_not_in_task_thread"
+                        )
+                        continue
                     elif successor.status != "active":
                         rejected[proposal.key] = "hypothesis_successor_not_active"
                         continue
@@ -1228,11 +1233,23 @@ def validate_operator_update_terminal(
             raise WorldMemoryError("operator_update_committed_rows_mismatch")
         for raw_id in payload["hypothesis_ids"]:
             hypothesis = session.get(Hypothesis, UUID(raw_id))
+            creation_event = next(
+                (
+                    event
+                    for event in proposal_events
+                    if event.type == "hypothesis_created"
+                    and event.payload.get("hypothesis_id") == raw_id
+                ),
+                None,
+            )
             if (
                 hypothesis is None
                 or hypothesis.team_id != task.team_id
                 or hypothesis.thread_id != envelope.request.thread_id
-                or hypothesis.confidence != "low"
+                or creation_event is None
+                or creation_event.payload.get("thread_id")
+                != str(envelope.request.thread_id)
+                or creation_event.payload.get("confidence") != "low"
             ):
                 raise WorldMemoryError("operator_update_created_hypothesis_invalid")
         for raw_id in payload["evidence_link_ids"]:
