@@ -193,12 +193,13 @@ def _record_all_rejected(
     reasons: dict[str, str],
     *,
     failure_reason: str = "all_operator_update_proposals_rejected",
+    created_at: datetime | None = None,
 ) -> WorldMemoryCommitResult:
     """Persist per-proposal rejections and the Task-level failure proof."""
     proposals = envelope.request.proposals
     if set(reasons) != {proposal.key for proposal in proposals}:
         raise WorldMemoryError("operator_update_rejection_set_incomplete")
-    committed_at = datetime.now(timezone.utc)
+    committed_at = created_at or datetime.now(timezone.utc)
     rejected_keys = [proposal.key for proposal in proposals]
     for proposal in proposals:
         session.add(
@@ -1392,6 +1393,7 @@ def record_interrupted_operator_update_failure(
             for proposal in envelope.request.proposals
         },
         failure_reason="interrupted_execution",
+        created_at=observed_at,
     )
     return TerminalObservation(
         task_id=task.id,
