@@ -606,7 +606,7 @@ class OperatorApplicationAdapter:
                         task_type=TASK_TYPE,
                         status="pending",
                         attempt_count=0,
-                        policy_version=policy.version,
+                        policy_version=policy_version,
                         objective_id=None,
                         plan_id=None,
                         plan_action_id=None,
@@ -681,9 +681,12 @@ class OperatorApplicationAdapter:
                 )
                 if task is None:
                     raise OperatorTaskRequestCorrupt("operator_update_task_disappeared")
-                observation = committed_operator_update_observation(session, task)
-            if observation is None:
+                recovered_observation = (
+                    committed_operator_update_observation(session, task)
+                )
+            if recovered_observation is None:
                 raise OperatorApplicationError("operator_update_task_not_replayable")
+            observation = recovered_observation
 
         finalization = runtime.finalize(observation)
         with self._session_factory() as session:
