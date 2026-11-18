@@ -1161,11 +1161,21 @@ def validate_operator_update_terminal(
             )
         )
     )
-    rejected_by_key = {
-        event.payload.get("proposal_key"): event
-        for event in rejection_events
-        if isinstance(event.payload, dict)
-    }
+    rejected_by_key: dict[str, Event] = {}
+    for event in rejection_events:
+        event_payload = event.payload
+        if (
+            not isinstance(event_payload, dict)
+            or not isinstance(event_payload.get("proposal_key"), str)
+            or not isinstance(event_payload.get("reason"), str)
+            or not event_payload["reason"].strip()
+            or event_payload.get("task_id") != str(task.id)
+            or event_payload.get("team_id") != str(task.team_id)
+            or event_payload.get("operator_id") != envelope.operator_id
+            or event_payload.get("request_fingerprint") != envelope.request_fingerprint
+        ):
+            raise WorldMemoryError("operator_update_rejection_event_invalid")
+        rejected_by_key[event_payload["proposal_key"]] = event
     if (
         set(rejected_by_key) != set(proposals)
         or len(rejection_events) != len(proposals)
@@ -1250,7 +1260,8 @@ def committed_operator_update_observation(
     rejected_keys = payload.get("rejected_proposal_keys")
     if (
         not isinstance(rejected_keys, list)
-        or set(rejected_keys) != {proposal.key for proposal in envelope.request.proposals}
+        or not all(isinstance(key, str) for key in rejected_keys)
+        or rejected_keys != list(proposals)
         or payload.get("failure_reason") != "all_operator_update_proposals_rejected"
     ):
         raise WorldMemoryError("operator_update_rejection_marker_invalid")
