@@ -1347,6 +1347,8 @@ def record_interrupted_operator_update_failure(
     observed_at: datetime,
 ) -> TerminalObservation:
     """Record deterministic rejection when all Operator Task attempts expire."""
+    from core.task_runtime import TerminalObservation
+
     envelope = validate_operator_update_task_request(session, task)
     if observed_at.tzinfo is None or observed_at.utcoffset() is None:
         raise WorldMemoryError("operator_update_interruption_time_invalid")
