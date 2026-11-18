@@ -10,7 +10,8 @@ from typing import Iterator
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, event as sqlalchemy_event, select
+from sqlalchemy import delete, select
+from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.models import (
