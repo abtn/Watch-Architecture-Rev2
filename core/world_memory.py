@@ -223,7 +223,10 @@ def build_request_event_payload(
 
 
 def validate_operator_update_task_request(
-    session: Session, task: Task
+    session: Session,
+    task: Task,
+    *,
+    require_thread_available: bool = False,
 ) -> OperatorUpdateEnvelope:
     """Validate the immutable request Event and exact ordinary Task envelope."""
     if (
@@ -318,7 +321,11 @@ def validate_operator_update_task_request(
         raise WorldMemoryError("operator_update_request_fingerprint_mismatch")
 
     thread = session.get(Thread, request.thread_id)
-    if thread is None or thread.team_id != task.team_id or thread.status == "resolved":
+    if (
+        thread is None
+        or thread.team_id != task.team_id
+        or (require_thread_available and thread.status == "resolved")
+    ):
         raise WorldMemoryError("operator_update_thread_not_available")
     return OperatorUpdateEnvelope(
         request=request,
