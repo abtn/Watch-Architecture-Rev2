@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from threading import Barrier
+from types import SimpleNamespace
 from typing import Iterator
 from uuid import UUID, uuid4
 
@@ -997,11 +998,12 @@ def test_committed_operator_update_is_recovered_without_replaying_writes(
         )
     assert started is not None
 
-    recovery = runtime.recover_interrupted(
-        now=started + timedelta(seconds=61)
+    recovery = runtime._recover_candidate(
+        SimpleNamespace(task_id=task_id, attempt=1),
+        started + timedelta(seconds=61),
     )
 
-    assert task_id in recovery.completed
+    assert recovery == "completed"
     with session_factory() as session:
         task = session.get(Task, task_id)
         assert task is not None and task.status == "done"
@@ -1058,11 +1060,12 @@ def test_exhausted_interrupted_operator_update_fails_with_attributed_rejections(
         )
     assert started is not None
 
-    recovery = runtime.recover_interrupted(
-        now=started + timedelta(seconds=61)
+    recovery = runtime._recover_candidate(
+        SimpleNamespace(task_id=task_id, attempt=3),
+        started + timedelta(seconds=61),
     )
 
-    assert task_id in recovery.failed
+    assert recovery == "failed"
     with session_factory() as session:
         task = session.get(Task, task_id)
         assert task is not None and task.status == "failed"
