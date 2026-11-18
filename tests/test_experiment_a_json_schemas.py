@@ -8,7 +8,6 @@ from jsonschema import Draft202012Validator, ValidationError
 
 from research.experiment_a.canonical_fixtures import sample_fixtures
 
-
 SCHEMA_DIR = Path(__file__).parents[1] / "research" / "experiment_a"
 SCHEMA_FILES = {
     "fixture": "canonical-fixture.schema.json",
