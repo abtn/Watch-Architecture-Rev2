@@ -303,7 +303,8 @@ def validate_operator_update_task_request(
             raise ValueError("operator_identity_shape_invalid")
         from core.operator_approval import canonical_operator_identity
 
-        if canonical_operator_identity(actor["iss"], actor["sub"]) != payload["operator_id"]:
+        canonical_actor = canonical_operator_identity(actor["iss"], actor["sub"])
+        if canonical_actor != payload["operator_id"]:
             raise ValueError("operator_identity_not_canonical")
     except (TypeError, ValueError, KeyError) as error:
         raise WorldMemoryError("operator_update_operator_identity_invalid") from error
@@ -315,7 +316,11 @@ def validate_operator_update_task_request(
     if task.id != task_id_for_request(task.team_id, idempotency_key):
         raise WorldMemoryError("operator_update_task_id_mismatch")
 
-    unsigned = {key: value for key, value in payload.items() if key != "request_fingerprint"}
+    unsigned = {
+        key: value
+        for key, value in payload.items()
+        if key != "request_fingerprint"
+    }
     fingerprint = payload.get("request_fingerprint")
     if not isinstance(fingerprint, str) or fingerprint != _sha256_json(unsigned):
         raise WorldMemoryError("operator_update_request_fingerprint_mismatch")
@@ -417,7 +422,11 @@ class WorldMemoryCommitService:
             task = session.scalar(
                 select(Task).where(Task.id == task_id).with_for_update()
             )
-            if task is None or task.status != "running" or task.attempt_count != attempt:
+            if (
+                task is None
+                or task.status != "running"
+                or task.attempt_count != attempt
+            ):
                 raise WorldMemoryError("operator_update_task_not_running")
             envelope = validate_operator_update_task_request(session, task)
             if envelope.operator_id != operator_id:
@@ -434,7 +443,10 @@ class WorldMemoryCommitService:
             )
             thread = session.scalar(
                 select(Thread)
-                .where(Thread.id == envelope.request.thread_id, Thread.team_id == task.team_id)
+                .where(
+                    Thread.id == envelope.request.thread_id,
+                    Thread.team_id == task.team_id,
+                )
                 .with_for_update()
             )
             if team is None or team.status != "active":
@@ -486,9 +498,14 @@ class WorldMemoryCommitService:
                     continue
                 hypothesis = locked_hypotheses.get(proposal.hypothesis_id)
                 if hypothesis is None and proposal.hypothesis_id not in valid_creates:
-                    rejected[proposal.key] = "evidence_hypothesis_not_owned_by_task_thread"
+                    rejected[proposal.key] = (
+                        "evidence_hypothesis_not_owned_by_task_thread"
+                    )
                     continue
-                if hypothesis is not None and hypothesis.thread_id != envelope.request.thread_id:
+                if (
+                    hypothesis is not None
+                    and hypothesis.thread_id != envelope.request.thread_id
+                ):
                     rejected[proposal.key] = "evidence_hypothesis_not_in_task_thread"
                     continue
                 try:
@@ -553,7 +570,9 @@ class WorldMemoryCommitService:
                 )
                 valid_evidence[proposal.key] = (link, reference_key)
 
-            valid_confidence: list[tuple[ConfidenceChangeProposal, Hypothesis, EvidenceLink, str]] = []
+            valid_confidence: list[
+                tuple[ConfidenceChangeProposal, Hypothesis, EvidenceLink, str]
+            ] = []
             current_bands = {
                 item.id: item.confidence for item in locked_hypotheses.values()
             }
@@ -561,8 +580,13 @@ class WorldMemoryCommitService:
                 if not isinstance(proposal, ConfidenceChangeProposal):
                     continue
                 hypothesis = locked_hypotheses.get(proposal.hypothesis_id)
-                if hypothesis is None or hypothesis.thread_id != envelope.request.thread_id:
-                    rejected[proposal.key] = "confidence_hypothesis_not_owned_by_task_thread"
+                if (
+                    hypothesis is None
+                    or hypothesis.thread_id != envelope.request.thread_id
+                ):
+                    rejected[proposal.key] = (
+                        "confidence_hypothesis_not_owned_by_task_thread"
+                    )
                     continue
                 if hypothesis.status != "active":
                     rejected[proposal.key] = "hypothesis_not_active"
@@ -579,7 +603,9 @@ class WorldMemoryCommitService:
                     rejected[proposal.key] = "confidence_evidence_not_for_hypothesis"
                     continue
                 if evidence.stance == "mentions":
-                    rejected[proposal.key] = "mentions_evidence_cannot_change_confidence"
+                    rejected[proposal.key] = (
+                        "mentions_evidence_cannot_change_confidence"
+                    )
                     continue
                 if evidence.stance not in {"supports", "challenges"}:
                     rejected[proposal.key] = "confidence_evidence_stance_invalid"
@@ -615,7 +641,9 @@ class WorldMemoryCommitService:
                             proposal.successor_hypothesis_id
                         )
                         if successor_create is None:
-                            rejected[proposal.key] = "hypothesis_successor_not_owned_by_team"
+                            rejected[proposal.key] = (
+                                "hypothesis_successor_not_owned_by_team"
+                            )
                             continue
                     elif successor.status != "active":
                         rejected[proposal.key] = "hypothesis_successor_not_active"
@@ -637,9 +665,13 @@ class WorldMemoryCommitService:
             valid_proposal_keys.update(valid_evidence)
             valid_proposal_keys.update(item[0].key for item in valid_confidence)
             valid_proposal_keys.update(item[0].key for item in valid_transitions)
-            rejected_keys = [proposal.key for proposal in proposals if proposal.key in rejected]
+            rejected_keys = [
+                proposal.key for proposal in proposals if proposal.key in rejected
+            ]
             committed_keys = [
-                proposal.key for proposal in proposals if proposal.key in valid_proposal_keys
+                proposal.key
+                for proposal in proposals
+                if proposal.key in valid_proposal_keys
             ]
             committed_at = datetime.now(timezone.utc)
 
@@ -1028,7 +1060,11 @@ def validate_operator_update_terminal(
             or not isinstance(payload.get("confidence_change_ids"), list)
             or not all(
                 isinstance(value, str)
-                for field in ("hypothesis_ids", "evidence_link_ids", "confidence_change_ids")
+                for field in (
+                    "hypothesis_ids",
+                    "evidence_link_ids",
+                    "confidence_change_ids",
+                )
                 for value in payload[field]
             )
         ):
@@ -1232,7 +1268,7 @@ def validate_operator_update_terminal(
 def committed_operator_update_observation(
     session: Session, task: Task
 ):
-    """Reconstruct the terminal observation after a commit/failure before finalization."""
+    """Reconstruct the terminal observation after a commit before finalization."""
     from core.task_runtime import TerminalObservation
 
     envelope = validate_operator_update_task_request(session, task)
