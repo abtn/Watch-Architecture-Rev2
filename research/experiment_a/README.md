@@ -22,8 +22,12 @@ For model output, `increase` requires a strictly higher confidence band and `dec
 ## Representations
 
 - Flat: flat JSON arrays; no stance grouping or temporal partitioning.
-  Timestamped records are ordered chronologically; untimed records retain
-  canonical input order.
+  Timestamped records are ordered by the first available field in this fixed
+  precedence: occurred_at, created_at, recorded_at, observed_at, requested_at,
+  fetched_at, timestamp. Values must be ISO-8601 timestamps with an explicit
+  UTC offset; sorting compares actual instants after UTC normalization. Equal
+  instants retain canonical input order. Untimed records follow timestamped
+  records and retain their relative input order.
 - Structured: evidence stance groups, provenance, temporal-state groups, and
   uncertainty notes.
 - SP-01: a separate StrategyProposer diagnostic. Both renderers preserve the
@@ -77,3 +81,10 @@ No model calls or database setup are needed. Passing these tests proves only the
 fixture and renderer contract for these three samples. It does not authorize or
 constitute Experiment A execution, RW-2/RW-3 implementation, scored RWN-01 runs,
 or RW-1 formal Operator closeout.
+
+
+Fixture identity validation checks record-owning identifiers only. For example,
+a ConfidenceChange's `evidence_link_id` is a reference to an EvidenceLink, not
+the identity of the ConfidenceChange, so that reference may legitimately match
+the referenced EvidenceLink's identifier. Explicit record identifiers remain
+unique within the fixture.
