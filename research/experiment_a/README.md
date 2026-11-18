@@ -17,6 +17,17 @@ calls, provider calls, database access, or production edits.
 
 The canonical fixture schema closes the top-level envelope and fixes shared record identifiers/status fields where defined. Some scientific evidence details (for example measurement descriptions, confidence-history entries, lineage details, and uncertainty annotations) remain intentionally extensible because the current three fixtures do not establish a complete shared vocabulary for them. Do not treat those payloads as fully closed. The model-facing evidence-assessment and proposal-output schemas are closed. Draft 2020-12 validation checks each schema definition and validates all three canonical fixture instances plus representative evidence-assessment and model-output instances. These checks prove structural conformance; fixture-specific reference existence remains the responsibility of the Python semantic validator.
 
+### Normative boundary: contract versus scientific payload
+
+The model-facing contract and the scientific fixture payload are separate boundaries:
+
+- **Model-facing contract:** role-specific inputs and outputs are explicit, closed, and validated against their applicable schemas. Undeclared fields are rejected. Contract changes require a deliberate schema/version change.
+- **Scientific fixture payload:** case-specific observations, measurements, assumptions, provenance, confidence history, lineage, and uncertainty details may remain extensible where the canonical schema explicitly allows them. Preserve these details as research data; do not claim that every nested scientific object is fully closed.
+
+Extensibility is not authority. An unknown or newly added scientific payload field may be preserved as data, but must not automatically become a model instruction, application permission, evidence reference, or executable semantic. Any projection of scientific fixture content into a model-facing request must be explicit and controlled by the application. Model outputs remain constrained by the closed role-specific output contract regardless of what fields appear in the scientific payload.
+
+When adding a field, determine first which boundary owns it. If it changes what a model is permitted or required to receive or return, update and version the relevant model-facing contract and its tests. If it adds case-specific scientific detail, keep it within an explicitly extensible payload and add preservation/validation tests without widening model-output schemas.
+
 For model output, `increase` requires a strictly higher confidence band and `decrease` a strictly lower band (`low < moderate < high`). A proposed ConfidenceChange requires non-null source and target bands. `hold` and `no_update` prohibit a ConfidenceChange; `no_update` also prohibits new EvidenceLinks. A `hold` may include a `mentions` EvidenceLink, and stance alone does not determine whether confidence changes.
 
 ## Representations
