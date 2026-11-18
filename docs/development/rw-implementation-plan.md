@@ -7,7 +7,7 @@
 **RW-1 physical design:** [RW-1 physical world-memory and EvidenceLink design proposal](rw-1-physical-design-proposal.md) — accepted under D132 on 2026-11-16
 **Value harness:** [Newsroom value harness](rw-value-harness.md)
 
-This plan turns the accepted architecture and RW proposal into bounded implementation slices. RW-1 implementation is merged; this documentation records its verification and pending formal Operator disposition. RW-2–RW-5 require their own explicit authorization. No R7-C implementation, persistent-database access, or newsroom scored execution is authorized.
+This plan turns the accepted architecture and RW proposal into bounded implementation slices. RW-1 implementation is merged and was formally accepted by the Operator on 2026-11-18 within the documented physical schema/ORM/migration boundary. RW-2–RW-5 require their own explicit authorization. No R7-C implementation, persistent-database access, or newsroom scored execution is authorized.
 
 ## 1. Purpose and boundary
 
