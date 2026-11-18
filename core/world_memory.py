@@ -11,7 +11,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Annotated, Literal, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Annotated, Literal, Union
 from uuid import UUID, uuid4, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -20,8 +20,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.models import (
     ConfidenceChange,
-    EvidenceLink,
     Event,
+    EvidenceLink,
     Hypothesis,
     Outcome,
     Signal,
@@ -1478,7 +1478,8 @@ def committed_operator_update_observation(
     if (
         not isinstance(rejected_keys, list)
         or not all(isinstance(key, str) for key in rejected_keys)
-        or rejected_keys != list(proposals)
+        or rejected_keys
+        != [proposal.key for proposal in envelope.request.proposals]
         or payload.get("failure_reason") not in {
             "all_operator_update_proposals_rejected", "interrupted_execution"
         }
