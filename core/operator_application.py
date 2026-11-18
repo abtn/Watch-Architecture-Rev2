@@ -534,28 +534,38 @@ class OperatorApplicationAdapter:
             team = session.scalar(
                 select(Team).where(Team.id == team_id).with_for_update()
             )
-            if team is None or team.status != "active":
-                raise OperatorApplicationError("operator_update_team_not_active")
+            if team is None:
+                raise OperatorApplicationError("operator_update_team_not_found")
+
+            task_id = task_id_for_request(team_id, request.idempotency_key)
+            existing = session.get(Task, task_id)
             thread = session.scalar(
                 select(Thread)
                 .where(Thread.id == request.thread_id, Thread.team_id == team_id)
                 .with_for_update()
             )
-            if thread is None or thread.status == "resolved":
+            if thread is None:
                 raise OperatorApplicationError("operator_update_thread_not_available")
-            policy = session.scalar(
-                select(TeamPolicy)
-                .where(TeamPolicy.team_id == team_id)
-                .order_by(TeamPolicy.version.desc())
-                .limit(1)
-                .with_for_update(read=True)
-            )
-            if policy is None:
-                raise OperatorApplicationError("team_policy_missing")
+            if existing is None and (
+                team.status != "active" or thread.status == "resolved"
+            ):
+                raise OperatorApplicationError("operator_update_target_not_available")
 
-            task_id = task_id_for_request(team_id, request.idempotency_key)
-            existing = session.get(Task, task_id)
-            policy_version = existing.policy_version if existing is not None else policy.version
+            if existing is not None:
+                policy_version = existing.policy_version
+            else:
+                if team.status != "active":
+                    raise OperatorApplicationError("operator_update_team_not_active")
+                policy = session.scalar(
+                    select(TeamPolicy)
+                    .where(TeamPolicy.team_id == team_id)
+                    .order_by(TeamPolicy.version.desc())
+                    .limit(1)
+                    .with_for_update(read=True)
+                )
+                if policy is None:
+                    raise OperatorApplicationError("team_policy_missing")
+                policy_version = policy.version
             event_payload = build_request_event_payload(
                 task_id=task_id,
                 team_id=team_id,
