@@ -441,9 +441,13 @@ class WorldMemoryCommitService:
                     valid_creates[proposal.hypothesis_id] = proposal
 
             existing_hypothesis_ids = {
-                proposal.hypothesis_id
+                hypothesis_id
                 for proposal in proposals
-                if hasattr(proposal, "hypothesis_id")
+                for hypothesis_id in (
+                    getattr(proposal, "hypothesis_id", None),
+                    getattr(proposal, "successor_hypothesis_id", None),
+                )
+                if hypothesis_id is not None
             }
             locked_hypotheses = {
                 item.id: item
