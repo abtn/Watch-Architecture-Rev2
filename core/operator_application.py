@@ -591,7 +591,6 @@ class OperatorApplicationAdapter:
                     Task(
                         id=task_id,
                         team_id=team_id,
-                        thread_id=request.thread_id,
                         task_type=TASK_TYPE,
                         status="pending",
                         attempt_count=0,
