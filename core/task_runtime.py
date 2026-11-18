@@ -1700,7 +1700,9 @@ class TaskRuntime:
         from core.world_memory import WorldMemoryError, validate_operator_update_task_request
 
         try:
-            validate_operator_update_task_request(session, task)
+            validate_operator_update_task_request(
+                session, task, require_thread_available=True
+            )
         except WorldMemoryError as error:
             raise TaskNotEligible(error.reason) from error
 
