@@ -923,6 +923,260 @@ class WorldMemoryCommitService:
         return None
 
 
+def validate_operator_update_terminal(
+    session: Session,
+    task: Task,
+    observation,
+    *,
+    allow_completed: bool = False,
+) -> None:
+    """Verify the Task result against the immutable request and committed rows."""
+    envelope = validate_operator_update_task_request(session, task)
+    expected_status = (
+        {"done", "failed"} if allow_completed else {"running"}
+    )
+    if (
+        task.status not in expected_status
+        or task.attempt_count != observation.attempt
+        or observation.task_id != task.id
+    ):
+        raise WorldMemoryError("operator_update_terminal_task_mismatch")
+
+    markers = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type.in_((COMMITTED_EVENT_TYPE, REJECTED_EVENT_TYPE)),
+            )
+        )
+    )
+    if len(markers) != 1 or not isinstance(markers[0].payload, dict):
+        raise WorldMemoryError("operator_update_commit_marker_count_invalid")
+    marker = markers[0]
+    payload = marker.payload
+    common = {
+        "schema_version",
+        "task_id",
+        "team_id",
+        "thread_id",
+        "attempt_count",
+        "operator_id",
+        "request_fingerprint",
+    }
+    if (
+        payload.get("schema_version") != 1
+        or payload.get("task_id") != str(task.id)
+        or payload.get("team_id") != str(task.team_id)
+        or payload.get("thread_id") != str(task.thread_id)
+        or payload.get("attempt_count") != task.attempt_count
+        or payload.get("operator_id") != envelope.operator_id
+        or payload.get("request_fingerprint") != envelope.request_fingerprint
+        or marker.created_at != observation.observed_at
+    ):
+        raise WorldMemoryError("operator_update_commit_marker_invalid")
+
+    proposals = {proposal.key: proposal for proposal in envelope.request.proposals}
+    if observation.result_category == "success_operator_update_committed":
+        if marker.type != COMMITTED_EVENT_TYPE or set(payload) != (
+            common
+            | {
+                "committed_proposal_keys",
+                "rejected_proposal_keys",
+                "hypothesis_ids",
+                "evidence_link_ids",
+                "confidence_change_ids",
+            }
+        ):
+            raise WorldMemoryError("operator_update_commit_marker_invalid")
+        committed = payload["committed_proposal_keys"]
+        rejected = payload["rejected_proposal_keys"]
+        if (
+            not isinstance(committed, list)
+            or not isinstance(rejected, list)
+            or not committed
+            or len(committed) != len(set(committed))
+            or len(rejected) != len(set(rejected))
+            or set(committed) & set(rejected)
+            or set(committed) | set(rejected) != set(proposals)
+        ):
+            raise WorldMemoryError("operator_update_commit_marker_invalid")
+        event_types: dict[str, str] = {}
+        for key in committed:
+            proposal = proposals[key]
+            if isinstance(proposal, HypothesisCreateProposal):
+                event_types[key] = "hypothesis_created"
+            elif isinstance(proposal, EvidenceLinkProposal):
+                event_types[key] = "evidence_link_added"
+            elif isinstance(proposal, ConfidenceChangeProposal):
+                event_types[key] = "confidence_changed"
+            elif isinstance(proposal, HypothesisTransitionProposal):
+                event_types[key] = (
+                    "hypothesis_rejected"
+                    if proposal.action == "reject"
+                    else "hypothesis_superseded"
+                )
+        for key in rejected:
+            event_types[key] = "proposal_rejected"
+
+        proposal_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type.in_(
+                        (
+                            "hypothesis_created",
+                            "evidence_link_added",
+                            "confidence_changed",
+                            "hypothesis_rejected",
+                            "hypothesis_superseded",
+                            "proposal_rejected",
+                        )
+                    ),
+                )
+            )
+        )
+        by_key: dict[str, list[Event]] = {}
+        for event in proposal_events:
+            event_payload = event.payload
+            if not isinstance(event_payload, dict):
+                raise WorldMemoryError("operator_update_proposal_event_invalid")
+            key = event_payload.get("proposal_key")
+            if (
+                event_payload.get("task_id") != str(task.id)
+                or event_payload.get("team_id") != str(task.team_id)
+                or event_payload.get("operator_id") != envelope.operator_id
+                or event_payload.get("request_fingerprint")
+                != envelope.request_fingerprint
+                or not isinstance(key, str)
+            ):
+                raise WorldMemoryError("operator_update_proposal_event_invalid")
+            by_key.setdefault(key, []).append(event)
+        if set(by_key) != set(proposals) or any(
+            len(events) != 1
+            or events[0].type != event_types[key]
+            for key, events in by_key.items()
+        ):
+            raise WorldMemoryError("operator_update_proposal_event_set_invalid")
+
+        created_hypothesis_ids = [
+            event.payload["hypothesis_id"]
+            for event in proposal_events
+            if event.type == "hypothesis_created"
+        ]
+        evidence_ids = [
+            str(item.id)
+            for item in session.scalars(
+                select(EvidenceLink).where(
+                    EvidenceLink.originating_task_id == task.id,
+                    EvidenceLink.team_id == task.team_id,
+                    EvidenceLink.subject_kind == "hypothesis",
+                )
+            )
+        ]
+        confidence_ids = [
+            str(item.id)
+            for item in session.scalars(
+                select(ConfidenceChange).where(
+                    ConfidenceChange.created_by_task_id == task.id,
+                    ConfidenceChange.team_id == task.team_id,
+                )
+            )
+        ]
+        if (
+            payload["hypothesis_ids"] != created_hypothesis_ids
+            or set(payload["evidence_link_ids"]) != set(evidence_ids)
+            or set(payload["confidence_change_ids"]) != set(confidence_ids)
+            or len(payload["evidence_link_ids"]) != len(evidence_ids)
+            or len(payload["confidence_change_ids"]) != len(confidence_ids)
+        ):
+            raise WorldMemoryError("operator_update_committed_rows_mismatch")
+        for raw_id in payload["hypothesis_ids"]:
+            hypothesis = session.get(Hypothesis, UUID(raw_id))
+            if (
+                hypothesis is None
+                or hypothesis.team_id != task.team_id
+                or hypothesis.thread_id != task.thread_id
+                or hypothesis.confidence != "low"
+            ):
+                raise WorldMemoryError("operator_update_created_hypothesis_invalid")
+        for raw_id in payload["evidence_link_ids"]:
+            link = session.get(EvidenceLink, UUID(raw_id))
+            if (
+                link is None
+                or link.originating_task_id != task.id
+                or link.team_id != task.team_id
+                or link.subject_kind != "hypothesis"
+            ):
+                raise WorldMemoryError("operator_update_evidence_link_invalid")
+        for raw_id in payload["confidence_change_ids"]:
+            change = session.get(ConfidenceChange, UUID(raw_id))
+            if (
+                change is None
+                or change.created_by_task_id != task.id
+                or change.team_id != task.team_id
+                or change.cause_kind != "evidence"
+                or change.evidence_link_id is None
+            ):
+                raise WorldMemoryError("operator_update_confidence_change_invalid")
+            cause = session.get(EvidenceLink, change.evidence_link_id)
+            if (
+                cause is None
+                or cause.subject_kind != "hypothesis"
+                or cause.hypothesis_id != change.hypothesis_id
+                or cause.team_id != task.team_id
+                or cause.stance not in {"supports", "challenges"}
+            ):
+                raise WorldMemoryError("operator_update_confidence_cause_invalid")
+        return
+
+    if (
+        observation.result_category != "terminal_failure"
+        or marker.type != REJECTED_EVENT_TYPE
+        or set(payload)
+        != common | {"rejected_proposal_keys", "failure_reason"}
+        or observation.failure_reason != "all_operator_update_proposals_rejected"
+        or payload.get("failure_reason") != observation.failure_reason
+        or payload.get("rejected_proposal_keys") != list(proposals)
+    ):
+        raise WorldMemoryError("operator_update_rejection_marker_invalid")
+    rejection_events = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == "proposal_rejected",
+            )
+        )
+    )
+    rejected_by_key = {
+        event.payload.get("proposal_key"): event
+        for event in rejection_events
+        if isinstance(event.payload, dict)
+    }
+    if (
+        set(rejected_by_key) != set(proposals)
+        or len(rejection_events) != len(proposals)
+        or session.scalar(
+            select(EvidenceLink.id).where(
+                EvidenceLink.originating_task_id == task.id
+            ).limit(1)
+        )
+        is not None
+        or session.scalar(
+            select(ConfidenceChange.id).where(
+                ConfidenceChange.created_by_task_id == task.id
+            ).limit(1)
+        )
+        is not None
+        or any(event.type == "hypothesis_created" for event in session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == "hypothesis_created",
+            )
+        ))
+    ):
+        raise WorldMemoryError("operator_update_rejection_event_set_invalid")
+
+
 def committed_operator_update_observation(
     session: Session, task: Task
 ):
