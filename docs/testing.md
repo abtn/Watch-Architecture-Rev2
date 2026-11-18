@@ -1202,3 +1202,20 @@ The acceptance does not waive the application-level obligations assigned to late
 No persistent database was inspected or migrated. Disposable PostgreSQL verification does not establish the state or migratability of a persistent database. The local verification record also retains its qualification: the script's final environment-equality assertion reported a mismatch after cleanup, so exact restoration of the pre-run environment-variable state is not claimed.
 
 This disposition does not authorize RW-2–RW-5, R7-C, provider/model calls, persistent-database operations, Experiment A execution, or scored RWN-01 runs. Each remains subject to its own explicit gate. PR #132 (test-only schema-negative proofs) was squash-merged on 2026-11-18 at `a16a931ea79e915323447a1379cd0d9fe7063fb8`. PR #131 (documentation reconciliation, including the PowerShell local sync/test script guide) was squash-merged on 2026-11-18 at `db5f19928f0a853df244da465e50b26fa848309d`. These merges do not expand the RW-1 acceptance boundary or authorize any separately gated work.
+
+
+## RW-2 hosted CI verification — 2026-11-18
+
+Draft PR [#134](https://github.com/abtn/Watch-Architecture-Rev2/pull/134), branch `rw-2-operator-reasoning-commit-20261118`, passed hosted GitHub Actions run [#1355](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44308179367) on exact implementation/test head `c990c702cad39558b17819cb4970462e11aedfb1`.
+
+- Locked dependency installation — passed.
+- Fresh disposable PostgreSQL migration to `0019_rw1_world_memory` — passed.
+- Alembic single-head/current verification — passed.
+- Ruff — passed.
+- Mypy — passed.
+- Pull-request patch whitespace check — passed.
+- Full suite — **1,103 passed, 130 existing Alembic deprecation warnings**.
+
+The RW-2 tests cover exact quote/hash/offset validation, Signal/Outcome source eligibility, Team/Thread ownership, initial `low` confidence, evidence-caused ConfidenceChanges, legal Hypothesis transitions, competing Hypotheses, mixed/all-invalid proposal batches, atomic rollback, Task/proposal replay, concurrency, touch-time rules, and interrupted Task recovery.
+
+This was hosted CI on a fresh disposable database. It did not inspect or migrate a persistent database and made no provider/model calls. Programmer-local verification is pending. The PR remains draft and unmerged; hosted CI alone does not establish formal RW-2 acceptance.

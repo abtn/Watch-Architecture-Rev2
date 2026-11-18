@@ -17,7 +17,7 @@ The core foundations for task execution, planning, and knowledge management have
 
 ## Current status
 
-The next stage is the design and authorization of the remaining world-memory work. It has not yet been authorized to begin. Other planned work also remains subject to separate approval.
+The deterministic human reasoning path is now authorized and under implementation. Model-driven updates, signal triage, belief decay, and world-memory retrieval remain later, separately gated stages.
 
 For the current roadmap and project decisions, see [PLAN.md](PLAN.md). For verification history, see [docs/testing.md](docs/testing.md).
 

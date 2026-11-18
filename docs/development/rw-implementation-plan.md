@@ -1,13 +1,13 @@
 # RW — Implementation Plan and Proof Matrix
 
-**Status:** RW-0 is closed by PR #126; RW-1 physical design/planning is merged by PR #127 at `9ac259bb5fd5986a89955dc06cb8a185e2599993`; all six D132 decisions were accepted on 2026-11-16; RW-1 implementation PR #128 is merged at `7213a17e5ae96c3cae22ec1082af05d47b9c0d1d`; Operator-local verification is recorded, and RW-1 was formally accepted by the Operator on 2026-11-18 within the documented physical schema/ORM/migration boundary; RW-2 was explicitly authorized by the Operator on 2026-11-18 and is in implementation on `rw-2-operator-reasoning-commit-20261118`
+**Status:** RW-0 is closed by PR #126; RW-1 physical design/planning is merged by PR #127 at `9ac259bb5fd5986a89955dc06cb8a185e2599993`; all six D132 decisions were accepted on 2026-11-16; RW-1 implementation PR #128 is merged at `7213a17e5ae96c3cae22ec1082af05d47b9c0d1d`; RW-1 was formally accepted by the Operator on 2026-11-18 within the documented physical schema/ORM/migration boundary. RW-2 is authorized and implemented in draft PR #134 at exact implementation/test head `c990c702cad39558b17819cb4970462e11aedfb1`; hosted CI run #1355 passed (**1,103 tests**), while Programmer-local verification and formal acceptance remain pending.
 **Sequence:** B6 → RW-0 → RW-1 → RW-2 → RW-3 → RW-4 → RW-5 → foundation exit gate → R8
 **Code audit basis:** post-B6 static source/spec audit at `91169b4931e48cb7b2803ed2066ec365f563a0ea`; RW-0 docs-only closeout squash-merged by PR #126 at `cac63a01380624bbaf0c9965a363a352e46960d7`
 **Decision record:** [RW-0 decision record](rw-0-decision-record.md)
 **RW-1 physical design:** [RW-1 physical world-memory and EvidenceLink design proposal](rw-1-physical-design-proposal.md) — accepted under D132 on 2026-11-16
 **Value harness:** [Newsroom value harness](rw-value-harness.md)
 
-This plan turns the accepted architecture and RW proposal into bounded implementation slices. RW-1 implementation is merged and was formally accepted by the Operator on 2026-11-18 within the documented physical schema/ORM/migration boundary. RW-2 is separately authorized on 2026-11-18 for the deterministic Operator reasoning commit path in §3 below. RW-3–RW-5 require their own explicit authorization. No R7-C implementation, persistent-database access, or newsroom scored execution is authorized.
+This plan turns the accepted architecture and RW proposal into bounded implementation slices. RW-1 implementation is merged and was formally accepted by the Operator on 2026-11-18 within the documented physical schema/ORM/migration boundary. RW-2 is authorized and its deterministic Operator commit implementation is in draft PR #134; hosted CI passed on exact implementation/test head `c990c702cad39558b17819cb4970462e11aedfb1`, and Programmer-local verification remains pending. RW-3–RW-5 require their own explicit authorization. No R7-C implementation, persistent-database access, or newsroom scored execution is authorized.
 
 ## 1. Purpose and boundary
 
@@ -71,6 +71,10 @@ The `triage_signal`, `update_thread`, `operator_update`, and `apply_decay` strin
 ### RW-2 — deterministic Operator reasoning commit path
 
 **Purpose:** prove the world-memory write contract without model nondeterminism.
+
+**Authorization:** explicitly granted by the Operator on 2026-11-18 within this section's scope.
+
+**Implementation status:** draft PR #134; hosted CI run #1355 passed on exact implementation/test head `c990c702cad39558b17819cb4970462e11aedfb1` (**1,103 passed, 130 existing Alembic deprecation warnings**). Programmer-local verification and formal acceptance remain pending.
 
 **Proposed scope:**
 - Implement operator_update as an ordinary manual Task through the host-invoked application adapter boundary.
@@ -159,6 +163,19 @@ The matrix defines required proof obligations, not tests that already exist. Eac
 The [RW-1 physical design proposal](rw-1-physical-design-proposal.md) is the current design artifact for D132. A source/schema audit was completed against branch head `a8c6b489cfa9dba05ae143474d7a86399b4382a6`, including `core/models.py`, `core/evaluations.py`, `core/task_runtime.py`, and `core/experience_distiller.py`, plus a disposable PostgreSQL migration/schema audit through `0018_r7b_lifecycle_review_date`. No persistent database rows were inspected. The revised proposal records these source findings and recommends typed subject foreign keys behind one logical EvidenceLink model, non-null `originating_task_id` backfilled from the parent Evaluation Task under fail-closed migration checks, same-Hypothesis ConfidenceChange evidence FKs, Task-attributed supersession Events, initial `low` confidence, the existing Signal-domain eligibility rule, append-only ConfidenceChange records, and staged Artifact/Consultation support. The six decisions were explicitly accepted by the Operator on 2026-11-16; their exact terms are recorded in proposal §9.
 
 RW-1 implementation was delivered by PR [#128](https://github.com/abtn/Watch-Architecture-Rev2/pull/128), merged at `7213a17e5ae96c3cae22ec1082af05d47b9c0d1d`. The merged slice adds Thread, Hypothesis, and ConfidenceChange persistence with PostgreSQL constraints; changes EvidenceLink to typed Evaluation/Hypothesis subject FKs; and backfills non-null legacy Task attribution with fail-closed validation. Migration proofs cover proposal-hash, Signal-domain, and EvidenceLink reference-hash failures; a focused model proof covers the initial `low` confidence default. This remains the RW-1 schema/ORM/migration slice: it does not implement the Operator or model commit path, triage, decay, or retrieval. Application-level Hypothesis evidence validation, confidence-cause semantics, cross-Team Signal/Snapshot checks, competing-Hypothesis behavior, lifecycle Events, atomic commit, replay, concurrency, and touch-time behavior remain assigned to their later slices; the aligned proof allocation is recorded in the RW-1 proposal §8 and the RW-EV-01/RW-EV-02/RW-EV-03/RW-TS-01/RW-HY-01/RW-HY-02/RW-AT-01/RW-RP-01/RW-RC-01/RW-LT-01 rows below. RW-1 merge and migration verification do not satisfy those later runtime proofs. Operator-local verification is recorded below and in `docs/testing.md`; hosted GitHub Actions run [#1247](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43901592622) passed on the exact final code/test commit `aa947983fc72f771946ebf5b0d9a781aba80d7f3`. RW-1 was formally accepted by the Operator on 2026-11-18 within the documented physical schema/ORM/migration boundary. The earlier empty disposable audit did not establish that persistent historical rows pass migration validation; no persistent database was inspected for RW-1.
+
+### RW-2 implementation record — draft PR #134
+
+The Operator authorized RW-2 on 2026-11-18. Draft PR [#134](https://github.com/abtn/Watch-Architecture-Rev2/pull/134), branch `rw-2-operator-reasoning-commit-20261118`, implements the deterministic host-invoked Operator path:
+
+- `core/world_memory.py`: typed proposal models, immutable request Event envelope, source/Team/Snapshot validation, atomic commit/rejection, replay proof, and interrupted-execution recovery proof.
+- `core/operator_application.py`: host-principal grant check, ordinary manual Task creation, request fingerprint/idempotency, and synchronous adapter orchestration.
+- `core/task_runtime.py`: Operator Task admission, terminal-result validation, finalization, and recovery integration through the existing TaskRuntime.
+- `tests/test_world_memory.py`: PostgreSQL proofs for quote/hash/offset checks, source and Team scope, confidence causes, Hypothesis creation/transitions, competing Hypotheses, mixed/all-invalid proposal sets, atomic rollback, replay, concurrency, touch-time behavior, and recovery.
+
+No migration or schema change is included. The Task writes only Hypothesis, EvidenceLink, and ConfidenceChange; Event and Outcome are Kernel/TaskRuntime side effects. SignalDisposition/triage remain RW-4; Thread-summary/retrieval projections remain deferred; Artifact/Consultation source rows remain staged until their canonical entities exist.
+
+Hosted GitHub Actions run [#1355](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44308179367) passed on exact implementation/test head `c990c702cad39558b17819cb4970462e11aedfb1`: fresh disposable PostgreSQL migration to `0019_rw1_world_memory`, Alembic single-head/current verification, Ruff, Mypy, patch whitespace, and full suite (**1,103 passed, 130 existing Alembic deprecation warnings**). Programmer-local verification has not yet been performed. The PR remains draft and unmerged; this CI result is not formal RW-2 acceptance.
 
 D133 mapping is now explicit: both minimum D99 capabilities are assigned to the planned RW-4-KU sub-slice, with proposed test modules recorded in the proof matrix. These test paths must be confirmed and the proof rows completed before RW-4-KU authorization. This assignment is not implementation authorization and does not create a separate R7-C programme.
 
