@@ -419,19 +419,19 @@ def _snapshot_for_source(
         snapshot_ref, snapshot_hash = source.snapshot_ref, source.content_hash
         signal_id, outcome_id = source.id, None
     else:
-        source = session.get(Outcome, proposal.outcome_id)
+        outcome_source = session.get(Outcome, proposal.outcome_id)
         if (
-            source is None
-            or source.team_id != team.id
-            or source.observation_snapshot_ref is None
-            or source.observation_hash is None
+            outcome_source is None
+            or outcome_source.team_id != team.id
+            or outcome_source.observation_snapshot_ref is None
+            or outcome_source.observation_hash is None
         ):
             raise WorldMemoryError("evidence_outcome_team_mismatch")
         snapshot_ref, snapshot_hash = (
-            source.observation_snapshot_ref,
-            source.observation_hash,
+            outcome_source.observation_snapshot_ref,
+            outcome_source.observation_hash,
         )
-        signal_id, outcome_id = None, source.id
+        signal_id, outcome_id = None, outcome_source.id
     if (
         proposal.snapshot_ref is not None
         and (
@@ -718,11 +718,13 @@ class WorldMemoryCommitService:
                     continue
                 successor = None
                 if proposal.action == "supersede":
-                    successor = locked_hypotheses.get(proposal.successor_hypothesis_id)
+                    successor_id = proposal.successor_hypothesis_id
+                    if successor_id is None:
+                        rejected[proposal.key] = "hypothesis_successor_required"
+                        continue
+                    successor = locked_hypotheses.get(successor_id)
                     if successor is None:
-                        successor_create = valid_creates.get(
-                            proposal.successor_hypothesis_id
-                        )
+                        successor_create = valid_creates.get(successor_id)
                         if successor_create is None:
                             rejected[proposal.key] = (
                                 "hypothesis_successor_not_owned_by_team"
@@ -731,7 +733,7 @@ class WorldMemoryCommitService:
                     elif successor.status != "active":
                         rejected[proposal.key] = "hypothesis_successor_not_active"
                         continue
-                    if proposal.successor_hypothesis_id == proposal.hypothesis_id:
+                    if successor_id == proposal.hypothesis_id:
                         rejected[proposal.key] = "hypothesis_cannot_supersede_itself"
                         continue
                 valid_transitions.append((proposal, hypothesis, successor))
@@ -829,8 +831,9 @@ class WorldMemoryCommitService:
                 link, _ = valid_evidence[proposal.key]
                 session.add(link)
                 evidence_link_ids.append(str(link.id))
-                if proposal.stance in {"supports", "challenges"}:
-                    touched_hypothesis_ids.add(proposal.hypothesis_id)
+                if link.stance in {"supports", "challenges"}:
+                    if link.hypothesis_id is not None:
+                        touched_hypothesis_ids.add(link.hypothesis_id)
                 session.add(
                     Event(
                         id=uuid4(),
