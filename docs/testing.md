@@ -1206,7 +1206,7 @@ This disposition does not authorize RW-2–RW-5, R7-C, provider/model calls, per
 
 ## RW-2 hosted CI verification — 2026-11-18
 
-Draft PR [#134](https://github.com/abtn/Watch-Architecture-Rev2/pull/134), branch `rw-2-operator-reasoning-commit-20261118`, passed hosted GitHub Actions run [#1355](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44308179367) on exact implementation/test head `c990c702cad39558b17819cb4970462e11aedfb1`.
+Draft PR [#134](https://github.com/abtn/Watch-Architecture-Rev2/pull/134), branch `rw-2-operator-reasoning-commit-20261118`, passed hosted GitHub Actions run [#1355](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44308179367) on implementation/test head `c990c702cad39558b17819cb4970462e11aedfb1`. A later README-only commit advanced the PR to `d5bc764b8196cbed1bff1681fa8b55a88f8cfb83`; hosted CI run [#1357](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44313224977) passed on that exact current head.
 
 - Locked dependency installation — passed.
 - Fresh disposable PostgreSQL migration to `0019_rw1_world_memory` — passed.
@@ -1218,4 +1218,19 @@ Draft PR [#134](https://github.com/abtn/Watch-Architecture-Rev2/pull/134), branc
 
 The RW-2 tests cover exact quote/hash/offset validation, Signal/Outcome source eligibility, Team/Thread ownership, initial `low` confidence, evidence-caused ConfidenceChanges, legal Hypothesis transitions, competing Hypotheses, mixed/all-invalid proposal batches, atomic rollback, Task/proposal replay, concurrency, touch-time rules, and interrupted Task recovery.
 
-This was hosted CI on a fresh disposable database. It did not inspect or migrate a persistent database and made no provider/model calls. Programmer-local verification is pending. The PR remains draft and unmerged; hosted CI alone does not establish formal RW-2 acceptance.
+This was hosted CI on a fresh disposable database. It did not inspect or migrate a persistent database and made no provider/model calls.
+
+### Programmer-local verification — exact tested tree `9860281eff7e79c2a720df4b3d899884376f0b3e`
+
+Programmer-local Windows verification passed:
+
+- Fresh disposable PostgreSQL migration; Alembic reported exactly one head, `0019_rw1_world_memory`.
+- Focused RW-2 tests — **21 passed**.
+- Ruff — passed.
+- Mypy — no issues in 39 source files.
+- Full test suite — **1,103 passed**.
+- `git diff --check` — passed.
+- Disposable PostgreSQL container removed; `DATABASE_URL` and `TEST_DATABASE_URL` restored; branch/HEAD unchanged and worktree clean at the end of the run.
+- The run emitted 130 existing Alembic `path_separator` deprecation warnings; no test failures resulted.
+
+The local verification was performed on `9860281eff7e79c2a720df4b3d899884376f0b3e`. The current PR head `d5bc764b8196cbed1bff1681fa8b55a88f8cfb83` is a later README-only commit; implementation and test code are unchanged. Hosted CI run #1357 passed on that exact current head, including the full suite (**1,103 passed**). The PR remains draft and unmerged. These results do not establish formal RW-2 acceptance.
