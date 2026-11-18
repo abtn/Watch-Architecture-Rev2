@@ -499,6 +499,11 @@ class OperatorApplicationAdapter:
         request: "OperatorUpdateRequest",
     ) -> OperatorUpdateResult:
         """Commit one deterministic Operator proposal set through an ordinary Task."""
+        from core.task_runtime import (
+            TaskNotEligible,
+            TaskRuntime,
+            TerminalObservation,
+        )
         from core.world_memory import (
             ALLOWED_WRITES,
             MAX_ATTEMPTS,
@@ -511,11 +516,6 @@ class OperatorApplicationAdapter:
             committed_operator_update_observation,
             task_id_for_request,
             validate_operator_update_task_request,
-        )
-        from core.task_runtime import (
-            TaskNotEligible,
-            TaskRuntime,
-            TerminalObservation,
         )
 
         if self._snapshot_store is None:
