@@ -1239,6 +1239,10 @@ def validate_operator_update_terminal(
             or event_payload.get("team_id") != str(task.team_id)
             or event_payload.get("operator_id") != envelope.operator_id
             or event_payload.get("request_fingerprint") != envelope.request_fingerprint
+            or (
+                observation.failure_reason == "interrupted_execution"
+                and event_payload["reason"] != "interrupted_execution"
+            )
         ):
             raise WorldMemoryError("operator_update_rejection_event_invalid")
         rejected_by_key[event_payload["proposal_key"]] = event
@@ -1294,6 +1298,14 @@ def record_interrupted_operator_update_failure(
     )
     if existing:
         raise WorldMemoryError("operator_update_interruption_marker_already_exists")
+    prior_rejections = session.scalar(
+        select(Event.id).where(
+            Event.task_id == task.id,
+            Event.type == "proposal_rejected",
+        ).limit(1)
+    )
+    if prior_rejections is not None:
+        raise WorldMemoryError("operator_update_interruption_rejection_already_exists")
     prior_writes = session.scalar(
         select(Event.id).where(
             Event.task_id == task.id,
