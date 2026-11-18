@@ -347,16 +347,18 @@ def test_chronology_uses_documented_timestamp_field_precedence(fixtures):
     ]
 
 
-@pytest.mark.parametrize("timestamp", [
-    "2026-11-17T10:00:00",
-    "not-a-timestamp",
+@pytest.mark.parametrize(("timestamp", "error_message"), [
+    ("2026-11-17T10:00:00", "explicit UTC offset"),
+    ("not-a-timestamp", "invalid ISO-8601 timestamp"),
 ])
-def test_chronology_rejects_naive_or_malformed_timestamps(fixtures, timestamp):
+def test_chronology_rejects_naive_or_malformed_timestamps(
+    fixtures, timestamp, error_message
+):
     fixture = deepcopy(fixtures["RW3-13"])
     fixture["observations"] = [{
         "observation_id": "invalid-time",
         "status": "completed",
         "observed_at": timestamp,
     }]
-    with pytest.raises(ValueError, match="timestamp"):
+    with pytest.raises(ValueError, match=error_message):
         render_flat(fixture)
