@@ -364,7 +364,9 @@ def test_chronology_rejects_naive_or_malformed_timestamps(
         render_flat(fixture)
 
 
-def test_structured_renderer_maps_every_evidence_stance_and_preserves_invariant(fixtures):
+def test_structured_renderer_maps_evidence_stances_and_preserves_invariant(
+    fixtures,
+):
     fixture = deepcopy(fixtures["RW3-03"])
     fixture["evidence_links"] = [
         {
