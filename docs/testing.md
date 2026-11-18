@@ -1141,7 +1141,7 @@ The actual 0014 → 0015 migration remains covered by the existing populated mig
 
 ## RW-1 — world-memory schema and EvidenceLink implementation (PR #128; 2026-11-16)
 
-**Disposition:** implementation PR [#128](https://github.com/abtn/Watch-Architecture-Rev2/pull/128) was merged to `main` at `7213a17e5ae96c3cae22ec1082af05d47b9c0d1d`. The final PR code/test commit was `aa947983fc72f771946ebf5b0d9a781aba80d7f3`; its parent was `7dfa57f37e71a739d44085fc2268e849212fbe9b`. Migration `0019_rw1_world_memory` is included. This record documents implementation and local verification; **formal Operator acceptance remains pending**.
+**Disposition:** implementation PR [#128](https://github.com/abtn/Watch-Architecture-Rev2/pull/128) was merged to `main` at `7213a17e5ae96c3cae22ec1082af05d47b9c0d1d`. The final PR code/test commit was `aa947983fc72f771946ebf5b0d9a781aba80d7f3`; its parent was `7dfa57f37e71a739d44085fc2268e849212fbe9b`. Migration `0019_rw1_world_memory` is included. This record documents implementation and local verification. Formal Operator acceptance was subsequently recorded on 2026-11-18 within the documented physical schema/ORM/migration boundary; see the RW-1 formal disposition record at the end of this file.
 
 **Operator-local verification (reported from the local Windows checkout):**
 - The local branch HEAD at test time was `7dfa57f37e71a739d44085fc2268e849212fbe9b`, with one unstaged change in `tests/test_rw1_schema_migration.py`: removal of an unused `original =` assignment from a query call.
@@ -1154,6 +1154,51 @@ The actual 0014 → 0015 migration remains covered by the existing populated mig
 - The full suite reported **130 Alembic `path_separator` deprecation warnings**; these were warnings, not test failures.
 - `git diff --check` passed.
 
-**Hosted CI qualification:** GitHub's commit-status endpoint for final PR code/test commit `aa947983fc72f771946ebf5b0d9a781aba80d7f3` returned no statuses (`total_count = 0`, state `pending`). Therefore this closeout does **not** claim hosted CI passed on the final code/test commit. The earlier hosted run on an older commit is not transferable to this SHA.
+**Hosted CI:** GitHub Actions [run #1247](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43901592622) ran on the exact final PR code/test commit `aa947983fc72f771946ebf5b0d9a781aba80d7f3` and completed successfully. Its disposable PostgreSQL migration, Alembic single-head verification, Ruff, Mypy, patch-whitespace check, and full test suite all passed. This is exact-SHA hosted verification; it is separate from the Operator-local run above.
 
-**Scope and boundary:** the PR implements the accepted RW-1 physical design only. It does not implement RW-2–RW-5, R7-C, persistent-database operations, newsroom scored execution, a new runtime/scheduler/authentication path, or provider changes. Merge and local verification do not themselves constitute formal Operator acceptance.
+**Scope and boundary:** the PR implements the accepted RW-1 physical design only. It does not implement RW-2–RW-5, R7-C, persistent-database operations, newsroom scored execution, a new runtime/scheduler/authentication path, or provider changes. Merge and local verification did not themselves constitute formal Operator acceptance; the separate disposition is recorded below.
+
+
+## RW-1 schema-level negative-test follow-up (PR #132; 2026-11-17)
+
+Test-only PR [#132](https://github.com/abtn/Watch-Architecture-Rev2/pull/132) extends `tests/test_evaluations.py` with 16 parameterized PostgreSQL negative cases covering:
+
+- Thread status and Hypothesis status/confidence CHECK constraints.
+- EvidenceLink subject and source exclusivity, including missing, dual, and kind/column-mismatch combinations.
+- ConfidenceChange cause shape and rejection of unsupported cause kinds.
+- Same-Team EvidenceLink Evaluation subject, Hypothesis subject, and originating Task foreign keys.
+
+The exact test nodes are listed in the RW-1 proposal §8 and the RW implementation proof matrix.
+
+**Hosted exact-head verification:** GitHub Actions [run #1269](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44087840152) passed on `61fa0a214e05993637695e75d8aa019449fc540d`:
+- Fresh disposable PostgreSQL migration and Alembic single-head/current verification passed.
+- Ruff, Mypy, and PR patch-whitespace checks passed.
+- Full suite: **1,029 passed, 130 warnings in 229.32s**. The warnings are existing Alembic `path_separator` deprecations.
+- The disposable PostgreSQL container and network were removed successfully.
+
+**Scope:** tests only. No production code, ORM model, migration, schema, provider, runtime, or persistent database changed. Operator-local exact-head verification also passed on exact head `61fa0a214e05993637695e75d8aa019449fc540d`: disposable PostgreSQL migration/current-head checks, Ruff, Mypy (38 source files), 31 focused tests, and full suite (**1,029 passed, 130 existing Alembic deprecation warnings**). The disposable container was removed and environment variables restored. The branch was subsequently updated with `main` after PR #133 merged; current PR #132 head is `3c77a52af6b4fc619b6274fadabb97f3738248c5`. Hosted CI run [#1309](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44265244934) passed on exact head `3c77a52af6b4fc619b6274fadabb97f3738248c5`; disposable PostgreSQL migrations, Alembic single-head verification, Ruff, Mypy, patch whitespace, and the full test suite all completed successfully. Operator-local verification on updated exact head `3c77a52af6b4fc619b6274fadabb97f3738248c5` now passed: fresh disposable PostgreSQL migration to `0019_rw1_world_memory`, single-head/current verification, 31 focused Evaluation tests, Ruff, Mypy (38 source files), full suite (**1,082 passed, 130 Alembic `path_separator` deprecation warnings**), and `git diff --check`. The disposable container and anonymous volume were removed; follow-up confirmed both database URL environment variables are empty, the exact branch and HEAD are intact, and the worktree is clean. The script's final environment-equality assertion reported a mismatch after cleanup, so exact restoration of the pre-run variable state is not claimed. The Operator formally accepted RW-1 on 2026-11-18 within the documented physical schema/ORM/migration boundary. The earlier checks close the schema-level negative-test coverage gap on their exact SHA; they do not authorize RW-2 or establish that any persistent database has passed migration validation.
+
+
+## PR #133 — offline Experiment A canonical-fixture contract (2026-11-18)
+
+PR [#133](https://github.com/abtn/Watch-Architecture-Rev2/pull/133) adds an offline canonical-fixture contract for the accepted Experiment A research baseline. Its scope is limited to the canonical fixture JSON Schema, closed evidence-assessment and RW-3 model-output schemas, flat and decision-structured JSON renderers, Representation Invariant #7 multiset-equivalence assertions, and fixtures RW3-03, RW3-13, and SP-01. The PR adds no production code, migration, provider call, database access, or experiment execution.
+
+**Final PR head and merge:** `82d5d618174c54d7f9946ebeda3b279b89f851b1` on branch `research/experiment-a-canonical-fixtures`; PR #133 was merged at `77337f8a68454078ab154596228946acdd148fb8`.
+
+**Hosted CI:** GitHub Actions [run #1307](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44263407392) completed successfully on the final PR head `82d5d618174c54d7f9946ebeda3b279b89f851b1`. The standard CI workflow passed its disposable PostgreSQL migration/single-head checks, Ruff, Mypy, whitespace check, and full test suite.
+
+**Earlier Operator-local verification record:** the recorded transcript is for earlier commit `51c24c0d4d29229ead57e8f06f6edd04a457d7be`, not the final PR head. It reported a disposable PostgreSQL migration to `0019_rw1_world_memory`, Ruff, Mypy across 38 source files, and **1,057 passed** with 130 existing Alembic deprecation warnings; the disposable container was removed, database URL variables were restored, and the worktree was clean. This evidence is retained with its original SHA and is not represented as a local run on the final PR head.
+The 130 warnings are existing Alembic path_separator deprecation warnings: 36 from tests/test_r7b_assessment_migration.py, 65 from tests/test_r7b_history_migration.py, 17 from tests/test_rw1_schema_migration.py, and 12 from tests/test_team_experience_projection_migration.py. They did not fail the suite. They are recorded as existing maintenance debt; this research-artifact PR does not change Alembic configuration.
+
+**Boundary:** PR #133 is merged. Its passing checks establish only the offline fixture/schema/rendering contract at the exact SHA above. They do not establish that Experiment A has been run, that RWN-01 scored runs are authorized, or that RW-1 has been formally accepted. No provider/model calls, persistent database access, RW-2/RW-3 implementation, Experiment A execution, or scored newsroom runs are authorized by this PR.
+
+
+## RW-1 formal disposition — 2026-11-18
+
+**Operator disposition: ACCEPT.** RW-1 is formally accepted within the documented physical schema, ORM, relational-ownership, and migration boundary described in the RW-1 physical design proposal and implementation proof record. This acceptance recognizes the merged implementation and the recorded exact-head verification evidence; it does not expand the accepted scope.
+
+The acceptance does not waive the application-level obligations assigned to later slices, including quote/Snapshot validation, Signal and Team/Snapshot eligibility, confidence-cause semantics and append-only history, competing-Hypothesis behavior, lifecycle transitions and Events, atomic proposal commit/rejection, replay, concurrency, initial-confidence commit-path proofs, and evidence-driven touch time. These remain binding proof obligations in their assigned RW-2–RW-5 slices.
+
+No persistent database was inspected or migrated. Disposable PostgreSQL verification does not establish the state or migratability of a persistent database. The local verification record also retains its qualification: the script's final environment-equality assertion reported a mismatch after cleanup, so exact restoration of the pre-run environment-variable state is not claimed.
+
+This disposition does not authorize RW-2–RW-5, R7-C, provider/model calls, persistent-database operations, Experiment A execution, or scored RWN-01 runs. Each remains subject to its own explicit gate. PR #131 (documentation reconciliation) and PR #132 (test-only schema-negative proofs) remain open and in draft; this disposition does not change either PR's state or merge status.

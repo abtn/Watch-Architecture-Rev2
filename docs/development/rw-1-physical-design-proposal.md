@@ -1,6 +1,6 @@
 # RW-1 — Physical World-Memory and EvidenceLink Design Proposal
 
-**Status:** physical design accepted under D132 on 2026-11-16; RW-1 implementation merged by PR #128; formal Operator acceptance pending
+**Status:** physical design accepted under D132 on 2026-11-16; RW-1 implementation merged by PR #128; formally accepted by Operator on 2026-11-18 within the documented physical schema/ORM/migration boundary
 **Parent milestone:** RW-0 documentation closeout, squash-merged PR [#126](https://github.com/abtn/Watch-Architecture-Rev2/pull/126)
 **Design authority:** RW-D131/RW-D132; ADR-0007, ADR-0009, ADR-0011, ADR-0014, ADR-0020, ADR-0021
 **Implementation authority:** RW-1's bounded schema/ORM/migration/test implementation was explicitly authorized on 2026-11-16 after D132 acceptance. This authority is limited to the scope and proof obligations in this proposal and the implementation plan; it does not authorize RW-2–RW-5, R7-C, provider changes, persistent-database access, or scored execution.
@@ -200,27 +200,62 @@ D99's two minimum retained-knowledge attribution capabilities are assigned to a 
 
 RW-4-KU is part of the existing RW-4 retrieval/Context slice; it is not a new runtime or a separate R7-C programme. The implementation plan and proof matrix must be updated with exact test nodes before RW-4-KU is authorized. Any additional benchmark, blinded review, adjudication, statistical reporting, or score aggregation remains in the experiment harness, not production Watch.
 
-## 8. RW-1 proof plan
+## 8. RW-1 proof boundary
 
-The RW-1 implementation PR must identify exact test nodes for at least:
+RW-1 is the physical schema/ORM/migration slice. Its proof obligations are limited to persistence shape, relational ownership and cause references, legacy preservation, and migration behavior. The merged PR #128 implementation identifies these exact proof nodes:
 
-| Proof | Required assertion |
-|---|---|
-| Thread ownership | Cross-Team Thread access/reference rejected; status vocabulary enforced. |
-| Hypothesis ownership | Hypothesis must reference a Thread in the same Team; competing active Hypotheses coexist. |
-| Hypothesis lifecycle | Invalid status transitions and delete attempts rejected; rejection/supersession requires reason and Task-attributed Event. |
-| Confidence bands | Only low/moderate/high accepted. |
-| Confidence cause | Missing, dual, mismatched, cross-Team, wrong-Hypothesis, mentions-only, or wrong-Task causes rejected; evidence cause is constrained to the same Hypothesis by a composite FK. |
-| Evidence subject | Evaluation and Hypothesis subjects both accepted through one logical EvidenceLink API; invalid/missing/dual typed subject rejected. |
-| Evidence source | Signal and Outcome remain supported; invalid/missing/dual source rejected. Artifact/Consultation remain rejected until later source slices. |
-| Legacy preservation | Existing Evaluation→Signal/Outcome rows retain IDs and all provenance fields; `originating_task_id` backfills from the parent Evaluation Task; parent/Task/Team mapping and proposal-hash checks pass; current evaluation service behavior remains green. |
-| Team isolation | Cross-Team subject, Outcome, Hypothesis, Task and ConfidenceChange references rejected. Signal domain must equal the linking Team's domain for both subject kinds. |
-| Quote integrity | Exact quote/offset/hash accepted; altered quote, offset, Snapshot ref, or hash rejected. |
-| Uniqueness/replay | Duplicate reference keys and same-Task replay handled deterministically; concurrent conflicting commits cannot corrupt records. |
-| Migration | Upgrade on populated pre-RW DB and fresh DB; verify complete Task attribution, row counts, Team consistency, and proposal hashes; reachable invalid legacy fixtures abort transactionally without partial DDL/data changes; document legacy FK guarantees for impossible orphan/cross-Team states; verify migration head, downgrade refusal with new records, and safe downgrade on empty RW tables. |
-| Immutability | EvidenceLink and ConfidenceChange history cannot be rewritten or deleted through application paths. |
+| Proof | Test node | What it establishes |
+|---|---|---|
+| Evaluation compatibility and Task provenance | `tests/test_evaluations.py::test_evaluation_propose_record_and_replay` | Existing Evaluation evidence remains recordable through the typed subject representation, with Task provenance and logical subject compatibility. |
+| Evaluation Task attribution stability | `tests/test_evaluations.py::test_evaluation_record_rejects_changed_originating_task` | The originating Task cannot be changed before Evaluation evidence recording. |
+| Shared Hypothesis EvidenceLink and initial confidence | `tests/test_evaluations.py::test_hypothesis_evidence_uses_one_typed_evidence_link` | Hypothesis evidence uses the shared EvidenceLink model and a newly created Hypothesis defaults to `low`. |
+| Hypothesis/Thread Team ownership | `tests/test_evaluations.py::test_hypothesis_cannot_reference_another_teams_thread` | A Hypothesis cannot reference a Thread owned by another Team. |
+| ConfidenceChange evidence ownership | `tests/test_evaluations.py::test_confidence_change_evidence_fk_is_bound_to_same_hypothesis` | The composite foreign key prevents a ConfidenceChange from citing an EvidenceLink attached to another Hypothesis. |
+| Populated legacy-row preservation and Task backfill | `tests/test_rw1_schema_migration.py::test_0019_backfills_typed_subject_and_task_without_changing_legacy_rows` | Existing Evaluation EvidenceLink identity/provenance is preserved and originating Task attribution is backfilled. |
+| Proposal-hash migration failure | `tests/test_rw1_schema_migration.py::test_0019_refuses_proposal_hash_mismatch_and_rolls_back_schema` | A legacy proposal-hash mismatch aborts the migration without leaving the new schema partially applied. |
+| Signal-domain migration failure | `tests/test_rw1_schema_migration.py::test_0019_refuses_signal_domain_mismatch_and_rolls_back_schema` | A legacy Signal from another domain aborts the migration transactionally. |
+| Evidence reference-hash migration failure | `tests/test_rw1_schema_migration.py::test_0019_refuses_evidence_reference_hash_mismatch_and_rolls_back_schema` | A tampered legacy EvidenceLink reference hash aborts the migration transactionally. |
+| Canonical multi-link backfill | `tests/test_rw1_schema_migration.py::test_0019_backfills_multiple_links_in_canonical_reference_order` | Multiple legacy links are backfilled in canonical reference order with complete typed-subject and Task attribution. |
+| Downgrade data-loss protection | `tests/test_rw1_schema_migration.py::test_0019_downgrade_refuses_hypothesis_confidence_history` and `tests/test_rw1_schema_migration.py::test_0019_downgrade_refuses_world_memory_then_restores_legacy_shape` | Downgrade refuses to discard world-memory history and restores the legacy Evaluation-only shape only when the new records are absent. |
 
-Use real disposable PostgreSQL for database-backed constraints, migration, race, and mutation proofs. Unit-only SQLite substitutes are not sufficient for PostgreSQL-specific constraints.
+The exact local verification qualification and hosted-CI evidence are recorded in the implementation plan and `docs/testing.md`. They establish the delivered schema/ORM/migration tree; they do not establish that the user's persistent database has passed the migration.
+
+### RW-1 schema-level negative-test follow-up (PR #132)
+
+The initial PR #128 suite declared the following database constraints in the ORM/migration but did not contain focused negative tests for each of them. Test-only PR [#132](https://github.com/abtn/Watch-Architecture-Rev2/pull/132) now adds those PostgreSQL proofs in `tests/test_evaluations.py`:
+
+- `test_rw1_thread_status_check_rejects_invalid_values` — `ck_threads_status`.
+- `test_rw1_hypothesis_vocabulary_checks_reject_invalid_values` — `ck_hypotheses_status` and `ck_hypotheses_confidence`.
+- `test_rw1_evidence_subject_check_rejects_missing_dual_and_mismatched_subjects` — `ck_evidence_links_subject`, covering missing, dual, and kind/column-mismatch subjects.
+- `test_rw1_evidence_source_check_rejects_missing_dual_and_mismatched_sources` — `ck_evidence_links_source`, covering missing, dual, and kind/column-mismatch sources.
+- `test_rw1_confidence_change_cause_check_rejects_invalid_cause_shapes` and `test_rw1_confidence_change_checks_reject_unknown_cause_kind` — `ck_confidence_changes_cause` and `ck_confidence_changes_cause_kind`.
+- `test_rw1_evidence_subject_and_task_fks_enforce_team_ownership` — `fk_evidence_links_evaluation_subject_team`, `fk_evidence_links_hypothesis_team`, and `fk_evidence_links_originating_task_team`.
+
+Hosted GitHub Actions run [#1269](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44087840152) passed on the then-exact test head `61fa0a214e05993637695e75d8aa019449fc540d`: fresh PostgreSQL migration and single-head/current verification, Ruff, Mypy, patch whitespace, and the full suite (**1,029 passed, 130 existing Alembic deprecation warnings**). CI removed its disposable PostgreSQL container and network. The follow-up changes tests only; no production code, ORM model, migration, or schema changed. PR #132 was subsequently updated with `main` after PR #133 merged; its current head is `3c77a52af6b4fc619b6274fadabb97f3738248c5`, with fresh hosted CI run [#1309](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44265244934) passed on that exact updated head. Its disposable PostgreSQL migrations, Alembic single-head verification, Ruff, Mypy, patch whitespace, and full test suite all completed successfully. The historical run above remains a separate earlier-SHA record.
+
+The schema-level negative-test gap is covered by hosted and Operator-local verification on exact head `61fa0a214e05993637695e75d8aa019449fc540d`: disposable PostgreSQL migration/current-head checks, Ruff, Mypy (38 source files), 31 focused Evaluation/schema tests, and the full suite (**1,029 passed, 130 existing Alembic deprecation warnings**). The disposable container was removed and environment variables restored. Those results apply to that exact head, not the subsequently updated PR #132 head `3c77a52af6b4fc619b6274fadabb97f3738248c5`; hosted CI run #1309 and the Operator-local verification recorded in `docs/testing.md` qualify the updated head. RW-1 was formally accepted by the Operator on 2026-11-18 within the documented physical schema/ORM/migration boundary. These proofs do not establish that the user's persistent database has passed migration validation, and they do not authorize RW-2.
+
+### Application-level proofs deferred to later slices
+
+The following requirements remain binding. They are not RW-1 schema/ORM/migration acceptance criteria and are not satisfied by PR #128's merge or its migration tests.
+
+| Behavior | Required proof | Allocation |
+|---|---|---|
+| Hypothesis EvidenceLink quote and Snapshot validation | For Hypothesis evidence, load the immutable Snapshot, verify its content hash, and require the supplied quote to equal the exact substring at the supplied offsets. RW-1 preserves the existing Evaluation path and stores the typed fields; the Hypothesis commit path is not present yet. | RW-2, `RW-EV-01` |
+| Hypothesis Signal eligibility and Team/Snapshot references | Require `Signal.domain == Team.domain` for Hypothesis links; resolve Signal and Snapshot references from canonical records and reject cross-Team or stale references. The RW-1 schema proves relational ownership where composite FKs exist, not these application checks. | RW-2/RW-4, `RW-TS-01` |
+| ConfidenceChange cause semantics and history | DB constraints enforce the structural cause shape and same-Hypothesis evidence FK. The application must additionally reject `mentions`, missing/dual/mismatched or wrong-Task causes, and must preserve ConfidenceChange history as append-only. | RW-2/RW-5, `RW-EV-02`/`RW-EV-03` |
+| Competing Hypotheses | Multiple active Hypotheses may coexist without implicit demotion or deletion. The RW-1 schema permits this; the application path must prove it. | RW-2, `RW-HY-01` |
+| Hypothesis lifecycle | Legal status transitions; rejection and supersession require a non-empty reason; supersession identifies a valid same-Team successor; no silent deletion; canonical Task-attributed Event. | RW-2, `RW-HY-02` |
+| Atomic proposal commit and rejection | Valid proposal sets commit atomically; invalid proposals produce attributable rejection Events; failed transactions leave no partial business writes. | RW-2, `RW-AT-01` |
+| Task/proposal replay | Replaying the same Task does not duplicate evidence or repeat a state transition. | RW-2/RW-3/RW-4/RW-5, `RW-RP-01` |
+| Concurrent Thread updates | Conflicting updates serialize or one is rejected without lost updates. | RW-2/RW-3, `RW-RC-01` |
+| Initial confidence through commit paths | Every new Hypothesis starts at `low`; any higher band is a later, valid Task-attributed ConfidenceChange through Operator and model paths. RW-1 proves only the persistence default. | RW-2/RW-3, `RW-HY-03` |
+| Evidence-driven touch time | Only accepted evidence changes `last_touched_at`; mentions, rejected proposals, and replay do not. | RW-2/RW-3, `RW-LT-01` |
+| Signal triage/disposition | Per-(Signal, Team) disposition and triage behavior are deferred; RW-1 intentionally creates no SignalDisposition model or triage path. | RW-4, `RW-TR-01` |
+
+In particular, D132 decision 3 remains unchanged: supersession must be represented by one canonical Task-attributed Event containing the old Hypothesis ID, successor Hypothesis ID, and non-empty reason. Deferring its commit path to RW-2 does not weaken or waive that requirement.
+
+Use real disposable PostgreSQL for database-backed constraints and migration proofs. The later application-level race and mutation proofs must also use the database behavior they are intended to verify; unit-only SQLite substitutes are not sufficient for PostgreSQL-specific guarantees.
 
 ## 9. D132 Operator decisions — accepted 2026-11-16
 
@@ -237,6 +272,6 @@ The Operator explicitly accepted all six recommendations on 2026-11-16. They are
 
 The D132 design gate is satisfied by explicit Operator acceptance of all six decisions above. The implementation slice is separately authorized on 2026-11-16 and is limited to the RW-1 scope and proof obligations in this proposal and `docs/development/rw-implementation-plan.md`.
 
-**Implementation disposition:** RW-1 implementation was merged by PR [#128](https://github.com/abtn/Watch-Architecture-Rev2/pull/128) at `7213a17e5ae96c3cae22ec1082af05d47b9c0d1d`. Operator-local verification and its exact-tree qualification are recorded in `docs/testing.md`. No hosted status checks were recorded for the final PR code/test commit. Formal Operator acceptance of RW-1 remains pending; this proposal's design acceptance under D132 is not a substitute for implementation acceptance.
+**Implementation disposition:** RW-1 implementation was merged by PR [#128](https://github.com/abtn/Watch-Architecture-Rev2/pull/128) at `7213a17e5ae96c3cae22ec1082af05d47b9c0d1d`. Operator-local verification and exact-tree qualification, plus hosted GitHub Actions run [#1247](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/43901592622) on the exact final PR code/test commit `aa947983fc72f771946ebf5b0d9a781aba80d7f3`, are recorded in `docs/testing.md`; that hosted run passed all CI steps. The Operator separately accepted RW-1 on 2026-11-18 within this documented physical schema/ORM/migration boundary; design acceptance under D132 and implementation acceptance are distinct recorded decisions.
 
 **Boundary retained:** the RW-1 merge does not authorize RW-2–RW-5, R7-C, persistent-database access, or newsroom scored runs.

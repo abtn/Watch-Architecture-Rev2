@@ -38,6 +38,9 @@ Inspect the relevant diff before editing. Preserve all pre-existing changes. Nev
 
 A supplied ZIP or text export is not Git evidence: it cannot prove branch, HEAD, merge status, or uncommitted work.
 
+For programmer-facing Windows PowerShell sync, migration, and test scripts, follow [the local sync/test script guide](docs/development/powershell-local-sync-test-script-guide.md). Scripts longer than approximately ten lines must be delivered as a .ps1 file created through a single-quoted here-string, parsed before execution, and guarded by exact-state preflight and final assertions. Check $LASTEXITCODE after every consequential native command, preserve and restore changed environment variables, use only a disposable database, and never repair a dirty worktree automatically. This governs script construction; it does not itself authorize running a command or changing a database.
+
+
 ## 4. Milestone and design gates
 
 - Code presence does not authorize a milestone or prove formal closure.
