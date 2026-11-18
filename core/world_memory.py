@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from typing import Annotated, Literal, Union
 from uuid import UUID, uuid4, uuid5
 
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -30,6 +32,9 @@ from core.models import (
     Thread,
 )
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
+
+if TYPE_CHECKING:
+    from core.task_runtime import TerminalObservation
 
 TASK_TYPE = "operator_update"
 REQUEST_EVENT_TYPE = "operator_update_requested"
@@ -1203,10 +1208,15 @@ def validate_operator_update_terminal(
         or marker.type != REJECTED_EVENT_TYPE
         or set(payload)
         != common | {"rejected_proposal_keys", "failure_reason"}
-        or observation.failure_reason != "all_operator_update_proposals_rejected"
+        or observation.failure_reason not in {
+            "all_operator_update_proposals_rejected", "interrupted_execution"
+        }
         or payload.get("failure_reason") != observation.failure_reason
-        or payload.get("rejected_proposal_keys") != list(proposals)
         or not isinstance(payload.get("rejected_proposal_keys"), list)
+        or not all(
+            isinstance(key, str) for key in payload["rejected_proposal_keys"]
+        )
+        or payload["rejected_proposal_keys"] != list(proposals)
     ):
         raise WorldMemoryError("operator_update_rejection_marker_invalid")
     rejection_events = list(
@@ -1269,7 +1279,7 @@ def record_interrupted_operator_update_failure(
     session: Session,
     task: Task,
     observed_at: datetime,
-):
+) -> TerminalObservation:
     """Record deterministic rejection when all Operator Task attempts expire."""
     envelope = validate_operator_update_task_request(session, task)
     if observed_at.tzinfo is None or observed_at.utcoffset() is None:
@@ -1351,7 +1361,7 @@ def record_interrupted_operator_update_failure(
 
 def committed_operator_update_observation(
     session: Session, task: Task
-):
+) -> TerminalObservation | None:
     """Reconstruct the terminal observation after a commit before finalization."""
     from core.task_runtime import TerminalObservation
 
@@ -1405,7 +1415,6 @@ def committed_operator_update_observation(
         or payload.get("failure_reason") not in {
             "all_operator_update_proposals_rejected", "interrupted_execution"
         }
-        or payload.get("failure_reason") != observation.failure_reason
     ):
         raise WorldMemoryError("operator_update_rejection_marker_invalid")
     return TerminalObservation(
