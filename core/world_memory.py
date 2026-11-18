@@ -239,7 +239,6 @@ def validate_operator_update_task_request(
         or not 0 <= task.attempt_count <= MAX_ATTEMPTS
         or (task.status in {"running", "done", "failed"} and task.attempt_count < 1)
         or (task.completed_at is not None and task.status != "done")
-        or task.thread_id is None
     ):
         raise WorldMemoryError("operator_update_task_shape_invalid")
 
@@ -273,7 +272,7 @@ def validate_operator_update_task_request(
         or payload.get("operation") != TASK_TYPE
         or payload.get("task_id") != str(task.id)
         or payload.get("team_id") != str(task.team_id)
-        or payload.get("thread_id") != str(task.thread_id)
+        or not isinstance(payload.get("thread_id"), str)
         or payload.get("policy_version") != task.policy_version
         or not isinstance(payload.get("operator_id"), str)
         or not payload["operator_id"]
@@ -308,7 +307,7 @@ def validate_operator_update_task_request(
     if not isinstance(fingerprint, str) or fingerprint != _sha256_json(unsigned):
         raise WorldMemoryError("operator_update_request_fingerprint_mismatch")
 
-    thread = session.get(Thread, task.thread_id)
+    thread = session.get(Thread, request.thread_id)
     if thread is None or thread.team_id != task.team_id or thread.status == "resolved":
         raise WorldMemoryError("operator_update_thread_not_available")
     return OperatorUpdateEnvelope(
@@ -418,7 +417,7 @@ class WorldMemoryCommitService:
             )
             thread = session.scalar(
                 select(Thread)
-                .where(Thread.id == task.thread_id, Thread.team_id == task.team_id)
+                .where(Thread.id == envelope.request.thread_id, Thread.team_id == task.team_id)
                 .with_for_update()
             )
             if team is None or team.status != "active":
@@ -468,7 +467,7 @@ class WorldMemoryCommitService:
                 if hypothesis is None and proposal.hypothesis_id not in valid_creates:
                     rejected[proposal.key] = "evidence_hypothesis_not_owned_by_task_thread"
                     continue
-                if hypothesis is not None and hypothesis.thread_id != task.thread_id:
+                if hypothesis is not None and hypothesis.thread_id != envelope.request.thread_id:
                     rejected[proposal.key] = "evidence_hypothesis_not_in_task_thread"
                     continue
                 try:
@@ -652,7 +651,7 @@ class WorldMemoryCommitService:
                             "schema_version": 1,
                             "task_id": str(task.id),
                             "team_id": str(task.team_id),
-                            "thread_id": str(task.thread_id),
+                            "thread_id": str(envelope.request.thread_id),
                             "attempt_count": attempt,
                             "operator_id": operator_id,
                             "request_fingerprint": envelope.request_fingerprint,
@@ -684,7 +683,7 @@ class WorldMemoryCommitService:
                         Hypothesis(
                             id=proposal.hypothesis_id,
                             team_id=task.team_id,
-                            thread_id=task.thread_id,
+                            thread_id=envelope.request.thread_id,
                             statement=proposal.statement.strip(),
                             status="active",
                             confidence="low",
