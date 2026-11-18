@@ -191,8 +191,10 @@ def _record_all_rejected(
     envelope: OperatorUpdateEnvelope,
     attempt: int,
     reasons: dict[str, str],
+    *,
+    failure_reason: str = "all_operator_update_proposals_rejected",
 ) -> WorldMemoryCommitResult:
-    """Persist one rejection Event per proposal and the Task-level failure proof."""
+    """Persist per-proposal rejections and the Task-level failure proof."""
     proposals = envelope.request.proposals
     if set(reasons) != {proposal.key for proposal in proposals}:
         raise WorldMemoryError("operator_update_rejection_set_incomplete")
@@ -229,7 +231,7 @@ def _record_all_rejected(
                 "operator_id": envelope.operator_id,
                 "request_fingerprint": envelope.request_fingerprint,
                 "rejected_proposal_keys": rejected_keys,
-                "failure_reason": "all_operator_update_proposals_rejected",
+                "failure_reason": failure_reason,
             },
             created_at=committed_at,
         )
@@ -1347,15 +1349,13 @@ def record_interrupted_operator_update_failure(
     envelope = validate_operator_update_task_request(session, task)
     if observed_at.tzinfo is None or observed_at.utcoffset() is None:
         raise WorldMemoryError("operator_update_interruption_time_invalid")
-    existing = list(
-        session.scalars(
-            select(Event).where(
-                Event.task_id == task.id,
-                Event.type.in_((COMMITTED_EVENT_TYPE, REJECTED_EVENT_TYPE)),
-            )
-        )
+    existing_marker = session.scalar(
+        select(Event.id).where(
+            Event.task_id == task.id,
+            Event.type.in_((COMMITTED_EVENT_TYPE, REJECTED_EVENT_TYPE)),
+        ).limit(1)
     )
-    if existing:
+    if existing_marker is not None:
         raise WorldMemoryError("operator_update_interruption_marker_already_exists")
     prior_rejections = session.scalar(
         select(Event.id).where(
@@ -1382,45 +1382,17 @@ def record_interrupted_operator_update_failure(
     if prior_writes is not None:
         raise WorldMemoryError("operator_update_interrupted_with_partial_writes")
 
-    rejected_keys = [proposal.key for proposal in envelope.request.proposals]
-    for proposal in envelope.request.proposals:
-        session.add(
-            Event(
-                id=uuid4(),
-                task_id=task.id,
-                type="proposal_rejected",
-                payload={
-                    "task_id": str(task.id),
-                    "team_id": str(task.team_id),
-                    "operator_id": envelope.operator_id,
-                    "request_fingerprint": envelope.request_fingerprint,
-                    "proposal_key": proposal.key,
-                    "reason": "interrupted_execution",
-                },
-                created_at=observed_at,
-            )
-        )
-    session.add(
-        Event(
-            id=uuid4(),
-            task_id=task.id,
-            type=REJECTED_EVENT_TYPE,
-            payload={
-                "schema_version": 1,
-                "task_id": str(task.id),
-                "team_id": str(task.team_id),
-                "thread_id": str(envelope.request.thread_id),
-                "attempt_count": task.attempt_count,
-                "operator_id": envelope.operator_id,
-                "request_fingerprint": envelope.request_fingerprint,
-                "rejected_proposal_keys": rejected_keys,
-                "failure_reason": "interrupted_execution",
-            },
-            created_at=observed_at,
-        )
+    _record_all_rejected(
+        session,
+        task,
+        envelope,
+        task.attempt_count,
+        {
+            proposal.key: "interrupted_execution"
+            for proposal in envelope.request.proposals
+        },
+        failure_reason="interrupted_execution",
     )
-    from core.task_runtime import TerminalObservation
-
     return TerminalObservation(
         task_id=task.id,
         attempt=task.attempt_count,
