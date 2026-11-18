@@ -427,7 +427,6 @@ class WorldMemoryCommitService:
                 raise WorldMemoryError("operator_update_thread_not_available")
 
             proposals = envelope.request.proposals
-            by_key = {proposal.key: proposal for proposal in proposals}
             rejected: dict[str, str] = {}
             valid_creates: dict[UUID, HypothesisCreateProposal] = {}
             for proposal in proposals:
@@ -933,10 +932,15 @@ def validate_operator_update_terminal(
     """Verify the Task result against the immutable request and committed rows."""
     envelope = validate_operator_update_task_request(session, task)
     expected_status = (
-        {"done", "failed"} if allow_completed else {"running"}
+        "done"
+        if allow_completed
+        and observation.result_category == "success_operator_update_committed"
+        else "failed"
+        if allow_completed
+        else "running"
     )
     if (
-        task.status not in expected_status
+        task.status != expected_status
         or task.attempt_count != observation.attempt
         or observation.task_id != task.id
     ):
@@ -993,11 +997,20 @@ def validate_operator_update_terminal(
         if (
             not isinstance(committed, list)
             or not isinstance(rejected, list)
+            or not all(isinstance(key, str) for key in committed + rejected)
             or not committed
             or len(committed) != len(set(committed))
             or len(rejected) != len(set(rejected))
             or set(committed) & set(rejected)
             or set(committed) | set(rejected) != set(proposals)
+            or not isinstance(payload.get("hypothesis_ids"), list)
+            or not isinstance(payload.get("evidence_link_ids"), list)
+            or not isinstance(payload.get("confidence_change_ids"), list)
+            or not all(
+                isinstance(value, str)
+                for field in ("hypothesis_ids", "evidence_link_ids", "confidence_change_ids")
+                for value in payload[field]
+            )
         ):
             raise WorldMemoryError("operator_update_commit_marker_invalid")
         event_types: dict[str, str] = {}
@@ -1137,6 +1150,7 @@ def validate_operator_update_terminal(
         or observation.failure_reason != "all_operator_update_proposals_rejected"
         or payload.get("failure_reason") != observation.failure_reason
         or payload.get("rejected_proposal_keys") != list(proposals)
+        or not isinstance(payload.get("rejected_proposal_keys"), list)
     ):
         raise WorldMemoryError("operator_update_rejection_marker_invalid")
     rejection_events = list(
@@ -1167,12 +1181,20 @@ def validate_operator_update_terminal(
             ).limit(1)
         )
         is not None
-        or any(event.type == "hypothesis_created" for event in session.scalars(
-            select(Event).where(
+        or session.scalar(
+            select(Event.id).where(
                 Event.task_id == task.id,
-                Event.type == "hypothesis_created",
-            )
-        ))
+                Event.type.in_(
+                    (
+                        "hypothesis_created",
+                        "evidence_link_added",
+                        "confidence_changed",
+                        "hypothesis_rejected",
+                        "hypothesis_superseded",
+                    )
+                ),
+            ).limit(1)
+        ) is not None
     ):
         raise WorldMemoryError("operator_update_rejection_event_set_invalid")
 
