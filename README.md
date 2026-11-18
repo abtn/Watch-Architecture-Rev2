@@ -1,35 +1,26 @@
 # Watch — Persistent Team Experience
 
-Watch is a framework for building teams of AI-assisted workers that can carry out useful work and retain lessons from experience.
+Watch is a framework for teams of AI-assisted workers. It helps them carry out tasks, learn from the results, and retain useful experience for future work.
 
-AI workers can suggest what to do, but they do not make decisions on their own. The system checks proposals against its rules, and trusted people remain responsible for important decisions. Work, results, and accepted lessons are recorded so future tasks can build on what came before.
+AI workers can make suggestions, but they do not have the final say. Watch checks their proposals against the system's rules, while people remain responsible for important decisions. Accepted work and lessons are stored so the team does not have to start from zero each time.
 
 > **Model intelligence is temporary. Team experience is persistent.**
 
-## Completed foundations
+## What Watch provides
 
-- **K0–K1:** established the development and database foundation, then proved the safe proposal → validation → atomic Kernel commit → Event path.
-- **R0–R3:** established Revision 2 architecture boundaries, compatibility with the existing Kernel and Task model, durable Objectives, and deterministic StateAssessment.
-- **R4:** established the StrategyProposal boundary and deterministic strategy validation.
-- **R5:** introduced durable Plan materialization and lifecycle.
-- **R6:** completed the source → Evaluation → distillation → Operator → Team Experience path, including task outcomes and recovery, source execution, review, indexing, retrieval, and reusable experience.
-- **R7-0:** completed the architecture decisions and entry gate for knowledge quality and lifecycle.
-- **R7-A:** added evidence-lineage classification and immutable knowledge-quality assessment.
-- **R7-B0:** froze the canonical KnowledgeItem lifecycle design and cross-document contracts.
-- **R7-B1:** added current-pointer history and snapshot-based lifecycle reconstruction.
-- **R7-B2:** completed versioned content hashing and canonicality, projection, and Context-manifest updates.
-- **R7-B3:** added immutable lifecycle assessments and their narrow assessment Tasks.
-- **R7-B4:** implemented the trusted revise/revalidate commit path and completed the integrated G1–G6 regression proofs.
-- **R7-B5.0–B5.4:** implemented candidate creation, supersession, and retirement, then completed the integrated lifecycle verification and formal closeout.
-- **R7-B6:** completed the legacy lifecycle reconstruction and trusted-retirement regression proofs; test-only PR [#124](https://github.com/abtn/Watch-Architecture-Rev2/pull/124) merged on 2026-11-16. See the [B6 closeout](docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md).
-- **RW-0:** closed the reasoning-loop decision phase and established the handoff into the world-memory foundation track; documentation closeout PR [#126](https://github.com/abtn/Watch-Architecture-Rev2/pull/126) was squash-merged.
+- A controlled way for AI-assisted workers to plan and carry out tasks.
+- A record of what happened, what was learned, and why decisions were made.
+- A way to preserve useful knowledge and make it available to future work.
+- Human oversight over important decisions and changes.
 
-## Work in progress
+The core foundations for task execution, planning, and knowledge management have been built. The first stage of the world-memory work has also been completed and formally accepted within its agreed scope.
 
-- **RW-1 — formally accepted within the physical schema/ORM/migration boundary (2026-11-18):** the accepted Thread, Hypothesis, ConfidenceChange, and shared EvidenceLink physical design is documented in the [RW-1 physical design proposal](docs/development/rw-1-physical-design-proposal.md). All six D132 decisions were accepted on 2026-11-16. Design/planning PR [#127](https://github.com/abtn/Watch-Architecture-Rev2/pull/127) and implementation PR [#128](https://github.com/abtn/Watch-Architecture-Rev2/pull/128) are merged. Test-only schema-negative follow-up PR [#132](https://github.com/abtn/Watch-Architecture-Rev2/pull/132) has historical hosted and Operator-local verification on exact head `61fa0a214e05993637695e75d8aa019449fc540d` (**1,029 passed**). Its updated head is `3c77a52af6b4fc619b6274fadabb97f3738248c5`; fresh hosted CI run [#1309](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44265244934) passed on that exact SHA. Operator-local verification on updated exact head `3c77a52af6b4fc619b6274fadabb97f3738248c5` now passed: fresh disposable PostgreSQL migration to `0019_rw1_world_memory`, single-head/current verification, 31 focused Evaluation tests, Ruff, Mypy (38 source files), full suite (**1,082 passed, 130 Alembic `path_separator` deprecation warnings**), and `git diff --check`. The disposable container and anonymous volume were removed; follow-up confirmed both database URL environment variables are empty, the exact branch and HEAD are intact, and the worktree is clean. The script's final environment-equality assertion reported a mismatch after cleanup, so exact restoration of the pre-run variable state is not claimed. The schema-negative tests were merged by PR [#132](https://github.com/abtn/Watch-Architecture-Rev2/pull/132) at `a16a931ea79e915323447a1379cd0d9fe7063fb8`; the documentation reconciliation and PowerShell script guide were merged by PR [#131](https://github.com/abtn/Watch-Architecture-Rev2/pull/131) at `db5f19928f0a853df244da465e50b26fa848309d`. These checks close the identified schema-level test gap. The Operator separately accepted RW-1 on 2026-11-18 within the documented physical schema/ORM/migration boundary. Application-level obligations remain assigned to later slices; RW-2–RW-5 remain separately gated and unauthorized.
-- **RW-1 through RW-5:** these are the remaining world-memory reasoning-loop foundation slices. Implementation will proceed in bounded, separately authorized steps, followed by the foundation exit gate.
-- **R7-C** remains separately gated. Neither R7-B6 nor RW-0 closeout authorizes R7-C implementation.
-- **RWN-01 newsroom scenario preparation:** source capture, corpus freeze, reviewer materials, and final harness/test configuration are deferred from the immediate foundation critical path. They remain required before newsroom scored runs and the foundation exit/R8 gate; no scored runs are currently authorized.
-- **Experiment A canonical-fixture artifact:** PR [#133](https://github.com/abtn/Watch-Architecture-Rev2/pull/133) is merged at `77337f8a68454078ab154596228946acdd148fb8`; hosted CI run [#1307](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44263407392) passed on its final PR head `82d5d618174c54d7f9946ebeda3b279b89f851b1`. The merged offline schemas, renderers, Invariant #7 checks, and RW3-03/RW3-13/SP-01 fixtures are a research artifact only; they do not authorize Experiment A execution, scored RWN-01 runs, or RW-2/RW-3 implementation.
+## Current status
 
-The active checkpoint, exact status, authorization, and verification evidence are maintained in [PLAN.md](PLAN.md) and [docs/testing.md](docs/testing.md). Programmer-side Windows PowerShell sync and test scripts follow the [local sync/test script guide](docs/development/powershell-local-sync-test-script-guide.md).
+The next stage is the design and authorization of the remaining world-memory work. It has not yet been authorized to begin. Other planned work also remains subject to separate approval.
+
+For the current roadmap and project decisions, see [PLAN.md](PLAN.md). For verification history, see [docs/testing.md](docs/testing.md).
+
+## Working on the project
+
+Contributors should read the [project plan](PLAN.md) before starting work. Windows PowerShell instructions for safely synchronizing the repository and running local checks are in the [local sync and test script guide](docs/development/powershell-local-sync-test-script-guide.md).
