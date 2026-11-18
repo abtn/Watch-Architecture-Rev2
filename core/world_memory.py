@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from typing import Annotated, Literal, TYPE_CHECKING, Union
 from uuid import UUID, uuid4, uuid5
 
-
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
