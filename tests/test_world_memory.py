@@ -1191,6 +1191,13 @@ def test_cross_team_hypothesis_signal_and_snapshot_references_fail_closed(
                 snapshot_ref=foreign_snapshot_ref,
                 snapshot_hash=foreign_snapshot_hash,
             ),
+            _quote_proposal(
+                context,
+                hypothesis_id,
+                key="foreign-snapshot-hash",
+                snapshot_ref=context.snapshot_ref,
+                snapshot_hash="sha256:" + "f" * 64,
+            ),
         ],
     )
 
@@ -1218,6 +1225,7 @@ def test_cross_team_hypothesis_signal_and_snapshot_references_fail_closed(
                 "foreign-hypothesis": "evidence_hypothesis_not_owned_by_task_thread",
                 "foreign-signal": "evidence_signal_team_domain_mismatch",
                 "foreign-snapshot": "source_snapshot_reference_mismatch",
+                "foreign-snapshot-hash": "source_snapshot_reference_mismatch",
             }
     finally:
         with session_factory.begin() as session:
@@ -1474,3 +1482,46 @@ def test_outcome_snapshot_can_be_used_as_hypothesis_evidence(
         assert link.source_kind == "outcome"
         assert link.outcome_id == outcome_id
         assert link.signal_id is None
+
+
+def test_exact_quote_with_wrong_offsets_is_rejected(
+    session_factory, snapshot_store, world_memory_context
+):
+    context = world_memory_context
+    hypothesis_id, _ = _seed_hypothesis_and_evidence(session_factory, context)
+    proposal = EvidenceLinkProposal(
+        kind="evidence_link_add",
+        key="wrong-offsets",
+        hypothesis_id=hypothesis_id,
+        source_kind="signal",
+        signal_id=context.signal_id,
+        stance="supports",
+        quote_text=_QUOTE,
+        quote_start=0,
+        quote_end=len(_QUOTE),
+    )
+    request = OperatorUpdateRequest(
+        thread_id=context.thread_id,
+        idempotency_key=uuid4(),
+        proposals=[proposal],
+    )
+
+    result = OperatorApplicationAdapter(
+        session_factory, snapshot_store
+    ).operator_update(_principal(context.team_id), request)
+
+    assert result.task_status == "failed"
+    with session_factory() as session:
+        assert session.scalar(
+            select(EvidenceLink.id).where(
+                EvidenceLink.originating_task_id == result.task_id
+            )
+        ) is None
+        rejection = session.scalar(
+            select(Event).where(
+                Event.task_id == result.task_id,
+                Event.type == "proposal_rejected",
+            )
+        )
+        assert rejection is not None
+        assert rejection.payload["reason"] == "quote_text_offset_mismatch"
