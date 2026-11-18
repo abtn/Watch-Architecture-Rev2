@@ -11,10 +11,9 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal, TYPE_CHECKING, Union
 from uuid import UUID, uuid4, uuid5
 
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
