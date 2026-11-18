@@ -178,7 +178,11 @@ def _quote_proposal(
     snapshot_ref: str | None = None,
     snapshot_hash: str | None = None,
 ) -> EvidenceLinkProposal:
-    start = context.content.decode("utf-8").index(_QUOTE)
+    content = context.content.decode("utf-8")
+    try:
+        start = content.index(quote)
+    except ValueError:
+        start = content.index(_QUOTE)
     return EvidenceLinkProposal(
         kind="evidence_link_add",
         key=key,
@@ -511,6 +515,10 @@ def test_later_confidence_change_uses_one_valid_evidence_cause(
     hypothesis_id, evidence_id = _seed_hypothesis_and_evidence(
         session_factory, context, stance="supports"
     )
+    with session_factory() as session:
+        existing_hypothesis = session.get(Hypothesis, hypothesis_id)
+        assert existing_hypothesis is not None
+        original_touch = existing_hypothesis.last_touched_at
     request = OperatorUpdateRequest(
         thread_id=context.thread_id,
         idempotency_key=uuid4(),
@@ -543,6 +551,7 @@ def test_later_confidence_change_uses_one_valid_evidence_cause(
         assert change.to_confidence == "moderate"
         assert change.cause_kind == "evidence"
         assert change.evidence_link_id == evidence_id
+        assert hypothesis.last_touched_at == original_touch
 
 
 def test_hypothesis_supersession_requires_successor_and_reason(
@@ -1400,7 +1409,7 @@ def test_stale_hypothesis_transition_is_rejected(
         )
         assert rejection is not None
         assert rejection.payload["reason"] == (
-            "hypothesis_transition_requires_active_target"
+            "hypothesis_transition_precondition_failed"
         )
 
 
