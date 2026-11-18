@@ -671,7 +671,7 @@ class OperatorApplicationAdapter:
                 failure_reason=(
                     None
                     if commit_result.status == "committed"
-                    else "all_operator_update_proposals_rejected"
+                    else commit_result.failure_reason
                 ),
             )
         else:
