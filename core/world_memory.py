@@ -1157,7 +1157,8 @@ def validate_operator_update_terminal(
             )
         ]
         if (
-            payload["hypothesis_ids"] != created_hypothesis_ids
+            set(payload["hypothesis_ids"]) != set(created_hypothesis_ids)
+            or len(payload["hypothesis_ids"]) != len(created_hypothesis_ids)
             or set(payload["evidence_link_ids"]) != set(evidence_ids)
             or set(payload["confidence_change_ids"]) != set(confidence_ids)
             or len(payload["evidence_link_ids"]) != len(evidence_ids)
