@@ -1571,6 +1571,15 @@ class TaskRuntime:
                 session.flush()
                 return "retried"
 
+            if (
+                recovered_observation is None
+                and task.task_type == _OPERATOR_UPDATE_TASK_TYPE
+            ):
+                recovered_observation = (
+                    self._record_interrupted_operator_update_failure(
+                        session, task, started_at
+                    )
+                )
             attempt = task.attempt_count
             observed_at = started_at
 
@@ -1728,6 +1737,22 @@ class TaskRuntime:
                 task,
                 observation,
                 allow_completed=allow_completed,
+            )
+        except WorldMemoryError as error:
+            raise TaskNotFinalizable(error.reason) from error
+
+    @staticmethod
+    def _record_interrupted_operator_update_failure(
+        session: Session, task: Task, observed_at: datetime
+    ) -> TerminalObservation:
+        from core.world_memory import (
+            WorldMemoryError,
+            record_interrupted_operator_update_failure,
+        )
+
+        try:
+            return record_interrupted_operator_update_failure(
+                session, task, observed_at
             )
         except WorldMemoryError as error:
             raise TaskNotFinalizable(error.reason) from error
