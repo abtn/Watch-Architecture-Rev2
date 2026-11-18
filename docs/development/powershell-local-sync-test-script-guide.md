@@ -121,6 +121,7 @@ Set-Location 'C:\path\to\Watch-Architecture-Rev2'
 
 $expectedRoot = 'C:\path\to\Watch-Architecture-Rev2'
 $expectedCurrent = 'source-branch'
+$expectedCurrentSha = 'fedcba9876543210fedcba9876543210fedcba98'
 $targetBranch = 'target-branch'
 $expectedSha = '0123456789abcdef0123456789abcdef01234567'
 
@@ -134,6 +135,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the current branch.' }
 if ($currentBranch -ne $expectedCurrent) {
     throw "Wrong current branch. Expected $expectedCurrent; found $currentBranch."
 }
+
+$currentSha = (git rev-parse HEAD)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the current HEAD.' }
+if ($currentSha -ne $expectedCurrentSha) { throw "Unexpected current HEAD: $currentSha" }
 
 $status = (git status --porcelain)
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the worktree.' }
