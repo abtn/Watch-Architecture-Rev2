@@ -948,6 +948,8 @@ def _canonical_operator_identity(
 def _require_team_grant(
     principal: TrustedOperatorPrincipal,
     team_id: UUID,
+    *,
+    action: str = _APPROVAL_ACTION,
 ) -> None:
     if OperatorGrant(team_id=team_id, action=action) not in principal.grants:
         raise OperatorNotAuthorized("operator_not_authorized_for_team_action")
