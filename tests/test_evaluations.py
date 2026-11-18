@@ -549,3 +549,350 @@ def test_confidence_change_evidence_fk_is_bound_to_same_hypothesis(
                 Hypothesis.id.in_([first_id, second_id])
             ))
             session.execute(delete(Thread).where(Thread.id == thread_id))
+
+
+
+@pytest.fixture
+def rw1_schema_records(session_factory, snapshot_store, evaluation_context):
+    proposed = _propose(
+        EvaluationService(session_factory, snapshot_store), evaluation_context
+    )
+    other_team_id, other_policy_id, other_task_id, other_outcome_id = (
+        uuid4() for _ in range(4)
+    )
+    thread_id, hypothesis_id, link_id, signal_id = (uuid4() for _ in range(4))
+    now = datetime.now(timezone.utc)
+    ref, digest = snapshot_store.put(b"RW-1 schema constraint fixture.")
+
+    with session_factory.begin() as session:
+        session.add(Team(id=other_team_id, domain="other", status="active"))
+        session.flush()
+        session.add(
+            TeamPolicy(
+                id=other_policy_id, team_id=other_team_id, version=1, rules={}
+            )
+        )
+        session.flush()
+        session.add(
+            Task(
+                id=other_task_id,
+                team_id=other_team_id,
+                task_type="rw1_schema_test",
+                status="done",
+                attempt_count=1,
+                policy_version=1,
+                allowed_writes=["EvidenceLink"],
+                budget={
+                    "max_tool_calls": 0,
+                    "max_cost_usd": 0.0,
+                    "deadline_seconds": 60,
+                },
+            )
+        )
+        session.flush()
+        session.add(
+            Outcome(
+                id=other_outcome_id,
+                team_id=other_team_id,
+                subject_kind="task",
+                subject_id=other_task_id,
+                outcome_type="task_execution",
+                expected=None,
+                observation_snapshot_ref=ref,
+                observation_hash=digest,
+                observed_at=now,
+                recorded_by_task_id=other_task_id,
+            )
+        )
+        session.add(
+            Signal(
+                id=signal_id,
+                domain="evaluation_test",
+                source_type="web",
+                origin_url=f"https://example.test/{signal_id}",
+                fetched_at=now,
+                content_hash=digest,
+                snapshot_ref=ref,
+            )
+        )
+        session.add(
+            Thread(
+                id=thread_id,
+                team_id=evaluation_context["team_id"],
+                domain="evaluation_test",
+                title="RW-1 schema constraint fixture",
+            )
+        )
+        session.flush()
+        session.add(
+            Hypothesis(
+                id=hypothesis_id,
+                team_id=evaluation_context["team_id"],
+                thread_id=thread_id,
+                statement="A valid schema-test hypothesis.",
+            )
+        )
+        session.flush()
+        session.add(
+            EvidenceLink(
+                id=link_id,
+                team_id=evaluation_context["team_id"],
+                subject_kind="hypothesis",
+                hypothesis_id=hypothesis_id,
+                originating_task_id=evaluation_context["task_id"],
+                source_kind="outcome",
+                outcome_id=evaluation_context["outcome_id"],
+                stance="supports",
+                reference_key=f"rw1-schema-{uuid4()}",
+            )
+        )
+
+    context = {
+        **evaluation_context,
+        "evaluation_id": proposed.evaluation_id,
+        "other_team_id": other_team_id,
+        "other_task_id": other_task_id,
+        "other_outcome_id": other_outcome_id,
+        "thread_id": thread_id,
+        "hypothesis_id": hypothesis_id,
+        "hypothesis_link_id": link_id,
+        "signal_id": signal_id,
+    }
+    try:
+        yield context
+    finally:
+        with session_factory.begin() as session:
+            session.execute(delete(EvidenceLink).where(EvidenceLink.id == link_id))
+            session.execute(delete(Hypothesis).where(Hypothesis.id == hypothesis_id))
+            session.execute(delete(Thread).where(Thread.id == thread_id))
+            session.execute(delete(Signal).where(Signal.id == signal_id))
+            session.execute(
+                delete(Outcome).where(Outcome.id == other_outcome_id)
+            )
+            session.execute(delete(Task).where(Task.id == other_task_id))
+            session.execute(
+                delete(TeamPolicy).where(TeamPolicy.id == other_policy_id)
+            )
+            session.execute(delete(Team).where(Team.id == other_team_id))
+
+
+def _assert_pg_constraint(session_factory, record, name):
+    with session_factory() as session:
+        with pytest.raises(IntegrityError) as error:
+            with session.begin_nested():
+                session.add(record)
+                session.flush()
+    assert name in str(error.value.orig)
+
+
+def _rw1_evidence_link(context, **changes):
+    values = {
+        "id": uuid4(),
+        "team_id": context["team_id"],
+        "subject_kind": "evaluation",
+        "evaluation_id": context["evaluation_id"],
+        "hypothesis_id": None,
+        "originating_task_id": context["task_id"],
+        "source_kind": "outcome",
+        "outcome_id": context["outcome_id"],
+        "signal_id": None,
+        "stance": "supports",
+        "reference_key": f"rw1-negative-{uuid4()}",
+    }
+    values.update(changes)
+    return EvidenceLink(**values)
+
+
+def _rw1_confidence_change(context, **changes):
+    values = {
+        "id": uuid4(),
+        "team_id": context["team_id"],
+        "hypothesis_id": context["hypothesis_id"],
+        "from_confidence": "low",
+        "to_confidence": "moderate",
+        "cause_kind": "evidence",
+        "evidence_link_id": None,
+        "created_by_task_id": context["task_id"],
+        "idempotency_key": f"rw1-negative-{uuid4()}",
+    }
+    values.update(changes)
+    return ConfidenceChange(**values)
+
+
+@pytest.mark.parametrize("status", ["unknown", ""])
+def test_rw1_thread_status_check_rejects_invalid_values(
+    session_factory, rw1_schema_records, status
+):
+    context = rw1_schema_records
+    _assert_pg_constraint(
+        session_factory,
+        Thread(
+            id=uuid4(),
+            team_id=context["team_id"],
+            domain="evaluation_test",
+            title="Invalid status",
+            status=status,
+        ),
+        "ck_threads_status",
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "constraint"),
+    [
+        ("status", "unknown", "ck_hypotheses_status"),
+        ("confidence", "certain", "ck_hypotheses_confidence"),
+    ],
+)
+def test_rw1_hypothesis_vocabulary_checks_reject_invalid_values(
+    session_factory, rw1_schema_records, field, value, constraint
+):
+    context = rw1_schema_records
+    values = {
+        "id": uuid4(),
+        "team_id": context["team_id"],
+        "thread_id": context["thread_id"],
+        "statement": "Invalid vocabulary test.",
+    }
+    values[field] = value
+    _assert_pg_constraint(session_factory, Hypothesis(**values), constraint)
+
+
+@pytest.mark.parametrize(
+    ("subject_kind", "evaluation_id", "hypothesis_id"),
+    [
+        ("evaluation", None, None),
+        ("evaluation", None, "hypothesis"),
+        ("evaluation", "evaluation", "hypothesis"),
+    ],
+)
+def test_rw1_evidence_subject_check_rejects_missing_dual_and_mismatched_subjects(
+    session_factory, rw1_schema_records, subject_kind, evaluation_id, hypothesis_id
+):
+    context = rw1_schema_records
+    _assert_pg_constraint(
+        session_factory,
+        _rw1_evidence_link(
+            context,
+            subject_kind=subject_kind,
+            evaluation_id=(
+                context["evaluation_id"] if evaluation_id == "evaluation" else None
+            ),
+            hypothesis_id=(
+                context["hypothesis_id"] if hypothesis_id == "hypothesis" else None
+            ),
+        ),
+        "ck_evidence_links_subject",
+    )
+
+
+@pytest.mark.parametrize(
+    ("source_kind", "outcome_id", "signal_id"),
+    [
+        ("outcome", None, None),
+        ("outcome", "outcome", "signal"),
+        ("signal", "outcome", None),
+    ],
+)
+def test_rw1_evidence_source_check_rejects_missing_dual_and_mismatched_sources(
+    session_factory, rw1_schema_records, source_kind, outcome_id, signal_id
+):
+    context = rw1_schema_records
+    _assert_pg_constraint(
+        session_factory,
+        _rw1_evidence_link(
+            context,
+            source_kind=source_kind,
+            outcome_id=(
+                context["outcome_id"] if outcome_id == "outcome" else outcome_id
+            ),
+            signal_id=(
+                context["signal_id"] if signal_id == "signal" else signal_id
+            ),
+        ),
+        "ck_evidence_links_source",
+    )
+
+
+@pytest.mark.parametrize(
+    ("cause_kind", "evidence_link_id"),
+    [
+        ("evidence", None),
+        ("decay", "link"),
+    ],
+)
+def test_rw1_confidence_change_cause_check_rejects_invalid_cause_shapes(
+    session_factory, rw1_schema_records, cause_kind, evidence_link_id
+):
+    context = rw1_schema_records
+    _assert_pg_constraint(
+        session_factory,
+        _rw1_confidence_change(
+            context,
+            cause_kind=cause_kind,
+            evidence_link_id=(
+                context["hypothesis_link_id"] if evidence_link_id == "link" else None
+            ),
+        ),
+        "ck_confidence_changes_cause",
+    )
+
+
+def test_rw1_confidence_change_checks_reject_unknown_cause_kind(
+    session_factory, rw1_schema_records
+):
+    context = rw1_schema_records
+    with session_factory() as session:
+        with pytest.raises(IntegrityError) as error:
+            with session.begin_nested():
+                session.add(
+                    _rw1_confidence_change(context, cause_kind="unsupported")
+                )
+                session.flush()
+    assert any(
+        name in str(error.value.orig)
+        for name in (
+            "ck_confidence_changes_cause",
+            "ck_confidence_changes_cause_kind",
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("team", "subject", "task", "outcome", "constraint"),
+    [
+        ("other", "evaluation", "other", "other",
+         "fk_evidence_links_evaluation_subject_team"),
+        ("other", "hypothesis", "other", "other",
+         "fk_evidence_links_hypothesis_team"),
+        ("same", "evaluation", "other", "same",
+         "fk_evidence_links_originating_task_team"),
+    ],
+)
+def test_rw1_evidence_subject_and_task_fks_enforce_team_ownership(
+    session_factory, rw1_schema_records, team, subject, task, outcome, constraint
+):
+    context = rw1_schema_records
+    _assert_pg_constraint(
+        session_factory,
+        _rw1_evidence_link(
+            context,
+            subject_kind="hypothesis" if subject == "hypothesis" else "evaluation",
+            team_id=context["other_team_id"] if team == "other" else context["team_id"],
+            evaluation_id=(
+                context["evaluation_id"] if subject == "evaluation" else None
+            ),
+            hypothesis_id=(
+                context["hypothesis_id"] if subject == "hypothesis" else None
+            ),
+            originating_task_id=(
+                context["other_task_id"] if task == "other" else context["task_id"]
+            ),
+            outcome_id=(
+                context["other_outcome_id"]
+                if outcome == "other"
+                else context["outcome_id"]
+            ),
+        ),
+        constraint,
+    )
