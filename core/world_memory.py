@@ -540,7 +540,7 @@ class WorldMemoryCommitService:
                 if not isinstance(proposal, ConfidenceChangeProposal):
                     continue
                 hypothesis = locked_hypotheses.get(proposal.hypothesis_id)
-                if hypothesis is None or hypothesis.thread_id != task.thread_id:
+                if hypothesis is None or hypothesis.thread_id != envelope.request.thread_id:
                     rejected[proposal.key] = "confidence_hypothesis_not_owned_by_task_thread"
                     continue
                 if hypothesis.status != "active":
@@ -580,7 +580,7 @@ class WorldMemoryCommitService:
                 hypothesis = locked_hypotheses.get(proposal.hypothesis_id)
                 if (
                     hypothesis is None
-                    or hypothesis.thread_id != task.thread_id
+                    or hypothesis.thread_id != envelope.request.thread_id
                     or hypothesis.status != "active"
                     or hypothesis.id in transitioned
                 ):
@@ -704,7 +704,7 @@ class WorldMemoryCommitService:
                                 "request_fingerprint": envelope.request_fingerprint,
                                 "proposal_key": proposal.key,
                                 "hypothesis_id": str(proposal.hypothesis_id),
-                                "thread_id": str(task.thread_id),
+                                "thread_id": str(envelope.request.thread_id),
                                 "confidence": "low",
                             },
                             created_at=committed_at,
@@ -833,7 +833,7 @@ class WorldMemoryCommitService:
                         "schema_version": 1,
                         "task_id": str(task.id),
                         "team_id": str(task.team_id),
-                        "thread_id": str(task.thread_id),
+                        "thread_id": str(envelope.request.thread_id),
                         "attempt_count": attempt,
                         "operator_id": operator_id,
                         "request_fingerprint": envelope.request_fingerprint,
@@ -970,7 +970,7 @@ def validate_operator_update_terminal(
         payload.get("schema_version") != 1
         or payload.get("task_id") != str(task.id)
         or payload.get("team_id") != str(task.team_id)
-        or payload.get("thread_id") != str(task.thread_id)
+        or payload.get("thread_id") != str(envelope.request.thread_id)
         or payload.get("attempt_count") != task.attempt_count
         or payload.get("operator_id") != envelope.operator_id
         or payload.get("request_fingerprint") != envelope.request_fingerprint
@@ -1107,7 +1107,7 @@ def validate_operator_update_terminal(
             if (
                 hypothesis is None
                 or hypothesis.team_id != task.team_id
-                or hypothesis.thread_id != task.thread_id
+                or hypothesis.thread_id != envelope.request.thread_id
                 or hypothesis.confidence != "low"
             ):
                 raise WorldMemoryError("operator_update_created_hypothesis_invalid")
@@ -1232,7 +1232,7 @@ def committed_operator_update_observation(
     if (
         payload.get("task_id") != str(task.id)
         or payload.get("team_id") != str(task.team_id)
-        or payload.get("thread_id") != str(task.thread_id)
+        or payload.get("thread_id") != str(envelope.request.thread_id)
         or payload.get("operator_id") != envelope.operator_id
         or payload.get("request_fingerprint") != envelope.request_fingerprint
         or payload.get("attempt_count") != task.attempt_count
