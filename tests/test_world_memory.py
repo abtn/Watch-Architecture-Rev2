@@ -11,6 +11,7 @@ from typing import Iterator
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import delete, select
 from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy.orm import Session, sessionmaker
@@ -36,7 +37,7 @@ from core.operator_application import (
 )
 from core.operator_approval import canonical_operator_identity
 from core.snapshot_store import SnapshotStore
-from core.task_runtime import TaskRuntime, TerminalObservation
+from core.task_runtime import TaskNotEligible, TaskRuntime, TerminalObservation
 from core.world_memory import (
     ConfidenceChangeProposal,
     EvidenceLinkProposal,
@@ -173,6 +174,9 @@ def _quote_proposal(
     key: str = "evidence-1",
     stance: str = "supports",
     quote: str = _QUOTE,
+    signal_id: UUID | None = None,
+    snapshot_ref: str | None = None,
+    snapshot_hash: str | None = None,
 ) -> EvidenceLinkProposal:
     start = context.content.decode("utf-8").index(_QUOTE)
     return EvidenceLinkProposal(
@@ -180,7 +184,9 @@ def _quote_proposal(
         key=key,
         hypothesis_id=hypothesis_id,
         source_kind="signal",
-        signal_id=context.signal_id,
+        signal_id=signal_id or context.signal_id,
+        snapshot_ref=snapshot_ref,
+        snapshot_hash=snapshot_hash,
         stance=stance,
         quote_text=quote,
         quote_start=start,
@@ -585,11 +591,12 @@ def test_hypothesis_supersession_requires_successor_and_reason(
         ],
     )
 
-    result = OperatorApplicationAdapter(
-        session_factory, snapshot_store
-    ).operator_update(_principal(context.team_id), request)
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    result = adapter.operator_update(_principal(context.team_id), request)
 
     assert result.task_status == "done"
+    replay = adapter.operator_update(_principal(context.team_id), request)
+    assert replay.replayed
     with session_factory() as session:
         target = session.get(Hypothesis, target_id)
         successor = session.get(Hypothesis, successor_id)
@@ -603,6 +610,16 @@ def test_hypothesis_supersession_requires_successor_and_reason(
         assert successor is not None and successor.status == "active"
         assert event is not None
         assert event.payload["successor_hypothesis_id"] == str(successor_id)
+        assert len(
+            list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == result.task_id,
+                        Event.type == "hypothesis_superseded",
+                    )
+                )
+            )
+        ) == 1
 
 
 def test_concurrent_operator_updates_serialize_competing_transitions(
@@ -1086,3 +1103,365 @@ def test_exhausted_interrupted_operator_update_fails_with_attributed_rejections(
         )
         assert proposal_rejection is not None
         assert proposal_rejection.payload["reason"] == "interrupted_execution"
+
+
+def test_cross_team_hypothesis_signal_and_snapshot_references_fail_closed(
+    session_factory, snapshot_store, world_memory_context
+):
+    context = world_memory_context
+    hypothesis_id, _ = _seed_hypothesis_and_evidence(session_factory, context)
+    other_team_id, other_thread_id, foreign_hypothesis_id, foreign_signal_id = (
+        uuid4() for _ in range(4)
+    )
+    now = datetime.now(timezone.utc)
+    foreign_domain = f"foreign_{other_team_id.hex}"
+    with session_factory.begin() as session:
+        session.add(
+            Team(
+                id=other_team_id,
+                domain=foreign_domain,
+                status="active",
+            )
+        )
+        session.flush()
+        session.add(
+            Thread(
+                id=other_thread_id,
+                team_id=other_team_id,
+                domain=foreign_domain,
+                title="Foreign thread",
+                status="active",
+            )
+        )
+        session.flush()
+        session.add(
+            Hypothesis(
+                id=foreign_hypothesis_id,
+                team_id=other_team_id,
+                thread_id=other_thread_id,
+                statement="Foreign Team hypothesis.",
+                status="active",
+                confidence="low",
+                created_at=now,
+                last_touched_at=now,
+            )
+        )
+        session.add(
+            Signal(
+                id=foreign_signal_id,
+                domain=foreign_domain,
+                source_type="fixture",
+                origin_url=f"https://example.test/{foreign_signal_id}",
+                fetched_at=now,
+                content_hash=context.snapshot_hash,
+                snapshot_ref=context.snapshot_ref,
+            )
+        )
+    foreign_snapshot_ref, foreign_snapshot_hash = snapshot_store.put(
+        b"Foreign snapshot content."
+    )
+    request = OperatorUpdateRequest(
+        thread_id=context.thread_id,
+        idempotency_key=uuid4(),
+        proposals=[
+            _quote_proposal(
+                context,
+                foreign_hypothesis_id,
+                key="foreign-hypothesis",
+            ),
+            _quote_proposal(
+                context,
+                hypothesis_id,
+                key="foreign-signal",
+                signal_id=foreign_signal_id,
+            ),
+            _quote_proposal(
+                context,
+                hypothesis_id,
+                key="foreign-snapshot",
+                snapshot_ref=foreign_snapshot_ref,
+                snapshot_hash=foreign_snapshot_hash,
+            ),
+        ],
+    )
+
+    try:
+        result = OperatorApplicationAdapter(
+            session_factory, snapshot_store
+        ).operator_update(_principal(context.team_id), request)
+        assert result.task_status == "failed"
+        with session_factory() as session:
+            assert session.scalar(
+                select(EvidenceLink.id).where(
+                    EvidenceLink.originating_task_id == result.task_id
+                )
+            ) is None
+            reasons = {
+                event.payload["proposal_key"]: event.payload["reason"]
+                for event in session.scalars(
+                    select(Event).where(
+                        Event.task_id == result.task_id,
+                        Event.type == "proposal_rejected",
+                    )
+                )
+            }
+            assert reasons == {
+                "foreign-hypothesis": "evidence_hypothesis_not_owned_by_task_thread",
+                "foreign-signal": "evidence_signal_team_domain_mismatch",
+                "foreign-snapshot": "source_snapshot_reference_mismatch",
+            }
+    finally:
+        with session_factory.begin() as session:
+            session.execute(
+                delete(Hypothesis).where(Hypothesis.id == foreign_hypothesis_id)
+            )
+            session.execute(delete(Thread).where(Thread.id == other_thread_id))
+            session.execute(delete(Signal).where(Signal.id == foreign_signal_id))
+            session.execute(delete(Team).where(Team.id == other_team_id))
+
+
+def test_cross_team_thread_reference_is_rejected_at_task_admission(
+    session_factory, snapshot_store, world_memory_context
+):
+    context = world_memory_context
+    other_team_id, other_thread_id = uuid4(), uuid4()
+    foreign_domain = f"foreign_{other_team_id.hex}"
+    with session_factory.begin() as session:
+        session.add(
+            Team(
+                id=other_team_id,
+                domain=foreign_domain,
+                status="active",
+            )
+        )
+        session.flush()
+        session.add(
+            Thread(
+                id=other_thread_id,
+                team_id=other_team_id,
+                domain=foreign_domain,
+                title="Foreign thread",
+                status="active",
+            )
+        )
+    request = OperatorUpdateRequest(
+        thread_id=other_thread_id,
+        idempotency_key=uuid4(),
+        proposals=[
+            HypothesisCreateProposal(
+                kind="hypothesis_create",
+                key="create",
+                hypothesis_id=uuid4(),
+                statement="Must not be admitted.",
+            )
+        ],
+    )
+    task_id = _create_pending_task(
+        session_factory,
+        context,
+        request,
+        canonical_operator_identity(
+            "https://host.example/identity", "operator-rw2"
+        ),
+    )
+    try:
+        with pytest.raises(TaskNotEligible):
+            TaskRuntime(session_factory, snapshot_store).admit(task_id)
+        with session_factory() as session:
+            task = session.get(Task, task_id)
+            assert task is not None and task.status == "pending"
+            assert session.scalar(
+                select(Event.id).where(
+                    Event.task_id == task_id,
+                    Event.type == "task_started",
+                )
+            ) is None
+    finally:
+        with session_factory.begin() as session:
+            session.execute(delete(Thread).where(Thread.id == other_thread_id))
+            session.execute(delete(Team).where(Team.id == other_team_id))
+
+
+def test_mentions_rejections_and_replay_do_not_touch_hypothesis(
+    session_factory, snapshot_store, world_memory_context
+):
+    context = world_memory_context
+    hypothesis_id, _ = _seed_hypothesis_and_evidence(
+        session_factory, context, stance="mentions"
+    )
+    with session_factory() as session:
+        hypothesis = session.get(Hypothesis, hypothesis_id)
+        assert hypothesis is not None
+        original_touch = hypothesis.last_touched_at
+
+    mention_request = OperatorUpdateRequest(
+        thread_id=context.thread_id,
+        idempotency_key=uuid4(),
+        proposals=[
+            _quote_proposal(
+                context,
+                hypothesis_id,
+                key="mention",
+                stance="mentions",
+                quote="Market report",
+            )
+        ],
+    )
+    adapter = OperatorApplicationAdapter(session_factory, snapshot_store)
+    mention_result = adapter.operator_update(
+        _principal(context.team_id), mention_request
+    )
+    assert mention_result.task_status == "done"
+    with session_factory() as session:
+        hypothesis = session.get(Hypothesis, hypothesis_id)
+        assert hypothesis is not None
+        assert hypothesis.last_touched_at == original_touch
+
+    replay = adapter.operator_update(_principal(context.team_id), mention_request)
+    assert replay.replayed
+    rejected_request = OperatorUpdateRequest(
+        thread_id=context.thread_id,
+        idempotency_key=uuid4(),
+        proposals=[
+            _quote_proposal(
+                context,
+                hypothesis_id,
+                key="bad-quote",
+                quote="fabricated quote",
+            )
+        ],
+    )
+    rejected = adapter.operator_update(
+        _principal(context.team_id), rejected_request
+    )
+    assert rejected.task_status == "failed"
+    with session_factory() as session:
+        hypothesis = session.get(Hypothesis, hypothesis_id)
+        assert hypothesis is not None
+        assert hypothesis.last_touched_at == original_touch
+
+
+def test_supersession_requires_successor_and_reason():
+    hypothesis_id = uuid4()
+    with pytest.raises(ValidationError):
+        HypothesisTransitionProposal(
+            kind="hypothesis_transition",
+            key="missing-successor",
+            hypothesis_id=hypothesis_id,
+            action="supersede",
+            reason="A successor is required.",
+        )
+    with pytest.raises(ValidationError):
+        HypothesisTransitionProposal(
+            kind="hypothesis_transition",
+            key="missing-reason",
+            hypothesis_id=hypothesis_id,
+            action="reject",
+            reason="   ",
+        )
+
+
+def test_stale_hypothesis_transition_is_rejected(
+    session_factory, snapshot_store, world_memory_context
+):
+    context = world_memory_context
+    hypothesis_id, _ = _seed_hypothesis_and_evidence(session_factory, context)
+    with session_factory.begin() as session:
+        hypothesis = session.get(Hypothesis, hypothesis_id)
+        assert hypothesis is not None
+        hypothesis.status = "rejected"
+    request = OperatorUpdateRequest(
+        thread_id=context.thread_id,
+        idempotency_key=uuid4(),
+        proposals=[
+            HypothesisTransitionProposal(
+                kind="hypothesis_transition",
+                key="reject-stale",
+                hypothesis_id=hypothesis_id,
+                action="reject",
+                reason="Already rejected.",
+            )
+        ],
+    )
+
+    result = OperatorApplicationAdapter(
+        session_factory, snapshot_store
+    ).operator_update(_principal(context.team_id), request)
+
+    assert result.task_status == "failed"
+    with session_factory() as session:
+        hypothesis = session.get(Hypothesis, hypothesis_id)
+        assert hypothesis is not None and hypothesis.status == "rejected"
+        rejection = session.scalar(
+            select(Event).where(
+                Event.task_id == result.task_id,
+                Event.type == "proposal_rejected",
+            )
+        )
+        assert rejection is not None
+        assert rejection.payload["reason"] == (
+            "hypothesis_transition_requires_active_target"
+        )
+
+
+def test_outcome_snapshot_can_be_used_as_hypothesis_evidence(
+    session_factory, snapshot_store, world_memory_context
+):
+    context = world_memory_context
+    outcome_id, hypothesis_id = uuid4(), uuid4()
+    now = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        session.add(
+            Outcome(
+                id=outcome_id,
+                team_id=context.team_id,
+                subject_kind="task",
+                subject_id=context.source_task_id,
+                outcome_type="task_execution",
+                expected=None,
+                observation_snapshot_ref=context.snapshot_ref,
+                observation_hash=context.snapshot_hash,
+                observed_at=now,
+                recorded_by_task_id=context.source_task_id,
+            )
+        )
+    start = context.content.decode("utf-8").index(_QUOTE)
+    request = OperatorUpdateRequest(
+        thread_id=context.thread_id,
+        idempotency_key=uuid4(),
+        proposals=[
+            HypothesisCreateProposal(
+                kind="hypothesis_create",
+                key="create",
+                hypothesis_id=hypothesis_id,
+                statement="The Outcome confirms the supply report.",
+            ),
+            EvidenceLinkProposal(
+                kind="evidence_link_add",
+                key="outcome-evidence",
+                hypothesis_id=hypothesis_id,
+                source_kind="outcome",
+                outcome_id=outcome_id,
+                stance="supports",
+                quote_text=_QUOTE,
+                quote_start=start,
+                quote_end=start + len(_QUOTE),
+            ),
+        ],
+    )
+
+    result = OperatorApplicationAdapter(
+        session_factory, snapshot_store
+    ).operator_update(_principal(context.team_id), request)
+
+    assert result.task_status == "done"
+    with session_factory() as session:
+        link = session.scalar(
+            select(EvidenceLink).where(
+                EvidenceLink.originating_task_id == result.task_id
+            )
+        )
+        assert link is not None
+        assert link.source_kind == "outcome"
+        assert link.outcome_id == outcome_id
+        assert link.signal_id is None
