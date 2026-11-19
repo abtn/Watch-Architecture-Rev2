@@ -25,6 +25,7 @@ from core.models import (
 from core.snapshot_store import SnapshotIntegrityError, SnapshotStore
 from core.update_thread import (
     REQUEST_EVENT_TYPE,
+    UpdateThreadTaskEnvelope,
     UpdateThreadTaskError,
     load_pinned_policy,
     validate_update_thread_task_request,
@@ -124,7 +125,11 @@ class UpdateThreadContextAssembler:
             )
             if team is None or team.status != "active":
                 raise UpdateThreadContextError("update_thread_team_not_active")
-            if thread is None or thread.status == "resolved":
+            if (
+                thread is None
+                or thread.status == "resolved"
+                or thread.domain != team.domain
+            ):
                 raise UpdateThreadContextError("update_thread_target_not_available")
 
             try:
@@ -272,6 +277,14 @@ class UpdateThreadContextAssembler:
                 source_snapshots[reference]
                 for reference in sorted(source_snapshots)
             ]
+            request_event = session.scalar(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == REQUEST_EVENT_TYPE,
+                )
+            )
+            if request_event is None:
+                raise UpdateThreadContextError("update_thread_request_event_missing")
             assembled_at = datetime.now(timezone.utc)
             manifest: dict[str, Any] = {
                 "schema_version": CONTEXT_SCHEMA_VERSION,
@@ -280,14 +293,7 @@ class UpdateThreadContextAssembler:
                 "thread_id": str(thread.id),
                 "attempt": attempt,
                 "policy_version": task.policy_version,
-                "request_event_id": str(
-                    session.scalar(
-                        select(Event.id).where(
-                            Event.task_id == task.id,
-                            Event.type == REQUEST_EVENT_TYPE,
-                        )
-                    )
-                ),
+                "request_event_id": str(request_event.id),
                 "assembled_at": _utc(assembled_at),
                 "hypothesis_ids": [str(item.id) for item in hypotheses],
                 "evidence_link_ids": [item["id"] for item in evidence_documents],
@@ -406,7 +412,11 @@ class UpdateThreadContextAssembler:
         raise UpdateThreadContextError("update_thread_source_kind_invalid")
 
     def _prior_context(
-        self, session: Session, task: Task, request, attempt: int
+        self,
+        session: Session,
+        task: Task,
+        request: UpdateThreadTaskEnvelope,
+        attempt: int
     ) -> AssembledUpdateThreadContext | None:
         events = list(
             session.scalars(
