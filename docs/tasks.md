@@ -22,9 +22,9 @@ The Event-scope allow-list in `core/ingestion.py` contains future Task type name
 
 - ADR-0007 accepts one polymorphic EvidenceLink model with subjects **hypothesis | evaluation** and sources **signal | outcome | artifact**. Quotes must match exact offsets in immutable hashed Snapshots. Only **supports** and **challenges** may anchor a ConfidenceChange.
 - ADR-0020 adds **consultation** as a source kind; an answer is an immutable hashed Snapshot and is quote-verifiable.
-- The current ORM is narrower: it constrains the subject to **evaluation** and sources to **signal | outcome**. `core/evaluations.py` accepts and revalidates only those Evaluation-scoped sources; it does not implement the Hypothesis subject path.
-- RW must extend the existing EvidenceLink model/table to the accepted contract. Do not create a sibling evidence model or weaken current Evaluation evidence. Preserve same-Team ownership, deterministic quote/hash validation, stance rules, uniqueness, and replay behavior.
-- Artifact and Consultation source rows must not be treated as valid references before their canonical source records and validation paths exist. Their staging order belongs in the RW-1 migration design. If implementation requires changing an accepted ADR contract, stop for an ADR addendum and Operator decision.
+- RW-1 extended the existing EvidenceLink table/model with typed Evaluation/Hypothesis subject references and Task provenance under the accepted D132 design. RW-2 adds the deterministic Hypothesis commit path; the existing Evaluation service remains Evaluation-scoped. These are one logical EvidenceLink contract, not sibling evidence systems.
+- Signal and Outcome are the currently usable source kinds for the RW-2 Operator path. Artifact and Consultation source kinds remain staged and must not be treated as valid references until their canonical source entities and validation paths exist.
+- Preserve same-Team ownership, deterministic quote/hash/offset validation, stance rules, uniqueness, and replay behavior. If implementation requires changing an accepted ADR contract, stop for an ADR addendum and Operator decision.
 
 ## 1. Task model
 - Every Task has: Team, `task_type`, optional Thread, `input_refs`, `allowed_tools`, `allowed_writes`, `policy_version`, `budget` (`max_tool_calls`, `max_cost_usd`, `deadline_seconds`), `created_at`, `attempt_count`, and a per-Task pinned `max_attempts` (initial default: 3 total starts). `completed_at` is nullable and set only for status `done`. These lifecycle fields are part of the R6 target; they are not all present in the current ORM baseline.
@@ -141,7 +141,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Validation:** same as `ingest_source`.
 ### `triage_signal` — deterministic
 
-**Implementation status:** specified; not implemented at the audit baseline above.
+**Implementation status:** specified; not implemented. Planned for RW-4.
 - **Purpose:** disposition a Signal for the Team; enqueue follow-up work.
 - **Reads:** Signal (+embedding), Domain `match_heuristics` and `dedup_policy`, Team's Threads (+embeddings), recent dispositions.
 - **Writes:** SignalDisposition; Thread creation (`new_thread`); Thread reactivation (`dormant → active`); enqueue of `update_thread` for `deferred`/`matched` cases; Event.
@@ -167,14 +167,14 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 
 **Implementation status:** the deterministic Operator path was formally accepted in RW-2 on 2026-11-18 and PR #134 was squash-merged to `main` at `601f7816eaa51495d7d40d4b9d32d846122b4a59`. Exact-head local and hosted verification are recorded in `docs/testing.md`.
 - **Purpose:** a human expert contributes directly to world memory — their own hypotheses, evidence, confidence judgments, and explicit transitions (ADR-0021).
-- **Shared contract:** Operator and model paths use the same proposal and commit-validation contract. RW-2 implements the deterministic human entry first; RW-3's model worker is not implemented.
+- **Shared contract:** Operator and model paths use the same proposal and commit-validation contract. RW-2 implemented and accepted the deterministic human entry; the RW-3 model worker remains a planning-only proposal.
 - **RW-2 implemented writes:** Hypothesis creation/transitions, EvidenceLink addition from Signal/Outcome, and evidence-caused ConfidenceChange. The Task's `allowed_writes` are exactly `["EvidenceLink", "Hypothesis", "ConfidenceChange"]`; the target Thread is bound by the immutable `operator_update_requested` Event. Event and Outcome writes are Kernel/TaskRuntime side effects, not worker `allowed_writes`.
 - **Commit-time validation:** exact Snapshot reference/hash/quote offsets (INV-04), stance rule (INV-06), cause pairing (INV-05), legal transitions with reasons (INV-07), Team/Thread ownership, idempotency, replay, concurrency, and atomic proposal-set commit (INV-14/INV-15). Every new Hypothesis starts at `low`; higher confidence requires a later Task-attributed ConfidenceChange.
 - **Explicit deferrals:** SignalDisposition refinement and triage remain RW-4; Thread summaries and retrieval projections remain deferred to the retrieval slice; Artifact/Consultation sources remain staged until their canonical entities and validation paths exist.
 - **Failure:** invalid proposals are rejected with attributable Events; the Task fails only when every proposal is rejected. Human identity is never a validation exemption (INV-15).
 ### `apply_decay` — deterministic, scheduled
 
-**Implementation status:** specified; not implemented at the audit baseline above.
+**Implementation status:** specified; not implemented. Planned for RW-5.
 - **Purpose:** lower confidence of stale Hypotheses; flag dormant Threads.
 - **Reads:** effective `decay_window` and `decay_action` (pack default or team `decay` override); Hypotheses' `last_touched_at` and bands; Thread composition.
 - **Writes:** ConfidenceChange (`cause_kind="decay"` only), Thread status `active → dormant`, Event.
