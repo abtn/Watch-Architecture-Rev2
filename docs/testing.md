@@ -23,6 +23,18 @@ uv run alembic upgrade head
 
 Use commands supported by `pyproject.toml` and the current repository environment. Report exact commands and outcomes; do not infer success from inspection.
 
+## RW3.1 hosted verification — 2026-11-19
+
+- PR: [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136), draft.
+- Tested implementation code head: `64dee73271c747127b34deb4c6138f498b4dd9b4`.
+- Hosted CI: [run #1466](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44536326567) — **passed**.
+- Fresh PostgreSQL database migrated successfully; Alembic reported exactly one head and the database revision matched that head.
+- Ruff: passed. Mypy: passed across 41 source files. `git diff --check`: passed.
+- Full test suite: **1,119 passed, 130 warnings, 0 failures**.
+- No RW3.1 migration or schema change was introduced.
+- Programmer-local Windows verification is still pending. The CI result is not presented as local verification.
+
+
 ## Database safety
 
 - Every database-backed test run requires an explicit `TEST_DATABASE_URL` pointing to a disposable PostgreSQL database.
