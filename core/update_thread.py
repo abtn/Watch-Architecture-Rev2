@@ -12,6 +12,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.models import Event, Task, TeamPolicy
+from core.operator_approval import (
+    OperatorApprovalValidationError,
+    canonical_operator_identity,
+)
 
 TASK_TYPE = "update_thread"
 REQUEST_EVENT_TYPE = "update_thread_requested"
@@ -189,8 +193,20 @@ def validate_update_thread_task_request(
 
     try:
         thread_id = UUID(payload["thread_id"])
-    except (TypeError, ValueError) as error:
-        raise UpdateThreadTaskError("update_thread_request_thread_invalid") from error
+        requester = json.loads(payload["requested_by_operator_id"])
+        if (
+            not isinstance(requester, dict)
+            or set(requester) != {"iss", "sub"}
+            or canonical_operator_identity(
+                requester.get("iss"), requester.get("sub")
+            )
+            != payload["requested_by_operator_id"]
+        ):
+            raise ValueError("requester_identity_invalid")
+    except (TypeError, ValueError, OperatorApprovalValidationError) as error:
+        raise UpdateThreadTaskError(
+            "update_thread_request_identity_invalid"
+        ) from error
     if str(thread_id) != payload["thread_id"]:
         raise UpdateThreadTaskError("update_thread_request_thread_invalid")
 
