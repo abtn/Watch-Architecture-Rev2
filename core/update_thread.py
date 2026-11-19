@@ -121,6 +121,7 @@ def validate_update_thread_policy(policy: TeamPolicy, team_id: UUID) -> None:
         or not isinstance(policy.version, int)
         or policy.version < 1
         or isinstance(policy.schema_version, bool)
+        or not isinstance(policy.schema_version, int)
         or policy.schema_version not in {1, 2}
         or not isinstance(policy.rules, dict)
     ):
@@ -176,6 +177,7 @@ def validate_update_thread_task_request(
     if (
         set(payload) != expected_keys
         or isinstance(payload.get("schema_version"), bool)
+        or not isinstance(payload.get("schema_version"), int)
         or payload.get("schema_version") != 1
         or payload.get("task_id") != str(task.id)
         or payload.get("team_id") != str(task.team_id)
