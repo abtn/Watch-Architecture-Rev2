@@ -319,7 +319,7 @@ No production TeamPolicy publishing service was found in the audited repository.
 - Prove a new Task selects the greatest TeamPolicy version for its Team and rejects when no policy exists.
 - Prove the newest selected policy is validated against the supported schema and relevant existing rules; an invalid newest version fails closed rather than falling back to an older valid version.
 - Prove Task and request Event persist the same policy version atomically.
-- Prove replay after policy advancement returns the original Task and original policy version; same-key request conflicts remain governed by the Checkpoint 1 fingerprint.
+- Prove replay after policy advancement returns the original Task and original policy version; same-Team/key request conflicts remain governed by the Checkpoint 1 fingerprint. A different Team is a separate identity scope.
 - Prove missing, cross-Team, mutated, unsupported-schema, and invalid historical policy pins fail closed before provider invocation.
 - Use disposable PostgreSQL transactions to race Task creation against policy publication in both lock orders. Assert the creator pins exactly the version committed before it acquired the Team lock, with no mixed or ambiguous binding.
 - Prove all policy-publishing code follows Team `FOR UPDATE` before version allocation/insertion. Until a real publisher exists, record this as an integration contract and test the creator-side serialization boundary with a controlled competing transaction; do not claim publisher integration coverage.
@@ -460,3 +460,7 @@ Retain the proposal-set domain watch.rw3.update-thread-proposals.v1. Bind the co
 - Proposal-set identity cannot be replayed across Task, Team, Thread, attempt, policy, receipt, or charge.
 
 No application code, tests, migrations, schema, or runtime behavior are changed by this decision. RW-3 implementation remains unauthorized.
+
+## 11. Checkpoint 5 — cross-document reconciliation
+
+This design plan is normative for RW-3 protocol, identity, replay, generation, commit, and recovery semantics. `docs/tasks.md` is normative for the Task envelope/write scope/budget; the implementation plan carries the proof matrix and slice order; `docs/architecture.md` summarizes the architectural boundary; `PLAN.md` alone owns current status and authorization; `CHANGE_MAP.md` maps these authorities. The six documents must not create competing definitions. The reconciled Checkpoint 4 identity contract is Team-scoped UUIDv5: same-Team/key reuse with a different Thread or requester conflicts; the same UUID in another Team is a separate identity. Policy advancement alone does not invalidate replay of the original Task policy pin. The request fingerprint and proposal-set fingerprint are separate, versioned identities. This remains a planning proposal; no implementation is authorized.
