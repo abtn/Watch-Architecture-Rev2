@@ -76,19 +76,21 @@ The worker receives one bounded, immutable Task Context assembled by application
 - Preserve the exact Context Snapshot/manifest using the repository's established Context provenance pattern.
 - Do not silently truncate evidence or alter its meaning to fit the budget.
 
-The exact selection algorithm, bounds, and whether Team Experience is eligible are RW3-0 decisions. Do not invent numeric limits before inspecting existing Task budgets, Context limits, and provider constraints.
+The exact selection algorithm, bounds, and whether Team Experience is eligible are RW3-0 decisions. ADR-0031 already establishes an initial retrieval baseline of at most 8 passages and 8,000 Unicode characters, plus a configured provider output-token cap. RW3-0 must decide whether those existing limits apply unchanged to `update_thread`; any deviation requires an explicit rationale. Do not invent additional numeric limits before inspecting the current Task and Context contracts.
 
 ## 4. Generation, parsing, and commit sequence
 
-1. Validate the Task type, status, immutable request, target Team/Thread, and policy.
-2. Assemble and validate the bounded Context. If this fails, do not call the provider.
-3. Admit/claim the attempt through the existing TaskRuntime path.
-4. Reserve the maximum permitted generation cost through the existing cost-accounting service.
+**Generation-cost integration:** the current `TaskGenerationCostService` does not authorize `update_thread`. RW-3 therefore requires a narrow extension to that existing service, not a new accounting subsystem: add one distinct operation identifier for `update_thread`, bind it to Task type `update_thread` and the exact ordered `allowed_writes` scope `[EvidenceLink, Hypothesis, ConfidenceChange]`, and add operation-specific quote/provider/model/rate-card/output-bound validation and tests. Preserve Task/attempt attribution, one reservation per operation per attempt, cumulative Task budget enforcement, and known/unknown/overrun reconciliation. The implementation must use only a provider/model/rate card already authorized by ADR-0031 or stop for a separate decision; do not silently broaden provider authorization. Reconciliation and current-attempt charge validation occur before the RW-2 commit service is called.
+
+1. Validate the immutable Task request and its trusted Team/Thread target using read-only checks. Do not assemble attempt-specific Context before admission.
+2. Admit/claim the Task attempt through TaskRuntime. This establishes the attempt that owns all subsequent Context, generation, and cost records.
+3. Assemble and validate the bounded Context for that admitted attempt. If this fails, record failure through TaskRuntime; do not reserve cost or call the provider.
+4. Reserve the maximum permitted generation cost for the exact Task attempt through the existing cost-accounting service.
 5. Call the configured existing generation provider only after reservation succeeds.
 6. Parse the response against a strict typed schema. Reject malformed JSON, unknown fields, unsupported proposal types, excessive output, and invalid references; do not coerce or repair them.
-7. Submit typed proposals to the same commit service used by `operator_update`.
-8. Reconcile provider usage/cost, including unknown usage according to existing accounting rules.
-9. Finalize or recover through TaskRuntime.
+7. Reconcile provider usage/cost and validate the exact current-attempt charge before any business commit. A missing, unknown, unreconciled, or overrun charge cannot authorize business writes; retain the applicable reservation/unknown-cost accounting and fail the Task through TaskRuntime.
+8. Submit the typed proposals to the same commit service used by `operator_update`. The commit service remains the only business-write boundary.
+9. Finalize or recover through TaskRuntime. A failure after reconciliation but before commit leaves no accepted business writes; the incurred charge remains recorded.
 
 There are no hidden provider retries and no automatic semantic repair/re-proposal loop. Transport retries, if any, are only those already permitted by bounded TaskRuntime policy. A later attempt is a separate Task attempt and remains subject to ordinary admission and budget accounting.
 
@@ -140,7 +142,10 @@ The precise distinction between parser-level invalid output and proposal-level r
 ### Model and provider boundary
 
 - [ ] Existing generation provider and cost-accounting services are reused.
+- [ ] TaskRuntime admission establishes the attempt before attempt-specific Context assembly.
+- [ ] The existing cost service has a distinct `update_thread` operation mapped to Task type `update_thread` and exactly `[EvidenceLink, Hypothesis, ConfidenceChange]`; provider/model/rate-card and output bounds are validated by that operation.
 - [ ] Reservation succeeds before provider invocation.
+- [ ] The exact current-attempt charge is reconciled and validated before the shared commit service can write business state; unknown, unreconciled, and overrun charges cannot authorize writes.
 - [ ] Output uses a strict typed schema; unknown fields/types and invalid references are rejected.
 - [ ] Proposal count and serialized output are bounded by explicit RW3-0 decisions.
 - [ ] Model output cannot alter Task/Team/Thread identity, policy, budget, allowed writes, or attribution.
@@ -159,7 +164,7 @@ The precise distinction between parser-level invalid output and proposal-level r
 
 ### Verification and operations
 
-- [ ] Deterministic fake-provider tests prove the complete positive and negative paths.
+- [ ] Deterministic fake-provider tests prove the complete positive and negative paths, including admission-before-Context, reservation-before-provider, reconciliation-before-commit, unknown/overrun blocking, and TaskRuntime recovery.
 - [ ] PostgreSQL tests prove atomicity, ownership, replay, and concurrency where required.
 - [ ] A live provider smoke test, if requested later, is separate and does not replace deterministic proofs or become a CI dependency.
 - [ ] Ruff, Mypy, focused tests, full suite, disposable PostgreSQL migration/single-head checks, and patch-whitespace checks pass on the exact tested commit.
@@ -181,7 +186,7 @@ RW3-0 is source/design reconciliation only. If it discovers a required schema ch
 
 | Slice | Work | Exit gate |
 |---|---|---|
-| RW3-0 — design lock | Audit current Task, Context, provider, cost, TaskRuntime, and RW-2 commit contracts; resolve the six design locks above; reconcile docs. | Explicitly approved design and implementation authorization. |
+| RW3-0 — design lock | Audit current Task, Context, provider, cost, TaskRuntime, and RW-2 commit contracts; resolve the six design locks above; reconcile docs. | Design is internally consistent, reviewed, and ready to present for a separate implementation-authorization decision. RW3-0 completion does not itself authorize implementation. |
 | RW3-1 — bounded Context | Implement deterministic Thread-scoped Context assembly, source/Snapshot validation, bounds, and provenance manifest. | Positive/negative Context tests prove scope, freshness, integrity, determinism, and bounds. |
 | RW3-2 — model worker | Implement strict output parsing and narrow worker orchestration using the existing provider and cost boundary. | Fake-provider tests prove provider ordering, schema rejection, bounds, and no authority escalation. |
 | RW3-3 — shared commit/lifecycle | Connect proposals to the RW-2 commit service and TaskRuntime; prove mixed/all-invalid batches, atomicity, replay, concurrency, failure, and recovery. | Complete RW-3 proof matrix passes; no alternate runtime or write path. |
