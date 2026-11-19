@@ -293,3 +293,15 @@ Stop and return to the Operator before proceeding if:
 - Report both the verified implementation SHA and current PR head, each with its CI evidence. Never transfer a test result to a different SHA.
 - Re-audit implementation markers after B6 and after each RW slice. A specification or Task allow-list is not implementation evidence.
 - Do not begin R8 until the foundation exit gate is explicitly accepted.
+
+## Checkpoint 4 — approved identity and replay contract
+
+Checkpoint 4 is approved. Implementation planning must use:
+
+- A dedicated fixed UUIDv5 namespace and canonical name {team_id}:update_thread:{idempotency_key}; Team-scoped idempotency follows the R6-F pattern. Same Team/key resolves one Task; different Thread or requester conflicts. The same UUID in another Team is a separate identity, not a cross-Team conflict.
+- Conflict-safe Task insertion. Only the winning insertion transaction appends the single update_thread_requested Event; competing creation resolves by Task primary key and validates the existing request. Do not copy the weaker operator_update insertion path.
+- Persist only the SHA-256 hash of the canonical idempotency UUID, never the raw UUID. Request fingerprint preimage is versioned canonical JSON with domain watch.rw3.update-thread-request.v1, schema version 1, canonical Task/Team/Thread UUIDs, pinned policy version, canonical_operator_identity() output, and key hash. Canonical JSON is sorted-key, compact, UTF-8; stored digest is sha256:{hex}.
+- Existing Task replay validates exact Task shape, exactly one valid request Event, canonical requester, key hash, fingerprint, Thread, and historical TeamPolicy. Policy advancement alone does not conflict; replay uses the original Task policy pin. Integrity mismatches fail closed.
+- Keep request fingerprint separate from proposal-set fingerprint. Proposal identity uses watch.rw3.update-thread-proposals.v1 and binds Task/Team/Thread/attempt/policy/receipt Event/charge plus the complete strict typed proposal list. Use Pydantic JSON-mode serialization, canonical UTF-8 JSON, SHA-256, preserve array order, reject duplicate keys, allow an empty list, and enforce the eight-proposal limit.
+
+Add proof coverage for UUIDv5 golden vectors, concurrent one-Task/one-Event creation, same-Team conflicting reuse, cross-Team scope, exact request-event cardinality and tamper detection, policy advancement replay, fingerprint golden vectors, key privacy, and proposal-set provenance/serialization. No implementation, tests, or migration is authorized by this planning decision.
