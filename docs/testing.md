@@ -35,11 +35,11 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 
 ## RW3.1 replay-manifest correction — verification pending
 
-- Correction head: `0b9db1259cb264cbc13e94debca18ef721ac308c`.
-- Hosted CI: [run #1479](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44620192388) is running on that exact head.
-- On run #1479, fresh PostgreSQL migration, Alembic single-head/current verification, Ruff, Mypy, and pull-request patch-whitespace checks have passed; the full test step is still running at the time of this record.
-- Focused RW3.1 tests, full local suite, local Ruff/Mypy, and disposable-PostgreSQL verification on the correction head remain pending.
-- Do not transfer the pre-correction 1,119-pass result to this correction head. Update this record only with exact-head results after the remaining checks complete.
+- Correction code/test commit: `0b9db1259cb264cbc13e94debca18ef721ac308c`; subsequent commits on this PR reconcile documentation only.
+- Hosted run [#1479](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44620192388) was canceled by a later documentation-only PR update before its Test step completed. On the code head it checked out, fresh PostgreSQL migration, Alembic single-head/current verification, Ruff, Mypy, and patch-whitespace checks had passed; **no full-suite result is claimed**.
+- A fresh hosted CI run is triggered for the updated PR head. Its exact-head result is tracked in [PR #136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136); this record remains pending until a complete hosted run and programmer-local verification have both passed.
+- Focused RW3.1 tests, full local suite, local Ruff/Mypy, and disposable-PostgreSQL verification on the correction code head remain pending.
+- Do not transfer the pre-correction 1,119-pass result to the correction code/test commit.
 
 
 ## Database safety
