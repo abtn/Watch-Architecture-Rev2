@@ -1,21 +1,22 @@
 # Task specifications
 Every durable write in Watch is performed by a Task. This document is the spec for each v1 task type: what it reads, what it may write, how it runs, what is validated at commit time, and how it fails.
+
 ## RW implementation status and evidence contract
 
-The following status is a static source audit of post-B6 `main` at exact commit **91169b4931e48cb7b2803ed2066ec365f563a0ea**. B6 PR #124 changed only test files; the subsequent PR #125 is documentation-only. No tests, Alembic commands, database migrations, or provider calls were run as part of this source audit.
+This is the current implementation-status summary after RW-2 acceptance on 2026-11-18. `PLAN.md` remains the sole authority for milestone status and authorization; exact verification evidence is recorded in `docs/testing.md`.
 
-| Task / entity | Implementation state at post-B6 audit SHA |
+| Task / entity | Current implementation state |
 |---|---|
 | ingest_source | Implemented for the existing deterministic Signal-ingestion path. This does not include triage. |
-| triage_signal | Specified here; not implemented. |
-| update_thread | Specified here; not implemented. |
-| operator_update | Deterministic host-invoked Operator path implemented in draft PR #134; hosted CI passed on exact implementation/test head; Programmer-local verification and formal acceptance pending. |
-| apply_decay | Specified here; not implemented. |
-| Thread / Hypothesis / ConfidenceChange | ORM persistence implemented in RW-1; the RW-2 Operator commit path is in draft PR #134. |
+| triage_signal | Specified; not implemented. Planned for RW-4. |
+| update_thread | Specified; not implemented. RW-3 is planning-only and not authorized for implementation. |
+| operator_update | Deterministic host-invoked Operator path implemented and formally accepted in RW-2; PR #134 merged to main. |
+| apply_decay | Specified; not implemented. Planned for RW-5. |
+| Thread / Hypothesis / ConfidenceChange | ORM persistence implemented in RW-1; deterministic Operator commit path implemented and accepted in RW-2. |
 | SignalDisposition | Deferred to RW-4 with signal triage; not implemented. |
-| EvidenceLink | Typed Evaluation/Hypothesis subjects with Signal/Outcome sources; Artifact/Consultation source rows remain staged and unusable until their canonical entities exist. |
+| EvidenceLink | RW-1 persistence and RW-2 commit path support the accepted Hypothesis/Evaluation subjects and currently usable Signal/Outcome sources; Artifact/Consultation source rows remain staged and unusable until their canonical entities exist. |
 
-The Event-scope allow-list in `core/ingestion.py` contains future Task type names so bounded Task-attributed Events can be recorded; an allow-list entry alone is not implementation. `operator_update` now has a dedicated host-invoked application path in the RW-2 draft implementation. The current `core/dispatcher.py` still supports only the configured-source `ingest_source` worker; `update_thread`, triage, and decay workers remain unimplemented.
+The Event-scope allow-list in `core/ingestion.py` contains future Task type names so bounded Task-attributed Events can be recorded; an allow-list entry alone is not implementation. The current `core/dispatcher.py` remains narrow and supports the configured-source `ingest_source` worker. This status summary does not authorize dispatcher expansion.
 
 ### EvidenceLink contract for RW
 
@@ -149,17 +150,22 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Failure:** heuristics error → disposition `deferred` with reason; never silent (INV-09).
 ### `update_thread` — model worker
 
-**Implementation status:** specified; not implemented at the audit baseline above.
-- **Purpose:** incorporate new evidence into a Thread's world model.
-- **Reads:** Thread, active Hypotheses, deferred/unprocessed dispositions, relevant active KnowledgeItems (bounded by `knowledge_selection` policy), current policy, source Snapshots on demand (tool calls).
-- **Writes:** EvidenceLink, Hypothesis (create/supersede/reject), ConfidenceChange, SignalDisposition refinement (from `deferred` to a terminal value), Thread.summary (projection only), Event. **Not:** KnowledgeItem, TeamPolicy, Artifact, Outcome, other Threads.
-- **Flow:** F2.
-- **Commit-time validation:** quote offset + hash (INV-04); stance rule (INV-06); hypothesis transition legality with reasons (INV-07); confidence cause pairing (INV-05); per-proposal atomic commit; scope (INV-14). If policy `review.update_gating` is enabled and a required Consultation on the Thread is open, the commit is rejected until answered (default off).
-- **Failure:** all proposals rejected → Task failed with rejection Events; partial commits never occur.
-- **Invariants exercised:** INV-01, 02, 04, 05, 06, 07, 13, 14.
+**Implementation status:** specified; not implemented. RW-3 is a planning proposal only and requires a separate explicit implementation authorization.
+
+- **Purpose:** incorporate new evidence into one existing Thread's world model through a bounded model proposal and the shared RW-2 commit boundary.
+- **Trusted target:** Team and Thread are resolved from the immutable Task request and canonical database state. Model output cannot select or override them.
+- **Reads:** target Thread; active same-Thread Hypotheses; relevant accepted EvidenceLinks; exact immutable source Snapshots; current applicable policy. Team Experience may be read only through an existing authorized retrieval path with canonical identity, Team eligibility, freshness, and provenance checks. SignalDisposition and triage state are excluded (RW-4).
+- **Writes:** exactly EvidenceLink, Hypothesis (create/supersede/reject), and ConfidenceChange. Event and Outcome remain Kernel/TaskRuntime side effects. **Not:** SignalDisposition, Thread creation/reactivation/summary projection, KnowledgeItem, TeamPolicy, Artifact, Consultation, worker-written Outcome, or other Threads.
+- **Flow:** proposed RW-3 sequence is Task validation → bounded Context assembly → TaskRuntime admission → maximum cost reservation → existing generation provider → strict typed parsing → shared RW-2 commit service → cost reconciliation → TaskRuntime finalization.
+- **Commit-time validation:** identical to RW-2; no model-specific exception. Preserve exact Snapshot quote/hash/offset checks (INV-04), stance rule (INV-06), confidence cause pairing (INV-05), legal transitions/reasons (INV-07), Team/Thread ownership, low initial confidence, idempotency, replay, concurrency, and atomic accepted-set semantics (INV-14/INV-15).
+- **Batch semantics:** invalid proposals receive attributable rejection Events; valid proposals commit atomically as one accepted set; the Task fails only when all proposals are rejected. Mixed valid/invalid batches may commit only the valid set. A transaction failure rolls back the entire accepted set.
+- **Failure:** invalid/stale Context fails closed before provider invocation; reservation denial makes no provider call; provider/parser failures make no business writes; unknown provider cost follows existing unknown-cost accounting and is never assumed zero. No automatic semantic repair/re-proposal loop or hidden provider retries.
+- **Open design locks before authorization:** deterministic Context selection and bounds; Team Experience eligibility; narrow worker invocation point; maximum proposal/output size; empty/no-op semantics; parser-level versus proposal-level rejection recording. See [RW-3 design and acceptance plan](development/rw-3-design-and-acceptance.md).
+- **Verification:** deterministic fake-provider tests are mandatory; live provider smoke tests, if later requested, are separate and cannot replace deterministic proofs or become a CI dependency.
+
 ### `operator_update` — Operator via host-invoked application adapter
 
-**Implementation status:** the deterministic Operator path is implemented in draft PR #134. Hosted CI run #1355 passed on exact implementation/test head `c990c702cad39558b17819cb4970462e11aedfb1` (**1,103 passed**); Programmer-local verification and formal acceptance are pending.
+**Implementation status:** the deterministic Operator path was formally accepted in RW-2 on 2026-11-18 and PR #134 was squash-merged to `main` at `601f7816eaa51495d7d40d4b9d32d846122b4a59`. Exact-head local and hosted verification are recorded in `docs/testing.md`.
 - **Purpose:** a human expert contributes directly to world memory — their own hypotheses, evidence, confidence judgments, and explicit transitions (ADR-0021).
 - **Shared contract:** Operator and model paths use the same proposal and commit-validation contract. RW-2 implements the deterministic human entry first; RW-3's model worker is not implemented.
 - **RW-2 implemented writes:** Hypothesis creation/transitions, EvidenceLink addition from Signal/Outcome, and evidence-caused ConfidenceChange. The Task's `allowed_writes` are exactly `["EvidenceLink", "Hypothesis", "ConfidenceChange"]`; the target Thread is bound by the immutable `operator_update_requested` Event. Event and Outcome writes are Kernel/TaskRuntime side effects, not worker `allowed_writes`.
