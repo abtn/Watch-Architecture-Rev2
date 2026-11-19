@@ -531,6 +531,19 @@ class UpdateThreadContextAssembler:
         policy_document = (
             document.get("policy") if isinstance(document, dict) else None
         )
+        snapshot_manifest = (
+            document.get("manifest") if isinstance(document, dict) else None
+        )
+        try:
+            manifest_matches = (
+                isinstance(snapshot_manifest, dict)
+                and _canonical_json(snapshot_manifest)
+                == _canonical_json(payload["manifest"])
+            )
+        except (TypeError, ValueError) as error:
+            raise UpdateThreadContextError(
+                "update_thread_context_manifest_corrupt"
+            ) from error
         if (
             not isinstance(task_document, dict)
             or not isinstance(team_document, dict)
@@ -550,9 +563,7 @@ class UpdateThreadContextAssembler:
                 "manifest",
             }
             or document.get("schema_version") != CONTEXT_SCHEMA_VERSION
-            or not isinstance(document.get("manifest"), dict)
-            or _canonical_json(document["manifest"])
-            != _canonical_json(payload["manifest"])
+            or not manifest_matches
             or set(payload["manifest"])
             != {
                 "schema_version",
