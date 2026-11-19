@@ -238,16 +238,24 @@ class UpdateThreadContextAssembler:
                     source_snapshots[reference] = snapshot
 
                 quote = link.quote_text
-                if (quote is None) != (
-                    link.quote_start is None or link.quote_end is None
+                if (
+                    (quote is None and (
+                        link.quote_start is not None or link.quote_end is not None
+                    ))
+                    or (
+                        quote is not None
+                        and (
+                            link.quote_start is None or link.quote_end is None
+                        )
+                    )
                 ):
                     raise UpdateThreadContextError(
                         "update_thread_evidence_quote_shape_invalid"
                     )
                 if quote is not None and (
-                    link.quote_start is None
+                    not quote
+                    or link.quote_start is None
                     or link.quote_end is None
-                    or not quote
                     or link.quote_start < 0
                     or link.quote_end <= link.quote_start
                     or link.quote_end > len(snapshot["text"])
