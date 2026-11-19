@@ -1,6 +1,6 @@
 # RW-3 — Bounded model `update_thread` design and acceptance plan
 
-**Status:** Planning proposal only. RW-2 is accepted; RW-3 implementation is not authorized. This document defines the proposed boundary and the design work required before a separate implementation authorization.
+**Status:** RW-3 implementation was explicitly authorized on 2026-11-19. RW3.1 is in progress on `rw3-1-task-creation-bounded-context-20261119`; this slice implements the host-authorized Task creator and deterministic bounded Context only. `PLAN.md` remains the sole current-status authority. RW3.2–RW3.4 and live provider invocation remain separately gated.
 
 **Depends on:** accepted RW-1 persistence and RW-2 deterministic Operator commit path.
 
@@ -213,7 +213,7 @@ RW3-0 remains source/design reconciliation only. Any schema migration, provider/
 | Slice | Work | Exit gate |
 |---|---|---|
 | RW3-0 — design lock | Audit current Task, Context, provider, cost, TaskRuntime, and RW-2 commit contracts; resolve the remaining design locks above; reconcile docs. | Design is internally consistent, all design locks are resolved, and the design is reviewed and ready to present for a separate implementation-authorization decision. RW3-0 completion does not authorize implementation. |
-| RW3-1 — bounded Context | Implement deterministic Thread-scoped Context assembly, source/Snapshot validation, bounds, and provenance manifest. | Positive/negative Context tests prove scope, freshness, integrity, determinism, and bounds. |
+| RW3-1 — Task creation and bounded Context | Implement the host-authorized immutable Task creator and deterministic Thread-scoped Context assembly, source/Snapshot validation, bounds, and provenance manifest. Creation is separate from admission/worker execution. | Positive/negative tests prove grant enforcement, Team derivation, Task/Event atomicity, UUIDv5 replay/conflicts, policy pinning, Context scope, source integrity, deterministic ordering, immutable replay, and fail-closed bounds. |
 | RW3-2 — model worker | Implement strict output parsing and narrow worker orchestration using the existing provider and cost boundary. | Fake-provider tests prove provider ordering, schema rejection, bounds, and no authority escalation. |
 | RW3-3 — shared commit/lifecycle | Connect proposals to the RW-2 commit service and TaskRuntime; prove mixed/all-invalid batches, atomicity, replay, concurrency, failure, and recovery. | Complete RW-3 proof matrix passes; no alternate runtime or write path. |
 | RW3-4 — verification/closeout | Run exact-head local and hosted verification, review diff/docs, record results and explicit acceptance. | Exact tested SHA, all required checks, cleanup evidence, and Operator acceptance recorded. |
