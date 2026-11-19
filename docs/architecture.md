@@ -599,14 +599,14 @@ Flow numbers (F1–F8) are cited from `docs/tasks.md` and the walkthrough.
 
 ### F2 — Update
 
-1. `update_thread` Task context is loaded from entities: the Thread, its active Hypotheses, unprocessed/deferred dispositions, relevant active KnowledgeItems (count and selection bounded by policy), current policy (INV-01).
-2. The model proposes: EvidenceLinks (verbatim quotes + offsets), Hypothesis creation/transition, ConfidenceChanges, disposition refinements, and a summary update (projection only).
-3. Deterministic validation: quote offset + hash against Snapshots (INV-04); stance rule (INV-06); transition legality (INV-07); cause pairing (INV-05); write scope (INV-14).
-4. Valid proposals commit atomically as one set; invalid ones reject with Events carrying reasons; a Task whose proposals all fail is marked failed.
-5. `last_touched_at` updated only on Hypotheses whose evidence was accepted.
-6. Consultation gating: if policy `review.update_gating` is enabled and a required Consultation on the Thread is open, the commit is rejected until answered (default off).
+1. The RW-3 `update_thread` Task is bound to one existing Thread by its immutable request and canonical database state; Team and Thread identity never come from model output.
+2. Its proposed Context contains the target Thread, active same-Thread Hypotheses, relevant accepted EvidenceLinks, exact immutable source Snapshots, and current applicable policy. Team Experience is conditional on the existing authorized retrieval path; SignalDisposition/triage data are excluded and remain RW-4.
+3. The model proposes only EvidenceLinks (verbatim quotes + offsets), Hypothesis creation/transition, and ConfidenceChanges. Its exact business `allowed_writes` are `EvidenceLink`, `Hypothesis`, and `ConfidenceChange`; Event/Outcome remain Kernel/TaskRuntime side effects.
+4. TaskRuntime admission precedes attempt-specific Context assembly. The existing cost service reserves before provider invocation and reconciles/validates the exact current-attempt charge before the shared RW-2 commit service can write business state. Unknown, unreconciled, or overrun charges cannot authorize business writes.
+5. Deterministic validation uses the shared RW-2 commit contract: quote offset + hash against immutable Snapshots (INV-04); stance rule (INV-06); transition legality (INV-07); cause pairing (INV-05); Team/Thread ownership and write scope (INV-14).
+6. Valid proposals commit atomically as one accepted set; invalid proposals receive attributable rejection Events; a Task whose proposals are all rejected fails. `last_touched_at` changes only on Hypotheses whose evidence was accepted.
 
-`operator_update` follows the identical flow with a human as the worker (ADR-0021): same context, same proposals, same validation — an unsubstantiated expert hypothesis enters at `low` like anyone else's.
+The following broader F2 behaviors are not part of the RW-3 contract and remain deferred pending their own Task scope and authorization: SignalDisposition refinement/triage (RW-4), Thread summary/retrieval projections, and Consultation gating until its canonical source and commit contract are established. `operator_update` uses the same proposal and commit-validation contract, but its human-supplied Context is not claimed to be identical to the model worker's assembled Context (ADR-0021). An unsubstantiated expert hypothesis enters at `low` like anyone else's.
 
 ### F3 — Decay
 
