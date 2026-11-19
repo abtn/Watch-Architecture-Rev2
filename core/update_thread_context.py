@@ -128,7 +128,6 @@ class UpdateThreadContextAssembler:
             if (
                 thread is None
                 or thread.status == "resolved"
-                or thread.domain != team.domain
             ):
                 raise UpdateThreadContextError("update_thread_target_not_available")
 
