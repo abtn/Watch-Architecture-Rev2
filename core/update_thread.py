@@ -136,6 +136,9 @@ def validate_update_thread_task_request(
         or task.allowed_writes != ALLOWED_WRITES
         or task.budget != TASK_BUDGET
         or task.max_attempts != MAX_ATTEMPTS
+        or isinstance(task.policy_version, bool)
+        or not isinstance(task.policy_version, int)
+        or task.policy_version < 1
         or isinstance(task.attempt_count, bool)
         or not isinstance(task.attempt_count, int)
         or not 0 <= task.attempt_count <= MAX_ATTEMPTS
@@ -168,6 +171,7 @@ def validate_update_thread_task_request(
     }
     if (
         set(payload) != expected_keys
+        or isinstance(payload.get("schema_version"), bool)
         or payload.get("schema_version") != 1
         or payload.get("task_id") != str(task.id)
         or payload.get("team_id") != str(task.team_id)
