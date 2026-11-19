@@ -152,6 +152,8 @@ class UpdateThreadContextAssembler:
                         Hypothesis.status == "active",
                     )
                     .order_by(Hypothesis.created_at, Hypothesis.id)
+                    .limit(MAX_HYPOTHESES + 1)
+                    .with_for_update()
                 )
             )
             if len(hypotheses) > MAX_HYPOTHESES:
@@ -175,6 +177,8 @@ class UpdateThreadContextAssembler:
                             EvidenceLink.created_at,
                             EvidenceLink.id,
                         )
+                        .limit(MAX_EVIDENCE_LINKS + 1)
+                        .with_for_update()
                     )
                 )
             if len(links) > MAX_EVIDENCE_LINKS:
