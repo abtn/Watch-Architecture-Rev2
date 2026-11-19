@@ -699,7 +699,7 @@ Graphs (LangGraph, resumable via checkpointer; the database remains the source o
 | Update (F2) | load context → select signals/hypotheses/knowledge → model proposes → deterministic validation → atomic commit |
 | Render (F4) | load thread state → build evidence pack → model drafts → code assembles citations → store snapshot |
 | Evaluate/Learn (F5–F6) | load Outcome → propose Evaluation → validate/record → propose LearningChange → controlled commit |
-| Ingest/Triage (F1) | fetch → hash/dedupe → snapshot → heuristic match → dispositions → enqueue |
+| Ingest/Triage (F1) | fetch → hash/dedupe → snapshot → heuristic match → dispositions |
 | Setup (F7) | load brief + samples + pack defaults → model drafts config → deterministic validation → operator edit/approve → activation commit |
 
 Consultation requests are standalone tasks created by policy, Triggers, or an enqueue from a finished Task — a graph node never waits for a human (ADR-0020).
