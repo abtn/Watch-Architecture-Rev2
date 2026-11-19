@@ -34,6 +34,7 @@ from core.operator_approval import (
 from core.snapshot_store import SnapshotStore
 
 if TYPE_CHECKING:
+    from core.update_thread import UpdateThreadTaskRequest, UpdateThreadTaskResult
     from core.world_memory import OperatorUpdateRequest
 
 _APPROVAL_ACTION = "approve_learning_change"
@@ -164,13 +165,18 @@ class OperatorApplicationAdapter:
         self._session_factory = session_factory
         self._snapshot_store = snapshot_store
 
-    def create_update_thread_task(self, principal, request):
+    def create_update_thread_task(
+        self,
+        principal: TrustedOperatorPrincipal,
+        request: UpdateThreadTaskRequest,
+    ) -> UpdateThreadTaskResult:
         """Create or replay one host-authorized update_thread Task.
 
         Creation is deliberately separate from TaskRuntime admission and worker
         execution. The caller supplies no Team or model/provider configuration.
         """
         from core.update_thread import (
+            ALLOWED_WRITES,
             MAX_ATTEMPTS,
             REQUEST_EVENT_TYPE,
             TASK_BUDGET,
@@ -299,9 +305,7 @@ class OperatorApplicationAdapter:
                     objective_id=None,
                     plan_id=None,
                     plan_action_id=None,
-                    allowed_writes=list(
-                        ["EvidenceLink", "Hypothesis", "ConfidenceChange"]
-                    ),
+                    allowed_writes=list(ALLOWED_WRITES),
                     budget=dict(TASK_BUDGET),
                     completed_at=None,
                     max_attempts=MAX_ATTEMPTS,
