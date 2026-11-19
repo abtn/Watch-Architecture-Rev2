@@ -56,7 +56,7 @@ The worker receives one bounded, immutable Task Context assembled by application
 - Relevant accepted EvidenceLinks for those Hypotheses/Thread.
 - The exact immutable source Snapshots needed to verify the evidence presented.
 - The current applicable Team policy.
-- Team Experience only when the existing authorized retrieval path can supply it with canonical identity, Team eligibility, freshness, and provenance checks. RW-3 must not build a new retrieval subsystem to obtain it.
+- Team Experience is excluded from RW-3; no new retrieval integration is added.
 
 ### Exclusions
 
@@ -76,7 +76,7 @@ The worker receives one bounded, immutable Task Context assembled by application
 - Preserve the exact Context Snapshot/manifest using the repository's established Context provenance pattern.
 - Do not silently truncate evidence or alter its meaning to fit the budget.
 
-The exact selection algorithm and maximum proposal count remain RW3-0 decisions. The following existing provider limits are fixed for RW-3 and are not open for expansion:
+RW3-0 decisions are recorded in §8. Thread-local world-memory records use stable canonical ordering; if the complete bounded set does not fit, Context assembly fails closed rather than silently dropping or truncating records. Team Experience is excluded from RW-3: the current `TaskContextAssembler` is scoped to `propose_strategy`, so no existing end-to-end authorized Context path is available to `update_thread` without adding a new integration. RW-3 does not invoke Team Experience retrieval. The following provider limits are fixed for RW-3 and are not open for expansion:
 
 - Retrieval-derived passages: at most 8 passages and 8,000 Unicode characters.
 - Model: the ADR-0031-selected Cloudflare Workers AI Llama 3.1 8B Instruct FP8 model only.
@@ -84,7 +84,7 @@ The exact selection algorithm and maximum proposal count remain RW3-0 decisions.
 - Output: at most the existing configured output-token ceiling of 1,024; a lower configured value is valid, a higher value is not.
 - One synchronous, non-streaming provider request per invocation; no tools and no adapter-level retry. TaskRuntime owns retry behavior and preserves ADR-0031's existing three-start Task limit.
 
-RW3-0 must still specify deterministic selection within these limits, decide whether Team Experience is eligible, and set a maximum proposal count compatible with the response cap. Do not add a separate serialized-output byte limit without a measured need.
+RW3-0 fixes the model-worker proposal count at 8 per invocation; the existing 1,024-token output ceiling remains the stricter effective bound for many payloads. The Operator request contract remains unchanged at its existing maximum of 64 proposals. Do not add a separate serialized-output byte limit without a measured need.
 
 ## 4. Generation, parsing, and commit sequence
 
@@ -99,7 +99,7 @@ RW-3 retains the provider and request limits already accepted by ADR-0031 and im
 - The adapter remains synchronous, non-streaming, one HTTP request per invocation, with no tools and no internal retries. It requires valid prompt/completion usage and an exact response-model match; retry eligibility remains TaskRuntime-owned.
 - The output is one final JSON object validated locally. Do not rely on provider JSON Mode or expose/persist reasoning traces.
 
-These are inherited constraints, not new RW-3 provider authorization. RW3-0 still must choose deterministic Context selection and the maximum number of proposals that can fit the bounded response. Do not invent a second character limit for serialized output: the configured token cap is the existing hard output bound unless a separate measured need justifies a tighter application-level bound.
+These are inherited constraints, not new RW-3 provider authorization. The deterministic Context and proposal-count decisions are recorded in §8. Do not invent a second character limit for serialized output: the configured token cap is the existing hard output bound unless a separate measured need justifies a tighter application-level bound.
 
 **Generation-cost integration:** the current `TaskGenerationCostService` does not authorize `update_thread`. RW-3 therefore requires a narrow extension to that existing service, not a new accounting subsystem: add one distinct operation identifier for `update_thread`, bind it to Task type `update_thread` and the exact ordered `allowed_writes` scope `[EvidenceLink, Hypothesis, ConfidenceChange]`, and add operation-specific quote/provider/model/rate-card/output-bound validation and tests. Preserve Task/attempt attribution, one reservation per operation per attempt, cumulative Task budget enforcement, and known/unknown/overrun reconciliation. The implementation must use only a provider/model/rate card already authorized by ADR-0031 or stop for a separate decision; do not silently broaden provider authorization. Reconciliation and current-attempt charge validation occur before the RW-2 commit service is called.
 
@@ -110,7 +110,7 @@ These are inherited constraints, not new RW-3 provider authorization. RW3-0 stil
 5. Call the configured existing generation provider only after reservation succeeds.
 6. Parse the response against a strict typed schema. Reject malformed JSON, unknown fields, unsupported proposal types, excessive output, and invalid references; do not coerce or repair them.
 7. Reconcile provider usage/cost and validate the exact current-attempt charge before any business commit. A missing, unknown, unreconciled, or overrun charge cannot authorize business writes; retain the applicable reservation/unknown-cost accounting and fail the Task through TaskRuntime.
-8. Submit the typed proposals to the same commit service used by `operator_update`. The commit service remains the only business-write boundary.
+8. Submit non-empty typed proposals to the shared RW-2 validation and transaction core through a narrow actor-neutral seam. The current `WorldMemoryCommitService` is Operator-specific: it validates an Operator principal and records `operator_id`; it cannot be called unchanged by a model worker. Preserve the Operator adapter and its event contract, and add only the minimum trusted `model_worker` actor attribution needed by `update_thread`. This remains the sole business-write boundary; do not create a parallel commit service.
 9. Finalize or recover through TaskRuntime. A failure after reconciliation but before commit leaves no accepted business writes; the incurred charge remains recorded.
 
 There are no hidden provider retries and no automatic semantic repair/re-proposal loop. Transport retries, if any, are only those already permitted by bounded TaskRuntime policy. A later attempt is a separate Task attempt and remains subject to ordinary admission and budget accounting.
@@ -126,7 +126,7 @@ Preserve the accepted RW-D18/RW-2 contract:
 - The Task fails only when every proposal is rejected.
 - A mixed result may commit the valid set while retaining rejection Events for invalid proposals.
 
-An empty/no-op model response is not yet specified. RW3-0 must decide whether it is a valid no-op terminal result or a rejected/failed attempt, and align the decision with the Task contract and Outcome semantics before implementation.
+An explicit response with an empty `proposals` list is a valid no-op. After successful cost reconciliation, do not call the commit service or write business state; finalize the Task through TaskRuntime as `success_no_change` with its normal Task-attributed terminal records. Do not retry a valid no-op. The model response envelope therefore permits zero proposals, while each non-empty proposal still uses the existing strict proposal types. TaskRuntime must add only the narrow `update_thread` result validation needed to accept this no-op and the model commit result.
 
 ## 6. Failure behavior
 
@@ -144,7 +144,7 @@ An empty/no-op model response is not yet specified. RW3-0 must decide whether it
 | Unknown provider usage/cost | Use existing unknown-cost accounting; never assume zero. |
 | Replay or concurrent attempt | Existing TaskRuntime and commit-service idempotency/concurrency rules; no duplicate writes. |
 
-The precise distinction between parser-level invalid output and proposal-level rejection Events must be finalized in RW3-0 against existing Event conventions. Do not create a second rejection protocol.
+Parser-level failures (invalid JSON, unknown fields, unsupported shapes/types, forged authority fields, or proposal count above 8) are non-retryable Task failures recorded through TaskRuntime; they do not produce per-proposal rejection Events because no trusted typed proposal set exists. Structurally valid proposals that fail domain validation receive the existing attributable `proposal_rejected` Events from the shared commit core. Mixed batches commit the valid subset atomically; all-invalid batches retain the existing Task-failure behavior. Do not create a second rejection protocol.
 
 ## 7. Acceptance criteria
 
@@ -158,7 +158,7 @@ The precise distinction between parser-level invalid output and proposal-level r
 - [ ] Context selection is deterministic and explicitly bounded.
 - [ ] Context Snapshot/manifest records exact provenance and selected references.
 - [ ] SignalDisposition and triage data are absent.
-- [ ] Team Experience is either excluded or supplied only by an existing authorized, provenance-preserving retrieval path.
+- [ ] Team Experience is excluded from RW-3; no Team Experience retrieval or projection changes are introduced.
 
 ### Model and provider boundary
 
@@ -169,7 +169,7 @@ The precise distinction between parser-level invalid output and proposal-level r
 - [ ] The exact current-attempt charge is reconciled and validated before the shared commit service can write business state; unknown, unreconciled, and overrun charges cannot authorize writes.
 - [ ] Output uses a strict typed schema; unknown fields/types and invalid references are rejected.
 - [ ] Retrieval-derived Context remains within 8 passages and 8,000 Unicode characters; quoted input plus configured output fits the 32,000-token model context; output is capped at the existing configured maximum of 1,024 tokens.
-- [ ] Maximum proposal count is explicitly set in RW3-0 and tested against the output cap; no separate serialized-output byte limit is introduced without measured justification.
+- [ ] The model response contains at most 8 proposals; the existing 1,024-token output cap is also enforced. The Operator request's existing 64-proposal limit is unchanged; no separate serialized-output byte limit is introduced without measured justification.
 - [ ] Model output cannot alter Task/Team/Thread identity, policy, budget, allowed writes, or attribution.
 - [ ] No automatic semantic repair/re-proposal loop or unapproved provider retry exists.
 - [ ] Usage and cost reconcile under existing known/unknown-cost rules.
@@ -179,7 +179,7 @@ The precise distinction between parser-level invalid output and proposal-level r
 - [ ] The same RW-2 commit service and validation rules are used.
 - [ ] Business `allowed_writes` are exactly EvidenceLink, Hypothesis, and ConfidenceChange.
 - [ ] Every RW-2 evidence, confidence, transition, ownership, replay, and concurrency proof remains passing for the model entry path.
-- [ ] Valid proposals commit as one atomic accepted set; invalid proposals produce attributable rejection Events.
+- [ ] Valid proposals commit as one atomic accepted set; invalid proposals produce attributable rejection Events. An empty response finalizes as `success_no_change` after charge reconciliation and creates no business writes.
 - [ ] All-invalid output fails the Task; mixed valid/invalid output commits only the valid set.
 - [ ] Provider, parser, Context, reservation, and commit failures cannot leave unauthorized or partial business writes.
 - [ ] TaskRuntime remains the sole admission, attempt, finalization, and recovery authority.
@@ -193,16 +193,20 @@ The precise distinction between parser-level invalid output and proposal-level r
 - [ ] No persistent database is used for verification.
 - [ ] Documentation, Task contract, implementation, and proof matrix agree.
 
-## 8. RW3-0 design locks — must resolve before implementation authorization
+## 8. RW3-0 decisions — resolved proposal; review still required
 
-1. **Context selection:** define deterministic selection and per-entity bounds within the fixed retrieval ceiling of 8 passages/8,000 Unicode characters and the provider's 32,000-token total context window. The UTF-8-byte-length-plus-128 input quote is already defined by ADR-0031.
-2. **Team Experience:** verify whether the existing retrieval path can be reused with the required canonical and authorization checks. Otherwise exclude it from RW-3.
-3. **Worker invocation:** identify the narrowest existing application composition point. Do not broaden TaskDispatcher into a general framework.
-4. **Proposal count:** set and justify the maximum number of proposals that can be returned within the existing configured output ceiling of 1,024 tokens. The output ceiling itself is fixed; do not raise it or add an arbitrary byte cap.
-5. **Empty/no-op result:** define terminal semantics and corresponding Task/Outcome/Event proof.
-6. **Failure/rejection recording:** align parser-level failures and proposal-level rejection Events with existing TaskRuntime/Event conventions.
+These decisions close the six planning locks for the proposed RW-3 scope. They do not authorize implementation.
 
-RW3-0 is source/design reconciliation only. If it discovers a required schema change, migration, new provider behavior, or changed accepted Task semantics, stop and present the smallest separate decision. No implementation or schema migration is implied.
+1. **Deterministic Context selection:** include the target Thread, all active same-Thread Hypotheses, and all relevant accepted EvidenceLinks with their exact immutable source Snapshot references. Order Hypotheses by `(created_at ASC, id ASC)` and EvidenceLinks by `(hypothesis_id ASC, created_at ASC, id ASC)`; order unique Snapshot references lexically. Do not rank or silently truncate canonical world-memory records. Bound the Context to at most 8 active Hypotheses, 8 EvidenceLinks, 8 unique source Snapshots, and 8,000 Unicode characters of evidence text. If any item-count or character bound is exceeded, fail Context assembly through TaskRuntime before provider invocation. Preserve the existing 8-passage/8,000-character retrieval ceiling and 32,000-token provider context limit; RW-3 does not expand them.
+2. **Team Experience:** exclude it from RW-3. Although `KnowledgeIndex` has Team Experience retrieval and canonical validation, the current Task Context assembler is explicitly scoped to `propose_strategy`; adding a new update_thread retrieval integration is not necessary for this slice. No Team Experience retrieval call or projection change is authorized.
+3. **Worker invocation:** use one narrow host-invoked application adapter for an already-created `update_thread` Task. It validates the immutable request/target, admits through the existing TaskRuntime, then assembles Context and executes the generation/cost/commit sequence. Do not extend `TaskDispatcher`, add a scheduler, or create a second runtime.
+4. **Proposal count:** allow at most 8 model proposals per invocation. The existing 1,024-token output ceiling remains independently enforced and may permit fewer. Keep the existing Operator `OperatorUpdateRequest` maximum of 64 unchanged; the 8-proposal cap belongs only to the model response parser. Preserve RW-D18/RW-2 mixed-batch and atomic accepted-set semantics.
+5. **Empty/no-op:** an explicit empty `proposals` list is a valid no-op. Reconcile the incurred generation charge, skip the commit service and all business writes, then finalize through TaskRuntime with `success_no_change`. Do not retry a valid no-op. The model response envelope permits zero proposals; the shared Operator request model remains non-empty.
+6. **Failure/rejection recording:** malformed JSON/schema, unknown fields, unsupported shapes, forged authority fields, excessive proposal count, and output-bound violations are non-retryable TaskRuntime failures with no proposal rejection Events. Structurally valid proposals that fail domain validation receive the existing per-proposal rejection Events. Mixed batches commit valid proposals atomically; all-invalid batches fail the Task through the existing TaskRuntime terminal path.
+
+**Required narrow integration correction discovered during source audit:** the current `WorldMemoryCommitService` is Operator-specific: it requires an Operator principal and writes `operator_id` attribution. RW-3 cannot call it unchanged. RW-3 must extract/reuse the same proposal validation and atomic transaction core behind a narrow trusted actor seam (`operator` for RW-2, `model_worker` for RW-3), preserving RW-2's existing Operator identity and Event behavior. Model actor identity is application-defined and Task-attributed; model output cannot supply it. TaskRuntime also needs only task-type-specific admission, result validation, finalization, and recovery support for `update_thread`; it remains the sole lifecycle authority. This is not permission to add a second commit service, runtime, or generic actor framework.
+
+RW3-0 remains source/design reconciliation only. Any schema migration, provider/model expansion, or change to accepted RW-D18/RW-2 batch semantics requires a separate decision. The design must receive independent review before a separate implementation-authorization decision. No implementation or schema migration is implied.
 
 ## 9. Implementation sequence
 
