@@ -28,6 +28,7 @@ from core.operator_application import (
     OperatorGrant,
     OperatorNotAuthorized,
     OperatorTaskRequestConflict,
+    OperatorTaskRequestCorrupt,
     TrustedOperatorPrincipal,
 )
 from core.snapshot_store import SnapshotStore
@@ -612,6 +613,57 @@ def test_context_fails_closed_when_evidence_link_bound_is_exceeded(
     with pytest.raises(
         UpdateThreadContextError,
         match="update_thread_evidence_link_bound_exceeded",
+    ):
+        UpdateThreadContextAssembler(session_factory, snapshot_store).assemble(
+            created.task_id, 1
+        )
+    with session_factory() as session:
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == CONTEXT_EVENT_TYPE,
+            )
+        )
+        assert event is None
+
+
+def test_creator_fails_closed_on_tampered_request_fingerprint(
+    session_factory: sessionmaker[Session], rw3_fixture: Fixture
+) -> None:
+    request, created = _create_task(session_factory, rw3_fixture)
+    with session_factory.begin() as session:
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+        assert event is not None
+        event.payload["request_fingerprint"] = "sha256:" + "0" * 64
+
+    with pytest.raises(OperatorTaskRequestCorrupt):
+        OperatorApplicationAdapter(session_factory).create_update_thread_task(
+            _principal(rw3_fixture.team_id), request
+        )
+
+
+def test_context_rejects_quote_offsets_outside_source_snapshot(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    _admit_fixture_task(session_factory, created.task_id)
+    _, evidence_id = _seed_hypothesis_and_link(session_factory, rw3_fixture)
+    with session_factory.begin() as session:
+        link = session.get(EvidenceLink, evidence_id)
+        assert link is not None
+        link.quote_start = len(_CONTENT) + 10
+        link.quote_end = link.quote_start + len(_QUOTE)
+
+    with pytest.raises(
+        UpdateThreadContextError,
+        match="update_thread_evidence_quote_mismatch",
     ):
         UpdateThreadContextAssembler(session_factory, snapshot_store).assemble(
             created.task_id, 1
