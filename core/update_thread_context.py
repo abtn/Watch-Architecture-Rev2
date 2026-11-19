@@ -495,10 +495,18 @@ class UpdateThreadContextAssembler:
                 Event.type == REQUEST_EVENT_TYPE,
             )
         )
-        task_document = document.get("task") if isinstance(document, dict) else None
-        team_document = document.get("team") if isinstance(document, dict) else None
-        thread_document = document.get("thread") if isinstance(document, dict) else None
-        policy_document = document.get("policy") if isinstance(document, dict) else None
+        task_document = (
+            document.get("task") if isinstance(document, dict) else None
+        )
+        team_document = (
+            document.get("team") if isinstance(document, dict) else None
+        )
+        thread_document = (
+            document.get("thread") if isinstance(document, dict) else None
+        )
+        policy_document = (
+            document.get("policy") if isinstance(document, dict) else None
+        )
         if (
             not isinstance(task_document, dict)
             or not isinstance(team_document, dict)
