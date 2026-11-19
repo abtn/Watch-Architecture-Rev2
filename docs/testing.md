@@ -23,16 +23,23 @@ uv run alembic upgrade head
 
 Use commands supported by `pyproject.toml` and the current repository environment. Report exact commands and outcomes; do not infer success from inspection.
 
-## RW3.1 hosted verification — 2026-11-19
+## RW3.1 pre-correction verification baseline — 2026-11-19
 
-- PR: [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136), draft.
-- Tested implementation code head: `64dee73271c747127b34deb4c6138f498b4dd9b4`.
-- Hosted CI: [run #1468](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44537159906) on PR head `7fc3534c30da5a2da27dfa3283b907881488b16f` at the time of the run; subsequent commits updated documentation only — **passed**.
+- PR: [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136), open, Ready for Review, and unmerged.
+- Exact pre-correction PR head: `445c059a72a7a39f5139a6e0704d4d4d9c8ced3d`.
+- Hosted CI: [run #1472](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44614780775) passed on that exact head.
 - Fresh PostgreSQL database migrated successfully; Alembic reported exactly one head and the database revision matched that head.
-- Ruff: passed. Mypy: passed across 41 source files. `git diff --check`: passed.
-- Full test suite: **1,119 passed, 130 warnings, 0 failures**.
-- No RW3.1 migration or schema change was introduced.
-- Programmer-local Windows verification is still pending. The CI result is not presented as local verification.
+- Ruff and Mypy (41 source files) passed; `git diff --check` passed.
+- Programmer-local Windows verification on the same exact head passed: 14 focused RW3.1 tests; Ruff; Mypy (41 source files); full suite (**1,119 passed**); disposable PostgreSQL migration/single-head checks; container cleanup; and exact restoration of `DATABASE_URL` and `TEST_DATABASE_URL`.
+- This is pre-correction baseline evidence only. It does not verify the replay-manifest correction below.
+
+## RW3.1 replay-manifest correction — verification pending
+
+- Correction head: `0b9db1259cb264cbc13e94debca18ef721ac308c`.
+- Hosted CI: [run #1479](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44620192388) is running on that exact head.
+- On run #1479, fresh PostgreSQL migration, Alembic single-head/current verification, Ruff, Mypy, and pull-request patch-whitespace checks have passed; the full test step is still running at the time of this record.
+- Focused RW3.1 tests, full local suite, local Ruff/Mypy, and disposable-PostgreSQL verification on the correction head remain pending.
+- Do not transfer the pre-correction 1,119-pass result to this correction head. Update this record only with exact-head results after the remaining checks complete.
 
 
 ## Database safety
