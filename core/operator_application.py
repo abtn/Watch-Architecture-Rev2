@@ -253,8 +253,7 @@ class OperatorApplicationAdapter:
                     )
                 )
                 if (
-                    policy is None
-                    or envelope.requested_by_operator_id != operator_id
+                    envelope.requested_by_operator_id != operator_id
                     or envelope.thread_id != request.thread_id
                     or stored_event is None
                     or stored_event.payload != expected_payload
@@ -269,8 +268,6 @@ class OperatorApplicationAdapter:
                     replayed=True,
                 )
 
-            if team.status != "active":
-                raise OperatorApplicationError("update_thread_team_not_active")
             policy = session.scalar(
                 select(TeamPolicy)
                 .where(TeamPolicy.team_id == team_id)
@@ -326,6 +323,14 @@ class OperatorApplicationAdapter:
                     load_pinned_policy(session, team_id, existing.policy_version)
                 except UpdateThreadTaskError as error:
                     raise OperatorTaskRequestCorrupt(error.reason) from error
+                expected_payload = build_request_event_payload(
+                    task_id=task_id,
+                    team_id=team_id,
+                    thread_id=request.thread_id,
+                    policy_version=existing.policy_version,
+                    requested_by_operator_id=operator_id,
+                    idempotency_key=request.idempotency_key,
+                )
                 stored_event = session.scalar(
                     select(Event).where(
                         Event.task_id == task_id,
@@ -336,7 +341,7 @@ class OperatorApplicationAdapter:
                     envelope.thread_id != request.thread_id
                     or envelope.requested_by_operator_id != operator_id
                     or stored_event is None
-                    or stored_event.payload != event_payload
+                    or stored_event.payload != expected_payload
                 ):
                     raise OperatorTaskRequestConflict(
                         "update_thread_idempotency_key_reused"
