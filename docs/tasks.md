@@ -9,7 +9,7 @@ This is the current implementation-status summary after RW-2 acceptance on 2026-
 |---|---|
 | ingest_source | Implemented for the existing deterministic Signal-ingestion path. This does not include triage. |
 | triage_signal | Specified; not implemented. Planned for RW-4. |
-| update_thread | Specified; not implemented. RW-3 remains planning-only; Checkpoints 1–3 are approved design decisions only, not implementation authorization. |
+| update_thread | Specified; not implemented. RW-3 remains planning-only; Checkpoints 1–4 are approved design decisions and Checkpoint 5 cross-document reconciliation is complete. None constitutes implementation authorization. |
 | operator_update | Deterministic host-invoked Operator path implemented and formally accepted in RW-2; PR #134 merged to main. |
 | apply_decay | Specified; not implemented. Planned for RW-5. |
 | Thread / Hypothesis / ConfidenceChange | ORM persistence implemented in RW-1; deterministic Operator commit path implemented and accepted in RW-2. |
