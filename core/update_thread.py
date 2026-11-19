@@ -216,10 +216,12 @@ def load_pinned_policy(
     session: Session, team_id: UUID, policy_version: int
 ) -> TeamPolicy:
     policy = session.scalar(
-        select(TeamPolicy).where(
+        select(TeamPolicy)
+        .where(
             TeamPolicy.team_id == team_id,
             TeamPolicy.version == policy_version,
         )
+        .with_for_update(read=True)
     )
     if policy is None:
         raise UpdateThreadTaskError("update_thread_policy_missing")
