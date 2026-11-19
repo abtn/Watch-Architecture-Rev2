@@ -268,3 +268,62 @@ For `update_thread`, TaskRuntime accepts exactly these result categories:
 Reject `success_update_thread_committed` on every non-`update_thread` Task. Do not change the existing `success_no_change` contract for other Task types. Other result categories are not valid for `update_thread`. The TaskRuntime recovery path must distinguish a durable commit, durable all-invalid rejection, durable empty proposal set, resumable receipt/proposal set, and an attempt with no durable receipt; only the last case may fall through to ordinary interrupted-attempt retry after settling any reservation as unknown.
 
 The provider adapter, in-session cost reconciliation, proposal receipt, commit marker, and TaskRuntime changes above are design requirements only. This document does not authorize implementation. The corresponding acceptance proofs are listed in the RW implementation plan.
+
+
+### 10.4 Immutable model-worker request and Thread binding
+
+A model-worker Task must have a durable, immutable request record. The request is not inferred from a worker argument, mutable Task metadata, the latest TeamPolicy, or an Operator request.
+
+- The authorized host/application Task-creation path creates the update_thread Task and exactly one update_thread_requested Event in the same database transaction. If either write fails, neither is committed. No model call or worker adapter may create this Event after Task admission.
+- The Event payload schema is versioned and contains exactly: schema_version, task_id, team_id, thread_id, policy_version, idempotency_key, and request_fingerprint. The Event's normal envelope carries its Event ID, Task attribution, and creation timestamp. The fingerprint is SHA-256 over canonical UTF-8 JSON containing the domain tag watch.rw3.update-thread-request.v1 and the preceding immutable request fields except the fingerprint itself.
+- The Task row remains authoritative for task_id, team_id, and policy_version; the Event supplies the immutable thread_id binding. At Task creation and again before provider invocation, require exactly one request Event for the Task; require all duplicated identity/policy fields to equal the Task row; require the Thread to belong to the same Team; and require the pinned policy version to exist, be valid, and belong to that Team. Reject missing, duplicate, malformed, mutated, or conflicting request Events. Never use an Operator request Event as a substitute and never synthesize an Operator identity.
+- The idempotency key is unique within its documented Task-creation scope. A repeated creation request with the same key and identical fingerprint returns/reconstructs the same Task; reuse with a different fingerprint rejects without creating another Task or request Event.
+- The host/application Task-creation path is the only creator of this Event. The model-worker adapter receives the Task ID, loads and verifies the durable request Event, and cannot change the target Thread or policy.
+
+This request Event is the durable authorization binding for the target Thread. The phrase “immutable Task request” in §§3–10 means this exact Task-plus-Event contract.
+
+### 10.5 Executable TaskRuntime recovery handoff
+
+TaskRuntime owns the Task row lock, attempt identity, retry decision, and terminal lifecycle. The worker/commit layer does not open a competing transaction or independently transition Task state.
+
+- Add one narrow in-session recovery entry point, named here resume_update_thread_in_session(session, task, attempt). TaskRuntime calls it only after locking and rechecking the Task row, confirming Task type update_thread, the expected current attempt, and the durable request Event.
+- The function receives the already-locked SQLAlchemy Session and the exact Task/attempt. It reads and validates the receipt, reconciled charge, proposal Event, fingerprint, and any marker. It never calls the provider, creates a new attempt, changes Task lifecycle state, commits/rolls back the Session, or opens another Session/transaction.
+- With receipt but no proposal Event, it parses the stored raw completion and writes the validated-proposal Event in the caller's transaction, or returns a deterministic parser-failure disposition. With a validated non-empty proposal Event and no marker, it resumes that exact proposal set through the shared commit core in the same Session. With a valid marker, it returns the verified terminal observation without reapplying writes. With a validated empty set, it returns the verified no-op observation.
+- TaskRuntime alone translates the returned disposition into the existing terminal Event/Outcome/status transition or a retryable interrupted-attempt disposition. It performs terminalization in the same transaction as the verified marker/observation where required.
+- A transient database, deadlock, or serialization failure rolls back the current transaction and leaves the same durable proposal Event resumable. It must not consume a new provider attempt or invoke the provider again. The next recovery pass resumes the same proposal fingerprint.
+- A permanent integrity/provenance conflict (wrong Task/Team/Thread/policy/attempt/charge, duplicate or contradictory Event, fingerprint mismatch, or committed rows inconsistent with the marker) fails closed and writes no new business state. TaskRuntime records an update_thread_recovery_inconsistent terminal evidence Event and uses terminal_failure; this is distinct from an all-invalid domain rejection and cannot be represented as update_thread_rejected.
+- If no durable receipt exists after an interrupted provider call, TaskRuntime marks the still-reserved charge unknown and applies the existing attempt/budget policy. This is the only recovery case that may return to ordinary new-attempt retry. The remote provider may already have been called; exactly-once invocation is not claimed.
+
+The handoff is a narrow Task-type-specific branch in the existing TaskRuntime, not a generic recovery framework. The worker may expose a normal first-attempt execution method, but all interrupted/replayed execution must converge on this same in-session resume function.
+
+### 10.6 Typed actor, proposal Events, and terminal validators
+
+The shared commit core accepts a validated proposal envelope and a closed actor union; it does not accept an untyped actor dictionary or infer authority from Event payloads.
+
+- OperatorActor contains the existing canonical authenticated Operator principal and is used only by the existing RW-2 path. Its validation, request Event, proposal rejection Event payloads, commit Event payloads, and replay behavior remain unchanged.
+- ModelWorkerActor contains only fixed actor type model_worker, the admitted task_id, and the verified update_thread_requested Event ID. Application code constructs it after TaskRuntime admission and request validation. It has no operator_id, Operator principal, or model-supplied identity.
+- The shared core input is a typed envelope containing the trusted actor, Task/Team/Thread IDs, attempt, pinned policy version, generation receipt Event ID, proposal Event ID, charge ID, canonical proposal fingerprint, and parsed proposal objects. Every field is checked against durable records before writes.
+- For the model path, accepted proposals produce Task-attributed update_thread_proposal_accepted Events and invalid proposals produce Task-attributed update_thread_proposal_rejected Events. Both include schema version, Task/Team/Thread/attempt, actor type model_worker, proposal key, proposal fingerprint, and stable disposition/reason. They contain no operator_id. Existing RW-2 Operator proposal Event types and payloads are not renamed or weakened.
+- The model terminal marker is either update_thread_committed (one or more accepted proposal keys; mixed accepted/rejected keys permitted) or update_thread_rejected (all proposal keys rejected), with the exact receipt/proposal Event IDs, charge, attempt, fingerprint, and exhaustive accepted/rejected key sets. A separate update_thread_recovery_inconsistent Event is used only for permanent integrity failure; it is not a domain rejection marker.
+- The model terminal validator checks the model-specific Event types, fixed actor type, Task attribution, request Event linkage, exact proposal/receipt/charge identity, fingerprint, exhaustive key partition, and committed database rows. The Operator terminal validator remains Operator-specific and unchanged. Do not make either validator accept the other's Event family.
+- No generic actor framework, second commit service, second Task runtime, or alternate write path is introduced. The actor union exists only at the shared RW-2 proposal-validation/atomic-transaction boundary.
+
+### 10.7 Canonical typed proposal serialization
+
+The proposal Event and fingerprint use one exact serialization contract:
+
+1. Parse into the existing strict RW-2 proposal Pydantic models (or narrowly versioned RW-3 model-worker envelope models). Reject unknown fields, coercion, non-finite numbers, duplicate proposal keys, malformed UUIDs, unsupported enum values, and invalid schema versions before persisting the proposal Event.
+2. Serialize each validated proposal with model_dump(mode="json"). UUIDs are canonical lowercase hyphenated strings; enums serialize to their declared string values; datetimes, where present, use the model's canonical JSON representation. No Python repr, database row serialization, or original model JSON text enters the fingerprint.
+3. Preserve proposal array order exactly as returned by the model. Do not sort proposals: order is part of the durable response identity. Object keys are canonicalized by the fingerprint encoder. Duplicate proposal keys reject rather than being silently deduplicated.
+4. Encode the complete provenance envelope and proposal list as UTF-8 JSON using sort_keys=True, ensure_ascii=False, and separators (",", ":"); reject NaN/Infinity and any value not representable by the strict schema. Hash those exact bytes with SHA-256 and prefix the lowercase hexadecimal digest with sha256:.
+5. Persist the same canonical typed proposal list and fingerprint in the validated-proposal Event and verify them byte-for-byte/canonically during recovery. The schema version and domain tag prevent future schema changes from being mistaken for the same proposal set.
+
+### 10.8 Commit failure disposition
+
+A validated non-empty proposal set is never discarded or regenerated merely because commit failed.
+
+- Transient persistence failure: transaction rollback leaves the proposal Event and its fingerprint intact and no partial business writes/marker. The same proposal set remains resumable through §10.5; do not call the provider or consume a new generation attempt.
+- All proposals domain-invalid: commit the complete rejection Event set and one update_thread_rejected marker atomically; TaskRuntime records terminal_failure.
+- Permanent integrity/provenance failure: write no business rows. Record update_thread_recovery_inconsistent with the exact Task/attempt/proposal fingerprint and stable failure category, then TaskRuntime records terminal_failure. This marker is the only permitted terminal-failure evidence for a non-empty validated proposal set when the failure is not an all-invalid domain result. It must not claim that proposals were rejected by domain validation.
+- Successful or mixed commit: write accepted rows, accepted/rejected per-proposal Events, and one update_thread_committed marker in the same transaction. Recovery verifies the exact marker and rows before terminalization.
+- No generic retry queue or new retry subsystem is introduced. Existing TaskRuntime policy decides when to retry transient infrastructure failures; it always resumes the same durable proposal set before considering a new provider attempt.
