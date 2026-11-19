@@ -79,10 +79,10 @@ The worker receives one bounded, immutable Task Context assembled by application
 RW3-0 decisions are recorded in §8. Thread-local world-memory records use stable canonical ordering; if the complete bounded set does not fit, Context assembly fails closed rather than silently dropping or truncating records. Team Experience is excluded from RW-3: the current `TaskContextAssembler` is scoped to `propose_strategy`, so no existing end-to-end authorized Context path is available to `update_thread` without adding a new integration. RW-3 does not invoke Team Experience retrieval. The following provider compatibility limits are fixed for RW-3 and are not open for expansion. They do not, by themselves, authorize production provider calls:
 
 - Retrieval-derived passages: at most 8 passages and 8,000 Unicode characters.
-- Model: the ADR-0031-selected Cloudflare Workers AI Llama 3.1 8B Instruct FP8 model only.
+- Model compatibility baseline: the Cloudflare Workers AI Llama 3.1 8B Instruct FP8 model documented in ADR-0031 only; ADR-0031 authorizes it for R6-E, and RW-3 live use remains separately gated as stated below.
 - Total quoted input plus configured output: at most the model's 32,000-token context window, using the existing conservative UTF-8-byte-length-plus-128 framing-token quote.
 - Output: at most the existing configured output-token ceiling of 1,024; a lower configured value is valid, a higher value is not.
-- One synchronous, non-streaming provider request per invocation; no tools and no adapter-level retry. TaskRuntime owns retry behavior and preserves ADR-0031's existing three-start Task limit.
+- If separately authorized, one synchronous, non-streaming provider request per invocation; no tools and no adapter-level retry. TaskRuntime owns retry behavior and preserves the existing three-start Task limit.
 
 RW3-0 fixes the model-worker proposal count at 8 per invocation; the existing 1,024-token output ceiling remains the stricter effective bound for many payloads. The Operator request contract remains unchanged at its existing maximum of 64 proposals. Do not add a separate serialized-output byte limit without a measured need.
 
@@ -343,7 +343,7 @@ The existing `TaskGenerationCostService` must receive one narrow `update_thread`
 
 **Deadline:** the absolute Task deadline is 45 seconds from successful TaskRuntime admission. The worker enforces it across Context assembly, quoting, provider execution, parsing, and pre-commit processing; the provider request timeout is capped at 30 seconds and must not exceed the remaining Task time. No provider call starts after the deadline. The current `TaskRuntime.admit()` validates that `deadline_seconds` is a positive integer but does not enforce elapsed time; the implementation must add only the narrow `update_thread` deadline enforcement required here, not a global runtime redesign. Preserve the existing 60-second interrupted-task recovery threshold; it is not the execution deadline.
 
-**Provider and proposal bounds:** retain the ADR-0031 Cloudflare Workers AI Llama 3.1 8B FP8 model, one synchronous non-streaming HTTP request per admitted attempt, no tools, no provider-adapter retries, at most 1,024 output tokens, and the existing 32,000-token total quoted-context ceiling. TaskRuntime alone owns the maximum three starts. The model response remains limited to 8 proposals per invocation; the Operator request limit of 64 and RW-2 batch semantics are unchanged.
+**Provider compatibility and proposal bounds:** if live provider use is separately authorized, use only the ADR-0031 Cloudflare Workers AI Llama 3.1 8B FP8 model, one synchronous non-streaming HTTP request per admitted attempt, no tools, no provider-adapter retries, at most 1,024 output tokens, and the existing 32,000-token total quoted-context ceiling. TaskRuntime alone owns the maximum three starts. The model response remains limited to 8 proposals per invocation; the Operator request limit of 64 and RW-2 batch semantics are unchanged.
 
 **Checkpoint 3 proof obligations:**
 
