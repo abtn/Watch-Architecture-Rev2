@@ -244,8 +244,10 @@ class UpdateThreadContextAssembler:
                 if quote is not None and (
                     link.quote_start is None
                     or link.quote_end is None
+                    or not quote
                     or link.quote_start < 0
                     or link.quote_end <= link.quote_start
+                    or link.quote_end > len(snapshot["text"])
                     or snapshot["text"][link.quote_start:link.quote_end] != quote
                 ):
                     raise UpdateThreadContextError(
