@@ -693,7 +693,10 @@ def test_creator_fails_closed_on_tampered_request_fingerprint(
             )
         )
         assert event is not None
-        event.payload["request_fingerprint"] = "sha256:" + "0" * 64
+        event.payload = {
+            **event.payload,
+            "request_fingerprint": "sha256:" + "0" * 64,
+        }
 
     with pytest.raises(OperatorTaskRequestCorrupt):
         OperatorApplicationAdapter(session_factory).create_update_thread_task(
