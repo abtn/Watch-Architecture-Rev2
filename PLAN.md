@@ -408,7 +408,7 @@ Update this file whenever milestone status or its gate changes. Other documents 
 
 Checkpoint 4 deterministic request/proposal identity decisions are approved and recorded across the six planning documents. The request uses Team-scoped fixed-namespace UUIDv5 identity and the R6-F conflict-safe Task/Event creation pattern; request fingerprints are versioned and domain-separated, persist only an idempotency-key hash, and bind canonical requester, Thread, and pinned policy. Replay preserves the original policy pin after policy advancement and fails closed on evidence mismatch. Proposal-set identity remains separate and binds the exact typed proposal set to its Task attempt, receipt, and charge.
 
-This is a planning decision only. PR #135 remains open and unmerged. RW-3 implementation remains unauthorized. Checkpoint 5 documentation reconciliation and a fresh independent review remain required before any separate implementation-authorization decision.
+This is a planning decision only. PR #135 remains open and unmerged. RW-3 implementation remains unauthorized. Checkpoint 5 reconciliation is recorded below; a fresh independent review of the reconciled exact head and a separate explicit implementation-authorization decision remain required.
 
 ### RW-3 Checkpoint 5 — cross-document reconciliation
 
