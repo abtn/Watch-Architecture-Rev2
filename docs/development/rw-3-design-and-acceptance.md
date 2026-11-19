@@ -82,7 +82,7 @@ The exact selection algorithm and maximum proposal count remain RW3-0 decisions.
 - Model: the ADR-0031-selected Cloudflare Workers AI Llama 3.1 8B Instruct FP8 model only.
 - Total quoted input plus configured output: at most the model's 32,000-token context window, using the existing conservative UTF-8-byte-length-plus-128 framing-token quote.
 - Output: at most the existing configured output-token ceiling of 1,024; a lower configured value is valid, a higher value is not.
-- One synchronous, non-streaming provider request per invocation; no tools and no adapter-level retry. TaskRuntime owns retry behavior.
+- One synchronous, non-streaming provider request per invocation; no tools and no adapter-level retry. TaskRuntime owns retry behavior and preserves ADR-0031's existing three-start Task limit.
 
 RW3-0 must still specify deterministic selection within these limits, decide whether Team Experience is eligible, and set a maximum proposal count compatible with the response cap. Do not add a separate serialized-output byte limit without a measured need.
 
