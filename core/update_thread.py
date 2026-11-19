@@ -179,6 +179,8 @@ def validate_update_thread_task_request(
         or payload.get("schema_version") != 1
         or payload.get("task_id") != str(task.id)
         or payload.get("team_id") != str(task.team_id)
+        or isinstance(payload.get("policy_version"), bool)
+        or not isinstance(payload.get("policy_version"), int)
         or payload.get("policy_version") != task.policy_version
         or not isinstance(payload.get("thread_id"), str)
         or not isinstance(payload.get("requested_by_operator_id"), str)
