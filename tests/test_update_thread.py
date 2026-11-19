@@ -5,6 +5,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import json
 from threading import Barrier
 from typing import Iterator
 from uuid import UUID, uuid4
@@ -409,6 +410,69 @@ def test_context_is_deterministic_bounded_and_replayable(
             )
         )
         assert len(events) == 1
+
+
+@pytest.mark.parametrize(
+    ("location", "field"),
+    [
+        ("event_manifest", "attempt"),
+        ("event_manifest", "policy_version"),
+        ("event_manifest", "evidence_characters"),
+        ("snapshot_task", "attempt"),
+        ("snapshot_task", "policy_version"),
+        ("snapshot_policy", "version"),
+    ],
+)
+def test_context_replay_rejects_boolean_substitution_for_integer_fields(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    location: str,
+    field: str,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    _admit_fixture_task(session_factory, created.task_id)
+    assembler = UpdateThreadContextAssembler(session_factory, snapshot_store)
+    assembled = assembler.assemble(created.task_id, 1)
+    assert assembled.replayed is False
+
+    with session_factory.begin() as session:
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == CONTEXT_EVENT_TYPE,
+            )
+        )
+        assert event is not None
+        payload = dict(event.payload)
+
+        if location == "event_manifest":
+            payload["manifest"] = {
+                **payload["manifest"],
+                field: True,
+            }
+        else:
+            document = json.loads(snapshot_store.read(payload["snapshot_ref"]))
+            document_key = "task" if location == "snapshot_task" else "policy"
+            document[document_key][field] = True
+            snapshot_bytes = json.dumps(
+                document,
+                sort_keys=True,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+            snapshot_ref, content_hash = snapshot_store.put(snapshot_bytes)
+            payload["snapshot_ref"] = snapshot_ref
+            payload["content_hash"] = content_hash
+
+        event.payload = payload
+
+    with pytest.raises(
+        UpdateThreadContextError,
+        match="update_thread_context_manifest_corrupt",
+    ):
+        assembler.assemble(created.task_id, 1)
 
 
 def test_context_fails_closed_when_active_hypothesis_bound_is_exceeded(
