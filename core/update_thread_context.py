@@ -73,7 +73,7 @@ def _canonical_json(value: dict[str, Any]) -> bytes:
 
 def _is_exact_int(value: Any) -> bool:
     """JSON booleans must never satisfy an integer protocol field."""
-    return type(value) is int
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _utc(value: datetime) -> str:
