@@ -772,7 +772,7 @@ The proposed model worker uses exhaustive membership for accepted EvidenceLinks 
 
 ### RW-3 independent-review contract completion
 
-The model-worker Task is created with exactly one immutable update_thread_requested Event in the same transaction. The Event binds the Task, Team, target Thread, pinned policy version, idempotency key, and canonical request fingerprint; the application validates exact-one cardinality and all Task/Team/Thread/policy relationships before provider execution. The worker cannot create or alter the request.
+The model-worker Task is created with exactly one immutable update_thread_requested Event in the same transaction. The Event binds the Task, Team, target Thread, pinned policy version, and canonical request fingerprint; the application validates exact-one cardinality and all Task/Team/Thread/policy relationships before provider execution. The worker cannot create or alter the request.
 
 TaskRuntime recovery owns the Task lock and passes its already-open Session, Task, and current attempt to a narrow resume_update_thread_in_session function. That function reads durable receipt/proposal/marker evidence and resumes the same proposal set without provider invocation or a competing transaction. Transient commit failures leave the same proposal resumable; permanent integrity conflicts fail closed with no business writes and a distinct update_thread_recovery_inconsistent marker.
 
