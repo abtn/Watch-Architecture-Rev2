@@ -63,8 +63,17 @@ class AssembledUpdateThreadContext:
 
 def _canonical_json(value: dict[str, Any]) -> bytes:
     return json.dumps(
-        value, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+        value,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
     ).encode("utf-8")
+
+
+def _is_exact_int(value: Any) -> bool:
+    """JSON booleans must never satisfy an integer protocol field."""
+    return type(value) is int
 
 
 def _utc(value: datetime) -> str:
@@ -447,8 +456,7 @@ class UpdateThreadContextAssembler:
         for event in events:
             if (
                 not isinstance(event.payload, dict)
-                or isinstance(event.payload.get("attempt"), bool)
-                or not isinstance(event.payload.get("attempt"), int)
+                or not _is_exact_int(event.payload.get("attempt"))
                 or not 1 <= event.payload["attempt"] <= 3
             ):
                 raise UpdateThreadContextError("update_thread_context_event_corrupt")
@@ -473,14 +481,14 @@ class UpdateThreadContextAssembler:
         }
         if (
             set(payload) != expected_keys
-            or isinstance(payload.get("schema_version"), bool)
+            or not _is_exact_int(payload.get("schema_version"))
             or payload.get("schema_version") != 1
             or payload.get("task_id") != str(task.id)
             or payload.get("team_id") != str(task.team_id)
             or payload.get("thread_id") != str(request.thread_id)
-            or isinstance(payload.get("attempt"), bool)
+            or not _is_exact_int(payload.get("attempt"))
             or payload.get("attempt") != attempt
-            or isinstance(payload.get("policy_version"), bool)
+            or not _is_exact_int(payload.get("policy_version"))
             or payload.get("policy_version") != task.policy_version
             or not isinstance(payload.get("snapshot_ref"), str)
             or not isinstance(payload.get("content_hash"), str)
@@ -542,22 +550,69 @@ class UpdateThreadContextAssembler:
                 "manifest",
             }
             or document.get("schema_version") != CONTEXT_SCHEMA_VERSION
-            or document.get("manifest") != payload["manifest"]
+            or not isinstance(document.get("manifest"), dict)
+            or _canonical_json(document["manifest"])
+            != _canonical_json(payload["manifest"])
+            or set(payload["manifest"])
+            != {
+                "schema_version",
+                "task_id",
+                "team_id",
+                "thread_id",
+                "attempt",
+                "policy_version",
+                "request_event_id",
+                "assembled_at",
+                "hypothesis_ids",
+                "evidence_link_ids",
+                "source_snapshot_refs",
+                "source_snapshot_hashes",
+                "evidence_characters",
+            }
             or payload["manifest"].get("schema_version") != CONTEXT_SCHEMA_VERSION
             or payload["manifest"].get("task_id") != str(task.id)
             or payload["manifest"].get("team_id") != str(task.team_id)
             or payload["manifest"].get("thread_id") != str(request.thread_id)
+            or not _is_exact_int(payload["manifest"].get("attempt"))
             or payload["manifest"].get("attempt") != attempt
+            or not _is_exact_int(payload["manifest"].get("policy_version"))
             or payload["manifest"].get("policy_version") != task.policy_version
             or payload["manifest"].get("request_event_id") != str(request_event_id)
+            or not isinstance(payload["manifest"].get("assembled_at"), str)
+            or not isinstance(payload["manifest"].get("hypothesis_ids"), list)
+            or not all(
+                isinstance(value, str)
+                for value in payload["manifest"]["hypothesis_ids"]
+            )
+            or not isinstance(payload["manifest"].get("evidence_link_ids"), list)
+            or not all(
+                isinstance(value, str)
+                for value in payload["manifest"]["evidence_link_ids"]
+            )
+            or not isinstance(payload["manifest"].get("source_snapshot_refs"), list)
+            or not all(
+                isinstance(value, str)
+                for value in payload["manifest"]["source_snapshot_refs"]
+            )
+            or not isinstance(payload["manifest"].get("source_snapshot_hashes"), dict)
+            or not all(
+                isinstance(key, str) and isinstance(value, str)
+                for key, value in payload["manifest"]["source_snapshot_hashes"].items()
+            )
+            or not _is_exact_int(payload["manifest"].get("evidence_characters"))
+            or payload["manifest"]["evidence_characters"] < 0
             or task_document.get("id") != str(task.id)
             or task_document.get("team_id") != str(task.team_id)
             or task_document.get("thread_id") != str(request.thread_id)
+            or not _is_exact_int(task_document.get("attempt"))
             or task_document.get("attempt") != attempt
+            or not _is_exact_int(task_document.get("policy_version"))
             or task_document.get("policy_version") != task.policy_version
             or team_document.get("id") != str(task.team_id)
             or thread_document.get("id") != str(request.thread_id)
+            or not _is_exact_int(policy_document.get("version"))
             or policy_document.get("version") != task.policy_version
+            or not _is_exact_int(policy_document.get("schema_version"))
         ):
             raise UpdateThreadContextError("update_thread_context_manifest_corrupt")
         return AssembledUpdateThreadContext(
