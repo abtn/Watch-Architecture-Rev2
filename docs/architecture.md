@@ -786,6 +786,10 @@ Proposal identity uses strict typed-model serialization (model_dump(mode="json")
 
 ## RW-3 request identity — Checkpoint 4 approved design
 
-RW-3 uses Team-scoped deterministic Task identity: a dedicated fixed UUIDv5 namespace over canonical Team UUID, update_thread, and canonical idempotency UUID. The R6-F conflict-safe insertion pattern ensures only one request Event is created for the winning Task. Same-Team key reuse for another Thread or requester conflicts; the same key in another Team is a separate identity.
+RW-3 uses Team-scoped deterministic Task identity: a dedicated fixed UUIDv5 namespace over canonical Team UUID, update_thread, and canonical idempotency UUID. The R6-F conflict-safe insertion pattern ensures only one request Event is created for the winning Task. Same-Team key reuse for another Thread or requester conflicts; the same key in another Team is a separate identity. Policy advancement alone does not invalidate replay; the original Task policy pin is retained.
 
 The immutable request Event stores canonical issuer/subject requester identity and a SHA-256 idempotency-key hash, never the raw key. Its versioned, domain-separated canonical JSON fingerprint binds Task, Team, Thread, pinned policy, requester, and key hash. Replay validates exactly one Event and the historical policy pin; policy advancement alone does not invalidate replay. Proposal-set identity is separate, attempt/receipt/charge-bound, and uses strict typed canonical serialization.
+
+## Checkpoint 5 — reconciled RW-3 boundary
+
+The RW-3 design, Task envelope, and milestone status have distinct authorities: the RW-3 design plan specifies protocol/recovery, `docs/tasks.md` specifies the Task envelope and write scope, and `PLAN.md` specifies current status and authorization. The reconciled Checkpoint 4 identity contract is Team-scoped; a same-Team/key request with another Thread or requester conflicts, while the same UUID in another Team is a separate identity. Policy advancement alone does not invalidate replay of the original Task. Request and proposal-set fingerprints remain separate. No implementation is authorized by these documentation decisions.
