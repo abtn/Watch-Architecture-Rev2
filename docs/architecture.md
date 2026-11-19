@@ -763,3 +763,8 @@ This list is binding. Do not add these because they seem easy; each deferral is 
 A separate `Action` entity for external side effects with their own retry/idempotency model; full `Expectation`/`Prediction` entities with scoring; richer outcome connectors; cross-team knowledge sharing; formal knowledge-review queues; per-operator identity and permissions; stronger approval and identity records. Conceptually future: autonomous role formation, self-allocating budgets, self-modifying security boundaries, organization-wide reputation, automatic team creation, general reward models.
 
 Repository layout lives in `AGENTS.md`; the build order lives in `PLAN.md`.
+
+
+### RW-3 design-review clarifications
+
+The proposed model worker uses exhaustive membership for accepted EvidenceLinks attached to active Hypotheses on the target Thread; it does not rank or heuristically filter them. Context uses the immutable Task's pinned policy_version, never a newer policy selected at execution time. Provider results must expose validated usage and raw completion text before JSON parsing so usage can be reconciled even for malformed JSON. The shared commit boundary distinguishes the existing canonical Operator principal from an application-defined, Task-attributed model_worker actor without changing RW-2 Operator Event behavior. RW-3 terminal success is limited to success_no_change and success_world_memory_updated, both finalized by TaskRuntime.
