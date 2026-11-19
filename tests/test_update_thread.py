@@ -369,8 +369,12 @@ def test_context_is_deterministic_bounded_and_replayable(
     expected_hypothesis_ids = sorted(
         [first_hypothesis_id, second_hypothesis_id]
     )
+    evidence_id_by_hypothesis = {
+        first_hypothesis_id: first_evidence_id,
+        second_hypothesis_id: second_evidence_id,
+    }
     expected_evidence_ids = [
-        str(first_evidence_id if hypothesis_id == first_hypothesis_id else second_evidence_id)
+        str(evidence_id_by_hypothesis[hypothesis_id])
         for hypothesis_id in expected_hypothesis_ids
     ]
     assert first.snapshot_ref == second.snapshot_ref
@@ -379,7 +383,9 @@ def test_context_is_deterministic_bounded_and_replayable(
     assert [item["id"] for item in first.document["hypotheses"]] == [
         str(item) for item in expected_hypothesis_ids
     ]
-    assert [item["id"] for item in first.document["evidence_links"]] == expected_evidence_ids
+    assert [item["id"] for item in first.document["evidence_links"]] == (
+        expected_evidence_ids
+    )
     assert next(
         item["statement"]
         for item in first.document["hypotheses"]
