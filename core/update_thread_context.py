@@ -235,7 +235,6 @@ class UpdateThreadContextAssembler:
                     source_snapshots[reference] = snapshot
 
                 quote = link.quote_text
-                offsets = (link.quote_start, link.quote_end)
                 if (quote is None) != (
                     link.quote_start is None or link.quote_end is None
                 ):
