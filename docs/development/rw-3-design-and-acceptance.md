@@ -108,8 +108,8 @@ These are inherited constraints, not new RW-3 provider authorization. The determ
 3. Assemble and validate the bounded Context for that admitted attempt. If this fails, record failure through TaskRuntime; do not reserve cost or call the provider.
 4. Reserve the maximum permitted generation cost for the exact Task attempt through the existing cost-accounting service.
 5. Call the configured existing generation provider only after reservation succeeds.
-6. Parse the response against a strict typed schema. Reject malformed JSON, unknown fields, unsupported proposal types, malformed identifiers, excessive output, and more than 8 proposals; do not coerce or repair them. Canonical reference ownership, freshness, and domain validity remain commit-core checks and produce per-proposal rejection Events where applicable.
-7. Reconcile provider usage/cost and validate the exact current-attempt charge before any business commit. A missing, unknown, unreconciled, or overrun charge cannot authorize business writes; retain the applicable reservation/unknown-cost accounting and fail the Task through TaskRuntime.
+6. Reconcile provider usage/cost from the raw provider response and validate the exact current-attempt charge. Do this even if the response body will later fail parsing. Missing/unknown/unreconciled/overrun usage cannot authorize business writes; preserve the applicable reservation/unknown-cost accounting and fail through TaskRuntime.
+7. Parse the response against a strict typed schema. Reject malformed JSON, unknown fields, unsupported proposal types, malformed identifiers, excessive output, and more than 8 proposals; do not coerce or repair them. Canonical reference ownership, freshness, and domain validity remain commit-core checks and produce per-proposal rejection Events where applicable.
 8. Submit non-empty typed proposals to the shared RW-2 validation and transaction core through a narrow actor-neutral seam. The current `WorldMemoryCommitService` is Operator-specific: it validates an Operator principal and records `operator_id`; it cannot be called unchanged by a model worker. Preserve the Operator adapter and its event contract, and add only the minimum trusted `model_worker` actor attribution needed by `update_thread`. This remains the sole business-write boundary; do not create a parallel commit service.
 9. Finalize or recover through TaskRuntime. A failure after reconciliation but before commit leaves no accepted business writes; the incurred charge remains recorded.
 
@@ -136,7 +136,7 @@ An explicit response with an empty `proposals` list is a valid no-op. After succ
 | Invalid/stale/cross-scope Context | Fail closed; no provider call and no business writes. |
 | Cost reservation denied | No provider call. |
 | Provider timeout/transport failure | Existing bounded TaskRuntime failure/retry behavior; no business commit. |
-| Malformed or oversized output | Non-retryable TaskRuntime failure; no per-proposal rejection Events and no business commit. |
+| Malformed or oversized output | Reconcile provider usage first; then record a non-retryable TaskRuntime failure. No per-proposal rejection Events and no business commit. |
 | Invalid individual proposal | Rejection Event; exclude it from the accepted set. |
 | All proposals invalid | Task fails; no business writes. |
 | Mixed valid/invalid proposals | Commit valid set atomically; preserve invalid-proposal rejection Events. |
