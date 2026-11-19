@@ -89,19 +89,25 @@ The `triage_signal`, `update_thread`, `operator_update`, and `apply_decay` strin
 
 ### RW-3 — bounded model update_thread worker
 
-**Purpose:** allow a temporary model worker to propose updates to the world model without making the model authoritative.
+**Purpose:** let a temporary model worker propose updates to one existing Thread while keeping authority, validation, and persistence in application/Kernel code.
 
-**Proposed scope:**
-- Assemble bounded Task Context from the target Thread, active Hypotheses, relevant dispositions, accepted evidence, and policy-authorized Team Experience.
-- Use the existing generation/provider and Task cost/accounting boundaries; no new provider or direct database access is implied.
-- Validate a typed proposal envelope through the same commit service used by operator_update.
-- Record deterministic rejection Events with stable reasons and preserve atomic proposal-set semantics.
-- Do not add an automatic repair/re-proposal loop in the first implementation unless RW-0 explicitly decides otherwise; measure the rejection rate first.
-- Tests use deterministic provider stubs for proofs. Any live model smoke test is separate and cannot replace deterministic tests.
+**Planning status:** design and acceptance proposal are documented in [RW-3 design and acceptance plan](rw-3-design-and-acceptance.md). RW-3 implementation is not authorized. RW3-0 must close its design locks and receive separate explicit implementation authorization.
 
-**Required proof:** all RW-2 commit proofs plus malformed output, out-of-scope writes, provider failure, cost/deadline handling, stale Context, and replay.
+**Proposed boundary:** TaskRuntime owns admission, attempt lifecycle, terminalization, and recovery. Trusted Task/database state fixes Team and target Thread. Application code assembles bounded Context. The existing generation/provider and cost-accounting boundary returns untrusted output. A strict typed parser validates it. The existing RW-2 commit service validates and atomically commits proposals. No second runtime, scheduler, provider abstraction, auth system, direct model-to-database path, or generic dispatcher framework.
 
-**Exit:** model proposals can improve the world model only through the shared application validation and commit path. Model output cannot write TeamPolicy or KnowledgeItems directly.
+**Proposed Context:** target Thread; active same-Thread Hypotheses; relevant accepted EvidenceLinks; exact immutable source Snapshots; current applicable policy. Team Experience is eligible only if the existing authorized retrieval path can provide canonical identity, Team eligibility, freshness, and provenance without new retrieval infrastructure. SignalDisposition and triage state are excluded and remain RW-4. Context must be deterministic, explicitly bounded, provenance-preserving, and fail closed on stale, unauthorized, cross-scope, missing, or corrupt required sources.
+
+**Business write scope:** exactly `EvidenceLink`, `Hypothesis`, and `ConfidenceChange`. Event/Outcome remain Kernel/TaskRuntime side effects. Reuse the RW-2 proposal types and commit service. Preserve all RW-2 validation, ownership, Snapshot/quote/hash, stance, confidence-cause, initial-low-confidence, legal-transition, same-Thread successor, idempotency, replay, concurrency, and atomicity rules.
+
+**Explicit exclusions:** SignalDisposition refinement/triage; Thread creation/reactivation/summary projections; TeamPolicy or KnowledgeItem mutation; Artifact/Consultation creation; worker-written Outcomes; other-Thread mutations; automatic semantic repair or model re-proposal loops.
+
+**Generation sequence:** validate Task/target/policy → assemble and verify Context → TaskRuntime admission → reserve maximum generation cost → call existing provider → strict parse and bound output → shared RW-2 commit → reconcile known/unknown cost → TaskRuntime finalization. Reservation precedes provider invocation. No hidden provider retries; only existing bounded TaskRuntime retry policy may apply.
+
+**Batch/failure semantics:** preserve RW-D18/RW-2 semantics: invalid proposals receive attributable rejection Events; valid proposals commit atomically as one accepted set; transaction failure rolls back that set; the Task fails only when all proposals are rejected. Mixed valid/invalid batches may commit the valid set only. Provider/parser/Context/reservation failures cannot create business writes. Unknown usage follows existing accounting and is never treated as zero. Empty/no-op response semantics remain an RW3-0 design lock.
+
+**Required proof:** all applicable RW-2 commit proofs through the model entry path, plus Context isolation/integrity/determinism/bounds, malformed and oversized output, authority escalation attempts, reservation-before-call, provider failure, known/unknown cost reconciliation, all-invalid and mixed batches, atomic rollback, replay, concurrency, and interrupted Task recovery. Ordinary CI uses a deterministic fake provider; live smoke tests, if later requested, are separate.
+
+**Exit:** the model can affect world memory only through the same application validation and commit path as `operator_update`; all RW-3 acceptance criteria and exact-head verification pass. This exit does not authorize RW-4 or RW-5.
 
 ### RW-4 — minimal triage and Domain Knowledge read path
 
@@ -146,14 +152,14 @@ The matrix defines required proof obligations, not tests that already exist. Eac
 | RW-HY-01 | Multiple active competing Hypotheses may coexist. | Create rival Hypotheses without implicit demotion/deletion. | RW-2 |
 | RW-HY-02 | Supersede/reject requires legal transition, successor where required, reason, and Event. | Missing reason, stale status, invalid successor, and replay cases. | RW-2 |
 | RW-HY-03 | Every new Hypothesis starts at low, including when evidence is supplied at creation; higher confidence requires a later Task-attributed ConfidenceChange. | Explicitly reject a proposal attempting an elevated initial band; prove low initial state and a later valid confidence change through Operator and model paths. | RW-2/RW-3 |
-| RW-AT-01 | Valid proposals commit atomically as one set; invalid proposals are rejected with attributable Events, and the Task fails if all proposals fail. | Test an all-valid set, a mixed valid/invalid batch, and a failure during the valid-set transaction. Invalid proposals create no business writes; a failed valid-set transaction leaves none of that set committed. Preserve the current `docs/tasks.md` / `docs/architecture.md` semantics unless RW-0 explicitly approves a contract change. | RW-2 |
+| RW-AT-01 | Valid proposals commit atomically as one set; invalid proposals are rejected with attributable Events, and the Task fails if all proposals fail. | Test an all-valid set, a mixed valid/invalid batch, and a failure during the valid-set transaction. Invalid proposals create no business writes; a failed valid-set transaction leaves none of that set committed. Preserve the accepted `docs/tasks.md` / `docs/architecture.md` semantics. | RW-2/RW-3 |
 | RW-RP-01 | Task/proposal replay creates no duplicate evidence or state transition. | Repeated identical Task commit returns/reuses canonical result. | RW-2/RW-3/RW-4/RW-5 |
 | RW-RC-01 | Concurrent updates cannot lose a Hypothesis/evidence change. | Repeated race test on one Thread; one winner or clean serialization, no lost update. | RW-2/RW-3 |
 | RW-TS-01 | Cross-Team Thread, Hypothesis, Signal, and Snapshot references are rejected. | Database-backed negative tests for each reference type. | RW-1/RW-2/RW-4 |
 | RW-LT-01 | last_touched_at changes only when evidence is accepted. | Accepted evidence updates it; mentions/rejected/replayed proposals do not. | RW-2/RW-3 |
 | RW-DC-01 | Decay never rejects a Hypothesis and never changes last_touched_at. | Stale and boundary-time tests; no rejection transition; unchanged touch time. | RW-5 |
 | RW-TR-01 | Triage is explicit and one-per-(Signal, Team). | Unique disposition, deferred refinement, dedup/noise/match/new-thread tests for frozen scope. | RW-4 |
-| RW-CT-01 | Task Context includes only bounded, current, same-Team accepted world memory. | Context manifest, active-status, scope, bound, and stale-reference tests. | RW-4 |
+| RW-CT-01 | Task Context includes only bounded, current, same-Team accepted world memory. | Context manifest, active-status, scope, bound, and stale-reference tests; RW-3 additionally proves target-Thread scope and exact source-Snapshot provenance. | RW-3/RW-4 |
 | RW-VAL-01 | The newsroom scenario demonstrates a repeatable end-to-end reasoning and retained-experience path. | Frozen corpus, baseline/experience-assisted runs, independent scoring, exact run artifacts and results. | All / exit gate |
 | RW-KU-01 | Each claim-level TaskKnowledgeReference is application-written and immutable, binds an identified output claim to the exact KnowledgeItem ID/version, originating LearningChange, relevant Team eligibility, and Task Context evidence. | RW-4-KU: exact-identity/version, LearningChange, Team eligibility, Context-manifest linkage, immutability, replay, and stale/invalid-reference rejection. Proposed test node: `tests/test_task_knowledge_reference.py`; finalize before RW-4-KU authorization. | RW-4-KU (planned; not authorized) |
 | RW-KU-02 | KnowledgeUseAssessment is typed and application-validated against the exact claim reference/knowledge version and the later Task's terminal Outcome; it grants no mutation or decision authority. | RW-4-KU: typed-value validation, exact claim/version/terminal-Outcome/Team/Context binding, immutability, replay, and forbidden-write/scope rejection. Proposed test node: `tests/test_knowledge_use_assessment.py`; finalize before RW-4-KU authorization. | RW-4-KU (planned; not authorized) |
