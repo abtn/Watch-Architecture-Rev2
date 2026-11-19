@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-import json
 from threading import Barrier
 from typing import Iterator
 from uuid import UUID, uuid4
