@@ -156,9 +156,9 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 ### `triage_signal` — deterministic
 
 **Implementation status:** specified; not implemented. Planned for RW-4.
-- **Purpose:** disposition a Signal for the Team; enqueue follow-up work.
+- **Purpose:** disposition a Signal for the Team. Triage records the deterministic disposition; it does not create or enqueue `update_thread` Tasks.
 - **Reads:** Signal (+embedding), Domain `match_heuristics` and `dedup_policy`, Team's Threads (+embeddings), recent dispositions.
-- **Writes:** SignalDisposition; Thread creation (`new_thread`); Thread reactivation (`dormant → active`); enqueue of `update_thread` for `deferred`/`matched` cases; Event.
+- **Writes:** SignalDisposition; Thread creation (`new_thread`); Thread reactivation (`dormant → active`); Event.
 - **Flow:** F1 steps 4–6.
 - **Validation:** one disposition per `(signal, team)`; embedding similarity uses the recorded `embedding_model`; `new_thread` requires a strong deterministic heuristic match (per-domain threshold).
 - **Failure:** heuristics error → disposition `deferred` with reason; never silent (INV-09).
@@ -337,7 +337,7 @@ side effect in footnote ¹; footnote ¹ grants no worker Snapshot permission.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ingest_source` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K²⁵ | K¹ | K²⁵ |
 | `manual_signal_ingest` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | K¹ | K |
-| `triage_signal` | — | — | W | C/W² | — | — | — | — | — | — | — | — | — | — | — | — | — | K²³ | — | K |
+| `triage_signal` | — | — | W | C/W² | — | — | — | — | — | — | — | — | — | — | — | — | — | K | — | K |
 | `update_thread` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
 | `operator_update` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
 | `apply_decay` | — | — | — | W⁵ | — | — | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
@@ -386,8 +386,6 @@ that passed deterministic validation. ²¹ In addition to its own lifecycle,
 enqueue only `request_consultation` when the documented delivery gate applies.
 ²² In addition to its own lifecycle, optionally enqueue only the documented
 follow-up update/evaluation work after recording the consultation answer.
-²³ In addition to its own lifecycle, enqueue only `update_thread` for the
-documented deferred/matched triage cases.
 ²⁴ Emit only this Task's own Plan lifecycle Events: `plan_completed` or
 `plan_stopped` for an accepted transition, and the categorized
 `plan_transition_rejected` Event for a rejected one. No other Event type, no
