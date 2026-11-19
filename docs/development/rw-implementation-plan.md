@@ -134,10 +134,10 @@ The `triage_signal`, `update_thread`, `operator_update`, and `apply_decay` strin
 - Keep ambiguous cases explicit as deferred; never silently discard a Signal or infer a Thread without the deterministic rule required by the Task contract.
 - Use explicit same-Team Thread fixtures for RW-2/RW-3 commit-path proofs. The current `operator_update` contract does not create Threads; canonical Thread creation remains in `triage_signal` (RW-4) unless a separate Task contract is explicitly approved. Do not widen `operator_update` scope implicitly.
 - Add a bounded, same-Team read path for active Hypotheses and verified evidence in Task Context.
-- Preserve the accepted Task write-scope matrix and Event (K) limits. Triage may enqueue only the documented update_thread follow-up cases.
+- Preserve the accepted Task write-scope matrix and Event (K) limits. Triage does not create or enqueue `update_thread` Tasks. Any future application-authored follow-up operation must be specified and authorized separately, with its own actor, authorization, attribution, request-Event, idempotency, and replay contract.
 - Do not expand domain-pack machinery beyond the frozen scenario's demonstrated need.
 
-**Required proof:** one disposition per (Signal, Team), legal deferred refinement, duplicate/noise/matched/new-thread behavior as included in the frozen scope, dormant Thread reactivation if implemented, same-Team Context filtering, and no unapproved Task enqueue.
+**Required proof:** one disposition per (Signal, Team), legal deferred refinement, duplicate/noise/matched/new-thread behavior as included in the frozen scope, dormant Thread reactivation if implemented, same-Team Context filtering, and proof that triage creates no `update_thread` Task or other unapproved follow-up Task.
 
 **Exit:** the newsroom scenario can move from source material to a durable Thread/Hypothesis state and retrieve that state in a later Task without bypassing validation.
 
