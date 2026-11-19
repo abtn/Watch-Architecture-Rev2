@@ -462,7 +462,9 @@ class UpdateThreadContextAssembler:
             or payload.get("task_id") != str(task.id)
             or payload.get("team_id") != str(task.team_id)
             or payload.get("thread_id") != str(request.thread_id)
+            or isinstance(payload.get("attempt"), bool)
             or payload.get("attempt") != attempt
+            or isinstance(payload.get("policy_version"), bool)
             or payload.get("policy_version") != task.policy_version
             or not isinstance(payload.get("snapshot_ref"), str)
             or not isinstance(payload.get("content_hash"), str)
@@ -493,8 +495,16 @@ class UpdateThreadContextAssembler:
                 Event.type == REQUEST_EVENT_TYPE,
             )
         )
+        task_document = document.get("task") if isinstance(document, dict) else None
+        team_document = document.get("team") if isinstance(document, dict) else None
+        thread_document = document.get("thread") if isinstance(document, dict) else None
+        policy_document = document.get("policy") if isinstance(document, dict) else None
         if (
-            not isinstance(document, dict)
+            not isinstance(task_document, dict)
+            or not isinstance(team_document, dict)
+            or not isinstance(thread_document, dict)
+            or not isinstance(policy_document, dict)
+            or not isinstance(document, dict)
             or set(document)
             != {
                 "schema_version",
@@ -516,14 +526,14 @@ class UpdateThreadContextAssembler:
             or payload["manifest"].get("attempt") != attempt
             or payload["manifest"].get("policy_version") != task.policy_version
             or payload["manifest"].get("request_event_id") != str(request_event_id)
-            or document.get("task", {}).get("id") != str(task.id)
-            or document.get("task", {}).get("team_id") != str(task.team_id)
-            or document.get("task", {}).get("thread_id") != str(request.thread_id)
-            or document.get("task", {}).get("attempt") != attempt
-            or document.get("task", {}).get("policy_version") != task.policy_version
-            or document.get("team", {}).get("id") != str(task.team_id)
-            or document.get("thread", {}).get("id") != str(request.thread_id)
-            or document.get("policy", {}).get("version") != task.policy_version
+            or task_document.get("id") != str(task.id)
+            or task_document.get("team_id") != str(task.team_id)
+            or task_document.get("thread_id") != str(request.thread_id)
+            or task_document.get("attempt") != attempt
+            or task_document.get("policy_version") != task.policy_version
+            or team_document.get("id") != str(task.team_id)
+            or thread_document.get("id") != str(request.thread_id)
+            or policy_document.get("version") != task.policy_version
         ):
             raise UpdateThreadContextError("update_thread_context_manifest_corrupt")
         return AssembledUpdateThreadContext(
