@@ -9,7 +9,7 @@ This is the current implementation-status summary after RW-2 acceptance on 2026-
 |---|---|
 | ingest_source | Implemented for the existing deterministic Signal-ingestion path. This does not include triage. |
 | triage_signal | Specified; not implemented. Planned for RW-4. |
-| update_thread | Specified; not implemented. RW-3 is planning-only and not authorized for implementation. |
+| update_thread | Specified; not implemented. RW-3 remains planning-only; Checkpoints 1–3 are approved design decisions only, not implementation authorization. |
 | operator_update | Deterministic host-invoked Operator path implemented and formally accepted in RW-2; PR #134 merged to main. |
 | apply_decay | Specified; not implemented. Planned for RW-5. |
 | Thread / Hypothesis / ConfidenceChange | ORM persistence implemented in RW-1; deterministic Operator commit path implemented and accepted in RW-2. |
@@ -39,6 +39,20 @@ The Event-scope allow-list in `core/ingestion.py` contains future Task type name
 - Tool calls and token usage are attributed to the Task and counted against its budget.
 - Most task types require an `active` Team; `create_team`, `configure_team`, and `activate_team` operate on shell/configuring teams and are the exceptions.
 - **No path bypasses validation for being human** (INV-15): operator task types use the same commit kernel, and operator identity is recorded in Event payloads.
+
+### RW-3 `update_thread` Task envelope — approved design, not implemented
+
+A newly created `update_thread` Task has the following exact shape:
+
+- `task_type="update_thread"`; `status="pending"`; `attempt_count=0`; `max_attempts=3`.
+- `team_id` is derived from the locked target Thread; `thread_id` is the same target bound by exactly one verified `update_thread_requested` Event; `policy_version` is the valid highest TeamPolicy version pinned under the Checkpoint 2 locking contract.
+- `objective_id`, `plan_id`, and `plan_action_id` are `NULL`.
+- `allowed_writes` is exactly `["EvidenceLink", "Hypothesis", "ConfidenceChange"]` in that order.
+- `budget` is exactly `{ "max_tool_calls": 0, "max_cost_usd": 0.02, "deadline_seconds": 45 }`. The Task has no tool capability. `max_attempts` is a separate Task field, not a budget key.
+- Do not add `input_refs` or `allowed_tools` Task columns for RW-3. The immutable request Event binds the target; application code assembles Context from canonical records and the Task-pinned policy. Event and Outcome remain Kernel/TaskRuntime side effects, not worker business writes.
+
+The `$0.02` cost ceiling is cumulative across all three starts. The existing ADR-0031 Cloudflare rate card quotes at most `$0.00500224` for one maximum 30,976-input/1,024-output-token attempt and `$0.01500672` for three such reservations. Every exact prompt is quoted and its maximum charge reserved before provider invocation; unknown/unresolved reservations continue to count in full. The only authorized cost integration is a narrow `update_thread` operation in the existing `TaskGenerationCostService`, bound to this Task type and exact write scope. The absolute 45-second deadline begins at admission and is enforced by the worker across Context assembly, provider execution, parsing, and pre-commit work; provider timeout is at most 30 seconds and cannot exceed remaining Task time. The current TaskRuntime validates the positive deadline field but does not enforce elapsed time; implementation must add only the narrow `update_thread` enforcement. The existing 60-second interrupted-task recovery threshold remains unchanged. See [RW-3 design §10.4.2](development/rw-3-design-and-acceptance.md#1042-task-shape-generation-budget-and-deadline).
+
 ### R6 first-slice lifecycle contract
 
 **Status authority.** Current milestone status and verification evidence live only in [PLAN.md](../PLAN.md). This section records the enduring R6 lifecycle and dispatcher contract; the requirements below remain mandatory.
@@ -601,13 +615,15 @@ implementation is the first bounded slice of that contract: it writes
 Hypothesis, EvidenceLink, and ConfidenceChange only. Deferred SignalDisposition
 and projection cells are not implemented by RW-2.
 ## 5. Budget defaults
-Starting points, tuned during M2; per-Task values may override downward, never upward past policy ceilings (`budgets` rule group). Operator task types (`operator_update`, `answer_consultation`, `create_team`, `activate_team`, plus the other manual types) incur no model cost and have no enforced deadline (—).
+Starting points, tuned during M2; per-Task values may override downward, never upward past policy ceilings (`budgets` rule group). The `update_thread` row is the approved fixed RW-3 design budget, not a generic starting point. Operator task types (`operator_update`, `answer_consultation`, `create_team`, `activate_team`, plus the other manual types) incur no model cost and have no enforced deadline (—).
 | Task type | max_tool_calls | max_cost_usd | deadline_s |
 |---|---|---|---|
 | `ingest_source` | 0 | 0 | 60 |
 | `manual_signal_ingest` | 0 | 0 | 60 |
 | `triage_signal` | 0 | 0 | 60 |
-| `update_thread` | 8 | 0.50 | 180 |
+| `update_thread` | 0 | 0.02 | 45 |
+
+The `update_thread` budget is cumulative across its three maximum starts. Its provider is limited to the existing ADR-0031 Cloudflare model, one synchronous non-streaming request per attempt, no tools or provider retries, at most 1,024 output tokens, and the existing 32,000-token total quoted-context ceiling. The provider timeout is capped at 30 seconds within the absolute 45-second Task deadline. The `$0.02` ceiling covers up to three maximum conservative reservations under the current rate card; unknown charges remain fully accounted. These values are fixed by the approved RW-3 Checkpoint 3 design and cannot be increased by per-Task override.
 | `operator_update` | 0 | 0 | — |
 | `apply_decay` | 0 | 0 | 300 |
 | `check_triggers` | 0 | 0 | 60 |
