@@ -150,7 +150,9 @@ class UpdateThreadContextAssembler:
                 )
             )
             if len(hypotheses) > MAX_HYPOTHESES:
-                raise UpdateThreadContextError("update_thread_hypothesis_bound_exceeded")
+                raise UpdateThreadContextError(
+                    "update_thread_hypothesis_bound_exceeded"
+                )
 
             hypothesis_ids = [item.id for item in hypotheses]
             links: list[EvidenceLink] = []
@@ -171,7 +173,9 @@ class UpdateThreadContextAssembler:
                     )
                 )
             if len(links) > MAX_EVIDENCE_LINKS:
-                raise UpdateThreadContextError("update_thread_evidence_link_bound_exceeded")
+                raise UpdateThreadContextError(
+                    "update_thread_evidence_link_bound_exceeded"
+                )
 
             source_snapshots: dict[str, dict[str, str]] = {}
             evidence_documents: list[dict[str, Any]] = []
@@ -180,12 +184,19 @@ class UpdateThreadContextAssembler:
             active_hypothesis_ids = set(hypothesis_ids)
             for link in links:
                 if link.hypothesis_id not in active_hypothesis_ids:
-                    raise UpdateThreadContextError("update_thread_evidence_hypothesis_mismatch")
+                    raise UpdateThreadContextError(
+                        "update_thread_evidence_hypothesis_mismatch"
+                    )
                 reference, expected_hash = self._source_snapshot(
                     session, team, link
                 )
-                if link.snapshot_ref != reference or link.snapshot_hash != expected_hash:
-                    raise UpdateThreadContextError("update_thread_evidence_snapshot_stale")
+                if (
+                    link.snapshot_ref != reference
+                    or link.snapshot_hash != expected_hash
+                ):
+                    raise UpdateThreadContextError(
+                        "update_thread_evidence_snapshot_stale"
+                    )
 
                 snapshot = source_snapshots.get(reference)
                 if snapshot is None:
@@ -220,8 +231,12 @@ class UpdateThreadContextAssembler:
 
                 quote = link.quote_text
                 offsets = (link.quote_start, link.quote_end)
-                if (quote is None) != (link.quote_start is None or link.quote_end is None):
-                    raise UpdateThreadContextError("update_thread_evidence_quote_shape_invalid")
+                if (quote is None) != (
+                    link.quote_start is None or link.quote_end is None
+                ):
+                    raise UpdateThreadContextError(
+                        "update_thread_evidence_quote_shape_invalid"
+                    )
                 if quote is not None and (
                     link.quote_start is None
                     or link.quote_end is None
@@ -229,7 +244,9 @@ class UpdateThreadContextAssembler:
                     or link.quote_end <= link.quote_start
                     or snapshot["text"][link.quote_start:link.quote_end] != quote
                 ):
-                    raise UpdateThreadContextError("update_thread_evidence_quote_mismatch")
+                    raise UpdateThreadContextError(
+                        "update_thread_evidence_quote_mismatch"
+                    )
 
                 evidence_documents.append(
                     {
@@ -324,7 +341,9 @@ class UpdateThreadContextAssembler:
             content_hash = "sha256:" + hashlib.sha256(snapshot_bytes).hexdigest()
             snapshot_ref, stored_hash = self._snapshot_store.put(snapshot_bytes)
             if stored_hash != content_hash:
-                raise UpdateThreadContextError("update_thread_context_snapshot_hash_mismatch")
+                raise UpdateThreadContextError(
+                    "update_thread_context_snapshot_hash_mismatch"
+                )
 
             event = Event(
                 id=uuid4(),
@@ -371,7 +390,9 @@ class UpdateThreadContextAssembler:
 
         if link.source_kind == "outcome":
             if link.outcome_id is None or link.signal_id is not None:
-                raise UpdateThreadContextError("update_thread_outcome_reference_invalid")
+                raise UpdateThreadContextError(
+                    "update_thread_outcome_reference_invalid"
+                )
             source = session.get(Outcome, link.outcome_id)
             if (
                 source is None
@@ -447,11 +468,15 @@ class UpdateThreadContextAssembler:
             ) from error
         actual_hash = "sha256:" + hashlib.sha256(snapshot_bytes).hexdigest()
         if actual_hash != payload["content_hash"]:
-            raise UpdateThreadContextError("update_thread_context_snapshot_hash_mismatch")
+            raise UpdateThreadContextError(
+                "update_thread_context_snapshot_hash_mismatch"
+            )
         try:
             document = json.loads(snapshot_bytes)
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise UpdateThreadContextError("update_thread_context_document_corrupt") from error
+            raise UpdateThreadContextError(
+                "update_thread_context_document_corrupt"
+            ) from error
         if (
             not isinstance(document, dict)
             or document.get("manifest") != payload["manifest"]
