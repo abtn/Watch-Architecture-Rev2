@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -177,8 +177,9 @@ class UpdateThreadContextAssembler:
             evidence_documents: list[dict[str, Any]] = []
             evidence_characters = 0
 
+            active_hypothesis_ids = set(hypothesis_ids)
             for link in links:
-                if link.hypothesis_id not in set(hypothesis_ids):
+                if link.hypothesis_id not in active_hypothesis_ids:
                     raise UpdateThreadContextError("update_thread_evidence_hypothesis_mismatch")
                 reference, expected_hash = self._source_snapshot(
                     session, team, link
@@ -326,7 +327,7 @@ class UpdateThreadContextAssembler:
                 raise UpdateThreadContextError("update_thread_context_snapshot_hash_mismatch")
 
             event = Event(
-                id=UUID(int=0),
+                id=uuid4(),
                 task_id=task.id,
                 type=CONTEXT_EVENT_TYPE,
                 payload={
@@ -342,7 +343,6 @@ class UpdateThreadContextAssembler:
                 },
                 created_at=assembled_at,
             )
-            event.id = __import__("uuid").uuid4()
             session.add(event)
             session.flush()
             return AssembledUpdateThreadContext(
@@ -395,12 +395,15 @@ class UpdateThreadContextAssembler:
                 )
             )
         )
-        matching = [
-            event
-            for event in events
-            if isinstance(event.payload, dict)
-            and event.payload.get("attempt") == attempt
-        ]
+        for event in events:
+            if (
+                not isinstance(event.payload, dict)
+                or isinstance(event.payload.get("attempt"), bool)
+                or not isinstance(event.payload.get("attempt"), int)
+                or not 1 <= event.payload["attempt"] <= 3
+            ):
+                raise UpdateThreadContextError("update_thread_context_event_corrupt")
+        matching = [event for event in events if event.payload["attempt"] == attempt]
         if len(matching) > 1:
             raise UpdateThreadContextError("update_thread_context_event_duplicate")
         if not matching:
@@ -423,6 +426,7 @@ class UpdateThreadContextAssembler:
         }
         if (
             set(payload) != expected_keys
+            or isinstance(payload.get("schema_version"), bool)
             or payload.get("schema_version") != 1
             or payload.get("task_id") != str(task.id)
             or payload.get("team_id") != str(task.team_id)
