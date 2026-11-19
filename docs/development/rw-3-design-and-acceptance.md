@@ -400,3 +400,63 @@ A validated non-empty proposal set is never discarded or regenerated merely beca
 - Permanent integrity/provenance failure: write no business rows. Record update_thread_recovery_inconsistent with the exact Task/attempt/proposal fingerprint and stable failure category, then TaskRuntime records terminal_failure. This marker is the only permitted terminal-failure evidence for a non-empty validated proposal set when the failure is not an all-invalid domain result. It must not claim that proposals were rejected by domain validation.
 - Successful or mixed commit: write accepted rows, accepted/rejected per-proposal Events, and one update_thread_committed marker in the same transaction. Recovery verifies the exact marker and rows before terminalization.
 - No generic retry queue or new retry subsystem is introduced. Existing TaskRuntime policy decides when to retry transient infrastructure failures; it always resumes the same durable proposal set before considering a new provider attempt.
+
+## Checkpoint 4 — deterministic request and proposal identity decisions approved
+
+The following Checkpoint 4 decisions are approved. They resolve earlier provisional wording in this document; Checkpoint 5 will perform a full cross-document reconciliation.
+
+### Task identity and request idempotency
+
+Use a dedicated fixed UUIDv5 namespace for update_thread. The deterministic name is the canonical lowercase, hyphenated Team UUID, the literal operation update_thread, and the canonical lowercase, hyphenated idempotency UUID, separated by colons:
+
+{team_id}:update_thread:{idempotency_key}
+
+The namespace is a fixed implementation constant, never generated at runtime. This is Team-scoped idempotency, matching the R6-F deterministic Task identity precedent.
+
+- Same Team and same key resolve the same Task.
+- Within that Team/key scope, a different Thread or canonical requesting Operator conflicts; it must not create a second Task or request Event.
+- The same UUID used by a different Team is a separate Team-scoped identity, not a cross-Team conflict. Global cross-Team key uniqueness is not part of RW-3 and would require a different durable uniqueness design.
+
+Use the proven R6-F creation pattern: attempt deterministic Task insertion with conflict-safe insertion; only the transaction that wins Task creation appends the request Event; resolve a competing insert through the Task primary key and validate the existing request. Do not use the weaker RW-2 operator_update insertion path for this concurrency boundary.
+
+### Request Event and fingerprint
+
+The request Event stores no raw idempotency UUID. Store only idempotency_key_hash, computed as SHA-256 over the canonical lowercase, hyphenated UUID string encoded as ASCII, formatted sha256:{64 lowercase hex characters}.
+
+The request fingerprint is SHA-256 over UTF-8 bytes of compact canonical JSON with sorted keys, ensure_ascii=False, and separators (",", ":"). Its exact versioned object contains only:
+
+- domain: watch.rw3.update-thread-request.v1
+- schema_version: integer 1
+- canonical task_id, team_id, and thread_id
+- the Task's pinned integer policy_version
+- requested_by_operator_id, produced by the existing canonical_operator_identity() helper
+- idempotency_key_hash
+
+Store the digest as sha256:{lowercase hex}. Do not include the fingerprint itself, Event ID, Event timestamp, or database-generated metadata in its preimage. The domain and schema version are fixed protocol constants.
+
+Requester identity must reuse canonical_operator_identity(): stable issuer/subject identity, compact sorted-key JSON, and the helper's existing validation. It is request attribution only; it is not model-worker identity and must never be copied into operator_id for worker Events.
+
+### Replay and pinned policy
+
+Resolve deterministic Task identity before selecting a current policy. For an existing Task, validate its exact Task shape, load exactly one valid request Event, validate its schema and canonical identity, recompute the request fingerprint, and revalidate Thread and historical TeamPolicy ownership/integrity. Return the original Task only if the request matches.
+
+Policy advancement alone does not conflict with replay. Replay retains the Task's original policy_version; it does not select the latest version again. A mismatch between Task policy pin and request Event, missing/cross-Team/invalid historical policy, duplicate or malformed request Event, or fingerprint mismatch fails closed.
+
+### Proposal-set identity is distinct
+
+The request fingerprint identifies the authorized host request and its immutable Task/Thread binding. The proposal-set fingerprint identifies one exact generated proposal set for one Task attempt and charge. Do not combine these identities.
+
+Retain the proposal-set domain watch.rw3.update-thread-proposals.v1. Bind the complete strict typed proposal list to Task, Team, Thread, attempt, pinned policy, durable generation-receipt Event ID, and charge ID. Serialize typed proposals using Pydantic model_dump(mode="json"), canonical compact sorted-key JSON, UTF-8, and SHA-256. Preserve proposal-array order and reject duplicate proposal keys. The response schema permits an explicit empty list and caps non-empty lists at eight; this does not alter the Operator request's existing 64-proposal limit.
+
+### Checkpoint 4 proof obligations
+
+- Deterministic UUIDv5 golden vectors prove namespace and canonical name stability across process restarts.
+- Concurrent same-Team/same-key creation produces exactly one Task and one request Event.
+- Same-Team/key reuse with a different Thread or requester conflicts without extra Task/Event creation; same key in another Team is independently scoped.
+- Request Event cardinality, schema, requester identity, key hash, Task binding, pinned policy, and fingerprint are validated on replay and before provider execution.
+- Golden request-fingerprint vectors prove exact canonical bytes and digest; raw idempotency UUID is absent from persisted Event data.
+- Policy advancement preserves valid historical replay; Task/Event pin mismatch and invalid historical policy fail closed.
+- Golden proposal-set vectors prove canonical typed serialization, UUID/enum representation, preserved array order, duplicate-key rejection, empty-list support, domain separation, and exact digest.
+- Proposal-set identity cannot be replayed across Task, Team, Thread, attempt, policy, receipt, or charge.
+
+No application code, tests, migrations, schema, or runtime behavior are changed by this decision. RW-3 implementation remains unauthorized.
