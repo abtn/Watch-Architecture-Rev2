@@ -596,7 +596,7 @@ Flow numbers (F1–F8) are cited from `docs/tasks.md` and the walkthrough.
 2. Connector fetches; content is hashed. Identical hash at the same origin → fetch-no-change Event, Task done, no new Signal.
 3. New content → Snapshot stored first, then Signal row committed atomically (INV-03).
 4. A `triage_signal` Task runs domain `match_heuristics` and embedding similarity against the Team's Threads and recent Signals.
-5. Dispositions are written: `duplicate` (near-duplicate of a recent Signal per the domain dedup policy), `noise`, `matched` (existing Thread), `deferred` (ambiguous — an update Task is enqueued), or `new_thread` (strong deterministic match; Thread created in the same commit).
+5. Dispositions are written: `duplicate` (near-duplicate of a recent Signal per the domain dedup policy), `noise`, `matched` (existing Thread), `deferred` (ambiguous; remains deferred without creating an update Task), or `new_thread` (strong deterministic match; Thread created in the same commit). Triage does not create or enqueue `update_thread` Tasks; any future application-authored follow-up creator requires a separate contract and authorization.
 6. A disposition matching a dormant Thread reactivates it.
 
 **Commit-time validation:** snapshot stored before Signal commit; hash match; unique `(signal, team)` disposition; task scope.
