@@ -233,7 +233,7 @@ class OperatorApplicationAdapter:
                     envelope = validate_update_thread_task_request(
                         session, existing
                     )
-                    policy = load_pinned_policy(
+                    load_pinned_policy(
                         session, team_id, existing.policy_version
                     )
                 except UpdateThreadTaskError as error:
