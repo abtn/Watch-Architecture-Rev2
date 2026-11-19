@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from threading import Barrier
 from typing import Iterator
 from uuid import UUID, uuid4
 
@@ -35,6 +37,7 @@ from core.update_thread import (
     REQUEST_EVENT_TYPE,
     TASK_BUDGET,
     UpdateThreadTaskRequest,
+    task_id_for_request,
 )
 from core.update_thread_context import (
     CONTEXT_EVENT_TYPE,
@@ -468,3 +471,156 @@ def test_context_fails_closed_when_evidence_character_bound_is_exceeded(
         UpdateThreadContextAssembler(session_factory, snapshot_store).assemble(
             created.task_id, 1
         )
+
+
+def test_request_task_identity_is_stable_and_team_scoped(
+    rw3_fixture: Fixture,
+) -> None:
+    key = uuid4()
+    first = task_id_for_request(rw3_fixture.team_id, key)
+    second = task_id_for_request(rw3_fixture.team_id, key)
+    other_team = task_id_for_request(uuid4(), key)
+    assert first == second
+    assert first != other_team
+
+
+def test_replay_keeps_original_policy_after_policy_advancement(
+    session_factory: sessionmaker[Session], rw3_fixture: Fixture
+) -> None:
+    request, created = _create_task(session_factory, rw3_fixture)
+    with session_factory.begin() as session:
+        session.add(
+            TeamPolicy(
+                id=uuid4(),
+                team_id=rw3_fixture.team_id,
+                version=2,
+                schema_version=2,
+                rules={},
+            )
+        )
+    replayed = OperatorApplicationAdapter(session_factory).create_update_thread_task(
+        _principal(rw3_fixture.team_id), request
+    )
+    assert replayed.task_id == created.task_id
+    assert replayed.replayed is True
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        assert task.policy_version == 1
+
+
+def test_same_key_for_another_thread_conflicts(
+    session_factory: sessionmaker[Session], rw3_fixture: Fixture
+) -> None:
+    key = uuid4()
+    request, _ = _create_task(session_factory, rw3_fixture, key=key)
+    other_thread_id = uuid4()
+    with session_factory.begin() as session:
+        session.add(
+            Thread(
+                id=other_thread_id,
+                team_id=rw3_fixture.team_id,
+                domain="rw3_test",
+                title="Different target",
+                status="active",
+            )
+        )
+    conflicting_request = UpdateThreadTaskRequest(other_thread_id, key)
+    with pytest.raises(OperatorTaskRequestConflict):
+        OperatorApplicationAdapter(session_factory).create_update_thread_task(
+            _principal(rw3_fixture.team_id), conflicting_request
+        )
+
+
+def test_concurrent_same_key_creation_writes_one_request_event(
+    session_factory: sessionmaker[Session], rw3_fixture: Fixture
+) -> None:
+    request = UpdateThreadTaskRequest(rw3_fixture.thread_id, uuid4())
+    barrier = Barrier(2)
+
+    def create():
+        barrier.wait()
+        return OperatorApplicationAdapter(session_factory).create_update_thread_task(
+            _principal(rw3_fixture.team_id), request
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: create(), range(2)))
+
+    assert results[0].task_id == results[1].task_id
+    assert sorted(result.replayed for result in results) == [False, True]
+    with session_factory() as session:
+        events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == results[0].task_id,
+                    Event.type == REQUEST_EVENT_TYPE,
+                )
+            )
+        )
+        assert len(events) == 1
+
+
+def test_context_fails_closed_when_evidence_link_bound_is_exceeded(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    _admit_fixture_task(session_factory, created.task_id)
+    hypothesis_id = uuid4()
+    now = datetime.now(timezone.utc)
+    with session_factory.begin() as session:
+        session.add(
+            Hypothesis(
+                id=hypothesis_id,
+                team_id=rw3_fixture.team_id,
+                thread_id=rw3_fixture.thread_id,
+                statement="Evidence overflow hypothesis.",
+                status="active",
+                confidence="low",
+                created_at=now,
+                last_touched_at=now,
+            )
+        )
+        session.flush()
+        session.add_all(
+            [
+                EvidenceLink(
+                    id=uuid4(),
+                    team_id=rw3_fixture.team_id,
+                    subject_kind="hypothesis",
+                    evaluation_id=None,
+                    hypothesis_id=hypothesis_id,
+                    originating_task_id=rw3_fixture.source_task_id,
+                    source_kind="signal",
+                    outcome_id=None,
+                    signal_id=rw3_fixture.signal_id,
+                    snapshot_ref=rw3_fixture.snapshot_ref,
+                    snapshot_hash=rw3_fixture.snapshot_hash,
+                    stance="mentions",
+                    quote_text=None,
+                    quote_start=None,
+                    quote_end=None,
+                    reference_key=f"rw3:{uuid4()}",
+                    created_at=now + timedelta(microseconds=index),
+                )
+                for index in range(9)
+            ]
+        )
+
+    with pytest.raises(
+        UpdateThreadContextError,
+        match="update_thread_evidence_link_bound_exceeded",
+    ):
+        UpdateThreadContextAssembler(session_factory, snapshot_store).assemble(
+            created.task_id, 1
+        )
+    with session_factory() as session:
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == CONTEXT_EVENT_TYPE,
+            )
+        )
+        assert event is None
