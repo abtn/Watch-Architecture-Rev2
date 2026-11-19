@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Iterator
 from uuid import UUID, uuid4
 
@@ -310,8 +309,13 @@ def test_creator_rejects_wrong_action_without_task_or_event(
             _principal(rw3_fixture.team_id, action="operator_update"), request
         )
     with session_factory() as session:
-        assert session.scalar(select(Task).where(Task.team_id == rw3_fixture.team_id,
-                                                 Task.task_type == "update_thread")) is None
+        task = session.scalar(
+            select(Task).where(
+                Task.team_id == rw3_fixture.team_id,
+                Task.task_type == "update_thread",
+            )
+        )
+        assert task is None
 
 
 def test_same_key_replay_by_another_operator_conflicts(
