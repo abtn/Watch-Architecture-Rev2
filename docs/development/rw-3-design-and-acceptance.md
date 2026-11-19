@@ -76,7 +76,7 @@ The worker receives one bounded, immutable Task Context assembled by application
 - Preserve the exact Context Snapshot/manifest using the repository's established Context provenance pattern.
 - Do not silently truncate evidence or alter its meaning to fit the budget.
 
-The exact selection algorithm, bounds, and whether Team Experience is eligible are RW3-0 decisions. ADR-0031 already establishes an initial retrieval baseline of at most 8 passages and 8,000 Unicode characters, plus a configured provider output-token cap. RW3-0 must decide whether those existing limits apply unchanged to `update_thread`; any deviation requires an explicit rationale. Do not invent additional numeric limits before inspecting the current Task and Context contracts.
+The exact selection algorithm, bounds, and whether Team Experience is eligible are RW3-0 decisions. Do not invent numeric limits before inspecting existing Task budgets, Context limits, and provider constraints.
 
 ## 4. Generation, parsing, and commit sequence
 
@@ -186,7 +186,7 @@ RW3-0 is source/design reconciliation only. If it discovers a required schema ch
 
 | Slice | Work | Exit gate |
 |---|---|---|
-| RW3-0 — design lock | Audit current Task, Context, provider, cost, TaskRuntime, and RW-2 commit contracts; resolve the six design locks above; reconcile docs. | Design is internally consistent, reviewed, and ready to present for a separate implementation-authorization decision. RW3-0 completion does not itself authorize implementation. |
+| RW3-0 — design lock | Audit current Task, Context, provider, cost, TaskRuntime, and RW-2 commit contracts; resolve the six design locks above; reconcile docs. | Explicitly approved design and implementation authorization. |
 | RW3-1 — bounded Context | Implement deterministic Thread-scoped Context assembly, source/Snapshot validation, bounds, and provenance manifest. | Positive/negative Context tests prove scope, freshness, integrity, determinism, and bounds. |
 | RW3-2 — model worker | Implement strict output parsing and narrow worker orchestration using the existing provider and cost boundary. | Fake-provider tests prove provider ordering, schema rejection, bounds, and no authority escalation. |
 | RW3-3 — shared commit/lifecycle | Connect proposals to the RW-2 commit service and TaskRuntime; prove mixed/all-invalid batches, atomicity, replay, concurrency, failure, and recovery. | Complete RW-3 proof matrix passes; no alternate runtime or write path. |
