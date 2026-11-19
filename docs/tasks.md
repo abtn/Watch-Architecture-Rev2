@@ -1,29 +1,30 @@
 # Task specifications
 Every durable write in Watch is performed by a Task. This document is the spec for each v1 task type: what it reads, what it may write, how it runs, what is validated at commit time, and how it fails.
+
 ## RW implementation status and evidence contract
 
-The following status is a static source audit of post-B6 `main` at exact commit **91169b4931e48cb7b2803ed2066ec365f563a0ea**. B6 PR #124 changed only test files; the subsequent PR #125 is documentation-only. No tests, Alembic commands, database migrations, or provider calls were run as part of this source audit.
+This is the current implementation-status summary after RW-2 acceptance on 2026-11-18. `PLAN.md` remains the sole authority for milestone status and authorization; exact verification evidence is recorded in `docs/testing.md`.
 
-| Task / entity | Implementation state at post-B6 audit SHA |
+| Task / entity | Current implementation state |
 |---|---|
 | ingest_source | Implemented for the existing deterministic Signal-ingestion path. This does not include triage. |
-| triage_signal | Specified here; not implemented. |
-| update_thread | Specified here; not implemented. |
-| operator_update | Deterministic host-invoked Operator path implemented in draft PR #134; hosted CI passed on exact implementation/test head; Programmer-local verification and formal acceptance pending. |
-| apply_decay | Specified here; not implemented. |
-| Thread / Hypothesis / ConfidenceChange | ORM persistence implemented in RW-1; the RW-2 Operator commit path is in draft PR #134. |
+| triage_signal | Specified; not implemented. Planned for RW-4. |
+| update_thread | Specified; not implemented. RW-3 remains planning-only; Checkpoints 1–4 are approved design decisions and Checkpoint 5 cross-document reconciliation is complete. None constitutes implementation authorization. |
+| operator_update | Deterministic host-invoked Operator path implemented and formally accepted in RW-2; PR #134 merged to main. |
+| apply_decay | Specified; not implemented. Planned for RW-5. |
+| Thread / Hypothesis / ConfidenceChange | ORM persistence implemented in RW-1; deterministic Operator commit path implemented and accepted in RW-2. |
 | SignalDisposition | Deferred to RW-4 with signal triage; not implemented. |
-| EvidenceLink | Typed Evaluation/Hypothesis subjects with Signal/Outcome sources; Artifact/Consultation source rows remain staged and unusable until their canonical entities exist. |
+| EvidenceLink | RW-1 persistence and RW-2 commit path support the accepted Hypothesis/Evaluation subjects and currently usable Signal/Outcome sources; Artifact/Consultation source rows remain staged and unusable until their canonical entities exist. |
 
-The Event-scope allow-list in `core/ingestion.py` contains future Task type names so bounded Task-attributed Events can be recorded; an allow-list entry alone is not implementation. `operator_update` now has a dedicated host-invoked application path in the RW-2 draft implementation. The current `core/dispatcher.py` still supports only the configured-source `ingest_source` worker; `update_thread`, triage, and decay workers remain unimplemented.
+The Event-scope allow-list in `core/ingestion.py` contains future Task type names so bounded Task-attributed Events can be recorded; an allow-list entry alone is not implementation. The current `core/dispatcher.py` remains narrow and supports the configured-source `ingest_source` worker. This status summary does not authorize dispatcher expansion.
 
 ### EvidenceLink contract for RW
 
 - ADR-0007 accepts one polymorphic EvidenceLink model with subjects **hypothesis | evaluation** and sources **signal | outcome | artifact**. Quotes must match exact offsets in immutable hashed Snapshots. Only **supports** and **challenges** may anchor a ConfidenceChange.
 - ADR-0020 adds **consultation** as a source kind; an answer is an immutable hashed Snapshot and is quote-verifiable.
-- The current ORM is narrower: it constrains the subject to **evaluation** and sources to **signal | outcome**. `core/evaluations.py` accepts and revalidates only those Evaluation-scoped sources; it does not implement the Hypothesis subject path.
-- RW must extend the existing EvidenceLink model/table to the accepted contract. Do not create a sibling evidence model or weaken current Evaluation evidence. Preserve same-Team ownership, deterministic quote/hash validation, stance rules, uniqueness, and replay behavior.
-- Artifact and Consultation source rows must not be treated as valid references before their canonical source records and validation paths exist. Their staging order belongs in the RW-1 migration design. If implementation requires changing an accepted ADR contract, stop for an ADR addendum and Operator decision.
+- RW-1 extended the existing EvidenceLink table/model with typed Evaluation/Hypothesis subject references and Task provenance under the accepted D132 design. RW-2 adds the deterministic Hypothesis commit path; the existing Evaluation service remains Evaluation-scoped. These are one logical EvidenceLink contract, not sibling evidence systems.
+- Signal and Outcome are the currently usable source kinds for the RW-2 Operator path. Artifact and Consultation source kinds remain staged and must not be treated as valid references until their canonical source entities and validation paths exist.
+- Preserve same-Team ownership, deterministic quote/hash/offset validation, stance rules, uniqueness, and replay behavior. If implementation requires changing an accepted ADR contract, stop for an ADR addendum and Operator decision.
 
 ## 1. Task model
 - Every Task has: Team, `task_type`, optional Thread, `input_refs`, `allowed_tools`, `allowed_writes`, `policy_version`, `budget` (`max_tool_calls`, `max_cost_usd`, `deadline_seconds`), `created_at`, `attempt_count`, and a per-Task pinned `max_attempts` (initial default: 3 total starts). `completed_at` is nullable and set only for status `done`. These lifecycle fields are part of the R6 target; they are not all present in the current ORM baseline.
@@ -38,6 +39,20 @@ The Event-scope allow-list in `core/ingestion.py` contains future Task type name
 - Tool calls and token usage are attributed to the Task and counted against its budget.
 - Most task types require an `active` Team; `create_team`, `configure_team`, and `activate_team` operate on shell/configuring teams and are the exceptions.
 - **No path bypasses validation for being human** (INV-15): operator task types use the same commit kernel, and operator identity is recorded in Event payloads.
+
+### RW-3 `update_thread` Task envelope — approved design, not implemented
+
+A newly created `update_thread` Task has the following exact shape:
+
+- `task_type="update_thread"`; `status="pending"`; `attempt_count=0`; `max_attempts=3`.
+- `team_id` is derived from the locked target Thread; `thread_id` is the same target bound by exactly one verified `update_thread_requested` Event; `policy_version` is the valid highest TeamPolicy version pinned under the Checkpoint 2 locking contract.
+- `objective_id`, `plan_id`, and `plan_action_id` are `NULL`.
+- `allowed_writes` is exactly `["EvidenceLink", "Hypothesis", "ConfidenceChange"]` in that order.
+- `budget` is exactly `{ "max_tool_calls": 0, "max_cost_usd": 0.02, "deadline_seconds": 45 }`. The Task has no tool capability. `max_attempts` is a separate Task field, not a budget key.
+- Do not add `input_refs` or `allowed_tools` Task columns for RW-3. The immutable request Event binds the target; application code assembles Context from canonical records and the Task-pinned policy. Event and Outcome remain Kernel/TaskRuntime side effects, not worker business writes.
+
+The `$0.02` cost ceiling is cumulative across all three starts. The existing ADR-0031 Cloudflare rate card is used strictly as the approved budget-calculation baseline: it quotes at most `$0.00500224` for one maximum 30,976-input/1,024-output-token attempt and `$0.01500672` for three such reservations. ADR-0031 authorizes Cloudflare for R6-E only; Checkpoint 3 does not authorize live RW-3 provider calls. A separate explicit provider-authorization decision is required before production invocation; until then, use a deterministic fake provider. Every exact prompt is quoted and its maximum charge reserved before any authorized provider invocation; unknown/unresolved reservations continue to count in full. The only authorized cost integration is a narrow `update_thread` operation in the existing `TaskGenerationCostService`, bound to this Task type and exact write scope. The absolute 45-second deadline begins at admission and is enforced by the worker across Context assembly, provider execution, parsing, and pre-commit work; provider timeout is at most 30 seconds and cannot exceed remaining Task time. The current TaskRuntime validates the positive deadline field but does not enforce elapsed time; implementation must add only the narrow `update_thread` enforcement. The existing 60-second interrupted-task recovery threshold remains unchanged. See [RW-3 design §10.4.2](development/rw-3-design-and-acceptance.md#1042-task-shape-generation-budget-and-deadline).
+
 ### R6 first-slice lifecycle contract
 
 **Status authority.** Current milestone status and verification evidence live only in [PLAN.md](../PLAN.md). This section records the enduring R6 lifecycle and dispatcher contract; the requirements below remain mandatory.
@@ -88,7 +103,7 @@ is an upper bound on the Actions authorized by one Strategy, not a daily Task
 quota. It must not be compared with `max_tasks_per_day`.
 - **Scope:** This rule enforces a Task-start count quota only. It does not mean
 that daily cost quotas are enforced.
-**Creation sources:** Triggers (all three types), the scheduler (ingestion, decay, review, overdue scans), Task enqueues (triage → update; consultation follow-ups), and Task retries. Manual Operator Tasks are created by a thin in-repository application adapter invoked in-process by a host after it authenticates and authorizes the Operator. This is not a separate deployed Watch API/CLI. R6-F Checkpoint 3 implements the adapter for `approve_learning_change`; RW-2 adds `operator_update` through the same host boundary. Other manual Task specifications do not imply implemented callers.
+**Creation sources:** Triggers (all three types), the scheduler (ingestion, decay, review, overdue scans), explicitly authorized Task enqueues (consultation follow-ups), and Task retries. Manual Operator Tasks are created by a thin in-repository application adapter invoked in-process by a host after it authenticates and authorizes the Operator. This is not a separate deployed Watch API/CLI. R6-F Checkpoint 3 implements the adapter for `approve_learning_change`; RW-2 adds `operator_update` through the same host boundary. Other manual Task specifications do not imply implemented callers.
 ## 2. Common validation rules (every commit path)
 1. Task status is `running` and budget is not exhausted (operator task types: no model cost, no enforced deadline).
 2. All referenced entities exist and belong to the Task's Team.
@@ -140,35 +155,46 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Validation:** same as `ingest_source`.
 ### `triage_signal` — deterministic
 
-**Implementation status:** specified; not implemented at the audit baseline above.
-- **Purpose:** disposition a Signal for the Team; enqueue follow-up work.
+**Implementation status:** specified; not implemented. Planned for RW-4.
+- **Purpose:** disposition a Signal for the Team. Triage records the deterministic disposition; it does not create or enqueue `update_thread` Tasks.
 - **Reads:** Signal (+embedding), Domain `match_heuristics` and `dedup_policy`, Team's Threads (+embeddings), recent dispositions.
-- **Writes:** SignalDisposition; Thread creation (`new_thread`); Thread reactivation (`dormant → active`); enqueue of `update_thread` for `deferred`/`matched` cases; Event.
+- **Writes:** SignalDisposition; Thread creation (`new_thread`); Thread reactivation (`dormant → active`); Event.
 - **Flow:** F1 steps 4–6.
 - **Validation:** one disposition per `(signal, team)`; embedding similarity uses the recorded `embedding_model`; `new_thread` requires a strong deterministic heuristic match (per-domain threshold).
 - **Failure:** heuristics error → disposition `deferred` with reason; never silent (INV-09).
 ### `update_thread` — model worker
 
-**Implementation status:** specified; not implemented at the audit baseline above.
-- **Purpose:** incorporate new evidence into a Thread's world model.
-- **Reads:** Thread, active Hypotheses, deferred/unprocessed dispositions, relevant active KnowledgeItems (bounded by `knowledge_selection` policy), current policy, source Snapshots on demand (tool calls).
-- **Writes:** EvidenceLink, Hypothesis (create/supersede/reject), ConfidenceChange, SignalDisposition refinement (from `deferred` to a terminal value), Thread.summary (projection only), Event. **Not:** KnowledgeItem, TeamPolicy, Artifact, Outcome, other Threads.
-- **Flow:** F2.
-- **Commit-time validation:** quote offset + hash (INV-04); stance rule (INV-06); hypothesis transition legality with reasons (INV-07); confidence cause pairing (INV-05); per-proposal atomic commit; scope (INV-14). If policy `review.update_gating` is enabled and a required Consultation on the Thread is open, the commit is rejected until answered (default off).
-- **Failure:** all proposals rejected → Task failed with rejection Events; partial commits never occur.
-- **Invariants exercised:** INV-01, 02, 04, 05, 06, 07, 13, 14.
+**Implementation status:** specified; not implemented. RW-3 is a planning proposal only and requires a separate explicit implementation authorization.
+
+- **Purpose:** incorporate new evidence into one existing Thread's world model through a bounded model proposal and the shared RW-2 commit boundary.
+- **Trusted target:** Team and Thread are resolved from the immutable Task request and canonical database state. Model output cannot select or override them.
+- **Reads:** target Thread; all active same-Thread Hypotheses ordered by `(created_at ASC, id ASC)`; every accepted EvidenceLink belonging to those Hypotheses ordered by `(hypothesis_id ASC, created_at ASC, id ASC)` (no relevance ranking or discretionary filtering); exact immutable source Snapshots ordered by reference; only the TeamPolicy version pinned by the immutable Task's `policy_version`. A missing, invalid, inconsistent, or cross-Team policy pin fails closed before provider invocation; never substitute the latest policy. Bound to 8 Hypotheses, 8 EvidenceLinks, 8 Snapshots, and 8,000 Unicode characters of evidence text; overflow fails closed after admission and before provider invocation. Team Experience is excluded from RW-3 because the existing Task Context assembler is scoped to `propose_strategy`; no new retrieval integration is added. SignalDisposition and triage state are excluded (RW-4).
+- **Writes:** exactly EvidenceLink, Hypothesis (create/supersede/reject), and ConfidenceChange. Event and Outcome remain Kernel/TaskRuntime side effects. **Not:** SignalDisposition, Thread creation/reactivation/summary projection, KnowledgeItem, TeamPolicy, Artifact, Consultation, worker-written Outcome, or other Threads.
+- **Task creation and authorization:** `create_update_thread_task(principal, request)` is a narrow host-invoked operation modeled on R6-F. The frozen request contains only `thread_id` and a UUID `idempotency_key`; Team is derived from the locked target Thread, not accepted from the caller. The trusted host authenticates the Operator and issues `TrustedOperatorPrincipal` with the exact `OperatorGrant(team_id, action="request_update_thread")` only after host-side authorization. Watch independently checks that exact grant against the Team derived from the Thread, validates active Team and available same-Team Thread state, then atomically creates the Task and request Event. Missing/wrong-type/malformed principal, wrong Team/action, cross-Team/inactive-Team/unavailable/resolved Thread reject with no Task/Event. The host-supplied principal is an in-process trust contract, not a credential; the repository has no production host composition root, so end-to-end host authentication remains unproven until integrated. The request Event stores canonical `requested_by_operator_id`, and the request fingerprint binds it; same-Team/key replay by a different Operator or for a different Thread conflicts; the same UUID under another Team is a separate Team-scoped identity. Policy advancement alone does not invalidate replay; the original Task policy pin is retained. The model worker receives only the existing Task/request Event and never receives or fabricates an Operator principal or `operator_id`. This does not add Watch authentication, a deployed API/CLI, or a second Task creator.
+- **TeamPolicy pinning and concurrency (Checkpoint 2 approved):** for a new Task, resolve Team from the target Thread, lock Team `FOR UPDATE`, then lock/revalidate the Thread, and select the highest TeamPolicy version for that Team with `FOR SHARE`. Validate the selected newest row's Team, supported `schema_version`, and existing rules relevant to `update_thread`; if it is invalid, fail closed without falling back to an older version. Persist the same `policy_version` in Task and request Event atomically. There is no active-policy pointer. Same-key replay uses the existing Task's pinned historical version even after a newer version is published; Context and execution use that pin. TeamPolicy versions are append-only and immutable by application contract; the current schema does not enforce row immutability. Any future publisher must lock Team `FOR UPDATE` before allocating/inserting the next version, serializing with Task creation through PostgreSQL's Team foreign-key lock. The current `core/policy.py` provides narrow daily-quota and D7 review-interval parsers, not a universal rules-schema validator: validate supported `schema_version`, require a rules object, and apply existing validators only to rules actually consumed. New `update_thread` policy vocabulary requires a separate decision. No publisher, policy mutation, active pointer, schema change, or migration is added here; the repository currently has no production TeamPolicy publisher. See RW-3 design §10.4.1 and proof `RW-POL-01`.
+- **Worker flow:** a separate model-worker adapter consumes an already-created `update_thread` Task; read-only validation of its immutable request and trusted target → TaskRuntime admission → attempt-bound Context assembly/validation → maximum cost reservation → existing generation provider → raw usage reconciliation and exact current-attempt charge validation → strict typed parsing (maximum 8 model proposals) → shared RW-2 validation/transaction core through a narrow trusted actor seam → TaskRuntime finalization. Reconcile known usage even if the response body is malformed; unknown, unreconciled, or overrun charges cannot authorize business writes. Context failure after admission is recorded through TaskRuntime and makes no provider call. Do not extend TaskDispatcher or add a scheduler/second runtime. The current `WorldMemoryCommitService` is Operator-specific and cannot be called unchanged: extract/reuse its validation and atomic transaction core while preserving RW-2 Operator principal checks and Event behavior; model actor identity is fixed by application code and Task-attributed, never supplied by model output. Cost must be reconciled and accepted before any business commit.
+- **Commit-time validation:** identical to RW-2; no model-specific exception. Preserve exact Snapshot quote/hash/offset checks (INV-04), stance rule (INV-06), confidence cause pairing (INV-05), legal transitions/reasons (INV-07), Team/Thread ownership, low initial confidence, idempotency, replay, concurrency, and atomic accepted-set semantics (INV-14/INV-15).
+- **Batch semantics:** preserve the accepted RW-D18/RW-2 contract: invalid proposals receive attributable rejection Events; valid proposals commit atomically as one accepted set; the Task fails only when all proposals are rejected. Mixed valid/invalid batches may commit the valid set only. A transaction failure rolls back the entire accepted set. The model response is capped at 8 proposals; the existing Operator request limit of 64 is unchanged.
+- **Generation-cost boundary:** the existing cost service currently has no `update_thread` operation. RW-3 requires a narrow extension mapping a distinct operation to Task type `update_thread` and exactly the declared three-write scope, with provider/model/rate-card/output-bound validation. No new cost subsystem or provider authorization is implied.
+- **No-op:** an explicit empty model `proposals` list is valid. After charge reconciliation, persist its validated-proposal Event, skip commit and business writes, and finalize through TaskRuntime as `success_no_change`; do not retry. Recovery treats this durable empty set as success.
+- **All-invalid terminal result:** a non-empty validated-proposal Event cannot be terminalized as failure without its matching `update_thread_rejected` marker proving every proposal was rejected. If the marker is absent, the proposal set remains resumable through the shared commit core. An empty proposal Event cannot become `terminal_failure`.
+- **Failure:** Context failures after admission, provider failures, parser/schema/authority/count/output-bound failures, and all-invalid batches use TaskRuntime's terminal/retry path as specified by failure class. Parser failures are non-retryable and create no per-proposal rejection Events; structurally valid domain-invalid proposals use the existing attributable rejection Events. Unknown, unreconciled, or overrun cost cannot authorize business commit. No semantic repair/re-proposal loop or hidden provider retries.
+- **Provider compatibility limits (not authorization):** retain ADR-0031's constraints unchanged: at most 8 retrieval-derived passages and 8,000 Unicode characters; the exact prompt quote uses UTF-8 byte lengths plus 128 framing tokens; input plus configured output must fit the 32,000-token model context; output is capped at the existing configured maximum of 1,024 tokens. The existing Cloudflare model is the fixed budget/compatibility baseline, but ADR-0031 authorizes it for R6-E only. Live RW-3 provider calls require a separate explicit provider-authorization decision; until then use a deterministic fake provider. If separately authorized, retain one non-streaming request per invocation, no tools, and no adapter-level retries. TaskRuntime owns retries and preserves the existing three-start Task limit.
+- **RW3-0 decisions recorded for independent review:** deterministic exhaustive Context membership and canonical ordering with fail-closed bounds (8 Hypotheses, 8 EvidenceLinks, 8 Snapshots, 8,000 evidence characters); immutable Task-pinned policy; Team Experience excluded; separate host-invoked Task creator and model-worker adapter without TaskDispatcher expansion; maximum 8 model proposals while preserving accepted mixed-batch semantics; atomic response-receipt/charge reconciliation; durable proposal-set fingerprint and commit/rejection marker; crash-safe TaskRuntime replay; empty response as successful no-op after charge reconciliation; parser failures separated from proposal-level rejection Events. The actor-neutral commit seam is also documented. These decisions do not authorize implementation. See [RW-3 design and acceptance plan](development/rw-3-design-and-acceptance.md).
+- **Verification:** deterministic fake-provider tests are mandatory; live provider smoke tests, if later requested, are separate and cannot replace deterministic proofs or become a CI dependency.
+
 ### `operator_update` — Operator via host-invoked application adapter
 
-**Implementation status:** the deterministic Operator path is implemented in draft PR #134. Hosted CI run #1355 passed on exact implementation/test head `c990c702cad39558b17819cb4970462e11aedfb1` (**1,103 passed**); Programmer-local verification and formal acceptance are pending.
+**Implementation status:** the deterministic Operator path was formally accepted in RW-2 on 2026-11-18 and PR #134 was squash-merged to `main` at `601f7816eaa51495d7d40d4b9d32d846122b4a59`. Exact-head local and hosted verification are recorded in `docs/testing.md`.
 - **Purpose:** a human expert contributes directly to world memory — their own hypotheses, evidence, confidence judgments, and explicit transitions (ADR-0021).
-- **Shared contract:** Operator and model paths use the same proposal and commit-validation contract. RW-2 implements the deterministic human entry first; RW-3's model worker is not implemented.
+- **Shared contract:** Operator and model paths use the same proposal and commit-validation contract. RW-2 implemented and accepted the deterministic human entry; the RW-3 model worker remains a planning-only proposal.
 - **RW-2 implemented writes:** Hypothesis creation/transitions, EvidenceLink addition from Signal/Outcome, and evidence-caused ConfidenceChange. The Task's `allowed_writes` are exactly `["EvidenceLink", "Hypothesis", "ConfidenceChange"]`; the target Thread is bound by the immutable `operator_update_requested` Event. Event and Outcome writes are Kernel/TaskRuntime side effects, not worker `allowed_writes`.
 - **Commit-time validation:** exact Snapshot reference/hash/quote offsets (INV-04), stance rule (INV-06), cause pairing (INV-05), legal transitions with reasons (INV-07), Team/Thread ownership, idempotency, replay, concurrency, and atomic proposal-set commit (INV-14/INV-15). Every new Hypothesis starts at `low`; higher confidence requires a later Task-attributed ConfidenceChange.
 - **Explicit deferrals:** SignalDisposition refinement and triage remain RW-4; Thread summaries and retrieval projections remain deferred to the retrieval slice; Artifact/Consultation sources remain staged until their canonical entities and validation paths exist.
 - **Failure:** invalid proposals are rejected with attributable Events; the Task fails only when every proposal is rejected. Human identity is never a validation exemption (INV-15).
 ### `apply_decay` — deterministic, scheduled
 
-**Implementation status:** specified; not implemented at the audit baseline above.
+**Implementation status:** specified; not implemented. Planned for RW-5.
 - **Purpose:** lower confidence of stale Hypotheses; flag dormant Threads.
 - **Reads:** effective `decay_window` and `decay_action` (pack default or team `decay` override); Hypotheses' `last_touched_at` and bands; Thread composition.
 - **Writes:** ConfidenceChange (`cause_kind="decay"` only), Thread status `active → dormant`, Event.
@@ -311,7 +337,7 @@ side effect in footnote ¹; footnote ¹ grants no worker Snapshot permission.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ingest_source` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K²⁵ | K¹ | K²⁵ |
 | `manual_signal_ingest` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | K¹ | K |
-| `triage_signal` | — | — | W | C/W² | — | — | — | — | — | — | — | — | — | — | — | — | — | K²³ | — | K |
+| `triage_signal` | — | — | W | C/W² | — | — | — | — | — | — | — | — | — | — | — | — | — | K | — | K |
 | `update_thread` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
 | `operator_update` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
 | `apply_decay` | — | — | — | W⁵ | — | — | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
@@ -360,8 +386,6 @@ that passed deterministic validation. ²¹ In addition to its own lifecycle,
 enqueue only `request_consultation` when the documented delivery gate applies.
 ²² In addition to its own lifecycle, optionally enqueue only the documented
 follow-up update/evaluation work after recording the consultation answer.
-²³ In addition to its own lifecycle, enqueue only `update_thread` for the
-documented deferred/matched triage cases.
 ²⁴ Emit only this Task's own Plan lifecycle Events: `plan_completed` or
 `plan_stopped` for an accepted transition, and the categorized
 `plan_transition_rejected` Event for a rejected one. No other Event type, no
@@ -589,13 +613,15 @@ implementation is the first bounded slice of that contract: it writes
 Hypothesis, EvidenceLink, and ConfidenceChange only. Deferred SignalDisposition
 and projection cells are not implemented by RW-2.
 ## 5. Budget defaults
-Starting points, tuned during M2; per-Task values may override downward, never upward past policy ceilings (`budgets` rule group). Operator task types (`operator_update`, `answer_consultation`, `create_team`, `activate_team`, plus the other manual types) incur no model cost and have no enforced deadline (—).
+Starting points, tuned during M2; per-Task values may override downward, never upward past policy ceilings (`budgets` rule group). The `update_thread` row is the approved fixed RW-3 design budget, not a generic starting point. Operator task types (`operator_update`, `answer_consultation`, `create_team`, `activate_team`, plus the other manual types) incur no model cost and have no enforced deadline (—).
 | Task type | max_tool_calls | max_cost_usd | deadline_s |
 |---|---|---|---|
 | `ingest_source` | 0 | 0 | 60 |
 | `manual_signal_ingest` | 0 | 0 | 60 |
 | `triage_signal` | 0 | 0 | 60 |
-| `update_thread` | 8 | 0.50 | 180 |
+| `update_thread` | 0 | 0.02 | 45 |
+
+The `update_thread` budget is cumulative across its three maximum starts. Its fixed provider compatibility/budget baseline is the existing ADR-0031 Cloudflare model, with one synchronous non-streaming request per attempt, no tools or provider retries, at most 1,024 output tokens, and the existing 32,000-token total quoted-context ceiling. ADR-0031 authorizes Cloudflare for R6-E only; live RW-3 provider calls require a separate explicit provider-authorization decision. Until that decision is accepted, only a deterministic fake provider may be used. The provider timeout is capped at 30 seconds within the absolute 45-second Task deadline. The `$0.02` ceiling covers up to three maximum conservative reservations under the current rate card; unknown charges remain fully accounted. These values are fixed by the approved RW-3 Checkpoint 3 design and cannot be increased by per-Task override.
 | `operator_update` | 0 | 0 | — |
 | `apply_decay` | 0 | 0 | 300 |
 | `check_triggers` | 0 | 0 | 60 |
@@ -639,3 +665,37 @@ For R6-F, `approve_learning_change` is narrowed to LearningChange and KnowledgeI
 A TaskKnowledgeReference is not a new worker write grant or separate approval Task. It is an application-owned, Task-attributed reference recorded only after code validates a worker-nominated claim reference against the immutable Context manifest. The model cannot write a citation record directly.
 
 The frozen R7-B design reuses `approve_learning_change`; it does not introduce a separate `approve_knowledge_lifecycle` Task type. `assess_knowledge_quality` is the existing R7-A quality-assessment Task. Both B3.3 `assess_knowledge_revalidation` and B3.5-integrated `assess_knowledge_lifecycle` have explicit TaskRuntime admission/finalization/recovery paths and narrow TaskRunner/application adapters. Neither is registered for automatic TaskDispatcher dispatch; invocation remains explicit through the application boundary. The repository has no generic Task registry, and B3.5 extends the existing explicit TaskRuntime branches. R7-C `assess_knowledge_use` remains a later, unauthorized stage. Neither assessment Task gains canonical `KnowledgeItem` or `LearningChange` write authority. Merged main admits create/revise/revalidate. B5.1 adds create-with-successor as an optional relation on the existing create operation; retire and supersede commits remain outside the current authorization.
+
+
+### RW-3 contract clarifications from independent design review
+
+The following details are normative for the proposed update_thread worker and supersede less-specific wording in its Reads/Flow/Failure bullets above:
+
+- EvidenceLink membership is exhaustive: include every accepted EvidenceLink belonging to an active Hypothesis on the target Thread. Do not rank or discretionarily filter. Include and verify each exact immutable source Snapshot. If the complete set exceeds a bound, fail closed; do not silently choose a subset.
+- Use only the policy_version pinned on the immutable Task. Never substitute the latest TeamPolicy at execution time. Missing, invalid, or cross-Team pinned policy fails closed before provider invocation.
+- The provider boundary must return validated usage/model metadata and raw completion text before JSON parsing. Reconcile known usage first, then parse. Malformed JSON with valid usage retains the reconciled charge and becomes a non-retryable TaskRuntime parser failure. Invalid/missing usage follows existing unknown-cost accounting.
+- The shared commit core receives either the existing canonical Operator principal or a fixed application-defined model_worker actor attributed to the admitted Task. Model output cannot supply actor identity. Preserve RW-2 Operator principal checks and Event behavior; do not add a generic actor framework.
+- RW-3 successful terminal categories are success_no_change (explicit empty list, reconciled charge, no commit) and success_update_thread_committed (at least one accepted proposal committed). Both use ordinary TaskRuntime terminal Event, Outcome, replay, and recovery behavior. All-invalid batches remain failures. No other Task type's result categories change.
+
+
+### RW-3 request, recovery, and actor contracts added by independent review
+
+The immutable model-worker request is created by one narrow host-invoked application operation modeled on R6-F's Operator Task creator. The trusted host authenticates the Operator and issues `TrustedOperatorPrincipal` with the exact `OperatorGrant(team_id, action="request_update_thread")`; Watch derives Team from the locked target Thread and independently validates that grant. The request contains only Thread ID and a host idempotency UUID, never caller-supplied authoritative Team. The Task and one `update_thread_requested` Event are committed atomically. The Event binds schema version, Task/Team/Thread IDs, pinned policy version, canonical `requested_by_operator_id`, idempotency-key hash, and a domain-separated SHA-256 request fingerprint. Same key/same fingerprint/same Operator replays; a different Thread or Operator conflicts. Missing/wrong-type/malformed principal, wrong-Team/wrong-action grant, cross-Team/inactive-Team/unavailable/resolved Thread, or corrupt/missing/duplicate request evidence fails closed without creating a Task/Event or before provider invocation as applicable. The host principal is an in-process trust contract, not a credential; the repository has no production host composition root, so end-to-end authentication remains an integration proof, not a claimed completed test. The existing Task primary-key transaction arbitrates concurrent same-key creation; no partial unique index or migration is required by default. The worker loads the Event and cannot create/amend the request, and receives no Operator principal or `operator_id`. Strategy, PlanService, Plan materialization, and TaskDispatcher do not produce these Tasks. See RW-3 design §10.4.
+
+TaskRuntime recovery owns the Task lock and attempt. Its narrow resume_update_thread_in_session(session, task, attempt) handoff reuses the locked Session, never calls the provider, and resumes the durable receipt/proposal set through the shared commit core. Transient persistence failure leaves the same proposal resumable; permanent provenance/integrity conflict writes no business state and is terminalized with update_thread_recovery_inconsistent. Only the no-durable-receipt crash window may follow ordinary new-attempt retry after the reserved charge is marked unknown. See RW-3 design §10.5.
+
+The shared commit core receives a typed envelope and closed actor union: the existing authenticated Operator principal for RW-2, unchanged, or a fixed model_worker actor containing the admitted Task and verified request Event for RW-3. Model accepted/rejected proposal Events are Task-attributed and contain no operator_id; model and Operator terminal validators accept only their own Event families. Proposal serialization is strict and canonical: existing typed models, model_dump(mode="json"), canonical UUID/enum values, preserved proposal-array order, duplicate-key rejection, canonical UTF-8 JSON and SHA-256. Transient, all-invalid, and permanent-integrity commit failures have distinct durable dispositions. See RW-3 design §§10.6–10.8 and proof rows RW-REQ-01, RW-REC-01, RW-ACT-02, RW-SER-01, and RW-CF-01.
+
+## RW-3 request identity and replay contract — Checkpoint 4 approved
+
+The host request uses a fixed, dedicated UUIDv5 namespace and canonical name {team_id}:update_thread:{idempotency_key}. This is Team-scoped idempotency: same Team/key resolves the same Task; reuse with a different Thread or requesting Operator conflicts. The same UUID under another Team produces a separate Team-scoped Task identity; global cross-Team uniqueness is not promised.
+
+Creation follows the R6-F concurrency pattern: conflict-safe Task insertion, request Event appended only by the winning transaction, and competing insert/replay resolved through the deterministic Task primary key. The request Event stores the canonical requester identity from canonical_operator_identity() and only a SHA-256 hash of the canonical idempotency UUID; it never stores the raw key.
+
+The request fingerprint is SHA-256 over canonical compact sorted-key UTF-8 JSON, domain-separated by watch.rw3.update-thread-request.v1 and schema version 1. It binds canonical Task, Team, and Thread UUIDs, the pinned policy version, canonical requester identity, and idempotency-key hash. Replay requires exactly one valid request Event and matching Task/request/policy/Thread evidence. A newer TeamPolicy does not invalidate replay; the original Task policy pin remains authoritative. Integrity mismatches fail closed.
+
+The proposal-set fingerprint is separate and uses watch.rw3.update-thread-proposals.v1, binding the complete typed proposal list to Task, Team, Thread, attempt, pinned policy, receipt Event, and charge. Typed values use Pydantic JSON-mode serialization; proposal order is preserved, duplicate keys rejected, and an empty list is valid. The model response is limited to eight proposals; the Operator request limit remains 64.
+
+## Checkpoint 5 — cross-document contract alignment
+
+For RW-3, this Task specification is authoritative for Task type, status, attempts, links, write scope, and budget. The detailed request/proposal identity and replay protocol is in [the RW-3 design and acceptance plan](development/rw-3-design-and-acceptance.md); milestone status and authorization are only in `PLAN.md`. The six-document reconciliation confirms the Checkpoint 4 rules: Team-scoped UUIDv5 identity; same-Team/key conflicts for different Thread/requester; separate identity across Teams; original Task policy pin retained after policy advancement; hashed idempotency key only; and distinct request versus proposal-set fingerprints. These are design requirements, not implemented behavior.
