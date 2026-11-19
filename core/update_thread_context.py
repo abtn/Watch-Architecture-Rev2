@@ -186,6 +186,7 @@ class UpdateThreadContextAssembler:
                 )
 
             source_snapshots: dict[str, dict[str, str]] = {}
+            source_snapshot_texts: dict[str, str] = {}
             evidence_documents: list[dict[str, Any]] = []
             evidence_characters = 0
 
@@ -225,18 +226,14 @@ class UpdateThreadContextAssembler:
                         raise UpdateThreadContextError(
                             "update_thread_source_snapshot_not_utf8"
                         ) from error
-                    evidence_characters += len(source_text)
-                    if evidence_characters > MAX_EVIDENCE_CHARACTERS:
-                        raise UpdateThreadContextError(
-                            "update_thread_evidence_character_bound_exceeded"
-                        )
+                    source_snapshot_texts[reference] = source_text
                     snapshot = {
                         "snapshot_ref": reference,
                         "snapshot_hash": expected_hash,
-                        "text": source_text,
                     }
                     source_snapshots[reference] = snapshot
 
+                source_text = source_snapshot_texts[reference]
                 quote = link.quote_text
                 if (
                     (quote is None and (
@@ -258,12 +255,18 @@ class UpdateThreadContextAssembler:
                     or link.quote_end is None
                     or link.quote_start < 0
                     or link.quote_end <= link.quote_start
-                    or link.quote_end > len(snapshot["text"])
-                    or snapshot["text"][link.quote_start:link.quote_end] != quote
+                    or link.quote_end > len(source_text)
+                    or source_text[link.quote_start:link.quote_end] != quote
                 ):
                     raise UpdateThreadContextError(
                         "update_thread_evidence_quote_mismatch"
                     )
+                if quote is not None:
+                    evidence_characters += len(quote)
+                    if evidence_characters > MAX_EVIDENCE_CHARACTERS:
+                        raise UpdateThreadContextError(
+                            "update_thread_evidence_character_bound_exceeded"
+                        )
 
                 evidence_documents.append(
                     {
