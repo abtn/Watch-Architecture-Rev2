@@ -115,3 +115,7 @@ Checkpoint 2 is closed by PR #30 (merge commit `61be8db`). It does not implement
 | Verification | Checkpoint 3 section in `docs/testing.md`; schema re-use is preferred, with migration only for a demonstrated integrity gap |
 
 The Checkpoint 3 path consumes only real Checkpoint 2 create proposals. PR #31 implements the host adapter, atomic pending request Task/Event, approval-specific TaskRuntime admission, canonical create-only accept/reject with rebuilt evidence, atomic decision Event, typed terminal finalization, replay, and interrupted recovery. The D12 follow-up also terminalizes a distinct-key competing approval Task through TaskRuntime after the winning decision commits. Hosted CI on code head b9f1baf passed 579 tests; final operator-local verification of this follow-up is pending. Revision/retirement proposal reachability is deferred by D10; no manual-seed or ad-hoc proposal path is introduced.
+
+### RW-3 Checkpoint 4 — request and proposal identity
+
+Checkpoint 4 approved Team-scoped UUIDv5 Task identity, R6-F conflict-safe Task/request-Event creation, versioned canonical request fingerprinting with hashed idempotency key and canonical requester identity, replay against the original Task-pinned policy, and a distinct attempt/receipt/charge-bound proposal-set fingerprint. Same-Team conflicting reuse fails closed; a matching key in another Team is a separate scoped identity. This is documentation-only; implementation remains unauthorized pending Checkpoint 5 reconciliation and independent review.
