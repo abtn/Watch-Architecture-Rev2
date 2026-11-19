@@ -27,7 +27,7 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 
 - PR: [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136), draft.
 - Tested implementation code head: `64dee73271c747127b34deb4c6138f498b4dd9b4`.
-- Hosted CI: [run #1466](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44536326567) — **passed**.
+- Hosted CI: [run #1468](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44537159906) on final PR head `7fc3534c30da5a2da27dfa3283b907881488b16f` — **passed**.
 - Fresh PostgreSQL database migrated successfully; Alembic reported exactly one head and the database revision matched that head.
 - Ruff: passed. Mypy: passed across 41 source files. `git diff --check`: passed.
 - Full test suite: **1,119 passed, 130 warnings, 0 failures**.
