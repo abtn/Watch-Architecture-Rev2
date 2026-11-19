@@ -54,7 +54,6 @@ _QUOTE = "supply increased by 5 percent"
 @dataclass(frozen=True)
 class Fixture:
     team_id: UUID
-    policy_id: UUID
     source_task_id: UUID
     signal_id: UUID
     thread_id: UUID
@@ -67,14 +66,14 @@ def rw3_fixture(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
 ) -> Iterator[Fixture]:
-    team_id, policy_id, source_task_id, signal_id, thread_id = (
-        uuid4() for _ in range(5)
+    team_id, source_task_id, signal_id, thread_id = (
+        uuid4() for _ in range(4)
     )
+    policy_id = uuid4()
     snapshot_ref, snapshot_hash = snapshot_store.put(_CONTENT)
     now = datetime.now(timezone.utc)
     fixture = Fixture(
         team_id=team_id,
-        policy_id=policy_id,
         source_task_id=source_task_id,
         signal_id=signal_id,
         thread_id=thread_id,
