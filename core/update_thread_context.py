@@ -487,14 +487,43 @@ class UpdateThreadContextAssembler:
             raise UpdateThreadContextError(
                 "update_thread_context_document_corrupt"
             ) from error
+        request_event_id = session.scalar(
+            select(Event.id).where(
+                Event.task_id == task.id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
         if (
             not isinstance(document, dict)
+            or set(document)
+            != {
+                "schema_version",
+                "task",
+                "team",
+                "thread",
+                "policy",
+                "hypotheses",
+                "evidence_links",
+                "source_snapshots",
+                "manifest",
+            }
+            or document.get("schema_version") != CONTEXT_SCHEMA_VERSION
             or document.get("manifest") != payload["manifest"]
+            or payload["manifest"].get("schema_version") != CONTEXT_SCHEMA_VERSION
             or payload["manifest"].get("task_id") != str(task.id)
             or payload["manifest"].get("team_id") != str(task.team_id)
             or payload["manifest"].get("thread_id") != str(request.thread_id)
             or payload["manifest"].get("attempt") != attempt
             or payload["manifest"].get("policy_version") != task.policy_version
+            or payload["manifest"].get("request_event_id") != str(request_event_id)
+            or document.get("task", {}).get("id") != str(task.id)
+            or document.get("task", {}).get("team_id") != str(task.team_id)
+            or document.get("task", {}).get("thread_id") != str(request.thread_id)
+            or document.get("task", {}).get("attempt") != attempt
+            or document.get("task", {}).get("policy_version") != task.policy_version
+            or document.get("team", {}).get("id") != str(task.team_id)
+            or document.get("thread", {}).get("id") != str(request.thread_id)
+            or document.get("policy", {}).get("version") != task.policy_version
         ):
             raise UpdateThreadContextError("update_thread_context_manifest_corrupt")
         return AssembledUpdateThreadContext(
