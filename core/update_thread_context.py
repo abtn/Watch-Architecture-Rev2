@@ -456,8 +456,6 @@ class UpdateThreadContextAssembler:
         if len(matching) > 1:
             raise UpdateThreadContextError("update_thread_context_event_duplicate")
         if not matching:
-            if any(not isinstance(event.payload, dict) for event in events):
-                raise UpdateThreadContextError("update_thread_context_event_corrupt")
             return None
 
         event = matching[0]
