@@ -38,6 +38,7 @@ from core.update_thread import (
     REQUEST_EVENT_TYPE,
     TASK_BUDGET,
     UpdateThreadTaskRequest,
+    build_request_event_payload,
     task_id_for_request,
 )
 from core.update_thread_context import (
@@ -349,23 +350,43 @@ def test_context_is_deterministic_bounded_and_replayable(
 ) -> None:
     _, created = _create_task(session_factory, rw3_fixture)
     _admit_fixture_task(session_factory, created.task_id)
-    hypothesis_id, evidence_id = _seed_hypothesis_and_link(
-        session_factory, rw3_fixture
+    now = datetime.now(timezone.utc)
+    first_hypothesis_id, first_evidence_id = _seed_hypothesis_and_link(
+        session_factory, rw3_fixture, created_at=now
+    )
+    second_hypothesis_id, second_evidence_id = _seed_hypothesis_and_link(
+        session_factory, rw3_fixture, created_at=now
     )
 
     assembler = UpdateThreadContextAssembler(session_factory, snapshot_store)
     first = assembler.assemble(created.task_id, 1)
     with session_factory.begin() as session:
-        hypothesis = session.get(Hypothesis, hypothesis_id)
+        hypothesis = session.get(Hypothesis, first_hypothesis_id)
         assert hypothesis is not None
         hypothesis.statement = "Changed after Context assembly."
 
     second = assembler.assemble(created.task_id, 1)
+    expected_hypothesis_ids = sorted(
+        [first_hypothesis_id, second_hypothesis_id]
+    )
+    expected_evidence_ids = [
+        str(first_evidence_id if hypothesis_id == first_hypothesis_id else second_evidence_id)
+        for hypothesis_id in expected_hypothesis_ids
+    ]
     assert first.snapshot_ref == second.snapshot_ref
     assert first.content_hash == second.content_hash
     assert second.replayed is True
-    assert first.document["hypotheses"][0]["statement"] == "Supply is increasing."
-    assert first.document["evidence_links"][0]["id"] == str(evidence_id)
+    assert [item["id"] for item in first.document["hypotheses"]] == [
+        str(item) for item in expected_hypothesis_ids
+    ]
+    assert [item["id"] for item in first.document["evidence_links"]] == expected_evidence_ids
+    assert next(
+        item["statement"]
+        for item in first.document["hypotheses"]
+        if item["id"] == str(first_hypothesis_id)
+    ) == "Supply is increasing."
+    assert len(first.document["source_snapshots"]) == 1
+    assert first.manifest["evidence_characters"] == len(_CONTENT.decode("utf-8"))
     assert first.document["source_snapshots"][0]["text"] == _CONTENT.decode("utf-8")
 
     with session_factory() as session:
@@ -472,6 +493,33 @@ def test_context_fails_closed_when_evidence_character_bound_is_exceeded(
         UpdateThreadContextAssembler(session_factory, snapshot_store).assemble(
             created.task_id, 1
         )
+
+
+
+
+def test_request_identity_and_fingerprint_golden_vector() -> None:
+    team_id = UUID("11111111-1111-4111-8111-111111111111")
+    thread_id = UUID("33333333-3333-4333-8333-333333333333")
+    idempotency_key = UUID("22222222-2222-4222-8222-222222222222")
+    task_id = task_id_for_request(team_id, idempotency_key)
+    assert str(task_id) == "446a9da6-8b5b-528b-a510-9a59388f10af"
+
+    payload = build_request_event_payload(
+        task_id=task_id,
+        team_id=team_id,
+        thread_id=thread_id,
+        policy_version=2,
+        requested_by_operator_id=(
+            '{"iss":"https://host.example/identity","sub":"rw3-operator"}'
+        ),
+        idempotency_key=idempotency_key,
+    )
+    assert payload["idempotency_key_hash"] == (
+        "sha256:b454f82c5857ebabf342b7258e5cf7def78b7cd975814119462973de9a38df10"
+    )
+    assert payload["request_fingerprint"] == (
+        "sha256:53bde7957a90f3622b5773dd544f4e5e1033f3a41ec0093c4a8d930ca1c89529"
+    )
 
 
 def test_request_task_identity_is_stable_and_team_scoped(
