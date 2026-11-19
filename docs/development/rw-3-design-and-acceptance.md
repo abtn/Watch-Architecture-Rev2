@@ -95,7 +95,7 @@ RW-3 retains the provider and request limits already accepted by ADR-0031 and im
 - Provider/model remain `cloudflare_workers_ai` and `@cf/meta/llama-3.1-8b-instruct-fp8`. A different provider or model requires a separate decision; the 32,000-token advertised context window does not authorize expanding Watch's own Context budget.
 - Any retrieval-derived passage set remains limited to **8 passages and 8,000 Unicode characters**. Apply these limits unchanged; do not enlarge them because the model advertises a 32,000-token context window.
 - The provider's conservative input quote remains UTF-8 byte lengths of the exact system and user prompts plus 128 framing tokens. Quoted input plus output must fit within 32,000 tokens.
-- The configured output-token limit may be lower, but cannot exceed the existing **1,024-token** ceiling (`DEFAULT_MAX_OUTPUT_TOKENS`). Do not raise this ceiling for RW-3. The Task's existing cost budget and cost reservation remain independently binding.
+- The configured output-token limit may be lower, but cannot exceed the existing **1,024-token** ceiling (`DEFAULT_MAX_OUTPUT_TOKENS`). Do not raise this ceiling for RW-3. The approved Task-wide generation-cost ceiling is **$0.02 across all three attempts**; every attempt must reserve its conservative maximum before the provider call, and unresolved/unknown charges continue to count in full.
 - The adapter remains synchronous, non-streaming, one HTTP request per invocation, with no tools and no internal retries. It requires valid prompt/completion usage and an exact response-model match; retry eligibility remains TaskRuntime-owned.
 - The output is one final JSON object validated locally. Do not rely on provider JSON Mode or expose/persist reasoning traces.
 
@@ -291,7 +291,7 @@ This request Event is the durable authorization and attribution binding for the 
 - Prove the request Event records the canonical requesting Operator, its fingerprint binds that identity, and same-key replay by a different Operator or for a different Thread conflicts without creating a second Task/Event.
 - Prove model-worker execution and commit attribution contain no Operator principal or `operator_id`, while existing RW-2 Operator identity checks and Event payloads remain unchanged.
 
-These are design/test obligations only. The exact Task budget and full Task-shape contract remain separate planning locks; this authorization decision does not settle them.
+These are design/test obligations only. The exact Task shape and budget are resolved by the approved Checkpoint 3 decision in §10.4.2; that decision is still a design/test contract and does not authorize implementation.
 
 ### 10.4.1 TeamPolicy selection and concurrency
 
@@ -325,6 +325,35 @@ No production TeamPolicy publishing service was found in the audited repository.
 - Prove all policy-publishing code follows Team `FOR UPDATE` before version allocation/insertion. Until a real publisher exists, record this as an integration contract and test the creator-side serialization boundary with a controlled competing transaction; do not claim publisher integration coverage.
 
 These are design and test obligations only. They do not authorize a TeamPolicy publisher or RW-3 implementation.
+
+### 10.4.2 Task shape, generation budget, and deadline
+
+**Checkpoint 3 decision — approved:** the immutable `update_thread` Task uses the exact envelope below. It is a planning contract; no ORM/schema migration or runtime implementation is authorized by this approval.
+
+- `task_type="update_thread"`, `status="pending"`, `attempt_count=0`, and `max_attempts=3` at creation.
+- `team_id` is derived from the locked target Thread; `thread_id` is the same target bound by the single verified `update_thread_requested` Event. `policy_version` is the valid highest version pinned under §10.4.1.
+- `objective_id`, `plan_id`, and `plan_action_id` are all `NULL`.
+- `allowed_writes` is exactly the ordered list `["EvidenceLink", "Hypothesis", "ConfidenceChange"]`.
+- `budget` is exactly `{ "max_tool_calls": 0, "max_cost_usd": 0.02, "deadline_seconds": 45 }`. No tool capability is granted. The three-start limit is the Task's separate `max_attempts` field, not another budget key.
+- Do not add `input_refs` or `allowed_tools` Task columns for this slice. The immutable request Event binds the Thread; application code builds Context from canonical records and the Task-pinned policy. Event and Outcome remain Kernel/TaskRuntime side effects, outside `allowed_writes`.
+
+**Cumulative generation-cost ceiling:** `$0.02` applies to all attempts of one Task, not separately to each attempt. The existing Cloudflare rate card in `core/generation.py` is revision `cloudflare-llama-3.1-8b-fp8-2026-10-30`, with input `$0.152` and output `$0.287` per million tokens. At the maximum 32,000-token context and 1,024-token output, the conservative input quote is at most 30,976 tokens (including the existing 128 framing-token allowance), producing a maximum one-attempt quote of `$0.00500224`; three such reservations total `$0.01500672`, below the `$0.02` Task ceiling. The exact prompt is quoted for each attempt; if its quote plus output does not fit the 32,000-token context or the cumulative Task ceiling, do not call the provider. Keep the existing provider/model/rate card; any pricing or model change requires a separate decision.
+
+The existing `TaskGenerationCostService` must receive one narrow `update_thread` operation mapped only to Task type `update_thread` and the exact ordered write scope above. Preserve the existing reservation ledger, Task/attempt attribution, one reservation per attempt, cumulative accounting across reconciled and unresolved charges, and known/unknown/overrun behavior. Unknown usage retains the full reservation; it is never treated as zero or released to fund a later attempt. A valid reconciled current-attempt charge remains mandatory before business commit.
+
+**Deadline:** the absolute Task deadline is 45 seconds from successful TaskRuntime admission. The worker enforces it across Context assembly, quoting, provider execution, parsing, and pre-commit processing; the provider request timeout is capped at 30 seconds and must not exceed the remaining Task time. No provider call starts after the deadline. The current `TaskRuntime.admit()` validates that `deadline_seconds` is a positive integer but does not enforce elapsed time; the implementation must add only the narrow `update_thread` deadline enforcement required here, not a global runtime redesign. Preserve the existing 60-second interrupted-task recovery threshold; it is not the execution deadline.
+
+**Provider and proposal bounds:** retain the ADR-0031 Cloudflare Workers AI Llama 3.1 8B FP8 model, one synchronous non-streaming HTTP request per admitted attempt, no tools, no provider-adapter retries, at most 1,024 output tokens, and the existing 32,000-token total quoted-context ceiling. TaskRuntime alone owns the maximum three starts. The model response remains limited to 8 proposals per invocation; the Operator request limit of 64 and RW-2 batch semantics are unchanged.
+
+**Checkpoint 3 proof obligations:**
+
+- Prove exact Task creation/replay/admission shape, including null Objective/Plan/PlanAction links, exact write-scope order, pending/zero-attempt initial state, three maximum starts, and the exact three-key budget. Missing, extra, mistyped, or widened fields fail closed before provider invocation.
+- Prove `max_tool_calls=0` and no tool capability; reject any nonzero tool allowance.
+- Prove the $0.02 cumulative Task ceiling across all attempts, one reservation per admitted attempt, exact operation/Task/write-scope mapping, and three maximum conservative reservations fitting within the ceiling. Reservation denial must make zero provider calls; unknown reservations remain fully accounted; overrun/unknown/unreconciled charges cannot authorize business writes.
+- Prove exact provider/model/rate-card binding, per-prompt quote, 32,000-token context enforcement, 1,024-token output ceiling, one HTTP request per attempt, and no provider-adapter retry.
+- Prove the 45-second absolute deadline is enforced from admission, including Context and post-provider work; provider timeout never exceeds 30 seconds or remaining Task time; no call starts after expiry. Keep the 60-second interrupted recovery threshold unchanged.
+
+These are approved design decisions and proof obligations only. They do not authorize RW-3 implementation.
 
 ### 10.5 Executable TaskRuntime recovery handoff
 
