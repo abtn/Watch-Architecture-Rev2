@@ -411,15 +411,18 @@ class UpdateThreadContextAssembler:
                 raise UpdateThreadContextError(
                     "update_thread_outcome_reference_invalid"
                 )
-            source = session.get(Outcome, link.outcome_id)
+            outcome_source = session.get(Outcome, link.outcome_id)
             if (
-                source is None
-                or source.team_id != team.id
-                or source.observation_snapshot_ref is None
-                or source.observation_hash is None
+                outcome_source is None
+                or outcome_source.team_id != team.id
+                or outcome_source.observation_snapshot_ref is None
+                or outcome_source.observation_hash is None
             ):
                 raise UpdateThreadContextError("update_thread_outcome_team_mismatch")
-            return source.observation_snapshot_ref, source.observation_hash
+            return (
+                outcome_source.observation_snapshot_ref,
+                outcome_source.observation_hash,
+            )
 
         raise UpdateThreadContextError("update_thread_source_kind_invalid")
 
