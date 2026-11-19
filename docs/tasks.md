@@ -3,13 +3,13 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 
 ## RW implementation status and evidence contract
 
-This is the current implementation-status summary after RW-2 acceptance on 2026-11-18. `PLAN.md` remains the sole authority for milestone status and authorization; exact verification evidence is recorded in `docs/testing.md`.
+This is the current implementation-status summary after RW-3 implementation authorization on 2026-11-19. `PLAN.md` remains the sole authority for milestone status and authorization; exact verification evidence is recorded in `docs/testing.md`.
 
 | Task / entity | Current implementation state |
 |---|---|
 | ingest_source | Implemented for the existing deterministic Signal-ingestion path. This does not include triage. |
 | triage_signal | Specified; not implemented. Planned for RW-4. |
-| update_thread | Specified; not implemented. RW-3 remains planning-only; Checkpoints 1–4 are approved design decisions and Checkpoint 5 cross-document reconciliation is complete. None constitutes implementation authorization. |
+| update_thread | RW3.1 implementation in progress on `rw3-1-task-creation-bounded-context-20261119`: host-authorized Task creator and bounded Context assembler added; admission/worker/provider/commit path not implemented. Not yet accepted. |
 | operator_update | Deterministic host-invoked Operator path implemented and formally accepted in RW-2; PR #134 merged to main. |
 | apply_decay | Specified; not implemented. Planned for RW-5. |
 | Thread / Hypothesis / ConfidenceChange | ORM persistence implemented in RW-1; deterministic Operator commit path implemented and accepted in RW-2. |
@@ -164,7 +164,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Failure:** heuristics error → disposition `deferred` with reason; never silent (INV-09).
 ### `update_thread` — model worker
 
-**Implementation status:** specified; not implemented. RW-3 is a planning proposal only and requires a separate explicit implementation authorization.
+**Implementation status:** RW3.1 is in progress. The host-authorized Task creator and bounded Context assembler are implemented on `rw3-1-task-creation-bounded-context-20261119`; this is not a completed or accepted worker. RW3.2–RW3.4 remain gated, and live provider invocation still requires separate explicit authorization.
 
 - **Purpose:** incorporate new evidence into one existing Thread's world model through a bounded model proposal and the shared RW-2 commit boundary.
 - **Trusted target:** Team and Thread are resolved from the immutable Task request and canonical database state. Model output cannot select or override them.
