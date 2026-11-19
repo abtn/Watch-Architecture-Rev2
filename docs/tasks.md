@@ -103,7 +103,7 @@ is an upper bound on the Actions authorized by one Strategy, not a daily Task
 quota. It must not be compared with `max_tasks_per_day`.
 - **Scope:** This rule enforces a Task-start count quota only. It does not mean
 that daily cost quotas are enforced.
-**Creation sources:** Triggers (all three types), the scheduler (ingestion, decay, review, overdue scans), Task enqueues (triage → update; consultation follow-ups), and Task retries. Manual Operator Tasks are created by a thin in-repository application adapter invoked in-process by a host after it authenticates and authorizes the Operator. This is not a separate deployed Watch API/CLI. R6-F Checkpoint 3 implements the adapter for `approve_learning_change`; RW-2 adds `operator_update` through the same host boundary. Other manual Task specifications do not imply implemented callers.
+**Creation sources:** Triggers (all three types), the scheduler (ingestion, decay, review, overdue scans), explicitly authorized Task enqueues (consultation follow-ups), and Task retries. Manual Operator Tasks are created by a thin in-repository application adapter invoked in-process by a host after it authenticates and authorizes the Operator. This is not a separate deployed Watch API/CLI. R6-F Checkpoint 3 implements the adapter for `approve_learning_change`; RW-2 adds `operator_update` through the same host boundary. Other manual Task specifications do not imply implemented callers.
 ## 2. Common validation rules (every commit path)
 1. Task status is `running` and budget is not exhausted (operator task types: no model cost, no enforced deadline).
 2. All referenced entities exist and belong to the Task's Team.
