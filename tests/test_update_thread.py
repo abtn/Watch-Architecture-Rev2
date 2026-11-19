@@ -392,8 +392,13 @@ def test_context_is_deterministic_bounded_and_replayable(
         if item["id"] == str(first_hypothesis_id)
     ) == "Supply is increasing."
     assert len(first.document["source_snapshots"]) == 1
-    assert first.manifest["evidence_characters"] == len(_CONTENT.decode("utf-8"))
-    assert first.document["source_snapshots"][0]["text"] == _CONTENT.decode("utf-8")
+    assert first.manifest["evidence_characters"] == 2 * len(_QUOTE)
+    assert first.document["source_snapshots"][0]["snapshot_ref"] == (
+        rw3_fixture.snapshot_ref
+    )
+    assert first.document["source_snapshots"][0]["snapshot_hash"] == (
+        rw3_fixture.snapshot_hash
+    )
 
     with session_factory() as session:
         events = list(
@@ -449,7 +454,8 @@ def test_context_fails_closed_when_evidence_character_bound_is_exceeded(
     _, created = _create_task(session_factory, rw3_fixture)
     _admit_fixture_task(session_factory, created.task_id)
     hypothesis_id = uuid4()
-    large_content = ("x" * 8_001).encode("utf-8")
+    large_text = "x" * 8_001
+    large_content = large_text.encode("utf-8")
     large_ref, large_hash = snapshot_store.put(large_content)
     now = datetime.now(timezone.utc)
     with session_factory.begin() as session:
@@ -484,9 +490,9 @@ def test_context_fails_closed_when_evidence_character_bound_is_exceeded(
                 snapshot_ref=large_ref,
                 snapshot_hash=large_hash,
                 stance="mentions",
-                quote_text=None,
-                quote_start=None,
-                quote_end=None,
+                quote_text=large_text,
+                quote_start=0,
+                quote_end=len(large_text),
                 reference_key=f"rw3:{uuid4()}",
                 created_at=now,
             )
