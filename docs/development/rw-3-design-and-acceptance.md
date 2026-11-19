@@ -221,7 +221,7 @@ RW3-0 remains source/design reconciliation only. Any schema migration, provider/
 Each slice requires its own review/authorization as appropriate. Passing a prior slice does not automatically authorize the next. RW-3 completion does not authorize RW-4, RW-5, R7-C, persistent-database operations, or scored newsroom runs.
 
 
-## 9. Independent design review corrections
+## 10. Independent design review corrections
 
 This section resolves the implementation ambiguities identified by the independent review. It is normative for RW-3 and supersedes any less-specific wording in §§3–8.
 
