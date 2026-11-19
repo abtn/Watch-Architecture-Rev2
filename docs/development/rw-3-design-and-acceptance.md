@@ -293,6 +293,39 @@ This request Event is the durable authorization and attribution binding for the 
 
 These are design/test obligations only. The exact Task budget and full Task-shape contract remain separate planning locks; this authorization decision does not settle them.
 
+### 10.4.1 TeamPolicy selection and concurrency
+
+**Checkpoint 2 decision — approved:** a new `update_thread` Task pins the highest TeamPolicy version for its Team, selected while holding the Team serialization lock. The Task and its request Event persist that version atomically. A policy version is immutable; policy changes append a new version and never edit an existing row.
+
+**New Task creation order:**
+
+1. Read the target Thread only to discover its candidate `team_id`; the caller still cannot supply an authoritative Team.
+2. Lock that Team row with `SELECT ... FOR UPDATE`.
+3. Re-read and lock the target Thread with `FOR UPDATE`, constrained to the candidate Team. Revalidate that the Thread still belongs to that Team and remains available for update.
+4. Resolve the deterministic Task ID. If the Task already exists, validate/replay it using its stored `Task.policy_version`; do not select the current policy again.
+5. Only for a genuinely new Task, select the TeamPolicy with the greatest `version` for that Team, ordered descending and limited to one row, using `FOR SHARE`. Validate that selected row's Team ownership, supported `schema_version`, and the existing versioned rules contract relevant to `update_thread`.
+6. If the selected newest policy is missing or invalid, fail closed. Do not fall back to an older policy. Persist the selected version in the Task and request Event in the same transaction as Task/Event creation.
+
+The TeamPolicy model has a unique `(team_id, version)` key and Tasks reference `(team_id, policy_version)`. There is no active-version pointer: the highest version is current. Do not add one for RW-3. This contract does not define new policy vocabulary or a universal policy validator; implementation must validate the supported schema and relevant existing rules, rejecting unsupported schema versions or malformed relevant rules.
+
+**Policy publication and serialization:** any future policy-publishing operation must acquire the same Team `FOR UPDATE` lock before determining the next version and inserting a new immutable TeamPolicy row. PostgreSQL's TeamPolicy-to-Team foreign-key check takes a key-share lock on the Team; that conflicts with the creator/publisher's Team `FOR UPDATE` lock. Therefore, when both operations follow this Team-first protocol, the transactions serialize: a creator that wins first pins the prior version, while a publisher that commits first makes the new version visible to the next creator. Keep lock order Team → Thread → TeamPolicy/Task/Event to avoid introducing an inverse-order deadlock.
+
+No production TeamPolicy publishing service was found in the audited repository. This is a required contract for any future publisher, not a claim that a publisher or its integration currently exists. Do not create a publisher, mutate TeamPolicy, add a lock table, active pointer, index, or migration as part of this planning checkpoint.
+
+**Replay and execution:** same-key replay uses the original Task's stored policy version and the matching historical TeamPolicy row, even after a newer version is published. It never re-pins to the latest version. Missing, cross-Team, mutated, unsupported, or invalid historical policy evidence fails closed; a newer valid version does not invalidate an otherwise valid historical pin. Context assembly and worker execution always use the Task-pinned version, never a fresh latest-policy lookup.
+
+**Checkpoint 2 proof obligations:**
+
+- Prove a new Task selects the greatest TeamPolicy version for its Team and rejects when no policy exists.
+- Prove the newest selected policy is validated against the supported schema and relevant existing rules; an invalid newest version fails closed rather than falling back to an older valid version.
+- Prove Task and request Event persist the same policy version atomically.
+- Prove replay after policy advancement returns the original Task and original policy version; same-key request conflicts remain governed by the Checkpoint 1 fingerprint.
+- Prove missing, cross-Team, mutated, unsupported-schema, and invalid historical policy pins fail closed before provider invocation.
+- Use disposable PostgreSQL transactions to race Task creation against policy publication in both lock orders. Assert the creator pins exactly the version committed before it acquired the Team lock, with no mixed or ambiguous binding.
+- Prove all policy-publishing code follows Team `FOR UPDATE` before version allocation/insertion. Until a real publisher exists, record this as an integration contract and test the creator-side serialization boundary with a controlled competing transaction; do not claim publisher integration coverage.
+
+These are design and test obligations only. They do not authorize a TeamPolicy publisher or RW-3 implementation.
+
 ### 10.5 Executable TaskRuntime recovery handoff
 
 TaskRuntime owns the Task row lock, attempt identity, retry decision, and terminal lifecycle. The worker/commit layer does not open a competing transaction or independently transition Task state.
