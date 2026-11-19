@@ -107,7 +107,7 @@ RW-3 retains the provider compatibility envelope and request limits documented i
 2. Admit/claim the Task attempt through TaskRuntime. This establishes the attempt that owns all subsequent Context, generation, and cost records.
 3. Assemble and validate the bounded Context for that admitted attempt. If this fails, record failure through TaskRuntime; do not reserve cost or call the provider.
 4. Reserve the maximum permitted generation cost for the exact Task attempt through the existing cost-accounting service.
-5. Call the configured existing generation provider only after reservation succeeds.
+5. Call a live provider only if the separate RW-3 provider-authorization decision has been accepted, and only after reservation succeeds. Until then, use a deterministic fake provider in tests; do not call Cloudflare.
 6. Reconcile provider usage/cost from the raw provider response and validate the exact current-attempt charge. Do this even if the response body will later fail parsing. Missing/unknown/unreconciled/overrun usage cannot authorize business writes; preserve the applicable reservation/unknown-cost accounting and fail through TaskRuntime.
 7. Parse the response against a strict typed schema. Reject malformed JSON, unknown fields, unsupported proposal types, malformed identifiers, excessive output, and more than 8 proposals; do not coerce or repair them. Canonical reference ownership, freshness, and domain validity remain commit-core checks and produce per-proposal rejection Events where applicable.
 8. Submit non-empty typed proposals to the shared RW-2 validation and transaction core through a narrow actor-neutral seam. The current `WorldMemoryCommitService` is Operator-specific: it validates an Operator principal and records `operator_id`; it cannot be called unchanged by a model worker. Preserve the Operator adapter and its event contract, and add only the minimum trusted `model_worker` actor attribution needed by `update_thread`. This remains the sole business-write boundary; do not create a parallel commit service.
@@ -162,7 +162,7 @@ Parser-level failures (invalid JSON, unknown fields, unsupported shapes/types, f
 
 ### Model and provider boundary
 
-- [ ] Existing generation provider and cost-accounting services are reused.
+- [ ] Existing generation and cost-accounting code is reused without creating a second provider abstraction. Live provider invocation is blocked until a separate explicit RW-3 provider-authorization decision is accepted; deterministic tests use a fake provider until then.
 - [ ] TaskRuntime admission establishes the attempt before attempt-specific Context assembly.
 - [ ] The existing cost service has a distinct `update_thread` operation mapped to Task type `update_thread` and exactly `[EvidenceLink, Hypothesis, ConfidenceChange]`; provider/model/rate-card and output bounds are validated by that operation.
 - [ ] Reservation succeeds before provider invocation.
@@ -350,7 +350,7 @@ The existing `TaskGenerationCostService` must receive one narrow `update_thread`
 - Prove exact Task creation/replay/admission shape, including null Objective/Plan/PlanAction links, exact write-scope order, pending/zero-attempt initial state, three maximum starts, and the exact three-key budget. Missing, extra, mistyped, or widened fields fail closed before provider invocation.
 - Prove `max_tool_calls=0` and no tool capability; reject any nonzero tool allowance.
 - Prove the $0.02 cumulative Task ceiling across all attempts, one reservation per admitted attempt, exact operation/Task/write-scope mapping, and three maximum conservative reservations fitting within the ceiling. Reservation denial must make zero provider calls; unknown reservations remain fully accounted; overrun/unknown/unreconciled charges cannot authorize business writes.
-- Prove exact provider/model/rate-card binding, per-prompt quote, 32,000-token context enforcement, 1,024-token output ceiling, one HTTP request per attempt, and no provider-adapter retry.
+- Prove the live-provider authorization gate: without a separately accepted RW-3 provider decision, the worker/test composition cannot make a Cloudflare call and uses only a deterministic fake provider. If that decision is later accepted, prove exact provider/model/rate-card binding, per-prompt quote, 32,000-token context enforcement, 1,024-token output ceiling, one HTTP request per attempt, and no provider-adapter retry.
 - Prove the 45-second absolute deadline is enforced from admission, including Context and post-provider work; provider timeout never exceeds 30 seconds or remaining Task time; no call starts after expiry. Keep the 60-second interrupted recovery threshold unchanged.
 
 These are approved design decisions and proof obligations only. They do not authorize RW-3 implementation.
