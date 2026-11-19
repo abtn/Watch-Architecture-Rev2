@@ -37,7 +37,7 @@ RW-3 reuses the RW-2 proposal types and commit-time validation. It does not crea
 
 **Explicit exclusions:**
 
-- SignalDisposition creation or refinement; triage remains RW-4.
+- SignalDisposition creation or refinement; triage remains RW-4. `triage_signal` does not create or enqueue an `update_thread` Task. RW-3 Tasks have only the host-authorized Operator creator defined in §10.4; any future application-authored creator (including triage-triggered work) requires a separately specified authorization, attribution, request-Event, idempotency, and replay contract, plus its own explicit approval.
 - Thread creation, reactivation, or summary/projection writes.
 - TeamPolicy or KnowledgeItem mutation.
 - Artifact or Consultation creation.
