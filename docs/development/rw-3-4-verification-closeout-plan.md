@@ -1,6 +1,6 @@
 # RW3.4 — Integrated Verification and Closeout Plan
 
-**Status:** Working on RW3.4. This document defines the integrated verification and acceptance sequence for the already-merged RW3.1–RW3.3 implementation. The current PR is documentation-only. It does not authorize implementation changes, live provider calls, schema changes, persistent-database access, or later RW milestones.
+**Status:** Working on RW3.4. This document defines the integrated verification and acceptance sequence for the already-merged RW3.1–RW3.3 implementation. The current plan PR is documentation-only and does not itself authorize implementation changes. Separate explicit authorization for the two narrow corrective tracks was given on 2026-11-20 and is tracked by implementation PRs #140 and #142. That authorization does not extend to live provider calls, schema changes, persistent-database access, or later RW milestones.
 
 **Planning baseline:** `main` at `c6febd883cb1d7390f44cf6aef09e3a8dbd5ba48` (2026-11-20).
 
@@ -175,17 +175,27 @@ The normative Task/design contract requires a 45-second absolute deadline from T
 
 The current `UpdateThreadWorker.run` starts a monotonic timer after admission and calls `_check_deadline` at several stage boundaries. However, the current `GenerationProvider.generate_raw` protocol has no per-call timeout argument; the worker calls it without a deadline-derived timeout. `CloudflareWorkersAIConfig.timeout_seconds` defaults to 60 seconds and permits larger values. The worker cannot interrupt a blocking provider call at the Task deadline, and the inspected path does not check the deadline after parsing immediately before commit/finalization. The current `tests/test_update_thread.py` inventory has no dedicated 45-second deadline/30-second provider-timeout test node.
 
-**Disposition:** do not claim `RW-DL-01` complete from the presence of `MAX_TASK_SECONDS` or boundary checks alone. RW3.4 must either:
-- obtain separate authorization for a narrowly scoped corrective implementation and deterministic deadline/timeout regression tests, then rerun the integrated exact-head verification; or
-- present the exact residual behavior and an explicit contract adjustment for Operator decision.
+**Disposition and implementation status:** separate implementation authorization was granted on 2026-11-20. The corrective implementation is tracked in [PR #140](https://github.com/abtn/Watch-Architecture-Rev2/pull/140), branch `rw3-4-deadline-enforcement-20261120`.
 
-This documentation-only PR does not modify the provider protocol, timeout configuration, worker, or TaskRuntime.
+The implementation:
+- captures the monotonic deadline origin at the TaskRuntime admission transition;
+- passes the provider `min(30 seconds, remaining Task time)` as a per-call timeout and applies it to the Cloudflare HTTP request;
+- checks the same absolute deadline after Context assembly, quote construction, receipt/reconciliation, parsing, fingerprinting, and before proposal persistence / shared commit;
+- terminalizes deadline expiry before proposals become durable without business writes;
+- if expiry occurs after the proposal set is durable, leaves the Task for the existing RW3.3 recovery path instead of attempting a late commit or reinvoking the provider;
+- validates a deadline terminal failure against the current attempt's receipt and scopes receipt validation to the current attempt.
+
+The existing 45-second Task budget, 30-second provider cap, and 60-second recovery threshold remain unchanged. Hosted CI run #1544 passed on PR #140's current head: 1,173 tests passed, with 130 existing warnings; fresh-PostgreSQL migration, single-head, Ruff, Mypy, and patch-whitespace checks passed. Programmer-local focused/full verification and independent review remain open. Do not mark `RW-DL-01` accepted yet.
 
 ### 5.2 Cumulative generation-cost proof — verify explicitly
 
 The Task contract fixes a cumulative `$0.02` ceiling across at most three starts, one reservation per attempt, and full accounting for unknown reservations. The worker has an `update_thread` operation and the test suite covers receipt/charge atomicity and overrun terminalization. The inspected test-node inventory does not identify a dedicated proof of the exact `update_thread` operation mapping and cumulative three-start arithmetic.
 
-**Disposition:** close `RW-GC-01` and `RW-GC-03` only after a test proves the Task-specific mapping, one reservation per attempt, aggregation of reconciled and unknown charges across all starts, budget exhaustion before provider invocation, and no business commit on overrun. Generic cost-service tests alone are insufficient unless the exact `update_thread` mapping is exercised.
+**Disposition and implementation status:** source inspection found that `TaskGenerationCostService.reserve` already sums prior reconciled charges by `accounted_cost_usd` and unresolved reservations by `reserved_cost_usd`, under the Task-row lock. No production accounting rewrite is currently justified. The missing proof is addressed by [stacked PR #142](https://github.com/abtn/Watch-Architecture-Rev2/pull/142), based on PR #140.
+
+The end-to-end worker test exercises the exact `update_thread` operation, one reservation for each provider start, a reconciled charge plus an unknown reservation, cumulative aggregation before the next provider invocation, and the absence of a third provider call or business commit after exhaustion. It separately asserts the production `$0.02` Task budget and three-start limit.
+
+The exhaustion branch is otherwise unreachable under the bounded three-start maximum quote and the accepted `$0.02` ceiling. The test therefore uses a smaller test-only Task budget to exercise the same accounting branch; it does not change the production contract. Hosted CI run #1545 is in progress. Programmer-local focused/full verification and independent review remain open. Do not mark `RW-GC-01` or `RW-GC-03` accepted yet.
 
 ### 5.3 Host authentication and TeamPolicy publication limitations
 
@@ -207,7 +217,7 @@ The order is deliberate. Do not skip ahead from green slice tests to acceptance.
 | 0. Freeze baseline | Start from the exact current `main` SHA. Record repo, branch, HEAD, clean worktree, origin, Python/uv versions, and current Alembic head. No reset/stash or destructive cleanup. | Exact baseline SHA and clean preflight record. |
 | 1. Build the evidence ledger | Map every RW3.1–RW3.3 proof row to exact current test nodes, source locations, and prior verification SHA. Separate source inspection, focused tests, local full verification, and hosted CI evidence. | Completed proof ledger; all missing nodes explicitly marked open. |
 | 2. Audit integration seams | Inspect the Task creator → TaskRuntime admission → Context verifier → cost reservation → generation adapter → receipt/proposal persistence → shared commit core → TaskRuntime finalization/recovery path. Check the exact Context tuple at every handoff. Recheck RW-2 Operator compatibility. | Reviewed sequence diagram or concise call-path record; no guessed identity substitution or parallel authority path. |
-| 3. Resolve blockers | Present the deadline/timeout mismatch and cumulative-budget proof gap for explicit disposition. If code changes are needed, stop this docs-only stream and request separate implementation authorization. | Every P1/P2 finding resolved or explicitly left as a blocking acceptance item; no silent waiver. |
+| 3. Resolve blockers | The two narrow corrective tracks are authorized and tracked by PR #140 (deadline enforcement) and stacked PR #142 (cumulative-cost proof). Review their exact heads and hosted CI; obtain programmer-local verification and independent review. | Both proof gaps have implementation/test evidence; no gap is accepted until exact-head local verification and Operator acceptance are recorded. |
 | 4. Run focused integrated proofs | Run the RW3.1–RW3.3 nodes in §§4.1–4.3 plus the applicable RW-2 Operator tests on the same source tree. Include PostgreSQL-backed concurrency, atomicity, replay, savepoint, and recovery proofs. | Exact command output and node counts tied to the tested SHA. |
 | 5. Run full verification | On a fresh disposable PostgreSQL instance with a dynamically assigned host port: migrate to head; verify `alembic heads` and `alembic current`; run Ruff, Mypy, `git diff --check`, and full pytest. Preserve/restore `DATABASE_URL` and `TEST_DATABASE_URL`; remove only the disposable container/volume created for this run. | Complete local verification record, cleanup confirmation, exact branch/HEAD, and clean worktree. |
 | 6. Hosted verification and independent review | Push the exact tested code/test tree and require hosted CI to pass on that exact SHA. If documentation-only commits follow, record their final PR head and hosted run separately. Independently review the final diff for correctness, scope, stale claims, and evidence traceability. | Passing hosted run(s), exact tested SHA versus final PR head, and review disposition. |
