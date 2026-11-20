@@ -1,6 +1,7 @@
 """Application-controlled Task admission, failure reporting, and finalization."""
 
 import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -1731,6 +1732,7 @@ class TaskRuntime:
 
         from core.update_thread import (
             GENERATION_RECEIPT_EVENT_TYPE,
+            PROPOSAL_FINGERPRINT_DOMAIN,
             PROPOSALS_EVENT_TYPE,
             TASK_TYPE,
             UPDATE_THREAD_TEST_PROVIDER,
@@ -1845,6 +1847,19 @@ class TaskRuntime:
         ):
             raise TaskNotFinalizable("update_thread_generation_receipt_invalid")
 
+        try:
+            raw_response = json.loads(receipt["raw_completion_text"])
+        except (TypeError, ValueError) as error:
+            raise TaskNotFinalizable(
+                "update_thread_no_change_receipt_output_invalid"
+            ) from error
+        if not isinstance(raw_response, dict) or set(raw_response) != {
+            "proposals"
+        } or raw_response["proposals"] != []:
+            raise TaskNotFinalizable(
+                "update_thread_no_change_receipt_output_invalid"
+            )
+
         proposal_event = current_attempt_event(PROPOSALS_EVENT_TYPE)
         proposals = proposal_event.payload
         fingerprint = proposals.get("proposal_fingerprint")
@@ -1903,6 +1918,29 @@ class TaskRuntime:
         ):
             raise TaskNotFinalizable(
                 "update_thread_generation_charge_invalid"
+            )
+
+        fingerprint_basis = {
+            "domain": PROPOSAL_FINGERPRINT_DOMAIN,
+            "schema_version": 1,
+            "task_id": str(task.id),
+            "team_id": str(task.team_id),
+            "thread_id": str(request.thread_id),
+            "attempt": task.attempt_count,
+            "policy_version": task.policy_version,
+            "generation_receipt_event_id": str(receipt_event.id),
+            "context_event_id": str(verified.event_id),
+            "context_snapshot_ref": verified.snapshot_ref,
+            "context_content_hash": verified.content_hash,
+            "charge_id": str(charge.id),
+            "proposals": [],
+        }
+        expected_fingerprint = "sha256:" + hashlib.sha256(
+            _canonical_json(fingerprint_basis).encode("utf-8")
+        ).hexdigest()
+        if fingerprint != expected_fingerprint:
+            raise TaskNotFinalizable(
+                "update_thread_no_change_fingerprint_invalid"
             )
 
         if session.scalar(
