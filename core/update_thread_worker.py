@@ -452,26 +452,69 @@ class UpdateThreadWorker:
                     )
                 )
             )
-            attempt_receipts = [
-                event
-                for event in all_receipts
-                if isinstance(event.payload, dict)
-                and type(event.payload.get("attempt")) is int
-                and event.payload.get("attempt") == attempt
-            ]
+            attempt_receipts = []
+            for event in all_receipts:
+                if not isinstance(event.payload, dict) or type(
+                    event.payload.get("attempt")
+                ) is not int:
+                    raise UpdateThreadWorkerError(
+                        "update_thread_generation_receipt_corrupt"
+                    )
+                if event.payload["attempt"] == attempt:
+                    attempt_receipts.append(event)
             if len(attempt_receipts) != 1 or attempt_receipts[0].id != receipt.id:
                 raise UpdateThreadWorkerError(
                     "update_thread_generation_receipt_duplicate"
                 )
             if (
-                receipt_payload.get("context_event_id") != str(verified.event_id)
+                receipt_payload.get("schema_version") != 1
+                or receipt_payload.get("task_id") != str(task.id)
+                or receipt_payload.get("team_id") != str(task.team_id)
+                or receipt_payload.get("thread_id") != str(verified.thread_id)
+                or receipt_payload.get("context_event_id") != str(verified.event_id)
                 or receipt_payload.get("context_snapshot_ref") != verified.snapshot_ref
                 or receipt_payload.get("context_content_hash") != verified.content_hash
                 or receipt_payload.get("charge_id") != str(reservation.charge_id)
+                or type(receipt_payload.get("attempt")) is not int
                 or receipt_payload.get("attempt") != attempt
+                or type(receipt_payload.get("policy_version")) is not int
                 or receipt_payload.get("policy_version") != task.policy_version
+                or receipt_payload.get("actor_type") != "model_worker"
+                or receipt_payload.get("operation") != OPERATION
+                or not isinstance(receipt_payload.get("raw_completion_text"), str)
             ):
                 raise UpdateThreadWorkerError("update_thread_generation_context_conflict")
+            try:
+                durable_response = UpdateThreadModelResponse.model_validate_json(
+                    receipt_payload["raw_completion_text"], strict=True
+                )
+            except (ValidationError, ValueError, TypeError) as error:
+                raise UpdateThreadWorkerError(
+                    "update_thread_generation_receipt_output_invalid"
+                ) from error
+            durable_proposals = [
+                proposal.model_dump(mode="json")
+                for proposal in durable_response.proposals
+            ]
+            if durable_proposals != proposals:
+                raise UpdateThreadWorkerError(
+                    "update_thread_generation_proposal_conflict"
+                )
+            expected_fingerprint = _fingerprint(
+                task_id=task.id,
+                team_id=task.team_id,
+                thread_id=verified.thread_id,
+                attempt=attempt,
+                policy_version=task.policy_version,
+                receipt_event_id=receipt.id,
+                context=verified,
+                charge_id=reservation.charge_id,
+                proposals=proposals,
+            )
+            if expected_fingerprint != fingerprint:
+                raise UpdateThreadWorkerError(
+                    "update_thread_proposal_fingerprint_conflict"
+                )
             charge = session.get(TaskGenerationCharge, reservation.charge_id)
             if (
                 charge is None
@@ -490,7 +533,17 @@ class UpdateThreadWorker:
                     )
                 )
             )
-            if prior:
+            prior_attempts = []
+            for event in prior:
+                if not isinstance(event.payload, dict) or type(
+                    event.payload.get("attempt")
+                ) is not int:
+                    raise UpdateThreadWorkerError(
+                        "update_thread_proposals_event_corrupt"
+                    )
+                if event.payload["attempt"] >= attempt:
+                    prior_attempts.append(event)
+            if prior_attempts:
                 raise UpdateThreadWorkerError("update_thread_proposals_event_duplicate")
             payload = {
                 "schema_version": 1,
