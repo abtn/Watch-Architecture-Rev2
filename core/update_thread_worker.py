@@ -32,7 +32,7 @@ from core.generation_cost import (
 )
 from core.models import Event, Task, TaskGenerationCharge
 from core.snapshot_store import SnapshotStore
-from core.task_runtime import FailureObservation, TaskRuntime
+from core.task_runtime import FailureObservation, TaskRuntime, TerminalObservation
 from core.update_thread_context import (
     AssembledUpdateThreadContext,
     UpdateThreadContextAssembler,
@@ -67,10 +67,10 @@ class UpdateThreadWorkerError(RuntimeError):
 
 
 class UpdateThreadProposalPersistencePending(UpdateThreadWorkerError):
-    """A durable receipt exists, but its proposal Event was not committed.
+    """A durable generation result exists, but its next DB transition failed.
 
-    RW3.3 recovery must resume from that receipt; this state must not be
-    terminalized or sent through another provider attempt.
+    RW3.3 recovery must resume from the receipt/proposal Events; this state
+    must not be terminalized or sent through another provider attempt.
     """
 
 
@@ -294,6 +294,21 @@ class UpdateThreadWorker:
                 raise UpdateThreadProposalPersistencePending(
                     "update_thread_proposal_persistence_pending"
                 ) from error
+            if not parsed.proposals:
+                try:
+                    self._runtime.finalize(
+                        TerminalObservation(
+                            task_id=task_id,
+                            attempt=attempt,
+                            result_category="success_no_change",
+                            observed_at=datetime.now(timezone.utc),
+                        )
+                    )
+                except SQLAlchemyError as error:
+                    raise UpdateThreadProposalPersistencePending(
+                        "update_thread_no_change_finalization_pending"
+                    ) from error
+
             return UpdateThreadWorkerResult(
                 task_id=task_id,
                 attempt=attempt,
