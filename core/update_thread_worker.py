@@ -26,8 +26,8 @@ from core.generation_cost import (
     TaskGenerationCostService,
 )
 from core.models import Event, Task, TaskGenerationCharge
-from core.task_runtime import FailureObservation, TaskRuntime
 from core.snapshot_store import SnapshotStore
+from core.task_runtime import FailureObservation, TaskRuntime
 from core.update_thread_context import (
     AssembledUpdateThreadContext,
     UpdateThreadContextAssembler,
@@ -356,7 +356,11 @@ class UpdateThreadWorker:
             task = session.scalar(
                 select(Task).where(Task.id == task_id).with_for_update()
             )
-            if task is None or task.status != "running" or task.attempt_count != attempt:
+            if (
+                task is None
+                or task.status != "running"
+                or task.attempt_count != attempt
+            ):
                 raise UpdateThreadWorkerError("update_thread_attempt_not_current")
             verified = self._context_assembler.verify_context_in_session(
                 session, task, context
@@ -420,10 +424,14 @@ class UpdateThreadWorker:
                 if event_attempt == attempt:
                     same_attempt.append(event)
             if len(same_attempt) > 1:
-                raise UpdateThreadWorkerError("update_thread_generation_receipt_duplicate")
+                raise UpdateThreadWorkerError(
+                    "update_thread_generation_receipt_duplicate"
+                )
             if same_attempt:
                 if same_attempt[0].payload != payload:
-                    raise UpdateThreadWorkerError("update_thread_generation_receipt_conflict")
+                    raise UpdateThreadWorkerError(
+                        "update_thread_generation_receipt_conflict"
+                    )
                 return _ReceiptResult(reconciliation, same_attempt[0].id)
 
             event = Event(
@@ -455,7 +463,9 @@ class UpdateThreadWorker:
                 or event.payload.get("attempt") != attempt
                 or not isinstance(event.payload.get("raw_completion_text"), str)
             ):
-                raise UpdateThreadWorkerError("update_thread_generation_receipt_invalid")
+                raise UpdateThreadWorkerError(
+                    "update_thread_generation_receipt_invalid"
+                )
             return event.payload["raw_completion_text"]
 
     def _record_proposals(
@@ -472,7 +482,11 @@ class UpdateThreadWorker:
             task = session.scalar(
                 select(Task).where(Task.id == task_id).with_for_update()
             )
-            if task is None or task.status != "running" or task.attempt_count != attempt:
+            if (
+                task is None
+                or task.status != "running"
+                or task.attempt_count != attempt
+            ):
                 raise UpdateThreadWorkerError("update_thread_attempt_not_current")
             verified = self._context_assembler.verify_context_in_session(
                 session, task, context
@@ -531,7 +545,9 @@ class UpdateThreadWorker:
                 or receipt_payload.get("operation") != OPERATION
                 or not isinstance(receipt_payload.get("raw_completion_text"), str)
             ):
-                raise UpdateThreadWorkerError("update_thread_generation_context_conflict")
+                raise UpdateThreadWorkerError(
+                    "update_thread_generation_context_conflict"
+                )
             try:
                 durable_response = _parse_model_response(
                     receipt_payload["raw_completion_text"]
