@@ -25,7 +25,7 @@ from core.generation_cost import (
     TaskGenerationCostError,
     TaskGenerationCostService,
 )
-from core.models import Event, Task
+from core.models import Event, Task, TaskGenerationCharge
 from core.task_runtime import (
     FailureObservation,
     TaskRuntime,
@@ -254,7 +254,7 @@ class UpdateThreadWorker:
                 team_id=context.team_id,
                 thread_id=context.thread_id,
                 attempt=attempt,
-                policy_version=self._task_policy_version(task_id),
+                policy_version=self._context_policy_version(context),
                 receipt_event_id=receipt.event_id,
                 context=context,
                 charge_id=reservation.charge_id,
@@ -281,9 +281,7 @@ class UpdateThreadWorker:
                 proposals=tuple(parsed.proposals),
             )
         except Exception as error:
-            if reservation is not None and not isinstance(
-                error, UpdateThreadWorkerError
-            ):
+            if reservation is not None:
                 self._mark_unknown(reservation, error)
             reason = getattr(error, "reason", None)
             if not isinstance(reason, str):
@@ -349,7 +347,7 @@ class UpdateThreadWorker:
                 "actor_type": "model_worker",
                 "operation": OPERATION,
                 "charge_id": str(reservation.charge_id),
-                "provider": generated.model and reservation.provider,
+                "provider": reservation.provider,
                 "model": generated.model,
                 "request_id": generated.request_id,
                 "prompt_tokens": generated.usage.input_tokens,
@@ -364,12 +362,21 @@ class UpdateThreadWorker:
                     )
                 )
             )
-            same_attempt = [
-                event
-                for event in prior
-                if isinstance(event.payload, dict)
-                and event.payload.get("attempt") == attempt
-            ]
+            same_attempt = []
+            for event in prior:
+                if not isinstance(event.payload, dict):
+                    raise UpdateThreadWorkerError(
+                        "update_thread_generation_receipt_corrupt"
+                    )
+                event_attempt = event.payload.get("attempt")
+                if isinstance(event_attempt, bool) or not isinstance(
+                    event_attempt, int
+                ):
+                    raise UpdateThreadWorkerError(
+                        "update_thread_generation_receipt_corrupt"
+                    )
+                if event_attempt == attempt:
+                    same_attempt.append(event)
             if len(same_attempt) > 1:
                 raise UpdateThreadWorkerError("update_thread_generation_receipt_duplicate")
             if same_attempt:
@@ -437,6 +444,25 @@ class UpdateThreadWorker:
             if receipt is None or not isinstance(receipt.payload, dict):
                 raise UpdateThreadWorkerError("update_thread_generation_receipt_invalid")
             receipt_payload = receipt.payload
+            all_receipts = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == RECEIPT_EVENT_TYPE,
+                    )
+                )
+            )
+            attempt_receipts = [
+                event
+                for event in all_receipts
+                if isinstance(event.payload, dict)
+                and type(event.payload.get("attempt")) is int
+                and event.payload.get("attempt") == attempt
+            ]
+            if len(attempt_receipts) != 1 or attempt_receipts[0].id != receipt.id:
+                raise UpdateThreadWorkerError(
+                    "update_thread_generation_receipt_duplicate"
+                )
             if (
                 receipt_payload.get("context_event_id") != str(verified.event_id)
                 or receipt_payload.get("context_snapshot_ref") != verified.snapshot_ref
@@ -492,12 +518,12 @@ class UpdateThreadWorker:
             session.flush()
             return event.id
 
-    def _task_policy_version(self, task_id: UUID) -> int:
-        with self._session_factory() as session:
-            task = session.get(Task, task_id)
-            if task is None or isinstance(task.policy_version, bool):
-                raise UpdateThreadWorkerError("update_thread_task_missing")
-            return task.policy_version
+    @staticmethod
+    def _context_policy_version(context: AssembledUpdateThreadContext) -> int:
+        value = context.manifest.get("policy_version")
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise UpdateThreadWorkerError("update_thread_context_policy_invalid")
+        return value
 
     def _mark_unknown(
         self, reservation: GenerationCostReservation, error: Exception
