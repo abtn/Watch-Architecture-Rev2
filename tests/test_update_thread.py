@@ -33,6 +33,7 @@ from core.operator_application import (
     TrustedOperatorPrincipal,
 )
 from core.snapshot_store import SnapshotStore
+from core.task_runtime import TaskRuntime, TaskNotEligible
 from core.update_thread import (
     ALLOWED_WRITES,
     MAX_ATTEMPTS,
@@ -238,13 +239,9 @@ def _seed_hypothesis_and_link(
 def _admit_fixture_task(
     session_factory: sessionmaker[Session], task_id: UUID
 ) -> None:
-    # RW3.1 deliberately does not extend TaskRuntime. This fixture represents
-    # the running Task state established by the later RW3 worker slice.
-    with session_factory.begin() as session:
-        task = session.get(Task, task_id)
-        assert task is not None
-        task.status = "running"
-        task.attempt_count = 1
+    admission = TaskRuntime(session_factory).admit(task_id)
+    assert admission.task_id == task_id
+    assert admission.attempt_count == 1
 
 
 def test_host_creator_pins_policy_and_replays_without_execution(
@@ -854,3 +851,63 @@ def test_context_rejects_quote_offsets_outside_source_snapshot(
             )
         )
         assert event is None
+
+
+def test_context_is_reloaded_from_its_verified_snapshot_before_provider_use(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    _admit_fixture_task(session_factory, created.task_id)
+    assembler = UpdateThreadContextAssembler(session_factory, snapshot_store)
+    assembled = assembler.assemble(created.task_id, 1)
+
+    # The dataclass is frozen, but its nested dictionaries are not. A caller
+    # must not be able to mutate the provider input after Context verification.
+    assembled.document["thread"]["title"] = "Forged in-memory title"
+    verified = assembler.verify_context(assembled)
+
+    assert verified.event_id == assembled.event_id
+    assert verified.snapshot_ref == assembled.snapshot_ref
+    assert verified.content_hash == assembled.content_hash
+    assert verified.document["thread"]["title"] == "Supply conditions"
+    assert verified.replayed is True
+
+
+def test_task_runtime_admission_rejects_tampered_update_thread_request(
+    session_factory: sessionmaker[Session],
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    with session_factory.begin() as session:
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+        assert event is not None
+        payload = dict(event.payload)
+        payload["thread_id"] = str(uuid4())
+        session.execute(
+            update(Event).where(Event.id == event.id).values(payload=payload)
+        )
+
+    with pytest.raises(TaskNotEligible, match="update_thread_request_fingerprint_invalid"):
+        TaskRuntime(session_factory).admit(created.task_id)
+
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        starts = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == created.task_id,
+                    Event.type == "task_started",
+                )
+            )
+        )
+        assert task is not None
+        assert task.status == "pending"
+        assert task.attempt_count == 0
+        assert starts == []
