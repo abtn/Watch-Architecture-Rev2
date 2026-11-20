@@ -375,6 +375,10 @@ class UpdateThreadWorker:
                     raise UpdateThreadWorkerError(
                         "update_thread_generation_receipt_corrupt"
                     )
+                if event_attempt > attempt:
+                    raise UpdateThreadWorkerError(
+                        "update_thread_generation_receipt_future_attempt"
+                    )
                 if event_attempt == attempt:
                     same_attempt.append(event)
             if len(same_attempt) > 1:
@@ -467,7 +471,8 @@ class UpdateThreadWorker:
                     "update_thread_generation_receipt_duplicate"
                 )
             if (
-                receipt_payload.get("schema_version") != 1
+                type(receipt_payload.get("schema_version")) is not int
+                or receipt_payload.get("schema_version") != 1
                 or receipt_payload.get("task_id") != str(task.id)
                 or receipt_payload.get("team_id") != str(task.team_id)
                 or receipt_payload.get("thread_id") != str(verified.thread_id)
@@ -522,6 +527,13 @@ class UpdateThreadWorker:
                 or charge.attempt_count != attempt
                 or charge.operation != OPERATION
                 or charge.status != "reconciled"
+                or receipt_payload.get("provider") != charge.provider
+                or receipt_payload.get("model") != charge.model
+                or receipt_payload.get("request_id") != charge.request_id
+                or type(receipt_payload.get("prompt_tokens")) is not int
+                or receipt_payload.get("prompt_tokens") != charge.input_tokens
+                or type(receipt_payload.get("completion_tokens")) is not int
+                or receipt_payload.get("completion_tokens") != charge.output_tokens
             ):
                 raise UpdateThreadWorkerError("update_thread_generation_charge_invalid")
 
