@@ -1847,8 +1847,19 @@ class TaskRuntime:
         ):
             raise TaskNotFinalizable("update_thread_generation_receipt_invalid")
 
+        def unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate_json_object_key")
+                result[key] = value
+            return result
+
         try:
-            raw_response = json.loads(receipt["raw_completion_text"])
+            raw_response = json.loads(
+                receipt["raw_completion_text"],
+                object_pairs_hook=unique_json_object,
+            )
         except (TypeError, ValueError) as error:
             raise TaskNotFinalizable(
                 "update_thread_no_change_receipt_output_invalid"
