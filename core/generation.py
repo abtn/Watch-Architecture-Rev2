@@ -93,6 +93,7 @@ class GenerationProvider(Protocol):
         system_prompt: str,
         user_prompt: str,
         temperature: float = 0.1,
+        timeout_seconds: float | None = None,
     ) -> GenerationResult: ...
 
 
@@ -250,6 +251,7 @@ class CloudflareWorkersAIGenerationProvider:
         system_prompt: str,
         user_prompt: str,
         temperature: float = 0.1,
+        timeout_seconds: float | None = None,
     ) -> GenerationResult:
         """Return raw completion text with validated model and usage metadata.
 
@@ -267,6 +269,18 @@ class CloudflareWorkersAIGenerationProvider:
             or not 0 <= temperature <= 2
         ):
             raise ValueError("invalid_generation_temperature")
+        if timeout_seconds is not None and (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not math.isfinite(timeout_seconds)
+            or timeout_seconds <= 0
+        ):
+            raise ValueError("invalid_generation_timeout")
+        request_timeout = (
+            self._config.timeout_seconds
+            if timeout_seconds is None
+            else min(self._config.timeout_seconds, float(timeout_seconds))
+        )
 
         self.maximum_request_cost(
             system_prompt=system_prompt, user_prompt=user_prompt
@@ -293,7 +307,7 @@ class CloudflareWorkersAIGenerationProvider:
 
         started = time.perf_counter()
         try:
-            with urlopen(request, timeout=self._config.timeout_seconds) as response:
+            with urlopen(request, timeout=request_timeout) as response:
                 document = json.loads(response.read().decode("utf-8"))
         except HTTPError as error:
             raise GenerationProviderError(
