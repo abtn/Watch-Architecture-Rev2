@@ -260,7 +260,7 @@ The receipt transaction must revalidate that the tuple identifies exactly one Co
 
 RW3.3 recovery must revalidate the same tuple against the Context Event and Snapshot before parsing a receipt-only response, resuming a proposal-only commit, accepting an existing marker, or reconstructing a terminal result. A missing, duplicate, cross-Task/Team/Thread/attempt/policy, changed-reference, or hash-mismatched Context identity is permanent integrity failure: no provider reinvocation, no business writes, and no guessed substitution. The proposal fingerprint inherits Context provenance through its explicit tuple and receipt binding; it does not replace the independent verification of the referenced Context Snapshot.
 
-This decision does not change the RW3.1 Context Event/Snapshot schema or add a migration. It was a prerequisite for RW3.2 implementation; RW3.2 was subsequently authorized, accepted, and merged by PR #137. RW3.3 implementation is separately authorized and remains in progress. Neither milestone authorizes live provider use.
+This decision does not change the RW3.1 Context Event/Snapshot schema or add a migration. It was a prerequisite for RW3.2 implementation; RW3.2 was subsequently authorized, accepted, and merged by PR #137. RW3.3 has since been accepted and merged by PR #138. Neither milestone authorizes live provider use.
 
 ### 10.2 Crash windows and TaskRuntime recovery
 
