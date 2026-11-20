@@ -1,6 +1,6 @@
 # RW-3 — Bounded model `update_thread` design and acceptance plan
 
-**Status:** RW-3 implementation was explicitly authorized on 2026-11-19. RW3.1 is in progress on `rw3-1-task-creation-bounded-context-20261119`; this slice implements the host-authorized Task creator and deterministic bounded Context only. `PLAN.md` remains the sole current-status authority. RW3.2–RW3.4 and live provider invocation remain separately gated.
+**Status:** RW-3 implementation was explicitly authorized on 2026-11-19. RW3.1 was accepted on 2026-11-20 and squash-merged by PR [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136) at `6260921b451f99ab07756890045175ba9983c3ad`; its exact tested head `b59ecca786bf418456e0e687c3e77d632d1e4118` passed hosted CI run [#1492](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44705109042) and Programmer-local verification. RW3.2 implementation was authorized on 2026-11-20: validate and replay the exact attempt-bound Context before provider invocation, use deterministic fake providers only, and preserve `context_event_id`, `context_snapshot_ref`, and `context_content_hash` in the generation receipt and proposal fingerprint. Live Cloudflare provider invocation remains separately unauthorized. RW3.3–RW3.4 remain separately gated. `PLAN.md` remains the sole current-status authority.
 
 **Depends on:** accepted RW-1 persistence and RW-2 deterministic Operator commit path.
 

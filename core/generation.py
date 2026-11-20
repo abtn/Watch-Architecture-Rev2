@@ -1,9 +1,9 @@
-"""Stateless Cloudflare Workers AI generation over Chat Completions.
+"""Stateless generation over Chat Completions.
 
-The adapter returns only the final JSON object and provider usage metadata. It
-never exposes or persists reasoning traces, tool calls, prompts, or raw response
-bodies. Each call makes exactly one HTTP request; retry policy belongs to the
-ordinary Task attempt boundary, not this provider adapter.
+The adapter returns raw completion text with validated provider usage. The
+legacy JSON method strictly parses that text for existing callers. It never
+exposes reasoning traces or tool calls. Each call makes one HTTP request;
+retry policy belongs to the ordinary Task attempt boundary.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import os
 import time
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any
+from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -68,13 +68,32 @@ class GenerationUsage:
 
 @dataclass(frozen=True)
 class GenerationResult:
-    """Validated final JSON output plus the provider's usage accounting."""
+    """Provider completion and usage; content remains for JSON callers."""
 
     content: dict[str, Any]
     model: str
     usage: GenerationUsage
     elapsed_seconds: float
     request_id: str | None
+    raw_content: str | None = None
+
+
+class GenerationProvider(Protocol):
+    """Shared structural contract for production and deterministic test providers."""
+
+    provider_name: str
+
+    def maximum_request_cost(
+        self, *, system_prompt: str, user_prompt: str
+    ) -> GenerationCostQuote: ...
+
+    def generate_raw(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.1,
+    ) -> GenerationResult: ...
 
 
 @dataclass(frozen=True)
@@ -202,11 +221,40 @@ class CloudflareWorkersAIGenerationProvider:
         user_prompt: str,
         temperature: float = 0.1,
     ) -> GenerationResult:
-        """Generate one JSON object; reject non-JSON or usage-less responses.
+        """Generate and strictly parse one JSON object for legacy callers."""
+        result = self.generate_raw(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature,
+        )
+        try:
+            parsed = json.loads(result.raw_content or "")
+        except json.JSONDecodeError:
+            raise GenerationProviderError(
+                "generation_output_not_valid_json"
+            ) from None
+        if not isinstance(parsed, dict):
+            raise GenerationProviderError("generation_output_not_json_object")
+        return GenerationResult(
+            content=parsed,
+            model=result.model,
+            usage=result.usage,
+            elapsed_seconds=result.elapsed_seconds,
+            request_id=result.request_id,
+            raw_content=result.raw_content,
+        )
 
-        The selected FP8 model is not listed in Cloudflare's published JSON Mode
-        compatibility list. We therefore request JSON in the system prompt and
-        validate the returned object locally instead of sending response_format.
+    def generate_raw(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.1,
+    ) -> GenerationResult:
+        """Return raw completion text with validated model and usage metadata.
+
+        Parsing is deliberately left to the application after the usage charge
+        has been reconciled and durably recorded.
         """
         if not isinstance(system_prompt, str) or not system_prompt.strip():
             raise ValueError("empty_generation_system_prompt")
@@ -278,15 +326,8 @@ class CloudflareWorkersAIGenerationProvider:
         if not isinstance(message, dict):
             raise GenerationProviderError("cloudflare_missing_completion_message")
         content = message.get("content")
-        if not isinstance(content, str) or not content.strip():
-            raise GenerationProviderError("cloudflare_empty_completion")
-
-        try:
-            parsed = json.loads(content)
-        except json.JSONDecodeError:
-            raise GenerationProviderError("generation_output_not_valid_json") from None
-        if not isinstance(parsed, dict):
-            raise GenerationProviderError("generation_output_not_json_object")
+        if not isinstance(content, str):
+            raise GenerationProviderError("cloudflare_completion_not_text")
 
         usage_document = document.get("usage")
         if not isinstance(usage_document, dict):
@@ -321,9 +362,10 @@ class CloudflareWorkersAIGenerationProvider:
         )
         response_id = document.get("id")
         return GenerationResult(
-            content=parsed,
+            content={},
             model=response_model,
             usage=usage,
             elapsed_seconds=elapsed,
             request_id=response_id if isinstance(response_id, str) else None,
+            raw_content=content,
         )

@@ -6,6 +6,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from threading import Barrier
 from typing import Iterator
 from uuid import UUID, uuid4
@@ -14,12 +15,19 @@ import pytest
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
+from core.generation import (
+    GenerationCostQuote,
+    GenerationResult,
+    GenerationUsage,
+)
 from core.models import (
     Event,
     EvidenceLink,
     Hypothesis,
+    Outcome,
     Signal,
     Task,
+    TaskGenerationCharge,
     Team,
     TeamPolicy,
     Thread,
@@ -33,6 +41,12 @@ from core.operator_application import (
     TrustedOperatorPrincipal,
 )
 from core.snapshot_store import SnapshotStore
+from core.task_runtime import (
+    TaskNotEligible,
+    TaskNotFinalizable,
+    TaskRuntime,
+    TerminalObservation,
+)
 from core.update_thread import (
     ALLOWED_WRITES,
     MAX_ATTEMPTS,
@@ -48,6 +62,13 @@ from core.update_thread_context import (
     CONTEXT_EVENT_TYPE,
     UpdateThreadContextAssembler,
     UpdateThreadContextError,
+)
+from core.update_thread_worker import (
+    PROPOSALS_EVENT_TYPE,
+    RECEIPT_EVENT_TYPE,
+    UpdateThreadProposalPersistencePending,
+    UpdateThreadWorker,
+    UpdateThreadWorkerError,
 )
 
 _CONTENT = b"Market report: supply increased by 5 percent."
@@ -141,6 +162,14 @@ def rw3_fixture(
         with session_factory.begin() as session:
             task_ids = select(Task.id).where(Task.team_id == team_id)
             session.execute(delete(Event).where(Event.task_id.in_(task_ids)))
+            session.execute(
+                delete(Outcome).where(Outcome.recorded_by_task_id.in_(task_ids))
+            )
+            session.execute(
+                delete(TaskGenerationCharge).where(
+                    TaskGenerationCharge.task_id.in_(task_ids)
+                )
+            )
             session.execute(
                 delete(EvidenceLink).where(EvidenceLink.team_id == team_id)
             )
@@ -238,13 +267,9 @@ def _seed_hypothesis_and_link(
 def _admit_fixture_task(
     session_factory: sessionmaker[Session], task_id: UUID
 ) -> None:
-    # RW3.1 deliberately does not extend TaskRuntime. This fixture represents
-    # the running Task state established by the later RW3 worker slice.
-    with session_factory.begin() as session:
-        task = session.get(Task, task_id)
-        assert task is not None
-        task.status = "running"
-        task.attempt_count = 1
+    admission = TaskRuntime(session_factory).admit(task_id)
+    assert admission.task_id == task_id
+    assert admission.attempt_count == 1
 
 
 def test_host_creator_pins_policy_and_replays_without_execution(
@@ -854,3 +879,575 @@ def test_context_rejects_quote_offsets_outside_source_snapshot(
             )
         )
         assert event is None
+
+
+def test_context_is_reloaded_from_its_verified_snapshot_before_provider_use(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    _admit_fixture_task(session_factory, created.task_id)
+    assembler = UpdateThreadContextAssembler(session_factory, snapshot_store)
+    assembled = assembler.assemble(created.task_id, 1)
+
+    # The dataclass is frozen, but its nested dictionaries are not. A caller
+    # must not be able to mutate the provider input after Context verification.
+    assembled.document["thread"]["title"] = "Forged in-memory title"
+    verified = assembler.verify_context(assembled)
+
+    assert verified.event_id == assembled.event_id
+    assert verified.snapshot_ref == assembled.snapshot_ref
+    assert verified.content_hash == assembled.content_hash
+    assert verified.document["thread"]["title"] == "Supply conditions"
+    assert verified.replayed is True
+
+
+def test_task_runtime_admission_rejects_tampered_update_thread_request(
+    session_factory: sessionmaker[Session],
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    with session_factory.begin() as session:
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == REQUEST_EVENT_TYPE,
+            )
+        )
+        assert event is not None
+        payload = dict(event.payload)
+        payload["thread_id"] = str(uuid4())
+        session.execute(
+            update(Event).where(Event.id == event.id).values(payload=payload)
+        )
+
+    with pytest.raises(
+        TaskNotEligible,
+        match="update_thread_request_fingerprint_invalid",
+    ):
+        TaskRuntime(session_factory).admit(created.task_id)
+
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        starts = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == created.task_id,
+                    Event.type == "task_started",
+                )
+            )
+        )
+        assert task is not None
+        assert task.status == "pending"
+        assert task.attempt_count == 0
+        assert starts == []
+
+
+class _FakeUpdateThreadProvider:
+    provider_name = "watch_test_fake"
+    model = "watch-rw3-update-thread-fake"
+
+    def __init__(self, raw_completion: str) -> None:
+        self.raw_completion = raw_completion
+        self.calls = 0
+
+    def maximum_request_cost(
+        self, *, system_prompt: str, user_prompt: str
+    ) -> GenerationCostQuote:
+        input_tokens = (
+            len(system_prompt.encode("utf-8"))
+            + len(user_prompt.encode("utf-8"))
+            + 128
+        )
+        return GenerationCostQuote(
+            provider=self.provider_name,
+            model=self.model,
+            maximum_input_tokens=input_tokens,
+            maximum_output_tokens=128,
+            input_usd_per_million_tokens=Decimal("0.152"),
+            output_usd_per_million_tokens=Decimal("0.287"),
+            pricing_revision="watch-rw3-update-thread-fake-v1",
+        )
+
+    def generate_raw(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.1,
+    ) -> GenerationResult:
+        self.calls += 1
+        return GenerationResult(
+            content={},
+            model=self.model,
+            usage=GenerationUsage(
+                input_tokens=100,
+                output_tokens=20,
+                estimated_cost_usd=Decimal("0"),
+            ),
+            elapsed_seconds=0.001,
+            request_id="rw3-fake-request",
+            raw_content=self.raw_completion,
+        )
+
+
+def test_update_thread_worker_records_context_identity_and_empty_proposal_set(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(
+        session_factory, snapshot_store, provider
+    )
+
+    result = worker.run(created.task_id)
+
+    assert provider.calls == 1
+    assert result.proposals == ()
+    assert result.reconciliation.status == "reconciled"
+    with session_factory() as session:
+        receipt = session.get(Event, result.receipt_event_id)
+        proposal_event = session.get(Event, result.proposals_event_id)
+        charge = session.get(TaskGenerationCharge, result.charge_id)
+        context_event = session.get(Event, result.context.event_id)
+        task = session.get(Task, created.task_id)
+        assert receipt is not None
+        assert proposal_event is not None
+        assert charge is not None
+        assert context_event is not None
+        assert task is not None
+        identity = {
+            "context_event_id": str(context_event.id),
+            "context_snapshot_ref": context_event.payload["snapshot_ref"],
+            "context_content_hash": context_event.payload["content_hash"],
+        }
+        assert {
+            key: receipt.payload[key] for key in identity
+        } == identity
+        assert {
+            key: proposal_event.payload[key] for key in identity
+        } == identity
+        assert receipt.payload["raw_completion_text"] == '{"proposals":[]}'
+        assert receipt.payload["actor_type"] == "model_worker"
+        assert receipt.payload["operation"] == "update_thread"
+        assert proposal_event.payload["proposals"] == []
+        assert proposal_event.payload["proposal_fingerprint"] == (
+            result.proposal_fingerprint
+        )
+        assert charge.operation == "update_thread"
+        assert charge.status == "reconciled"
+        assert task.status == "done"
+        assert task.attempt_count == 1
+        outcome = session.scalar(
+            select(Outcome).where(
+                Outcome.recorded_by_task_id == created.task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        )
+        completed_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_completed",
+            )
+        )
+        assert outcome is not None
+        assert completed_event is not None
+        assert completed_event.payload["result_category"] == "success_no_change"
+        assert session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        ) is None
+        assert session.scalar(
+            select(Hypothesis).where(Hypothesis.team_id == rw3_fixture.team_id)
+        ) is None
+
+
+@pytest.mark.parametrize(
+    "raw_completion",
+    ["not-json", '{"proposals":[],"proposals":[]}'],
+)
+def test_update_thread_worker_persists_valid_usage_before_parser_failure(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    raw_completion: str,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider(raw_completion)
+    worker = UpdateThreadWorker(
+        session_factory, snapshot_store, provider
+    )
+
+    with pytest.raises(
+        UpdateThreadWorkerError,
+        match="update_thread_model_output_invalid",
+    ):
+        worker.run(created.task_id)
+
+    assert provider.calls == 1
+    with session_factory() as session:
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        proposal_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        task = session.get(Task, created.task_id)
+        assert receipt is not None
+        assert receipt.payload["raw_completion_text"] == raw_completion
+        assert proposal_event is None
+        assert charge is not None
+        assert charge.status == "reconciled"
+        assert task is not None
+        assert task.status == "failed"
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    ["boolean_manifest", "snapshot_hash", "duplicate_event", "future_attempt"],
+)
+def test_update_thread_worker_never_calls_provider_for_invalid_context(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    tamper: str,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    # Seed an attempt-bound Context, then return the Task to pending to model
+    # a worker restart before provider invocation.
+    with session_factory.begin() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        task.status = "running"
+        task.attempt_count = 1
+    assembler = UpdateThreadContextAssembler(session_factory, snapshot_store)
+    assembled = assembler.assemble(created.task_id, 1)
+
+    with session_factory.begin() as session:
+        event = session.get(Event, assembled.event_id)
+        assert event is not None
+        if tamper == "boolean_manifest":
+            payload = dict(event.payload)
+            payload["manifest"] = {
+                **payload["manifest"],
+                "attempt": True,
+            }
+            session.execute(
+                update(Event).where(Event.id == event.id).values(payload=payload)
+            )
+        elif tamper == "snapshot_hash":
+            payload = dict(event.payload)
+            payload["content_hash"] = "sha256:" + ("0" * 64)
+            session.execute(
+                update(Event).where(Event.id == event.id).values(payload=payload)
+            )
+        elif tamper == "duplicate_event":
+            session.add(
+                Event(
+                    id=uuid4(),
+                    task_id=created.task_id,
+                    type=CONTEXT_EVENT_TYPE,
+                    payload=dict(event.payload),
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+        else:
+            payload = dict(event.payload)
+            payload["attempt"] = 2
+            session.execute(
+                update(Event).where(Event.id == event.id).values(payload=payload)
+            )
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        task.status = "pending"
+        task.attempt_count = 0
+
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(
+        session_factory, snapshot_store, provider
+    )
+    with pytest.raises(UpdateThreadWorkerError):
+        worker.run(created.task_id)
+
+    assert provider.calls == 0
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        charges = list(
+            session.scalars(
+                select(TaskGenerationCharge).where(
+                    TaskGenerationCharge.task_id == created.task_id
+                )
+            )
+        )
+        assert task is not None
+        assert task.status == "failed"
+        assert charges == []
+
+
+def test_update_thread_worker_leaves_receipted_proposals_resumable_on_write_failure(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+    function_name = f"fail_rw3_proposals_{uuid4().hex}"
+    trigger_name = f"fail_rw3_proposals_{uuid4().hex}"
+
+    with session_factory.begin() as session:
+        session.connection().exec_driver_sql(
+            f"""
+            CREATE FUNCTION {function_name}() RETURNS trigger AS $$
+            BEGIN
+                IF NEW.type = '{PROPOSALS_EVENT_TYPE}' THEN
+                    RAISE EXCEPTION 'injected proposal Event failure';
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql
+            """
+        )
+        session.connection().exec_driver_sql(
+            f"""
+            CREATE TRIGGER {trigger_name}
+            BEFORE INSERT ON events
+            FOR EACH ROW EXECUTE FUNCTION {function_name}()
+            """
+        )
+
+    try:
+        with pytest.raises(
+            UpdateThreadProposalPersistencePending,
+            match="update_thread_proposal_persistence_pending",
+        ):
+            worker.run(created.task_id)
+    finally:
+        with session_factory.begin() as session:
+            session.connection().exec_driver_sql(
+                f"DROP TRIGGER IF EXISTS {trigger_name} ON events"
+            )
+            session.connection().exec_driver_sql(
+                f"DROP FUNCTION IF EXISTS {function_name}()"
+            )
+
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        proposal_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        assert task is not None
+        assert task.status == "running"
+        assert receipt is not None
+        assert proposal_event is None
+        assert charge is not None
+        assert charge.status == "reconciled"
+        assert session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_failed",
+            )
+        ) is None
+
+
+def test_update_thread_worker_rejects_live_provider_until_separately_authorized(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+) -> None:
+    class _LiveProvider:
+        provider_name = "cloudflare_workers_ai"
+
+        def maximum_request_cost(
+            self, *, system_prompt: str, user_prompt: str
+        ) -> GenerationCostQuote:
+            raise AssertionError("live provider must not be called")
+
+        def generate_raw(
+            self,
+            *,
+            system_prompt: str,
+            user_prompt: str,
+            temperature: float = 0.1,
+        ) -> GenerationResult:
+            raise AssertionError("live provider must not be called")
+
+    with pytest.raises(
+        UpdateThreadWorkerError,
+        match="update_thread_live_provider_not_authorized",
+    ):
+        UpdateThreadWorker(session_factory, snapshot_store, _LiveProvider())
+
+
+def test_update_thread_worker_receipt_and_charge_reconciliation_are_atomic(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+    function_name = f"fail_rw3_receipt_{uuid4().hex}"
+    trigger_name = f"fail_rw3_receipt_{uuid4().hex}"
+
+    with session_factory.begin() as session:
+        session.connection().exec_driver_sql(
+            f"""
+            CREATE FUNCTION {function_name}() RETURNS trigger AS $$
+            BEGIN
+                IF NEW.type = '{RECEIPT_EVENT_TYPE}' THEN
+                    RAISE EXCEPTION 'injected receipt Event failure';
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql
+            """
+        )
+        session.connection().exec_driver_sql(
+            f"""
+            CREATE TRIGGER {trigger_name}
+            BEFORE INSERT ON events
+            FOR EACH ROW EXECUTE FUNCTION {function_name}()
+            """
+        )
+
+    try:
+        with pytest.raises(UpdateThreadWorkerError):
+            worker.run(created.task_id)
+    finally:
+        with session_factory.begin() as session:
+            session.connection().exec_driver_sql(
+                f"DROP TRIGGER IF EXISTS {trigger_name} ON events"
+            )
+            session.connection().exec_driver_sql(
+                f"DROP FUNCTION IF EXISTS {function_name}()"
+            )
+
+    assert provider.calls == 1
+    with session_factory() as session:
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        reconciled_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "generation_cost_reconciled",
+            )
+        )
+        unknown_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "generation_cost_unknown",
+            )
+        )
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        task = session.get(Task, created.task_id)
+        assert receipt is None
+        assert reconciled_event is None
+        assert unknown_event is not None
+        assert charge is not None
+        assert charge.status == "unknown"
+        assert charge.accounted_cost_usd is None
+        assert task is not None
+        assert task.status == "failed"
+
+
+def test_update_thread_worker_records_typed_proposal_without_business_commit(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    hypothesis_id = uuid4()
+    raw_completion = json.dumps(
+        {
+            "proposals": [
+                {
+                    "kind": "hypothesis_create",
+                    "key": "create-hypothesis-supply-pressure",
+                    "hypothesis_id": str(hypothesis_id),
+                    "statement": "Supply pressure is likely to persist.",
+                    "confidence": "moderate",
+                }
+            ]
+        },
+        separators=(",", ":"),
+    )
+    provider = _FakeUpdateThreadProvider(raw_completion)
+    worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+
+    result = worker.run(created.task_id)
+
+    assert provider.calls == 1
+    assert len(result.proposals) == 1
+    with pytest.raises(
+        TaskNotFinalizable,
+        match="update_thread_no_change_receipt_output_invalid",
+    ):
+        TaskRuntime(session_factory, snapshot_store).finalize(
+            TerminalObservation(
+                task_id=created.task_id,
+                attempt=1,
+                result_category="success_no_change",
+                observed_at=datetime.now(timezone.utc),
+            )
+        )
+    assert result.proposals[0].hypothesis_id == hypothesis_id
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        proposal_event = session.get(Event, result.proposals_event_id)
+        assert task is not None
+        assert task.status == "running"
+        assert proposal_event is not None
+        assert len(proposal_event.payload["proposals"]) == 1
+        assert proposal_event.payload["proposals"][0]["hypothesis_id"] == str(
+            hypothesis_id
+        )
+        assert session.scalar(
+            select(Hypothesis).where(
+                Hypothesis.team_id == rw3_fixture.team_id
+            )
+        ) is None
+        assert session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        ) is None

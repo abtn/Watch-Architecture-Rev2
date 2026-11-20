@@ -1,6 +1,7 @@
 """Application-controlled Task admission, failure reporting, and finalization."""
 
 import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -19,6 +20,7 @@ from core.learning_history import (
     reconstruct_knowledge_item_history,
 )
 from core.models import (
+    ConfidenceChange,
     Evaluation,
     Event,
     EvidenceLink,
@@ -407,6 +409,16 @@ class TaskRuntime:
                 )
             elif task.task_type == _OPERATOR_UPDATE_TASK_TYPE:
                 self._validate_operator_update_task_request(session, task)
+            elif task.task_type == "update_thread":
+                from core.update_thread import (
+                    UpdateThreadTaskError,
+                    validate_update_thread_task_request,
+                )
+
+                try:
+                    validate_update_thread_task_request(session, task)
+                except UpdateThreadTaskError as error:
+                    raise TaskNotEligible(error.reason) from error
             elif self._is_r6g_evaluation_task(session, task):
                 try:
                     self._validate_evaluation_task_request(session, task)
@@ -942,6 +954,10 @@ class TaskRuntime:
                     task,
                     observation,
                     allow_completed=task.status in _TERMINAL_STATUSES,
+                )
+            if task.task_type == "update_thread":
+                self._validate_update_thread_result(
+                    session, task, observation
                 )
 
             prior = self._prior_terminal(session, task.id)
@@ -1701,6 +1717,266 @@ class TaskRuntime:
             observed_at=observed_at,
             knowledge_quality_assessment_id=assessment.id,
         )
+
+    def _validate_update_thread_result(
+        self,
+        session: Session,
+        task: Task,
+        observation: TerminalObservation,
+    ) -> None:
+        """Validate the only RW3.2 success result before Task finalization."""
+        if observation.result_category == "terminal_failure":
+            return
+        if observation.result_category != "success_no_change":
+            raise TaskNotFinalizable("update_thread_result_category_invalid")
+
+        from core.update_thread import (
+            GENERATION_RECEIPT_EVENT_TYPE,
+            PROPOSAL_FINGERPRINT_DOMAIN,
+            PROPOSALS_EVENT_TYPE,
+            TASK_TYPE,
+            UPDATE_THREAD_TEST_PROVIDER,
+            UpdateThreadTaskError,
+            validate_update_thread_task_request,
+        )
+        from core.update_thread_context import (
+            CONTEXT_EVENT_TYPE,
+            AssembledUpdateThreadContext,
+            UpdateThreadContextAssembler,
+            UpdateThreadContextError,
+        )
+
+        try:
+            request = validate_update_thread_task_request(session, task)
+        except UpdateThreadTaskError as error:
+            raise TaskNotFinalizable(error.reason) from error
+
+        def current_attempt_event(event_type: str) -> Event:
+            events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == event_type,
+                    )
+                )
+            )
+            matching: list[Event] = []
+            for event in events:
+                if not isinstance(event.payload, dict):
+                    raise TaskNotFinalizable(
+                        "update_thread_result_event_corrupt"
+                    )
+                event_attempt = event.payload.get("attempt")
+                if type(event_attempt) is not int:
+                    raise TaskNotFinalizable(
+                        "update_thread_result_event_corrupt"
+                    )
+                if event_attempt > task.attempt_count:
+                    raise TaskNotFinalizable(
+                        "update_thread_result_future_attempt"
+                    )
+                if event_attempt == task.attempt_count:
+                    matching.append(event)
+            if len(matching) != 1:
+                raise TaskNotFinalizable(
+                    "update_thread_result_event_missing_or_duplicate"
+                )
+            return matching[0]
+
+        context_event = current_attempt_event(CONTEXT_EVENT_TYPE)
+        context_payload = context_event.payload
+        if (
+            type(context_payload.get("schema_version")) is not int
+            or context_payload.get("schema_version") != 1
+            or context_payload.get("task_id") != str(task.id)
+            or context_payload.get("team_id") != str(task.team_id)
+            or context_payload.get("thread_id") != str(request.thread_id)
+            or type(context_payload.get("policy_version")) is not int
+            or context_payload.get("policy_version") != task.policy_version
+            or not isinstance(context_payload.get("snapshot_ref"), str)
+            or not isinstance(context_payload.get("content_hash"), str)
+            or not isinstance(context_payload.get("manifest"), dict)
+        ):
+            raise TaskNotFinalizable("update_thread_context_event_invalid")
+        if self._snapshot_store is None:
+            raise TaskNotFinalizable("update_thread_snapshot_store_required")
+
+        context = AssembledUpdateThreadContext(
+            task_id=task.id,
+            team_id=task.team_id,
+            thread_id=request.thread_id,
+            attempt=task.attempt_count,
+            snapshot_ref=context_payload["snapshot_ref"],
+            content_hash=context_payload["content_hash"],
+            event_id=context_event.id,
+            manifest=context_payload["manifest"],
+            document={},
+            replayed=True,
+        )
+        try:
+            verified = UpdateThreadContextAssembler(
+                self._session_factory, self._snapshot_store
+            ).verify_context_in_session(session, task, context)
+        except UpdateThreadContextError as error:
+            raise TaskNotFinalizable(error.reason) from error
+
+        receipt_event = current_attempt_event(GENERATION_RECEIPT_EVENT_TYPE)
+        receipt = receipt_event.payload
+        if (
+            type(receipt.get("schema_version")) is not int
+            or receipt.get("schema_version") != 1
+            or receipt.get("task_id") != str(task.id)
+            or receipt.get("team_id") != str(task.team_id)
+            or receipt.get("thread_id") != str(request.thread_id)
+            or type(receipt.get("attempt")) is not int
+            or receipt.get("attempt") != task.attempt_count
+            or type(receipt.get("policy_version")) is not int
+            or receipt.get("policy_version") != task.policy_version
+            or receipt.get("context_event_id") != str(verified.event_id)
+            or receipt.get("context_snapshot_ref") != verified.snapshot_ref
+            or receipt.get("context_content_hash") != verified.content_hash
+            or receipt.get("actor_type") != "model_worker"
+            or receipt.get("operation") != TASK_TYPE
+            or receipt.get("provider") != UPDATE_THREAD_TEST_PROVIDER
+            or not isinstance(receipt.get("model"), str)
+            or not receipt["model"]
+            or not isinstance(receipt.get("raw_completion_text"), str)
+            or not isinstance(receipt.get("charge_id"), str)
+            or type(receipt.get("prompt_tokens")) is not int
+            or type(receipt.get("completion_tokens")) is not int
+        ):
+            raise TaskNotFinalizable("update_thread_generation_receipt_invalid")
+
+        def unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate_json_object_key")
+                result[key] = value
+            return result
+
+        try:
+            raw_response = json.loads(
+                receipt["raw_completion_text"],
+                object_pairs_hook=unique_json_object,
+            )
+        except (TypeError, ValueError) as error:
+            raise TaskNotFinalizable(
+                "update_thread_no_change_receipt_output_invalid"
+            ) from error
+        if not isinstance(raw_response, dict) or set(raw_response) != {
+            "proposals"
+        } or raw_response["proposals"] != []:
+            raise TaskNotFinalizable(
+                "update_thread_no_change_receipt_output_invalid"
+            )
+
+        proposal_event = current_attempt_event(PROPOSALS_EVENT_TYPE)
+        proposals = proposal_event.payload
+        fingerprint = proposals.get("proposal_fingerprint")
+        if (
+            type(proposals.get("schema_version")) is not int
+            or proposals.get("schema_version") != 1
+            or proposals.get("task_id") != str(task.id)
+            or proposals.get("team_id") != str(task.team_id)
+            or proposals.get("thread_id") != str(request.thread_id)
+            or type(proposals.get("attempt")) is not int
+            or proposals.get("attempt") != task.attempt_count
+            or type(proposals.get("policy_version")) is not int
+            or proposals.get("policy_version") != task.policy_version
+            or proposals.get("generation_receipt_event_id")
+            != str(receipt_event.id)
+            or proposals.get("context_event_id") != str(verified.event_id)
+            or proposals.get("context_snapshot_ref") != verified.snapshot_ref
+            or proposals.get("context_content_hash") != verified.content_hash
+            or proposals.get("charge_id") != receipt["charge_id"]
+            or proposals.get("proposals") != []
+            or not isinstance(fingerprint, str)
+            or len(fingerprint) != 71
+            or not fingerprint.startswith("sha256:")
+            or any(
+                character not in "0123456789abcdef"
+                for character in fingerprint[7:]
+            )
+        ):
+            raise TaskNotFinalizable(
+                "update_thread_no_change_proposal_event_invalid"
+            )
+
+        try:
+            charge_id = UUID(receipt["charge_id"])
+        except (TypeError, ValueError) as error:
+            raise TaskNotFinalizable(
+                "update_thread_generation_charge_invalid"
+            ) from error
+        charge = session.scalar(
+            select(TaskGenerationCharge)
+            .where(TaskGenerationCharge.id == charge_id)
+            .with_for_update()
+        )
+        if (
+            charge is None
+            or charge.task_id != task.id
+            or charge.attempt_count != task.attempt_count
+            or charge.operation != TASK_TYPE
+            or charge.provider != UPDATE_THREAD_TEST_PROVIDER
+            or charge.model != receipt["model"]
+            or charge.request_id != receipt.get("request_id")
+            or charge.input_tokens != receipt["prompt_tokens"]
+            or charge.output_tokens != receipt["completion_tokens"]
+            or charge.status != "reconciled"
+            or charge.accounted_cost_usd is None
+        ):
+            raise TaskNotFinalizable(
+                "update_thread_generation_charge_invalid"
+            )
+
+        fingerprint_basis = {
+            "domain": PROPOSAL_FINGERPRINT_DOMAIN,
+            "schema_version": 1,
+            "task_id": str(task.id),
+            "team_id": str(task.team_id),
+            "thread_id": str(request.thread_id),
+            "attempt": task.attempt_count,
+            "policy_version": task.policy_version,
+            "generation_receipt_event_id": str(receipt_event.id),
+            "context_event_id": str(verified.event_id),
+            "context_snapshot_ref": verified.snapshot_ref,
+            "context_content_hash": verified.content_hash,
+            "charge_id": str(charge.id),
+            "proposals": [],
+        }
+        expected_fingerprint = "sha256:" + hashlib.sha256(
+            _canonical_json(fingerprint_basis).encode("utf-8")
+        ).hexdigest()
+        if fingerprint != expected_fingerprint:
+            raise TaskNotFinalizable(
+                "update_thread_no_change_fingerprint_invalid"
+            )
+
+        if session.scalar(
+            select(Event.id).where(
+                Event.task_id == task.id,
+                Event.type == "update_thread_committed",
+            )
+        ) is not None:
+            raise TaskNotFinalizable("update_thread_no_change_has_commit_event")
+        if session.scalar(
+            select(EvidenceLink.id).where(
+                EvidenceLink.originating_task_id == task.id
+            )
+        ) is not None:
+            raise TaskNotFinalizable(
+                "update_thread_no_change_has_evidence_write"
+            )
+        if session.scalar(
+            select(ConfidenceChange.id).where(
+                ConfidenceChange.created_by_task_id == task.id
+            )
+        ) is not None:
+            raise TaskNotFinalizable(
+                "update_thread_no_change_has_confidence_write"
+            )
 
     @staticmethod
     def _validate_operator_update_task_request(
