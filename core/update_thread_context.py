@@ -409,7 +409,22 @@ class UpdateThreadContextAssembler:
     def verify_context(
         self, context: AssembledUpdateThreadContext
     ) -> AssembledUpdateThreadContext:
-        """Reload and verify the exact durable Context before provider use.
+        """Reload and verify the exact durable Context before provider use."""
+        with self._session_factory.begin() as session:
+            task = session.scalar(
+                select(Task)
+                .where(Task.id == getattr(context, "task_id", None))
+                .with_for_update()
+            )
+            return self.verify_context_in_session(session, task, context)
+
+    def verify_context_in_session(
+        self,
+        session: Session,
+        task: Task | None,
+        context: AssembledUpdateThreadContext,
+    ) -> AssembledUpdateThreadContext:
+        """Verify Context identity and bytes inside an existing transaction.
 
         The returned object is reconstructed from the content-addressed
         Snapshot, not from the caller's mutable in-memory dictionaries.
@@ -421,46 +436,40 @@ class UpdateThreadContextAssembler:
             or context.attempt < 1
         ):
             raise UpdateThreadContextError("update_thread_context_identity_invalid")
-
-        with self._session_factory.begin() as session:
-            task = session.scalar(
-                select(Task)
-                .where(Task.id == context.task_id)
-                .with_for_update()
+        if (
+            task is None
+            or task.id != context.task_id
+            or task.status != "running"
+            or task.attempt_count != context.attempt
+        ):
+            raise UpdateThreadContextError(
+                "update_thread_task_attempt_not_current"
             )
-            if (
-                task is None
-                or task.status != "running"
-                or task.attempt_count != context.attempt
-            ):
-                raise UpdateThreadContextError(
-                    "update_thread_task_attempt_not_current"
-                )
-            try:
-                request = validate_update_thread_task_request(session, task)
-            except UpdateThreadTaskError as error:
-                raise UpdateThreadContextError(error.reason) from error
+        try:
+            request = validate_update_thread_task_request(session, task)
+        except UpdateThreadTaskError as error:
+            raise UpdateThreadContextError(error.reason) from error
 
-            verified = self._prior_context(
-                session, task, request, context.attempt
+        verified = self._prior_context(
+            session, task, request, context.attempt
+        )
+        if verified is None:
+            raise UpdateThreadContextError(
+                "update_thread_context_event_missing"
             )
-            if verified is None:
-                raise UpdateThreadContextError(
-                    "update_thread_context_event_missing"
-                )
-            if (
-                verified.event_id != context.event_id
-                or verified.snapshot_ref != context.snapshot_ref
-                or verified.content_hash != context.content_hash
-                or verified.task_id != context.task_id
-                or verified.team_id != context.team_id
-                or verified.thread_id != context.thread_id
-                or verified.attempt != context.attempt
-            ):
-                raise UpdateThreadContextError(
-                    "update_thread_context_identity_mismatch"
-                )
-            return verified
+        if (
+            verified.event_id != context.event_id
+            or verified.snapshot_ref != context.snapshot_ref
+            or verified.content_hash != context.content_hash
+            or verified.task_id != context.task_id
+            or verified.team_id != context.team_id
+            or verified.thread_id != context.thread_id
+            or verified.attempt != context.attempt
+        ):
+            raise UpdateThreadContextError(
+                "update_thread_context_identity_mismatch"
+            )
+        return verified
 
     @staticmethod
     def _source_snapshot(
