@@ -11,7 +11,7 @@ from typing import Iterator
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.models import (
@@ -466,7 +466,22 @@ def test_context_replay_rejects_boolean_substitution_for_integer_fields(
             payload["snapshot_ref"] = snapshot_ref
             payload["content_hash"] = content_hash
 
-        event.payload = payload
+        session.execute(
+            update(Event)
+            .where(Event.id == event.id)
+            .values(payload=payload)
+        )
+
+    if location == "event_manifest":
+        with session_factory() as session:
+            persisted_event = session.scalar(
+                select(Event).where(
+                    Event.task_id == created.task_id,
+                    Event.type == CONTEXT_EVENT_TYPE,
+                )
+            )
+            assert persisted_event is not None
+            assert persisted_event.payload["manifest"][field] is True
 
     with pytest.raises(
         UpdateThreadContextError,
