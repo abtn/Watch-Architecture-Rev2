@@ -499,7 +499,9 @@ class UpdateThreadWorker:
                 )
             )
             if receipt is None or not isinstance(receipt.payload, dict):
-                raise UpdateThreadWorkerError("update_thread_generation_receipt_invalid")
+                raise UpdateThreadWorkerError(
+                    "update_thread_generation_receipt_invalid"
+                )
             receipt_payload = receipt.payload
             all_receipts = list(
                 session.scalars(
