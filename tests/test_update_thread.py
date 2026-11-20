@@ -41,7 +41,12 @@ from core.operator_application import (
     TrustedOperatorPrincipal,
 )
 from core.snapshot_store import SnapshotStore
-from core.task_runtime import TaskNotEligible, TaskRuntime
+from core.task_runtime import (
+    TaskNotEligible,
+    TaskNotFinalizable,
+    TaskRuntime,
+    TerminalObservation,
+)
 from core.update_thread import (
     ALLOWED_WRITES,
     MAX_ATTEMPTS,
@@ -1411,6 +1416,18 @@ def test_update_thread_worker_records_typed_proposal_without_business_commit(
 
     assert provider.calls == 1
     assert len(result.proposals) == 1
+    with pytest.raises(
+        TaskNotFinalizable,
+        match="update_thread_no_change_receipt_output_invalid",
+    ):
+        TaskRuntime(session_factory, snapshot_store).finalize(
+            TerminalObservation(
+                task_id=created.task_id,
+                attempt=1,
+                result_category="success_no_change",
+                observed_at=datetime.now(timezone.utc),
+            )
+        )
     assert result.proposals[0].hypothesis_id == hypothesis_id
     with session_factory() as session:
         task = session.get(Task, created.task_id)
