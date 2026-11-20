@@ -11,14 +11,19 @@ import json
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Protocol
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from core.generation import GenerationCostQuote, GenerationResult, GenerationUsage
+from core.generation import (
+    GenerationCostQuote,
+    GenerationProvider,
+    GenerationResult,
+    GenerationUsage,
+)
 from core.generation_cost import (
     GenerationCostReconciliation,
     GenerationCostReservation,
@@ -67,22 +72,6 @@ class UpdateThreadProposalPersistencePending(UpdateThreadWorkerError):
     RW3.3 recovery must resume from that receipt; this state must not be
     terminalized or sent through another provider attempt.
     """
-
-
-class UpdateThreadGenerationProvider(Protocol):
-    provider_name: str
-
-    def maximum_request_cost(
-        self, *, system_prompt: str, user_prompt: str
-    ) -> GenerationCostQuote: ...
-
-    def generate_raw(
-        self,
-        *,
-        system_prompt: str,
-        user_prompt: str,
-        temperature: float = 0.1,
-    ) -> GenerationResult: ...
 
 
 class UpdateThreadModelResponse(BaseModel):
@@ -197,7 +186,7 @@ class UpdateThreadWorker:
         self,
         session_factory: sessionmaker[Session],
         snapshot_store: SnapshotStore,
-        provider: UpdateThreadGenerationProvider,
+        provider: GenerationProvider,
         *,
         runtime: TaskRuntime | None = None,
         context_assembler: UpdateThreadContextAssembler | None = None,
