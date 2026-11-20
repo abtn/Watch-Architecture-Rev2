@@ -156,6 +156,11 @@ def rw3_fixture(
             task_ids = select(Task.id).where(Task.team_id == team_id)
             session.execute(delete(Event).where(Event.task_id.in_(task_ids)))
             session.execute(
+                delete(TaskGenerationCharge).where(
+                    TaskGenerationCharge.task_id.in_(task_ids)
+                )
+            )
+            session.execute(
                 delete(EvidenceLink).where(EvidenceLink.team_id == team_id)
             )
             session.execute(
