@@ -30,7 +30,7 @@ from core.task_runtime import (
     FailureObservation,
     TaskRuntime,
 )
-from core.update_thread import TASK_TYPE
+from core.snapshot_store import SnapshotStore
 from core.update_thread_context import (
     AssembledUpdateThreadContext,
     UpdateThreadContextAssembler,
@@ -163,7 +163,7 @@ class UpdateThreadWorker:
     def __init__(
         self,
         session_factory: sessionmaker[Session],
-        snapshot_store,
+        snapshot_store: SnapshotStore,
         provider: UpdateThreadGenerationProvider,
         *,
         runtime: TaskRuntime | None = None,
@@ -413,6 +413,7 @@ class UpdateThreadWorker:
             if (
                 event is None
                 or not isinstance(event.payload, dict)
+                or type(event.payload.get("attempt")) is not int
                 or event.payload.get("attempt") != attempt
                 or not isinstance(event.payload.get("raw_completion_text"), str)
             ):
