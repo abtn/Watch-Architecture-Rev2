@@ -28,7 +28,7 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 - PR [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136) was accepted by the Operator and squash-merged to `main` at merge commit `6260921b451f99ab07756890045175ba9983c3ad`.
 - Exact tested PR head: `b59ecca786bf418456e0e687c3e77d632d1e4118`.
 - Hosted GitHub Actions CI run [#1492](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44705109042) completed successfully on that exact tested head.
-- Programmer-local Windows verification passed on that exact head: disposable PostgreSQL migration and Alembic current/single-head checks to `0019_rw1_world_memory`; Ruff; Mypy (41 source files); focused R6-B dispatcher tests (**60 passed**); focused RW3.1 tests (**24 passed**); full suite (**1,129 passed, 130 warnings in 439.20s**); final exact branch/HEAD and clean-worktree checks.
+- Programmer-local Windows verification passed on that exact head: disposable PostgreSQL migration and Alembic current/single-head checks to `0019_rw1_world_memory`; Ruff; Mypy (41 source files); focused R6-B dispatcher tests (**60 passed**); full suite (**1,129 passed, 130 warnings in 439.20s**); final exact branch/HEAD and clean-worktree checks.
 - The 130 warnings are existing Alembic deprecations for the missing `path_separator` configuration; they did not fail tests.
 - The disposable PostgreSQL container was removed, and the original `DATABASE_URL` and `TEST_DATABASE_URL` values were restored. The persistent `watch` database was not used.
 - The R6-B test correction changes assertions to compare exact event-type multisets rather than infer ordering from non-unique wall-clock timestamps; no production behavior or schema changed.
