@@ -41,6 +41,8 @@ from core.update_thread import (
     UpdateThreadTaskRequest,
     build_request_event_payload,
     task_id_for_request,
+    validate_update_thread_task_request,
+    UpdateThreadTaskError,
 )
 from core.update_thread_context import (
     CONTEXT_EVENT_TYPE,
@@ -303,6 +305,41 @@ def test_host_creator_pins_policy_and_replays_without_execution(
             "request_fingerprint",
         }
         assert str(request.idempotency_key) not in str(events[0].payload)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("max_tool_calls", False),
+        ("max_tool_calls", 0.0),
+        ("deadline_seconds", True),
+        ("deadline_seconds", 45.0),
+    ],
+)
+def test_task_request_rejects_budget_integer_type_substitution(
+    session_factory: sessionmaker[Session],
+    rw3_fixture: Fixture,
+    field: str,
+    value: bool | float,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    tampered_budget = {**TASK_BUDGET, field: value}
+    with session_factory.begin() as session:
+        session.execute(
+            update(Task)
+            .where(Task.id == created.task_id)
+            .values(budget=tampered_budget)
+        )
+
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        assert type(task.budget[field]) is type(value)
+        with pytest.raises(
+            UpdateThreadTaskError,
+            match="update_thread_task_shape_invalid",
+        ):
+            validate_update_thread_task_request(session, task)
 
 
 def test_creator_rejects_wrong_action_without_task_or_event(
