@@ -323,8 +323,10 @@ class UpdateThreadWorker:
                         retryable=bool(getattr(error, "retryable", False)),
                     )
                 )
-            except Exception:
-                pass
+            except Exception as failure_error:
+                raise UpdateThreadWorkerError(
+                    "update_thread_failure_recording_failed"
+                ) from failure_error
             if isinstance(error, UpdateThreadWorkerError):
                 raise
             if isinstance(error, UpdateThreadContextError):
