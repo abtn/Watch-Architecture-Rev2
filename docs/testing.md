@@ -29,7 +29,7 @@ RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2
 
 ## RW3.3 implementation verification and Operator acceptance — 2026-11-20
 
-**Disposition:** The Operator accepted RW3.3 after the corrective pass, independent review, exact-head local verification, and passing hosted CI. PR [#138](https://github.com/abtn/Watch-Architecture-Rev2/pull/138) was squash-merged to `main`. RW3.4 integrated closeout remains gated.
+**Disposition:** The Operator accepted RW3.3 after the corrective pass, independent review, exact-head local verification, and passing hosted CI. PR [#138](https://github.com/abtn/Watch-Architecture-Rev2/pull/138) was squash-merged to `main` at `8fff9fa9d515b46d446fdf46d076d2504e7f462f` (final PR head `1893dcda27c962d1091cfd29b124f0b8e6e37ed8`). The documentation-inclusive hosted CI run [#1531](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44789724923) passed on that final PR head. RW3.4 integrated closeout remains gated.
 
 ### Initial implementation verification
 
