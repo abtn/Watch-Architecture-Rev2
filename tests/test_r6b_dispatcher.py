@@ -507,11 +507,15 @@ def test_retryable_fetch_failure_returns_task_to_pending(
     assert task.attempt_count == 1
     assert task.completed_at is None
     assert _outcomes(session_factory, dispatch_fixture.task_id) == []
-    assert _event_types(session_factory, dispatch_fixture.task_id) == [
-        "task_started",
-        "task_attempt_failed",
-        "task_retry_scheduled",
-    ]
+    _assert_event_types(
+        session_factory,
+        dispatch_fixture.task_id,
+        [
+            "task_started",
+            "task_attempt_failed",
+            "task_retry_scheduled",
+        ],
+    )
     assert _signals(session_factory, dispatch_fixture.origin_url) == []
 
 
@@ -571,11 +575,15 @@ def test_retryable_failure_on_the_final_allowed_attempt_terminalizes(
     assert result.status == "failed"
     task = _task(session_factory, dispatch_fixture.task_id)
     assert task.attempt_count == 3
-    assert _event_types(session_factory, dispatch_fixture.task_id) == [
-        "task_started",
-        "task_attempt_failed",
-        "task_failed",
-    ]
+    _assert_event_types(
+        session_factory,
+        dispatch_fixture.task_id,
+        [
+            "task_started",
+            "task_attempt_failed",
+            "task_failed",
+        ],
+    )
     assert len(_outcomes(session_factory, dispatch_fixture.task_id)) == 1
 
 
