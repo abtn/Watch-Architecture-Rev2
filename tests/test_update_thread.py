@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from threading import Barrier
 from typing import Iterator
 from uuid import UUID, uuid4
@@ -40,7 +40,7 @@ from core.operator_application import (
     TrustedOperatorPrincipal,
 )
 from core.snapshot_store import SnapshotStore
-from core.task_runtime import TaskRuntime, TaskNotEligible
+from core.task_runtime import TaskNotEligible, TaskRuntime
 from core.update_thread import (
     ALLOWED_WRITES,
     MAX_ATTEMPTS,
@@ -53,8 +53,8 @@ from core.update_thread import (
     validate_update_thread_task_request,
 )
 from core.update_thread_worker import (
-    RECEIPT_EVENT_TYPE,
     PROPOSALS_EVENT_TYPE,
+    RECEIPT_EVENT_TYPE,
     UpdateThreadWorker,
     UpdateThreadWorkerError,
 )
