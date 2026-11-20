@@ -308,8 +308,8 @@ class CloudflareWorkersAIGenerationProvider:
         if not isinstance(message, dict):
             raise GenerationProviderError("cloudflare_missing_completion_message")
         content = message.get("content")
-        if not isinstance(content, str) or not content.strip():
-            raise GenerationProviderError("cloudflare_empty_completion")
+        if not isinstance(content, str):
+            raise GenerationProviderError("cloudflare_completion_not_text")
 
         usage_document = document.get("usage")
         if not isinstance(usage_document, dict):
