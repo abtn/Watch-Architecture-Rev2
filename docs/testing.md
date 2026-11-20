@@ -27,6 +27,16 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 
 RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery implementation is in progress on `rw3-3-shared-commit-recovery-20261120`; it has not been accepted. RW3.4 integrated closeout remains gated. Live provider authorization remains closed; only deterministic fake providers are permitted. Current RW3.3 verification will be recorded here against the exact tested source SHA and separately identified PR head; no results transfer between SHAs.
 
+## RW3.3 implementation local verification — 2026-11-20 (not acceptance)
+
+- Tested source SHA: `b98ec65cc295cf92451d40b86fcc6265811c52ba` on `rw3-3-shared-commit-recovery-20261120`.
+- Focused RW3.3/world-memory tests passed: **79 passed** (`tests/test_update_thread.py`, `tests/test_world_memory.py`).
+- Ruff passed on all changed Python files; Mypy passed on `core` (**42 source files**); `git diff --check` passed.
+- Full suite passed: **1,162 passed, 130 existing Alembic `path_separator` deprecation warnings** (386.37s).
+- The first full-suite run exposed a test-isolation leak: a cross-Team history test left its synthetic running Operator Task in the shared disposable database, and global interrupted-Task recovery correctly rejected that malformed Task. The test now deletes only the fixture records it creates; the affected tests passed together (**2 passed**) and the full suite passed on the tested source tree.
+- Disposable PostgreSQL reported `0019_rw1_world_memory (head)` for both `alembic current` and `alembic heads`. No migration/schema changes or live provider calls were made; tests used deterministic fakes only.
+- This is implementation verification, not RW3.3 acceptance. RW3.4 integrated closeout remains gated and live provider authorization remains closed. The PR head is recorded separately from the tested source SHA.
+
 ## RW3.1 final verification and Operator acceptance — 2026-11-20
 
 - PR [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136) was accepted by the Operator and squash-merged to `main` at merge commit `6260921b451f99ab07756890045175ba9983c3ad`.
