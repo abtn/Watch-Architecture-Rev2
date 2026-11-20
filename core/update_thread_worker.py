@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.generation import (
@@ -289,7 +290,7 @@ class UpdateThreadWorker:
                     proposals,
                     fingerprint,
                 )
-            except Exception as error:
+            except SQLAlchemyError as error:
                 raise UpdateThreadProposalPersistencePending(
                     "update_thread_proposal_persistence_pending"
                 ) from error
