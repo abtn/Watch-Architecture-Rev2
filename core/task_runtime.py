@@ -407,6 +407,16 @@ class TaskRuntime:
                 )
             elif task.task_type == _OPERATOR_UPDATE_TASK_TYPE:
                 self._validate_operator_update_task_request(session, task)
+            elif task.task_type == "update_thread":
+                from core.update_thread import (
+                    UpdateThreadTaskError,
+                    validate_update_thread_task_request,
+                )
+
+                try:
+                    validate_update_thread_task_request(session, task)
+                except UpdateThreadTaskError as error:
+                    raise TaskNotEligible(error.reason) from error
             elif self._is_r6g_evaluation_task(session, task):
                 try:
                     self._validate_evaluation_task_request(session, task)
