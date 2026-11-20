@@ -439,7 +439,7 @@ class UpdateThreadContextAssembler:
         if (
             task is None
             or task.id != context.task_id
-            or task.status != "running"
+            or task.status not in {"running", "done"}
             or task.attempt_count != context.attempt
         ):
             raise UpdateThreadContextError(
