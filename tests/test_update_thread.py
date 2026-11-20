@@ -1037,13 +1037,18 @@ def test_update_thread_worker_records_context_identity_and_empty_proposal_set(
         ) is None
 
 
+@pytest.mark.parametrize(
+    "raw_completion",
+    ["not-json", '{"proposals":[],"proposals":[]}'],
+)
 def test_update_thread_worker_persists_valid_usage_before_parser_failure(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
     rw3_fixture: Fixture,
+    raw_completion: str,
 ) -> None:
     _, created = _create_task(session_factory, rw3_fixture)
-    provider = _FakeUpdateThreadProvider("not-json")
+    provider = _FakeUpdateThreadProvider(raw_completion)
     worker = UpdateThreadWorker(
         session_factory, snapshot_store, provider
     )
@@ -1075,7 +1080,7 @@ def test_update_thread_worker_persists_valid_usage_before_parser_failure(
         )
         task = session.get(Task, created.task_id)
         assert receipt is not None
-        assert receipt.payload["raw_completion_text"] == "not-json"
+        assert receipt.payload["raw_completion_text"] == raw_completion
         assert proposal_event is None
         assert charge is not None
         assert charge.status == "reconciled"
@@ -1244,3 +1249,97 @@ def test_update_thread_worker_leaves_receipted_proposals_resumable_on_write_fail
                 Event.type == "task_failed",
             )
         ) is None
+
+
+def test_update_thread_worker_rejects_live_provider_until_separately_authorized(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+) -> None:
+    class _LiveProvider:
+        provider_name = "cloudflare_workers_ai"
+
+    with pytest.raises(
+        UpdateThreadWorkerError,
+        match="update_thread_live_provider_not_authorized",
+    ):
+        UpdateThreadWorker(session_factory, snapshot_store, _LiveProvider())
+
+
+def test_update_thread_worker_receipt_and_charge_reconciliation_are_atomic(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+    function_name = f"fail_rw3_receipt_{uuid4().hex}"
+    trigger_name = f"fail_rw3_receipt_{uuid4().hex}"
+
+    with session_factory.begin() as session:
+        session.connection().exec_driver_sql(
+            f"""
+            CREATE FUNCTION {function_name}() RETURNS trigger AS $$
+            BEGIN
+                IF NEW.type = '{RECEIPT_EVENT_TYPE}' THEN
+                    RAISE EXCEPTION 'injected receipt Event failure';
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql
+            """
+        )
+        session.connection().exec_driver_sql(
+            f"""
+            CREATE TRIGGER {trigger_name}
+            BEFORE INSERT ON events
+            FOR EACH ROW EXECUTE FUNCTION {function_name}()
+            """
+        )
+
+    try:
+        with pytest.raises(UpdateThreadWorkerError):
+            worker.run(created.task_id)
+    finally:
+        with session_factory.begin() as session:
+            session.connection().exec_driver_sql(
+                f"DROP TRIGGER IF EXISTS {trigger_name} ON events"
+            )
+            session.connection().exec_driver_sql(
+                f"DROP FUNCTION IF EXISTS {function_name}()"
+            )
+
+    assert provider.calls == 1
+    with session_factory() as session:
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        reconciled_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "generation_cost_reconciled",
+            )
+        )
+        unknown_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "generation_cost_unknown",
+            )
+        )
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        task = session.get(Task, created.task_id)
+        assert receipt is None
+        assert reconciled_event is None
+        assert unknown_event is not None
+        assert charge is not None
+        assert charge.status == "unknown"
+        assert charge.accounted_cost_usd is None
+        assert task is not None
+        assert task.status == "failed"
