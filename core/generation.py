@@ -68,13 +68,14 @@ class GenerationUsage:
 
 @dataclass(frozen=True)
 class GenerationResult:
-    """Validated final JSON output plus the provider's usage accounting."""
+    """Provider completion plus validated usage accounting."""
 
     content: dict[str, Any]
     model: str
     usage: GenerationUsage
     elapsed_seconds: float
     request_id: str | None
+    raw_content: str | None = None
 
 
 @dataclass(frozen=True)
@@ -202,11 +203,40 @@ class CloudflareWorkersAIGenerationProvider:
         user_prompt: str,
         temperature: float = 0.1,
     ) -> GenerationResult:
-        """Generate one JSON object; reject non-JSON or usage-less responses.
+        """Generate and strictly parse one JSON object for legacy callers."""
+        result = self.generate_raw(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature,
+        )
+        try:
+            parsed = json.loads(result.raw_content or "")
+        except json.JSONDecodeError:
+            raise GenerationProviderError(
+                "generation_output_not_valid_json"
+            ) from None
+        if not isinstance(parsed, dict):
+            raise GenerationProviderError("generation_output_not_json_object")
+        return GenerationResult(
+            content=parsed,
+            model=result.model,
+            usage=result.usage,
+            elapsed_seconds=result.elapsed_seconds,
+            request_id=result.request_id,
+            raw_content=result.raw_content,
+        )
 
-        The selected FP8 model is not listed in Cloudflare's published JSON Mode
-        compatibility list. We therefore request JSON in the system prompt and
-        validate the returned object locally instead of sending response_format.
+    def generate_raw(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.1,
+    ) -> GenerationResult:
+        """Return raw completion text with validated model and usage metadata.
+
+        Parsing is deliberately left to the application after the usage charge
+        has been reconciled and durably recorded.
         """
         if not isinstance(system_prompt, str) or not system_prompt.strip():
             raise ValueError("empty_generation_system_prompt")
@@ -281,13 +311,6 @@ class CloudflareWorkersAIGenerationProvider:
         if not isinstance(content, str) or not content.strip():
             raise GenerationProviderError("cloudflare_empty_completion")
 
-        try:
-            parsed = json.loads(content)
-        except json.JSONDecodeError:
-            raise GenerationProviderError("generation_output_not_valid_json") from None
-        if not isinstance(parsed, dict):
-            raise GenerationProviderError("generation_output_not_json_object")
-
         usage_document = document.get("usage")
         if not isinstance(usage_document, dict):
             raise GenerationProviderError("generation_usage_missing")
@@ -321,9 +344,10 @@ class CloudflareWorkersAIGenerationProvider:
         )
         response_id = document.get("id")
         return GenerationResult(
-            content=parsed,
+            content={},
             model=response_model,
             usage=usage,
             elapsed_seconds=elapsed,
             request_id=response_id if isinstance(response_id, str) else None,
+            raw_content=content,
         )
