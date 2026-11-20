@@ -21,8 +21,8 @@ from core.generation import (
     GenerationUsage,
 )
 from core.models import Event, Task, TaskGenerationCharge
-from core.update_thread import UPDATE_THREAD_TEST_PROVIDER
 from core.objectives import ObjectiveService
+from core.update_thread import UPDATE_THREAD_TEST_PROVIDER
 
 _STRATEGY_OPERATION = "strategy_proposal"
 _EXPERIENCE_OPERATION = "experience_distillation"
