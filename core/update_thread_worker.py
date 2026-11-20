@@ -220,7 +220,6 @@ class UpdateThreadWorker:
         attempt = admission.attempt_count
         deadline = admission.admitted_monotonic + MAX_TASK_SECONDS
         reservation: GenerationCostReservation | None = None
-        provider_invoked = False
 
         try:
             context = self._context_assembler.assemble(task_id, attempt)
@@ -242,7 +241,6 @@ class UpdateThreadWorker:
             provider_timeout = min(
                 MAX_PROVIDER_TIMEOUT_SECONDS, remaining_seconds
             )
-            provider_invoked = True
             generated = self._provider.generate_raw(
                 system_prompt=SYSTEM_PROMPT,
                 user_prompt=user_prompt,
@@ -312,7 +310,12 @@ class UpdateThreadWorker:
                 raise UpdateThreadProposalPersistencePending(
                     "update_thread_proposal_persistence_pending"
                 ) from error
-            self._check_deadline(deadline)
+            try:
+                self._check_deadline(deadline)
+            except UpdateThreadWorkerError as error:
+                raise UpdateThreadProposalPersistencePending(
+                    "update_thread_deadline_commit_recovery_pending"
+                ) from error
             try:
                 with self._session_factory.begin() as session:
                     task = session.scalar(
@@ -353,11 +356,7 @@ class UpdateThreadWorker:
             ):
                 raise
             reason = getattr(error, "reason", None)
-            if (
-                reservation is not None
-                and provider_invoked
-                and reason != "generation_cost_overrun"
-            ):
+            if reservation is not None and reason != "generation_cost_overrun":
                 self._mark_unknown(reservation, error)
             if not isinstance(reason, str):
                 reason = "update_thread_generation_failed"
