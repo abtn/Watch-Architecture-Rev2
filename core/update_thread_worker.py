@@ -33,6 +33,13 @@ from core.generation_cost import (
 from core.models import Event, Task, TaskGenerationCharge
 from core.snapshot_store import SnapshotStore
 from core.task_runtime import FailureObservation, TaskRuntime, TerminalObservation
+from core.update_thread import (
+    GENERATION_RECEIPT_EVENT_TYPE,
+    PROPOSAL_FINGERPRINT_DOMAIN,
+    PROPOSALS_EVENT_TYPE,
+    TASK_TYPE,
+    UPDATE_THREAD_TEST_PROVIDER,
+)
 from core.update_thread_context import (
     AssembledUpdateThreadContext,
     UpdateThreadContextAssembler,
@@ -40,7 +47,7 @@ from core.update_thread_context import (
 )
 from core.world_memory import Proposal
 
-OPERATION = "update_thread"
+OPERATION = TASK_TYPE
 RECEIPT_EVENT_TYPE = GENERATION_RECEIPT_EVENT_TYPE
 MAX_MODEL_PROPOSALS = 8
 MAX_TASK_SECONDS = 45
