@@ -226,7 +226,7 @@ The matrix defines required proof obligations, not tests that already exist. Eac
 | RW-KU-02 | KnowledgeUseAssessment is typed and application-validated against the exact claim reference/knowledge version and the later Task's terminal Outcome; it grants no mutation or decision authority. | RW-4-KU: typed-value validation, exact claim/version/terminal-Outcome/Team/Context binding, immutability, replay, and forbidden-write/scope rejection. Proposed test node: `tests/test_knowledge_use_assessment.py`; finalize before RW-4-KU authorization. | RW-4-KU (planned; not authorized) |
 
 
-### RW3.4 — integrated acceptance evidence (required; closeout remains gated)
+### RW3.4 — integrated acceptance evidence (active closeout; see [RW3.4 plan](rw-3-4-verification-closeout-plan.md))
 
 RW3.4 closeout must collect and rerun the complete evidence chain rather than relying on slice-local green checks:
 
