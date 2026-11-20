@@ -227,109 +227,23 @@ class TaskGenerationCostService:
         usage: GenerationUsage,
         request_id: str | None,
     ) -> GenerationCostReconciliation:
-        self._validate_usage(usage)
-        if request_id is not None and (
-            not isinstance(request_id, str) or len(request_id) > 255
-        ):
-            raise TaskGenerationCostError("generation_request_id_invalid")
-
         result: GenerationCostReconciliation
-        model_mismatch = False
         with self._session_factory.begin() as session:
             task = ObjectiveService._lock_task(session, reservation.task_id)
             if task is None:
                 raise TaskGenerationCostError("task_not_found")
-            charge = self._locked_charge(session, reservation)
+            result = self.reconcile_in_session(
+                session,
+                task,
+                reservation,
+                model=model,
+                usage=usage,
+                request_id=request_id,
+            )
 
-            usage_cost = (
-                Decimal(usage.input_tokens)
-                * charge.input_usd_per_million_tokens
-                + Decimal(usage.output_tokens)
-                * charge.output_usd_per_million_tokens
-            ) / _COST_DIVISOR
-
-            if charge.model != model:
-                self._mark_unknown_in_session(
-                    session, task, charge, "provider_model_mismatch"
-                )
-                model_mismatch = True
-                result = GenerationCostReconciliation(
-                    charge_id=charge.id,
-                    status="unknown",
-                    usage_cost_usd=usage_cost,
-                    accounted_cost_usd=charge.reserved_cost_usd,
-                )
-            elif charge.status in {"reconciled", "overrun"}:
-                if (
-                    charge.input_tokens == usage.input_tokens
-                    and charge.output_tokens == usage.output_tokens
-                    and charge.request_id == request_id
-                    and charge.accounted_cost_usd is not None
-                ):
-                    result = GenerationCostReconciliation(
-                        charge_id=charge.id,
-                        status=charge.status,
-                        usage_cost_usd=usage_cost,
-                        accounted_cost_usd=charge.accounted_cost_usd,
-                        replayed=True,
-                    )
-                else:
-                    raise TaskGenerationCostError(
-                        "generation_reconciliation_conflict"
-                    )
-            elif charge.status != "reserved":
-                raise TaskGenerationCostError("generation_charge_not_reconcilable")
-            else:
-                bounds_exceeded = (
-                    usage.input_tokens > charge.max_input_tokens
-                    or usage.output_tokens > charge.max_output_tokens
-                )
-                overrun = bounds_exceeded or usage_cost > charge.reserved_cost_usd
-                accounted_cost = (
-                    max(usage_cost, charge.reserved_cost_usd)
-                    if overrun
-                    else usage_cost
-                )
-                charge.input_tokens = usage.input_tokens
-                charge.output_tokens = usage.output_tokens
-                charge.request_id = request_id
-                charge.accounted_cost_usd = accounted_cost
-                charge.status = "overrun" if overrun else "reconciled"
-                charge.failure_reason = (
-                    "provider_usage_exceeded_reserved_bound" if overrun else None
-                )
-                charge.settled_at = datetime.now(timezone.utc)
-                self._event(
-                    session,
-                    task.id,
-                    "generation_cost_overrun"
-                    if overrun
-                    else "generation_cost_reconciled",
-                    {
-                        "charge_id": str(charge.id),
-                        "attempt_count": charge.attempt_count,
-                        "provider": charge.provider,
-                        "model": charge.model,
-                        "request_id": request_id,
-                        "input_tokens": usage.input_tokens,
-                        "output_tokens": usage.output_tokens,
-                        "usage_cost_usd": str(usage_cost),
-                        "reserved_cost_usd": str(charge.reserved_cost_usd),
-                        "accounted_cost_usd": str(accounted_cost),
-                        "pricing_revision": charge.pricing_revision,
-                        "failure_reason": charge.failure_reason,
-                    },
-                )
-                result = GenerationCostReconciliation(
-                    charge_id=charge.id,
-                    status=charge.status,
-                    usage_cost_usd=usage_cost,
-                    accounted_cost_usd=accounted_cost,
-                )
-            session.flush()
-
-        # Raise only after the transaction commits the unknown state.
-        if model_mismatch:
+        # Preserve the public method's existing fail-closed behavior while
+        # allowing RW3 to compose reconciliation with its receipt Event.
+        if result.status == "unknown":
             raise TaskGenerationCostError("provider_model_mismatch")
         return result
 
