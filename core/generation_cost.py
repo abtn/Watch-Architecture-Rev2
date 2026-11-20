@@ -25,6 +25,13 @@ from core.objectives import ObjectiveService
 
 _STRATEGY_OPERATION = "strategy_proposal"
 _EXPERIENCE_OPERATION = "experience_distillation"
+_UPDATE_THREAD_OPERATION = "update_thread"
+_UPDATE_THREAD_FAKE_PROVIDER = "watch_test_fake"
+_UPDATE_THREAD_FAKE_MODEL = "watch-rw3-update-thread-fake"
+_UPDATE_THREAD_FAKE_PRICING_REVISION = "watch-rw3-update-thread-fake-v1"
+_UPDATE_THREAD_FAKE_MAX_OUTPUT_TOKENS = DEFAULT_MAX_OUTPUT_TOKENS
+_UPDATE_THREAD_FAKE_INPUT_RATE = INPUT_USD_PER_MILLION_TOKENS
+_UPDATE_THREAD_FAKE_OUTPUT_RATE = OUTPUT_USD_PER_MILLION_TOKENS
 _EXPERIENCE_FAKE_PROVIDER = "watch_test_fake"
 _EXPERIENCE_FAKE_MODEL = "watch-r6f-distillation-fake"
 _EXPERIENCE_FAKE_PRICING_REVISION = "watch-r6f-fake-price-v1"
@@ -92,6 +99,10 @@ class TaskGenerationCostService:
             expected_scope = {
                 _STRATEGY_OPERATION: ("propose_strategy", []),
                 _EXPERIENCE_OPERATION: ("propose_learning_change", ["LearningChange"]),
+                _UPDATE_THREAD_OPERATION: (
+                    "update_thread",
+                    ["EvidenceLink", "Hypothesis", "ConfidenceChange"],
+                ),
             }.get(operation)
             if expected_scope is None or task.task_type != expected_scope[0]:
                 raise TaskGenerationCostError("generation_task_scope_violation")
@@ -322,6 +333,113 @@ class TaskGenerationCostService:
             raise TaskGenerationCostError("provider_model_mismatch")
         return result
 
+    def reconcile_in_session(
+        self,
+        session: Session,
+        task: Task,
+        reservation: GenerationCostReservation,
+        *,
+        model: str,
+        usage: GenerationUsage,
+        request_id: str | None,
+    ) -> GenerationCostReconciliation:
+        """Settle a charge inside the caller's transaction.
+
+        RW3 uses this narrow entry point to commit charge reconciliation and
+        its immutable generation-receipt Event atomically.
+        """
+        self._validate_usage(usage)
+        if request_id is not None and (
+            not isinstance(request_id, str) or len(request_id) > 255
+        ):
+            raise TaskGenerationCostError("generation_request_id_invalid")
+        if task.id != reservation.task_id:
+            raise TaskGenerationCostError("generation_charge_task_mismatch")
+
+        charge = self._locked_charge(session, reservation)
+        usage_cost = (
+            Decimal(usage.input_tokens) * charge.input_usd_per_million_tokens
+            + Decimal(usage.output_tokens) * charge.output_usd_per_million_tokens
+        ) / _COST_DIVISOR
+
+        if charge.model != model:
+            self._mark_unknown_in_session(
+                session, task, charge, "provider_model_mismatch"
+            )
+            return GenerationCostReconciliation(
+                charge_id=charge.id,
+                status="unknown",
+                usage_cost_usd=usage_cost,
+                accounted_cost_usd=charge.reserved_cost_usd,
+            )
+
+        if charge.status in {"reconciled", "overrun"}:
+            if (
+                charge.input_tokens != usage.input_tokens
+                or charge.output_tokens != usage.output_tokens
+                or charge.request_id != request_id
+                or charge.accounted_cost_usd is None
+            ):
+                raise TaskGenerationCostError(
+                    "generation_reconciliation_conflict"
+                )
+            return GenerationCostReconciliation(
+                charge_id=charge.id,
+                status=charge.status,
+                usage_cost_usd=usage_cost,
+                accounted_cost_usd=charge.accounted_cost_usd,
+                replayed=True,
+            )
+
+        if charge.status != "reserved":
+            raise TaskGenerationCostError("generation_charge_not_reconcilable")
+
+        bounds_exceeded = (
+            usage.input_tokens > charge.max_input_tokens
+            or usage.output_tokens > charge.max_output_tokens
+        )
+        overrun = bounds_exceeded or usage_cost > charge.reserved_cost_usd
+        accounted_cost = (
+            max(usage_cost, charge.reserved_cost_usd)
+            if overrun
+            else usage_cost
+        )
+        charge.input_tokens = usage.input_tokens
+        charge.output_tokens = usage.output_tokens
+        charge.request_id = request_id
+        charge.accounted_cost_usd = accounted_cost
+        charge.status = "overrun" if overrun else "reconciled"
+        charge.failure_reason = (
+            "provider_usage_exceeded_reserved_bound" if overrun else None
+        )
+        charge.settled_at = datetime.now(timezone.utc)
+        self._event(
+            session,
+            task.id,
+            "generation_cost_overrun" if overrun else "generation_cost_reconciled",
+            {
+                "charge_id": str(charge.id),
+                "attempt_count": charge.attempt_count,
+                "provider": charge.provider,
+                "model": charge.model,
+                "request_id": request_id,
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "usage_cost_usd": str(usage_cost),
+                "reserved_cost_usd": str(charge.reserved_cost_usd),
+                "accounted_cost_usd": str(accounted_cost),
+                "pricing_revision": charge.pricing_revision,
+                "failure_reason": charge.failure_reason,
+            },
+        )
+        session.flush()
+        return GenerationCostReconciliation(
+            charge_id=charge.id,
+            status=charge.status,
+            usage_cost_usd=usage_cost,
+            accounted_cost_usd=accounted_cost,
+        )
+
     @staticmethod
     def _validate_quote(quote: GenerationCostQuote, operation: str) -> None:
         if not isinstance(quote, GenerationCostQuote):
@@ -367,6 +485,24 @@ class TaskGenerationCostService:
                 <= _EXPERIENCE_FAKE_MAX_OUTPUT_TOKENS
             )
             maximum_output = _EXPERIENCE_FAKE_MAX_OUTPUT_TOKENS
+        elif operation == _UPDATE_THREAD_OPERATION:
+            # RW-3 has no live-provider authorization. This operation accepts
+            # only the synthetic deterministic-test rate card until that gate
+            # is separately approved.
+            valid_card = (
+                quote.provider == _UPDATE_THREAD_FAKE_PROVIDER
+                and quote.model == _UPDATE_THREAD_FAKE_MODEL
+                and quote.pricing_revision
+                == _UPDATE_THREAD_FAKE_PRICING_REVISION
+                and quote.input_usd_per_million_tokens
+                == _UPDATE_THREAD_FAKE_INPUT_RATE
+                and quote.output_usd_per_million_tokens
+                == _UPDATE_THREAD_FAKE_OUTPUT_RATE
+                and 1
+                <= quote.maximum_output_tokens
+                <= _UPDATE_THREAD_FAKE_MAX_OUTPUT_TOKENS
+            )
+            maximum_output = _UPDATE_THREAD_FAKE_MAX_OUTPUT_TOKENS
         else:
             raise TaskGenerationCostError("generation_operation_not_authorized")
         if (
