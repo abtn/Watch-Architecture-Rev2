@@ -38,11 +38,11 @@ from core.update_thread import (
     MAX_ATTEMPTS,
     REQUEST_EVENT_TYPE,
     TASK_BUDGET,
+    UpdateThreadTaskError,
     UpdateThreadTaskRequest,
     build_request_event_payload,
     task_id_for_request,
     validate_update_thread_task_request,
-    UpdateThreadTaskError,
 )
 from core.update_thread_context import (
     CONTEXT_EVENT_TYPE,
