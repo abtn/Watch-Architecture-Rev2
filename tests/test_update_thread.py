@@ -1401,6 +1401,7 @@ def test_update_thread_worker_records_typed_proposal_without_business_commit(
             "proposals": [
                 {
                     "kind": "hypothesis_create",
+                    "key": "create-hypothesis-supply-pressure",
                     "hypothesis_id": str(hypothesis_id),
                     "statement": "Supply pressure is likely to persist.",
                     "confidence": "moderate",
