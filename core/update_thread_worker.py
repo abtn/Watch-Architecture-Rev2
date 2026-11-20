@@ -127,6 +127,34 @@ def _canonical_json(value: dict[str, Any]) -> bytes:
     ).encode("utf-8")
 
 
+def _unique_json_object(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate_json_object_key")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError("nonstandard_json_constant")
+
+
+def _parse_model_response(raw_completion: str) -> UpdateThreadModelResponse:
+    # Pydantic's JSON parser supplies strict field validation; this preliminary
+    # pass additionally rejects duplicate object keys and non-standard NaN/Inf.
+    json.loads(
+        raw_completion,
+        object_pairs_hook=_unique_json_object,
+        parse_constant=_reject_json_constant,
+    )
+    return UpdateThreadModelResponse.model_validate_json(
+        raw_completion, strict=True
+    )
+
+
 def _fingerprint(
     *,
     task_id: UUID,
@@ -242,9 +270,7 @@ class UpdateThreadWorker:
                 task_id, attempt, receipt.event_id
             )
             try:
-                parsed = UpdateThreadModelResponse.model_validate_json(
-                    raw_completion, strict=True
-                )
+                parsed = _parse_model_response(raw_completion)
             except (ValidationError, ValueError, TypeError) as error:
                 raise UpdateThreadWorkerError(
                     "update_thread_model_output_invalid"
@@ -477,6 +503,10 @@ class UpdateThreadWorker:
                     raise UpdateThreadWorkerError(
                         "update_thread_generation_receipt_corrupt"
                     )
+                if event.payload["attempt"] > attempt:
+                    raise UpdateThreadWorkerError(
+                        "update_thread_generation_receipt_future_attempt"
+                    )
                 if event.payload["attempt"] == attempt:
                     attempt_receipts.append(event)
             if len(attempt_receipts) != 1 or attempt_receipts[0].id != receipt.id:
@@ -503,8 +533,8 @@ class UpdateThreadWorker:
             ):
                 raise UpdateThreadWorkerError("update_thread_generation_context_conflict")
             try:
-                durable_response = UpdateThreadModelResponse.model_validate_json(
-                    receipt_payload["raw_completion_text"], strict=True
+                durable_response = _parse_model_response(
+                    receipt_payload["raw_completion_text"]
                 )
             except (ValidationError, ValueError, TypeError) as error:
                 raise UpdateThreadWorkerError(
@@ -533,7 +563,11 @@ class UpdateThreadWorker:
                 raise UpdateThreadWorkerError(
                     "update_thread_proposal_fingerprint_conflict"
                 )
-            charge = session.get(TaskGenerationCharge, reservation.charge_id)
+            charge = session.scalar(
+                select(TaskGenerationCharge)
+                .where(TaskGenerationCharge.id == reservation.charge_id)
+                .with_for_update()
+            )
             if (
                 charge is None
                 or charge.task_id != task.id
