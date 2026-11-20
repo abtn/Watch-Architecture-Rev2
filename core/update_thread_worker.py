@@ -61,6 +61,14 @@ class UpdateThreadWorkerError(RuntimeError):
         self.reason = reason
 
 
+class UpdateThreadProposalPersistencePending(UpdateThreadWorkerError):
+    """A durable receipt exists, but its proposal Event was not committed.
+
+    RW3.3 recovery must resume from that receipt; this state must not be
+    terminalized or sent through another provider attempt.
+    """
+
+
 class UpdateThreadGenerationProvider(Protocol):
     provider_name: str
 
@@ -257,15 +265,20 @@ class UpdateThreadWorker:
                 charge_id=reservation.charge_id,
                 proposals=proposals,
             )
-            proposal_event_id = self._record_proposals(
-                task_id,
-                attempt,
-                context,
-                reservation,
-                receipt.event_id,
-                proposals,
-                fingerprint,
-            )
+            try:
+                proposal_event_id = self._record_proposals(
+                    task_id,
+                    attempt,
+                    context,
+                    reservation,
+                    receipt.event_id,
+                    proposals,
+                    fingerprint,
+                )
+            except Exception as error:
+                raise UpdateThreadProposalPersistencePending(
+                    "update_thread_proposal_persistence_pending"
+                ) from error
             return UpdateThreadWorkerResult(
                 task_id=task_id,
                 attempt=attempt,
@@ -278,6 +291,8 @@ class UpdateThreadWorker:
                 proposals=tuple(parsed.proposals),
             )
         except Exception as error:
+            if isinstance(error, UpdateThreadProposalPersistencePending):
+                raise
             if reservation is not None:
                 self._mark_unknown(reservation, error)
             reason = getattr(error, "reason", None)
