@@ -55,6 +55,7 @@ OPERATION = TASK_TYPE
 RECEIPT_EVENT_TYPE = GENERATION_RECEIPT_EVENT_TYPE
 MAX_MODEL_PROPOSALS = 8
 MAX_TASK_SECONDS = 45
+MAX_PROVIDER_TIMEOUT_SECONDS = 30
 TEST_PROVIDER_NAME = UPDATE_THREAD_TEST_PROVIDER
 
 SYSTEM_PROMPT = """You propose updates to one existing Watch Thread.
@@ -217,13 +218,14 @@ class UpdateThreadWorker:
     def run(self, task_id: UUID) -> UpdateThreadWorkerResult:
         admission = self._runtime.admit(task_id)
         attempt = admission.attempt_count
-        started = time.monotonic()
+        deadline = admission.admitted_monotonic + MAX_TASK_SECONDS
         reservation: GenerationCostReservation | None = None
+        provider_invoked = False
 
         try:
             context = self._context_assembler.assemble(task_id, attempt)
             context = self._context_assembler.verify_context(context)
-            self._check_deadline(started)
+            self._check_deadline(deadline)
 
             user_prompt = _canonical_json({"context": context.document}).decode(
                 "utf-8"
@@ -232,16 +234,20 @@ class UpdateThreadWorker:
                 system_prompt=SYSTEM_PROMPT,
                 user_prompt=user_prompt,
             )
-            self._check_deadline(started)
+            self._check_deadline(deadline)
             reservation = self._cost_service.reserve(
                 task_id, quote, operation=OPERATION
             )
-            self._check_deadline(started)
-
+            remaining_seconds = self._remaining_seconds(deadline)
+            provider_timeout = min(
+                MAX_PROVIDER_TIMEOUT_SECONDS, remaining_seconds
+            )
+            provider_invoked = True
             generated = self._provider.generate_raw(
                 system_prompt=SYSTEM_PROMPT,
                 user_prompt=user_prompt,
                 temperature=0.1,
+                timeout_seconds=provider_timeout,
             )
             if (
                 not isinstance(generated, GenerationResult)
@@ -264,7 +270,7 @@ class UpdateThreadWorker:
             if receipt.event_id is None:
                 raise UpdateThreadWorkerError("generation_receipt_missing")
 
-            self._check_deadline(started)
+            self._check_deadline(deadline)
             raw_completion = self._load_receipt_text(
                 task_id, attempt, receipt.event_id
             )
@@ -274,6 +280,7 @@ class UpdateThreadWorker:
                 raise UpdateThreadWorkerError(
                     "update_thread_model_output_invalid"
                 ) from error
+            self._check_deadline(deadline)
 
             proposals = [
                 proposal.model_dump(mode="json")
@@ -290,6 +297,7 @@ class UpdateThreadWorker:
                 charge_id=reservation.charge_id,
                 proposals=proposals,
             )
+            self._check_deadline(deadline)
             try:
                 proposal_event_id = self._record_proposals(
                     task_id,
@@ -304,6 +312,7 @@ class UpdateThreadWorker:
                 raise UpdateThreadProposalPersistencePending(
                     "update_thread_proposal_persistence_pending"
                 ) from error
+            self._check_deadline(deadline)
             try:
                 with self._session_factory.begin() as session:
                     task = session.scalar(
@@ -344,7 +353,11 @@ class UpdateThreadWorker:
             ):
                 raise
             reason = getattr(error, "reason", None)
-            if reservation is not None and reason != "generation_cost_overrun":
+            if (
+                reservation is not None
+                and provider_invoked
+                and reason != "generation_cost_overrun"
+            ):
                 self._mark_unknown(reservation, error)
             if not isinstance(reason, str):
                 reason = "update_thread_generation_failed"
@@ -692,6 +705,11 @@ class UpdateThreadWorker:
             # A still-reserved row continues to consume its full reservation.
             pass
 
-    def _check_deadline(self, started: float) -> None:
-        if time.monotonic() - started >= MAX_TASK_SECONDS:
+    def _remaining_seconds(self, deadline: float) -> float:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
             raise UpdateThreadWorkerError("update_thread_deadline_exceeded")
+        return remaining
+
+    def _check_deadline(self, deadline: float) -> None:
+        self._remaining_seconds(deadline)
