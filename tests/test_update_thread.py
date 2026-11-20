@@ -55,6 +55,7 @@ from core.update_thread import (
 from core.update_thread_worker import (
     PROPOSALS_EVENT_TYPE,
     RECEIPT_EVENT_TYPE,
+    UpdateThreadProposalPersistencePending,
     UpdateThreadWorker,
     UpdateThreadWorkerError,
 )
@@ -1162,3 +1163,84 @@ def test_update_thread_worker_never_calls_provider_for_invalid_context(
         assert task is not None
         assert task.status == "failed"
         assert charges == []
+
+
+def test_update_thread_worker_leaves_receipted_proposals_resumable_on_write_failure(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+    function_name = f"fail_rw3_proposals_{uuid4().hex}"
+    trigger_name = f"fail_rw3_proposals_{uuid4().hex}"
+
+    with session_factory.begin() as session:
+        session.connection().exec_driver_sql(
+            f"""
+            CREATE FUNCTION {function_name}() RETURNS trigger AS $$
+            BEGIN
+                IF NEW.type = '{PROPOSALS_EVENT_TYPE}' THEN
+                    RAISE EXCEPTION 'injected proposal Event failure';
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql
+            """
+        )
+        session.connection().exec_driver_sql(
+            f"""
+            CREATE TRIGGER {trigger_name}
+            BEFORE INSERT ON events
+            FOR EACH ROW EXECUTE FUNCTION {function_name}()
+            """
+        )
+
+    try:
+        with pytest.raises(
+            UpdateThreadProposalPersistencePending,
+            match="update_thread_proposal_persistence_pending",
+        ):
+            worker.run(created.task_id)
+    finally:
+        with session_factory.begin() as session:
+            session.connection().exec_driver_sql(
+                f"DROP TRIGGER IF EXISTS {trigger_name} ON events"
+            )
+            session.connection().exec_driver_sql(
+                f"DROP FUNCTION IF EXISTS {function_name}()"
+            )
+
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        proposal_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        assert task is not None
+        assert task.status == "running"
+        assert receipt is not None
+        assert proposal_event is None
+        assert charge is not None
+        assert charge.status == "reconciled"
+        assert session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_failed",
+            )
+        ) is None
