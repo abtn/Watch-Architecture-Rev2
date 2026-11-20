@@ -666,6 +666,8 @@ def _verified_model_receipt(
     task: Task,
     attempt: int,
     snapshot_store: SnapshotStore,
+    *,
+    allow_overrun: bool = False,
 ):
     from core.update_thread import (
         GENERATION_RECEIPT_EVENT_TYPE,
@@ -821,14 +823,24 @@ def _verified_model_receipt(
         for event in session.scalars(
             select(Event).where(
                 Event.task_id == task.id,
-                Event.type == "generation_cost_reconciled",
+                Event.type.in_(
+                    ("generation_cost_reconciled", "generation_cost_overrun")
+                ),
             )
         )
         if isinstance(event.payload, dict)
         and event.payload.get("charge_id") == str(charge_id)
     ]
+    expected_event_type = (
+        "generation_cost_overrun"
+        if charge.status == "overrun"
+        else "generation_cost_reconciled"
+    )
+    allowed_charge_statuses = (
+        {"reconciled", "overrun"} if allow_overrun else {"reconciled"}
+    )
     if (
-        charge.status != "reconciled"
+        charge.status not in allowed_charge_statuses
         or charge.accounted_cost_usd is None
         or charge.provider != receipt["provider"]
         or charge.model != receipt["model"]
@@ -836,9 +848,15 @@ def _verified_model_receipt(
         or charge.input_tokens != receipt["prompt_tokens"]
         or charge.output_tokens != receipt["completion_tokens"]
         or len(reconciliation_events) != 1
+        or reconciliation_events[0].type != expected_event_type
     ):
         raise WorldMemoryError("update_thread_generation_charge_invalid")
     charge_payload = reconciliation_events[0].payload
+    expected_failure_reason = (
+        "provider_usage_exceeded_reserved_bound"
+        if charge.status == "overrun"
+        else None
+    )
     if (
         charge_payload.get("attempt_count") != attempt
         or charge_payload.get("provider") != charge.provider
@@ -846,7 +864,7 @@ def _verified_model_receipt(
         or charge_payload.get("request_id") != charge.request_id
         or charge_payload.get("input_tokens") != charge.input_tokens
         or charge_payload.get("output_tokens") != charge.output_tokens
-        or charge_payload.get("failure_reason") is not None
+        or charge_payload.get("failure_reason") != expected_failure_reason
     ):
         raise WorldMemoryError("update_thread_generation_charge_event_invalid")
     return request, verified_context, receipt_event, charge
@@ -1079,10 +1097,12 @@ def validate_model_update_thread_marker(
         if (
             not isinstance(event_payload, dict)
             or "operator_id" in event_payload
+            or type(event_payload.get("schema_version")) is not int
             or event_payload.get("schema_version") != 1
             or event_payload.get("task_id") != str(task.id)
             or event_payload.get("team_id") != str(task.team_id)
             or event_payload.get("thread_id") != str(envelope.thread_id)
+            or type(event_payload.get("attempt")) is not int
             or event_payload.get("attempt") != envelope.attempt
             or event_payload.get("actor_type") != "model_worker"
             or event_payload.get("proposal_fingerprint")
@@ -1549,9 +1569,22 @@ def validate_model_update_thread_terminal(
                 session, task
             )
             return
-        _, _, receipt_event, _ = _verified_model_receipt(
-            session, task, attempt, snapshot_store
+        _, _, receipt_event, charge = _verified_model_receipt(
+            session,
+            task,
+            attempt,
+            snapshot_store,
+            allow_overrun=True,
         )
+        if charge.status == "overrun":
+            if observation.failure_reason != "generation_cost_overrun":
+                raise WorldMemoryError(
+                    "update_thread_generation_overrun_result_invalid"
+                )
+            WorldMemoryCommitService._assert_model_empty_set_has_no_writes(
+                session, task
+            )
+            return
         try:
             receipt = receipt_event.payload
             _parse_model_response(receipt["raw_completion_text"])
@@ -2514,9 +2547,10 @@ class WorldMemoryCommitService:
                     if not current_proposals
                     else current_proposals[0].created_at,
                 )
-            result = self.commit_model_in_session(
-                session, task, attempt, envelope
-            )
+            with session.begin_nested():
+                result = self.commit_model_in_session(
+                    session, task, attempt, envelope
+                )
             return self._model_observation(task, attempt, result)
         except WorldMemoryError as error:
             return self._record_recovery_inconsistent(

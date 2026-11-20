@@ -2190,3 +2190,277 @@ def test_update_thread_model_commit_partitions_proposals_exhaustively(
                 )
             )
         ) == len(expected_accepted)
+
+
+def test_update_thread_worker_terminalizes_generation_cost_overrun_without_writes(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    class _OverrunProvider(_FakeUpdateThreadProvider):
+        def generate_raw(
+            self,
+            *,
+            system_prompt: str,
+            user_prompt: str,
+            temperature: float = 0.1,
+        ) -> GenerationResult:
+            self.calls += 1
+            return GenerationResult(
+                content={},
+                model=self.model,
+                usage=GenerationUsage(
+                    input_tokens=100,
+                    output_tokens=129,
+                    estimated_cost_usd=Decimal("0"),
+                ),
+                elapsed_seconds=0.001,
+                request_id="rw3-overrun-request",
+                raw_content=self.raw_completion,
+            )
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _OverrunProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+
+    with pytest.raises(
+        UpdateThreadWorkerError,
+        match="generation_cost_overrun",
+    ):
+        worker.run(created.task_id)
+
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        overrun_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "generation_cost_overrun",
+            )
+        )
+        failed_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_failed",
+            )
+        )
+        assert task is not None and task.status == "failed"
+        assert charge is not None and charge.status == "overrun"
+        assert receipt is not None
+        assert overrun_event is not None
+        assert failed_event is not None
+        assert failed_event.payload["failure_reason"] == "generation_cost_overrun"
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type.in_(
+                    (
+                        PROPOSALS_EVENT_TYPE,
+                        "update_thread_proposal_accepted",
+                        "update_thread_proposal_rejected",
+                        "update_thread_committed",
+                        "update_thread_rejected",
+                        "update_thread_recovery_inconsistent",
+                    )
+                ),
+            )
+        ) is None
+        assert session.scalar(
+            select(Hypothesis.id).where(
+                Hypothesis.team_id == rw3_fixture.team_id
+            )
+        ) is None
+        assert session.scalar(
+            select(EvidenceLink.id).where(
+                EvidenceLink.originating_task_id == created.task_id
+            )
+        ) is None
+
+
+def test_model_commit_savepoint_rolls_back_staged_writes_before_inconsistent_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    from core.models import ConfidenceChange
+    from core.world_memory import WorldMemoryCommitService, WorldMemoryError
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    hypothesis_id = uuid4()
+    provider = _FakeUpdateThreadProvider(
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "hypothesis_create",
+                        "key": "stage-then-fail",
+                        "hypothesis_id": str(hypothesis_id),
+                        "statement": "This staged row must be rolled back.",
+                        "confidence": "low",
+                    }
+                ]
+            },
+            separators=(",", ":"),
+        )
+    )
+    original_commit = WorldMemoryCommitService.commit_model_in_session
+
+    def commit_then_raise(
+        self: WorldMemoryCommitService,
+        session: Session,
+        task: Task,
+        attempt: int,
+        envelope=None,
+    ):
+        original_commit(self, session, task, attempt, envelope)
+        raise WorldMemoryError("injected_post_stage_integrity_failure")
+
+    monkeypatch.setattr(
+        WorldMemoryCommitService,
+        "commit_model_in_session",
+        commit_then_raise,
+    )
+
+    UpdateThreadWorker(session_factory, snapshot_store, provider).run(
+        created.task_id
+    )
+
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        proposal_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        inconsistent = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_recovery_inconsistent",
+            )
+        )
+        assert task is not None and task.status == "failed"
+        assert receipt is not None
+        assert proposal_event is not None
+        assert inconsistent is not None
+        assert session.get(Hypothesis, hypothesis_id) is None
+        assert session.scalar(
+            select(EvidenceLink.id).where(
+                EvidenceLink.originating_task_id == created.task_id
+            )
+        ) is None
+        assert session.scalar(
+            select(ConfidenceChange.id).where(
+                ConfidenceChange.created_by_task_id == created.task_id
+            )
+        ) is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type.in_(
+                    (
+                        "hypothesis_created",
+                        "evidence_link_added",
+                        "confidence_changed",
+                        "hypothesis_rejected",
+                        "hypothesis_superseded",
+                        "update_thread_proposal_accepted",
+                        "update_thread_proposal_rejected",
+                        "update_thread_committed",
+                        "update_thread_rejected",
+                    )
+                ),
+            )
+        ) is None
+
+
+@pytest.mark.parametrize("field", ["schema_version", "attempt"])
+def test_model_proposal_disposition_event_rejects_boolean_integer_substitution(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    field: str,
+) -> None:
+    from core.world_memory import (
+        WorldMemoryError,
+        load_model_update_thread_envelope,
+        validate_model_update_thread_marker,
+    )
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    hypothesis_id = uuid4()
+    provider = _FakeUpdateThreadProvider(
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "hypothesis_create",
+                        "key": "strict-integer-fields",
+                        "hypothesis_id": str(hypothesis_id),
+                        "statement": "Boolean integers are not valid provenance.",
+                        "confidence": "low",
+                    }
+                ]
+            },
+            separators=(",", ":"),
+        )
+    )
+    UpdateThreadWorker(session_factory, snapshot_store, provider).run(
+        created.task_id
+    )
+
+    with session_factory.begin() as session:
+        accepted_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_proposal_accepted",
+            )
+        )
+        assert accepted_event is not None
+        payload = dict(accepted_event.payload)
+        payload[field] = True
+        session.execute(
+            update(Event)
+            .where(Event.id == accepted_event.id)
+            .values(payload=payload)
+        )
+
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        marker = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        )
+        assert task is not None
+        assert marker is not None
+        envelope = load_model_update_thread_envelope(
+            session, task, 1, snapshot_store
+        )
+        with pytest.raises(
+            WorldMemoryError,
+            match="update_thread_proposal_event_invalid",
+        ):
+            validate_model_update_thread_marker(
+                session, task, envelope, marker, snapshot_store
+            )

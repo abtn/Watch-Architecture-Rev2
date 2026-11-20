@@ -343,9 +343,9 @@ class UpdateThreadWorker:
                 (UpdateThreadProposalPersistencePending, TaskNotFinalizable),
             ):
                 raise
-            if reservation is not None:
-                self._mark_unknown(reservation, error)
             reason = getattr(error, "reason", None)
+            if reservation is not None and reason != "generation_cost_overrun":
+                self._mark_unknown(reservation, error)
             if not isinstance(reason, str):
                 reason = "update_thread_generation_failed"
             try:
