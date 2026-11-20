@@ -21,6 +21,7 @@ TASK_TYPE = "update_thread"
 REQUEST_EVENT_TYPE = "update_thread_requested"
 GENERATION_RECEIPT_EVENT_TYPE = "update_thread_generation_received"
 PROPOSALS_EVENT_TYPE = "update_thread_proposals_validated"
+PROPOSAL_FINGERPRINT_DOMAIN = "watch.rw3.update-thread-proposals.v1"
 UPDATE_THREAD_TEST_PROVIDER = "watch_test_fake"
 ALLOWED_WRITES = ["EvidenceLink", "Hypothesis", "ConfidenceChange"]
 MAX_ATTEMPTS = 3
