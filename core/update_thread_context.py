@@ -525,6 +525,10 @@ class UpdateThreadContextAssembler:
                 or not 1 <= event.payload["attempt"] <= 3
             ):
                 raise UpdateThreadContextError("update_thread_context_event_corrupt")
+        if any(event.payload["attempt"] > attempt for event in events):
+            raise UpdateThreadContextError(
+                "update_thread_context_event_future_attempt"
+            )
         matching = [event for event in events if event.payload["attempt"] == attempt]
         if len(matching) > 1:
             raise UpdateThreadContextError("update_thread_context_event_duplicate")
