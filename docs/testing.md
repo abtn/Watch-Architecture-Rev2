@@ -47,6 +47,8 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 - The script removed its disposable PostgreSQL container and confirmed the original `DATABASE_URL` and `TEST_DATABASE_URL` values were restored. It also confirmed the exact branch/head and clean worktree before reporting success.
 - These results supersede the pre-correction 1,119-pass baseline for the corrected code. They do not establish end-to-end host authentication: the production host composition root is not present. RW3.1 remains subject to independent review and explicit Operator acceptance; RW3.2–RW3.4 and live provider invocation remain separately gated.
 
+- **Independent review follow-up (open):** `core/update_thread.py` validates the Task budget with ordinary dictionary equality (`task.budget != TASK_BUDGET`). Python treats `False == 0` and `45.0 == 45`, so malformed JSONB budget values can satisfy the exact Task-shape check. Add exact-type validation and regression coverage before RW3.1 acceptance. This finding does not invalidate the reported test results; the current suite does not cover these substitutions.
+
 
 
 ## Database safety
