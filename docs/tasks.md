@@ -3,13 +3,13 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 
 ## RW implementation status and evidence contract
 
-This is the current implementation-status summary. RW3.1 and RW3.2 are accepted and merged; RW3.3 implementation is in progress and not accepted; RW3.4 integrated closeout remains gated. Live provider authorization remains closed. `PLAN.md` is the sole authority for milestone status and authorization; exact verification evidence is recorded in `docs/testing.md`.
+This is the current implementation-status summary. RW3.1, RW3.2, and RW3.3 are accepted and merged; RW3.4 integrated closeout remains gated. Live provider authorization remains closed. `PLAN.md` is the sole authority for milestone status and authorization; exact verification evidence is recorded in `docs/testing.md`.
 
 | Task / entity | Current implementation state |
 |---|---|
 | ingest_source | Implemented for the existing deterministic Signal-ingestion path. This does not include triage. |
 | triage_signal | Specified; not implemented. Planned for RW-4. |
-| update_thread | RW3.1 and RW3.2 accepted and merged (PRs #136 and #137); RW3.3 shared commit/recovery implementation is in progress on `rw3-3-shared-commit-recovery-20261120`, not accepted. RW3.4 integrated closeout remains gated. Deterministic fake providers only; live provider authorization remains closed. |
+| update_thread | RW3.1–RW3.3 accepted and merged (PRs #136–#138). RW3.3 adds the shared world-memory commit core and crash-safe TaskRuntime recovery. RW3.4 integrated closeout remains gated. Deterministic fake providers only; live provider authorization remains closed. |
 | operator_update | Deterministic host-invoked Operator path implemented and formally accepted in RW-2; PR #134 merged to main. |
 | apply_decay | Specified; not implemented. Planned for RW-5. |
 | Thread / Hypothesis / ConfidenceChange | ORM persistence implemented in RW-1; deterministic Operator commit path implemented and accepted in RW-2. |
@@ -164,7 +164,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Failure:** heuristics error → disposition `deferred` with reason; never silent (INV-09).
 ### `update_thread` — model worker
 
-**Implementation status:** RW3.1 and RW3.2 are accepted and merged (PRs #136 and #137). RW3.3 shared commit/recovery implementation is in progress and not accepted; RW3.4 integrated closeout remains gated. The worker uses deterministic fakes only; live provider authorization remains closed.
+**Implementation status:** RW3.1–RW3.3 are accepted and merged (PRs #136–#138). RW3.3 adds the shared RW-2 commit core, typed Operator/model-worker actor boundary, provenance-bound proposal dispositions, and in-session crash recovery. RW3.4 integrated closeout remains gated. The worker uses deterministic fakes only; live provider authorization remains closed.
 
 - **Purpose:** incorporate new evidence into one existing Thread's world model through a bounded model proposal and the shared RW-2 commit boundary.
 - **Trusted target:** Team and Thread are resolved from the immutable Task request and canonical database state. Model output cannot select or override them.
