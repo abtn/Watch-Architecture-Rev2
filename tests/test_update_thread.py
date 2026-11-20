@@ -1132,7 +1132,7 @@ def test_update_thread_worker_does_not_invoke_provider_after_deadline(
             )
         )
         assert task is not None and task.status == "failed"
-        assert charge is not None and charge.status == "reserved"
+        assert charge is not None and charge.status == "unknown"
 
 
 def test_update_thread_worker_discards_provider_result_returned_after_deadline(
@@ -1252,6 +1252,60 @@ def test_update_thread_worker_checks_deadline_after_parsing(
         )
         assert task is not None and task.status == "failed"
         assert proposals is None
+
+
+def test_update_thread_worker_leaves_persisted_proposals_for_recovery_after_deadline(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
+    )
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+
+    worker = UpdateThreadWorker(
+        session_factory,
+        snapshot_store,
+        provider,
+        runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+    )
+    record_proposals = worker._record_proposals
+
+    def record_then_expire(*args: object, **kwargs: object):
+        result = record_proposals(*args, **kwargs)
+        clock["now"] = 146.0
+        return result
+
+    monkeypatch.setattr(worker, "_record_proposals", record_then_expire)
+
+    with pytest.raises(
+        UpdateThreadProposalPersistencePending,
+        match="update_thread_deadline_commit_recovery_pending",
+    ):
+        worker.run(created.task_id)
+
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        proposals = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        marker = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        )
+        assert task is not None and task.status == "running"
+        assert proposals is not None
+        assert marker is None
 
 
 def test_update_thread_worker_records_context_identity_and_empty_proposal_set(
