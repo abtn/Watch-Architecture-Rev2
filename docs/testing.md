@@ -25,7 +25,7 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 
 ## Current RW-3 status
 
-RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery was formally accepted by the Operator on 2026-11-20 and squash-merged by PR #138; its exact implementation, corrective, local, and hosted verification evidence is recorded below. RW3.4 integrated closeout remains separately gated. Live provider authorization remains closed; only deterministic fake providers are permitted.
+RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery was formally accepted by the Operator on 2026-11-20 and squash-merged by PR #138; its exact implementation, corrective, local, and hosted verification evidence is recorded below. RW3.4 integrated verification/closeout is now the active working slice under [the closeout plan](development/rw-3-4-verification-closeout-plan.md). This is a documentation-only planning state; no RW3.4 integrated exact-head verification or acceptance is claimed yet. Live provider authorization remains closed; only deterministic fake providers are permitted.
 
 ## RW3.3 implementation verification and Operator acceptance — 2026-11-20
 
