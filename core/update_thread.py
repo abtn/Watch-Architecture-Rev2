@@ -139,6 +139,9 @@ def validate_update_thread_task_request(
         or task.plan_id is not None
         or task.plan_action_id is not None
         or task.allowed_writes != ALLOWED_WRITES
+        or not isinstance(task.budget, dict)
+        or type(task.budget.get("max_tool_calls")) is not int
+        or type(task.budget.get("deadline_seconds")) is not int
         or task.budget != TASK_BUDGET
         or task.max_attempts != MAX_ATTEMPTS
         or isinstance(task.policy_version, bool)
