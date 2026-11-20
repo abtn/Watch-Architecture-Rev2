@@ -158,7 +158,7 @@ Primary test nodes in `tests/test_update_thread.py`:
 
 The closeout report must explicitly account for these proof rows from the implementation plan:
 
-- Identity/provenance: `RW-REQ-01`, `RW-CTX-02`, `RW-CTX-04`, `RW-CTX-05`, `RW-CTX-06`, `RW-REPLAY-01`, `RW-SER-01`.
+- Identity/provenance: `RW-REQ-01`, `RW-CT-02`, `RW-CTX-04`, `RW-CTX-05`, `RW-CTX-06`, `RW-REPLAY-01`, `RW-SER-01`.
 - Runtime and recovery: `RW-LC-01`, `RW-RT-01`, `RW-RT-02`, `RW-REC-01`, `RW-CF-01`.
 - Actor and commit behavior: `RW-ACT-01`, `RW-ACT-02`, `RW-AT-01`, `RW-RP-01`, `RW-RC-01`, `RW-LT-01`.
 - Scope and budget: `RW-TS-02`, `RW-POL-01`, `RW-GC-01`, `RW-GC-02`, `RW-GC-03`, `RW-GN-01`, `RW-GN-02`, `RW-DL-01`, `RW-PR-01`, `RW-PV-01`, `RW-PR-02`, `RW-NO-01`, `RW-PF-01`.
