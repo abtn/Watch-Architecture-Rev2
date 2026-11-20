@@ -1261,6 +1261,20 @@ def test_update_thread_worker_rejects_live_provider_until_separately_authorized(
     class _LiveProvider:
         provider_name = "cloudflare_workers_ai"
 
+        def maximum_request_cost(
+            self, *, system_prompt: str, user_prompt: str
+        ) -> GenerationCostQuote:
+            raise AssertionError("live provider must not be called")
+
+        def generate_raw(
+            self,
+            *,
+            system_prompt: str,
+            user_prompt: str,
+            temperature: float = 0.1,
+        ) -> GenerationResult:
+            raise AssertionError("live provider must not be called")
+
     with pytest.raises(
         UpdateThreadWorkerError,
         match="update_thread_live_provider_not_authorized",
