@@ -17,7 +17,6 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 import core.update_thread_worker as worker_module
-
 from core.generation import (
     GenerationCostQuote,
     GenerationResult,
