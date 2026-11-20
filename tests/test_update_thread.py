@@ -17,8 +17,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.generation import (
     GenerationCostQuote,
+    GenerationProviderError,
     GenerationResult,
     GenerationUsage,
+)
+from core.generation_cost import (
+    GenerationCostReservation,
+    TaskGenerationCostService,
 )
 from core.models import (
     Event,
@@ -42,6 +47,8 @@ from core.operator_application import (
 )
 from core.snapshot_store import SnapshotStore
 from core.task_runtime import (
+    FailureObservation,
+    FailureResult,
     TaskNotEligible,
     TaskRuntime,
 )
@@ -988,6 +995,158 @@ class _FakeUpdateThreadProvider:
             request_id="rw3-fake-request",
             raw_content=self.raw_completion,
         )
+
+
+def test_update_thread_task_contract_keeps_two_cent_budget_and_three_starts() -> None:
+    assert TASK_BUDGET["max_cost_usd"] == 0.02
+    assert MAX_ATTEMPTS == 3
+
+
+def test_update_thread_worker_counts_reconciled_and_unknown_charges_before_next_call(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The production contract's $0.02 ceiling is intentionally non-binding
+    # under the three-start maximum quote. A smaller test-only ceiling makes
+    # the cumulative-exhaustion branch reachable without changing production
+    # policy or the accepted Task shape.
+    test_budget = {
+        **TASK_BUDGET,
+        "max_cost_usd": 0.0099,
+    }
+    monkeypatch.setattr("core.update_thread.TASK_BUDGET", test_budget)
+    _, created = _create_task(session_factory, rw3_fixture)
+    with session_factory.begin() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        task.budget = test_budget
+
+    class _RetryableRuntime(TaskRuntime):
+        def report_failure(self, failure: FailureObservation) -> FailureResult:
+            return super().report_failure(
+                FailureObservation(
+                    task_id=failure.task_id,
+                    attempt=failure.attempt,
+                    observed_at=failure.observed_at,
+                    reason=failure.reason,
+                    retryable=True,
+                )
+            )
+
+    class _CumulativeCostProvider(_FakeUpdateThreadProvider):
+        def maximum_request_cost(
+            self, *, system_prompt: str, user_prompt: str
+        ) -> GenerationCostQuote:
+            return GenerationCostQuote(
+                provider=self.provider_name,
+                model=self.model,
+                maximum_input_tokens=31_872,
+                maximum_output_tokens=128,
+                input_usd_per_million_tokens=Decimal("0.152"),
+                output_usd_per_million_tokens=Decimal("0.287"),
+                pricing_revision="watch-rw3-update-thread-fake-v1",
+            )
+
+        def generate_raw(
+            self,
+            *,
+            system_prompt: str,
+            user_prompt: str,
+            temperature: float = 0.1,
+            timeout_seconds: float | None = None,
+        ) -> GenerationResult:
+            self.calls += 1
+            if self.calls == 1:
+                return GenerationResult(
+                    content={},
+                    model=self.model,
+                    usage=GenerationUsage(
+                        input_tokens=31_872,
+                        output_tokens=128,
+                        estimated_cost_usd=Decimal("0"),
+                    ),
+                    elapsed_seconds=0.001,
+                    request_id="rw3-cost-reconciled",
+                    raw_content="not-json",
+                )
+            if self.calls == 2:
+                raise GenerationProviderError(
+                    "provider_temporarily_unavailable",
+                    retryable=True,
+                )
+            raise AssertionError("provider_invoked_after_budget_exhaustion")
+
+    provider = _CumulativeCostProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(
+        session_factory,
+        snapshot_store,
+        provider,
+        runtime=_RetryableRuntime(session_factory, snapshot_store),
+    )
+
+    with pytest.raises(
+        UpdateThreadWorkerError, match="update_thread_model_output_invalid"
+    ):
+        worker.run(created.task_id)
+    with pytest.raises(
+        UpdateThreadWorkerError, match="provider_temporarily_unavailable"
+    ):
+        worker.run(created.task_id)
+    with pytest.raises(
+        UpdateThreadWorkerError, match="task_generation_budget_exhausted"
+    ):
+        worker.run(created.task_id)
+
+    assert provider.calls == 2
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        charges = list(
+            session.scalars(
+                select(TaskGenerationCharge)
+                .where(TaskGenerationCharge.task_id == created.task_id)
+                .order_by(TaskGenerationCharge.attempt_count)
+            )
+        )
+        assert task is not None
+        assert task.status == "failed"
+        assert task.attempt_count == 3
+        assert len(charges) == 2
+        assert [charge.attempt_count for charge in charges] == [1, 2]
+        assert [charge.operation for charge in charges] == [
+            "update_thread",
+            "update_thread",
+        ]
+        assert charges[0].status == "reconciled"
+        assert charges[0].accounted_cost_usd == charges[0].reserved_cost_usd
+        assert charges[1].status == "unknown"
+        assert charges[1].accounted_cost_usd is None
+        assert charges[1].reserved_cost_usd == charges[0].reserved_cost_usd
+        cumulative_exposure = sum(
+            (
+                charge.accounted_cost_usd
+                if charge.accounted_cost_usd is not None
+                else charge.reserved_cost_usd
+                for charge in charges
+            ),
+            start=Decimal("0"),
+        )
+        next_reservation = charges[0].reserved_cost_usd
+        assert cumulative_exposure <= Decimal("0.0099")
+        assert cumulative_exposure + next_reservation > Decimal("0.0099")
+        assert session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        ) is None
+        assert session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        ) is None
 
 
 def test_update_thread_worker_records_context_identity_and_empty_proposal_set(
