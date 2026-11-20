@@ -26,7 +26,7 @@ from core.objectives import ObjectiveService
 _STRATEGY_OPERATION = "strategy_proposal"
 _EXPERIENCE_OPERATION = "experience_distillation"
 _UPDATE_THREAD_OPERATION = "update_thread"
-_UPDATE_THREAD_FAKE_PROVIDER = "watch_test_fake"
+_UPDATE_THREAD_FAKE_PROVIDER = UPDATE_THREAD_TEST_PROVIDER
 _UPDATE_THREAD_FAKE_MODEL = "watch-rw3-update-thread-fake"
 _UPDATE_THREAD_FAKE_PRICING_REVISION = "watch-rw3-update-thread-fake-v1"
 _UPDATE_THREAD_FAKE_MAX_OUTPUT_TOKENS = DEFAULT_MAX_OUTPUT_TOKENS
