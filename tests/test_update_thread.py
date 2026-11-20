@@ -1382,3 +1382,54 @@ def test_update_thread_worker_receipt_and_charge_reconciliation_are_atomic(
         assert charge.accounted_cost_usd is None
         assert task is not None
         assert task.status == "failed"
+
+
+def test_update_thread_worker_records_typed_proposal_without_business_commit(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    hypothesis_id = uuid4()
+    raw_completion = json.dumps(
+        {
+            "proposals": [
+                {
+                    "kind": "hypothesis_create",
+                    "hypothesis_id": str(hypothesis_id),
+                    "statement": "Supply pressure is likely to persist.",
+                    "confidence": "moderate",
+                }
+            ]
+        },
+        separators=(",", ":"),
+    )
+    provider = _FakeUpdateThreadProvider(raw_completion)
+    worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+
+    result = worker.run(created.task_id)
+
+    assert provider.calls == 1
+    assert len(result.proposals) == 1
+    assert result.proposals[0].hypothesis_id == hypothesis_id
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        proposal_event = session.get(Event, result.proposals_event_id)
+        assert task is not None
+        assert task.status == "running"
+        assert proposal_event is not None
+        assert len(proposal_event.payload["proposals"]) == 1
+        assert proposal_event.payload["proposals"][0]["hypothesis_id"] == str(
+            hypothesis_id
+        )
+        assert session.scalar(
+            select(Hypothesis).where(
+                Hypothesis.team_id == rw3_fixture.team_id
+            )
+        ) is None
+        assert session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        ) is None
