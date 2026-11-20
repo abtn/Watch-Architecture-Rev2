@@ -97,6 +97,26 @@ def test_generation_posts_once_and_returns_validated_json_and_usage(
     assert result.request_id == "chatcmpl-test"
 
 
+def test_generation_raw_uses_the_smaller_per_call_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request: Request, timeout: float) -> FakeHTTPResponse:
+        captured["timeout"] = timeout
+        return FakeHTTPResponse(_response())
+
+    monkeypatch.setattr(generation, "urlopen", fake_urlopen)
+    result = _provider().generate_raw(
+        system_prompt="Return JSON.",
+        user_prompt="Propose one item.",
+        timeout_seconds=4.0,
+    )
+
+    assert result.raw_content == '{"decision":"candidate"}'
+    assert captured["timeout"] == 4.0
+
+
 def test_generation_fails_closed_when_usage_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
