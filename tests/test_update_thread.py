@@ -52,17 +52,17 @@ from core.update_thread import (
     task_id_for_request,
     validate_update_thread_task_request,
 )
+from core.update_thread_context import (
+    CONTEXT_EVENT_TYPE,
+    UpdateThreadContextAssembler,
+    UpdateThreadContextError,
+)
 from core.update_thread_worker import (
     PROPOSALS_EVENT_TYPE,
     RECEIPT_EVENT_TYPE,
     UpdateThreadProposalPersistencePending,
     UpdateThreadWorker,
     UpdateThreadWorkerError,
-)
-from core.update_thread_context import (
-    CONTEXT_EVENT_TYPE,
-    UpdateThreadContextAssembler,
-    UpdateThreadContextError,
 )
 
 _CONTENT = b"Market report: supply increased by 5 percent."
@@ -913,7 +913,10 @@ def test_task_runtime_admission_rejects_tampered_update_thread_request(
             update(Event).where(Event.id == event.id).values(payload=payload)
         )
 
-    with pytest.raises(TaskNotEligible, match="update_thread_request_fingerprint_invalid"):
+    with pytest.raises(
+        TaskNotEligible,
+        match="update_thread_request_fingerprint_invalid",
+    ):
         TaskRuntime(session_factory).admit(created.task_id)
 
     with session_factory() as session:
