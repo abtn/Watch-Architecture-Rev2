@@ -20,16 +20,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from core.generation import GenerationCostQuote, GenerationResult, GenerationUsage
 from core.generation_cost import (
-    GenerationCostReservation,
     GenerationCostReconciliation,
+    GenerationCostReservation,
     TaskGenerationCostError,
     TaskGenerationCostService,
 )
 from core.models import Event, Task, TaskGenerationCharge
-from core.task_runtime import (
-    FailureObservation,
-    TaskRuntime,
-)
+from core.task_runtime import FailureObservation, TaskRuntime
 from core.snapshot_store import SnapshotStore
 from core.update_thread_context import (
     AssembledUpdateThreadContext,
