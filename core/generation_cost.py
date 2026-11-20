@@ -21,6 +21,7 @@ from core.generation import (
     GenerationUsage,
 )
 from core.models import Event, Task, TaskGenerationCharge
+from core.update_thread import UPDATE_THREAD_TEST_PROVIDER
 from core.objectives import ObjectiveService
 
 _STRATEGY_OPERATION = "strategy_proposal"
