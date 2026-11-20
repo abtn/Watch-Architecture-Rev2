@@ -33,13 +33,20 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 - Programmer-local Windows verification on the same exact head passed: 14 focused RW3.1 tests; Ruff; Mypy (41 source files); full suite (**1,119 passed**); disposable PostgreSQL migration/single-head checks; container cleanup; and exact restoration of `DATABASE_URL` and `TEST_DATABASE_URL`.
 - This is pre-correction baseline evidence only. It does not verify the replay-manifest correction below.
 
-## RW3.1 replay-manifest correction — verification pending
+## RW3.1 replay-manifest correction — exact-head verification — 2026-11-20
 
-- Correction code/test commit: `0b9db1259cb264cbc13e94debca18ef721ac308c`; subsequent commits on this PR reconcile documentation only.
-- Hosted run [#1479](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44620192388) was canceled by a later documentation-only PR update before its Test step completed. On the code head it checked out, fresh PostgreSQL migration, Alembic single-head/current verification, Ruff, Mypy, and patch-whitespace checks had passed; **no full-suite result is claimed**.
-- A fresh hosted CI run is triggered for the updated PR head. Its exact-head result is tracked in [PR #136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136); this record remains pending until a complete hosted run and programmer-local verification have both passed.
-- Focused RW3.1 tests, full local suite, local Ruff/Mypy, and disposable-PostgreSQL verification on the correction code head remain pending.
-- Do not transfer the pre-correction 1,119-pass result to the correction code/test commit.
+- PR: [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136), branch `rw3-1-task-creation-bounded-context-20261119`.
+- Exact verified code/test head: `71948488f9c13e448a4ae046820840b0bec3f448`. The six boolean-substitution cases are persisted with an explicit SQL `UPDATE`; the Event-manifest cases reload the Event in a fresh session and assert the JSON boolean was actually stored before replay validation.
+- Hosted exact-commit CI: [run #1482](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44695531258) passed. Its single job completed fresh PostgreSQL migration, Alembic head verification, Ruff, Mypy, patch-whitespace validation, and the test step successfully.
+- Programmer-local Windows verification on the same exact head used a fresh disposable `pgvector/pgvector:pg16` database (`watch_rw3_1_check`) on dynamically assigned host port `38466`. `uv run alembic upgrade head`, `uv run alembic heads`, and `uv run alembic current` succeeded; both Alembic outputs identified `0019_rw1_world_memory (head)`.
+- Focused regression node: `uv run pytest tests/test_update_thread.py::test_context_replay_rejects_boolean_substitution_for_integer_fields -q` — **6 passed**.
+- RW3.1 module: `uv run pytest tests/test_update_thread.py -q` — **20 passed**.
+- `uv run ruff check tests/test_update_thread.py` — passed.
+- `uv run mypy core` — passed, 41 source files.
+- `uv run pytest -q` — **1,125 passed, 130 warnings in 358.27s**. The warnings are existing Alembic deprecations for missing `path_separator` configuration; they did not fail the suite.
+- The script removed its disposable PostgreSQL container and confirmed the original `DATABASE_URL` and `TEST_DATABASE_URL` values were restored. It also confirmed the exact branch/head and clean worktree before reporting success.
+- These results supersede the pre-correction 1,119-pass baseline for the corrected code. They do not establish end-to-end host authentication: the production host composition root is not present. RW3.1 remains subject to independent review and explicit Operator acceptance; RW3.2–RW3.4 and live provider invocation remain separately gated.
+
 
 
 ## Database safety
