@@ -314,6 +314,17 @@ def _event_types(session_factory: sessionmaker[Session], task_id: UUID) -> list[
     return [event.type for event in _events(session_factory, task_id)]
 
 
+def _assert_event_types(
+    session_factory: sessionmaker[Session],
+    task_id: UUID,
+    expected: list[str],
+) -> None:
+    # Event.created_at is a wall-clock timestamp, not a unique or monotonic
+    # sequence key. Equal timestamps (or clock adjustments) must not make these
+    # lifecycle membership assertions depend on alphabetical event-type order.
+    assert sorted(_event_types(session_factory, task_id)) == sorted(expected)
+
+
 def _outcomes(session_factory: sessionmaker[Session], task_id: UUID) -> list[Outcome]:
     with session_factory() as session:
         return list(
@@ -372,11 +383,15 @@ def test_dispatch_ingests_configured_source_and_finalizes_task(
     assert outcomes[0].subject_id == dispatch_fixture.task_id
     assert outcomes[0].id == result.outcome_id
 
-    assert _event_types(session_factory, dispatch_fixture.task_id) == [
-        "task_started",
-        "signal_ingested",
-        "task_completed",
-    ]
+    _assert_event_types(
+        session_factory,
+        dispatch_fixture.task_id,
+        [
+            "task_started",
+            "signal_ingested",
+            "task_completed",
+        ],
+    )
 
 
 def test_dispatch_reports_no_change_when_content_is_already_ingested(
@@ -457,11 +472,15 @@ def test_recovery_runs_at_dispatcher_startup_and_returns_stale_task(
     task = _task(session_factory, dispatch_fixture.task_id)
     assert task.status == "pending"
     assert task.attempt_count == 1
-    assert _event_types(session_factory, dispatch_fixture.task_id) == [
-        "task_started",
-        "task_attempt_failed",
-        "task_retry_scheduled",
-    ]
+    _assert_event_types(
+        session_factory,
+        dispatch_fixture.task_id,
+        [
+            "task_started",
+            "task_attempt_failed",
+            "task_retry_scheduled",
+        ],
+    )
     assert _outcomes(session_factory, dispatch_fixture.task_id) == []
 
 
@@ -488,11 +507,15 @@ def test_retryable_fetch_failure_returns_task_to_pending(
     assert task.attempt_count == 1
     assert task.completed_at is None
     assert _outcomes(session_factory, dispatch_fixture.task_id) == []
-    assert _event_types(session_factory, dispatch_fixture.task_id) == [
-        "task_started",
-        "task_attempt_failed",
-        "task_retry_scheduled",
-    ]
+    _assert_event_types(
+        session_factory,
+        dispatch_fixture.task_id,
+        [
+            "task_started",
+            "task_attempt_failed",
+            "task_retry_scheduled",
+        ],
+    )
     assert _signals(session_factory, dispatch_fixture.origin_url) == []
 
 
@@ -521,11 +544,15 @@ def test_non_retryable_fetch_failure_terminalizes_the_task(
     task = _task(session_factory, dispatch_fixture.task_id)
     assert task.status == "failed"
     assert task.completed_at is None
-    assert _event_types(session_factory, dispatch_fixture.task_id) == [
-        "task_started",
-        "task_attempt_failed",
-        "task_failed",
-    ]
+    _assert_event_types(
+        session_factory,
+        dispatch_fixture.task_id,
+        [
+            "task_started",
+            "task_attempt_failed",
+            "task_failed",
+        ],
+    )
     outcomes = _outcomes(session_factory, dispatch_fixture.task_id)
     assert len(outcomes) == 1
     assert outcomes[0].id == result.outcome_id
@@ -548,11 +575,15 @@ def test_retryable_failure_on_the_final_allowed_attempt_terminalizes(
     assert result.status == "failed"
     task = _task(session_factory, dispatch_fixture.task_id)
     assert task.attempt_count == 3
-    assert _event_types(session_factory, dispatch_fixture.task_id) == [
-        "task_started",
-        "task_attempt_failed",
-        "task_failed",
-    ]
+    _assert_event_types(
+        session_factory,
+        dispatch_fixture.task_id,
+        [
+            "task_started",
+            "task_attempt_failed",
+            "task_failed",
+        ],
+    )
     assert len(_outcomes(session_factory, dispatch_fixture.task_id)) == 1
 
 

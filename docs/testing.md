@@ -23,6 +23,36 @@ uv run alembic upgrade head
 
 Use commands supported by `pyproject.toml` and the current repository environment. Report exact commands and outcomes; do not infer success from inspection.
 
+## RW3.1 pre-correction verification baseline — 2026-11-19
+
+- PR: [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136), open, Ready for Review, and unmerged.
+- Exact pre-correction PR head: `445c059a72a7a39f5139a6e0704d4d4d9c8ced3d`.
+- Hosted CI: [run #1472](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44614780775) passed on that exact head.
+- Fresh PostgreSQL database migrated successfully; Alembic reported exactly one head and the database revision matched that head.
+- Ruff and Mypy (41 source files) passed; `git diff --check` passed.
+- Programmer-local Windows verification on the same exact head passed: 14 focused RW3.1 tests; Ruff; Mypy (41 source files); full suite (**1,119 passed**); disposable PostgreSQL migration/single-head checks; container cleanup; and exact restoration of `DATABASE_URL` and `TEST_DATABASE_URL`.
+- This is pre-correction baseline evidence only. It does not verify the replay-manifest correction below.
+
+## RW3.1 replay-manifest correction — exact-head verification — 2026-11-20
+
+- PR: [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136), branch `rw3-1-task-creation-bounded-context-20261119`.
+- Exact verified code/test head: `71948488f9c13e448a4ae046820840b0bec3f448`. The six boolean-substitution cases are persisted with an explicit SQL `UPDATE`; the Event-manifest cases reload the Event in a fresh session and assert the JSON boolean was actually stored before replay validation.
+- Hosted exact-commit CI: [run #1482](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44695531258) passed. Its single job completed fresh PostgreSQL migration, Alembic head verification, Ruff, Mypy, patch-whitespace validation, and the test step successfully.
+- Programmer-local Windows verification on the same exact head used a fresh disposable `pgvector/pgvector:pg16` database (`watch_rw3_1_check`) on dynamically assigned host port `38466`. `uv run alembic upgrade head`, `uv run alembic heads`, and `uv run alembic current` succeeded; both Alembic outputs identified `0019_rw1_world_memory (head)`.
+- Focused regression node: `uv run pytest tests/test_update_thread.py::test_context_replay_rejects_boolean_substitution_for_integer_fields -q` — **6 passed**.
+- RW3.1 module: `uv run pytest tests/test_update_thread.py -q` — **20 passed**.
+- `uv run ruff check tests/test_update_thread.py` — passed.
+- `uv run mypy core` — passed, 41 source files.
+- `uv run pytest -q` — **1,125 passed, 130 warnings in 358.27s**. The warnings are existing Alembic deprecations for missing `path_separator` configuration; they did not fail the suite.
+- The script removed its disposable PostgreSQL container and confirmed the original `DATABASE_URL` and `TEST_DATABASE_URL` values were restored. It also confirmed the exact branch/head and clean worktree before reporting success.
+- These results supersede the pre-correction 1,119-pass baseline for the corrected code. They do not establish end-to-end host authentication: the production host composition root is not present. RW3.1 remains subject to independent review and explicit Operator acceptance; RW3.2–RW3.4 and live provider invocation remain separately gated.
+
+- **Independent review correction implemented; verification pending:** code commit `c428cd85d46706d10fce597c4893648ab3675503` now requires exact built-in `int` types for JSONB `max_tool_calls` and `deadline_seconds` before comparing the complete budget with `TASK_BUDGET`. Test commit `ab0d94ddbe467315255b3341f6d645eaf783c3b6` adds four persisted-JSONB regression cases; follow-up style commit `2c17cf4ba665177b05ac3aeacf2c41f2acb3c619` keeps imports Ruff/isort-compatible: boolean and float substitutions for both integer fields. Each case updates the Task row explicitly, reloads it in a fresh session, confirms the stored Python type, and expects `update_thread_task_shape_invalid`. Focused tests, full suite, static checks, and disposable-PostgreSQL verification for this correction are not yet claimed; run them against the final documentation-inclusive PR head before acceptance.
+
+
+- **R6-B dispatcher test-ordering correction — verification pending:** the local full-suite run on exact PR head `3d3fab4cc09a33894df7d632a82a811fada6088f` completed with **1,128 passed and one failed**: `tests/test_r6b_dispatcher.py::test_retryable_fetch_failure_returns_task_to_pending`. The failing assertion inferred event order from `Event.created_at` plus event type, although `created_at` is a wall-clock value and not a unique/monotonic sequence key. Test-only commit `39866071a34f49a139c6dcbb7d14e570aa1c3be5` replaces all five sequence-shaped event assertions in that module with exact event-type multiset assertions. No production code or schema changed. Focused R6-B tests, the full suite, static checks, disposable-PostgreSQL verification, and hosted CI on the corrected final head remain pending; the earlier full-suite failure is not recorded as a pass.
+
+
 ## Database safety
 
 - Every database-backed test run requires an explicit `TEST_DATABASE_URL` pointing to a disposable PostgreSQL database.

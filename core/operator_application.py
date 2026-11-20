@@ -34,6 +34,7 @@ from core.operator_approval import (
 from core.snapshot_store import SnapshotStore
 
 if TYPE_CHECKING:
+    from core.update_thread import UpdateThreadTaskRequest, UpdateThreadTaskResult
     from core.world_memory import OperatorUpdateRequest
 
 _APPROVAL_ACTION = "approve_learning_change"
@@ -163,6 +164,211 @@ class OperatorApplicationAdapter:
     ) -> None:
         self._session_factory = session_factory
         self._snapshot_store = snapshot_store
+
+    def create_update_thread_task(
+        self,
+        principal: TrustedOperatorPrincipal,
+        request: UpdateThreadTaskRequest,
+    ) -> UpdateThreadTaskResult:
+        """Create or replay one host-authorized update_thread Task.
+
+        Creation is deliberately separate from TaskRuntime admission and worker
+        execution. The caller supplies no Team or model/provider configuration.
+        """
+        from core.update_thread import (
+            ALLOWED_WRITES,
+            MAX_ATTEMPTS,
+            REQUEST_EVENT_TYPE,
+            TASK_BUDGET,
+            TASK_TYPE,
+            UpdateThreadTaskError,
+            UpdateThreadTaskRequest,
+            UpdateThreadTaskResult,
+            build_request_event_payload,
+            load_pinned_policy,
+            task_id_for_request,
+            validate_update_thread_policy,
+            validate_update_thread_task_request,
+        )
+
+        if not isinstance(request, UpdateThreadTaskRequest):
+            raise OperatorApplicationError("typed_update_thread_request_required")
+        if (
+            not isinstance(request.thread_id, UUID)
+            or not isinstance(request.idempotency_key, UUID)
+        ):
+            raise OperatorApplicationError("invalid_update_thread_request")
+        operator_id = _canonical_operator_identity(principal)
+
+        with self._session_factory.begin() as session:
+            candidate_thread = session.get(Thread, request.thread_id)
+            if candidate_thread is None:
+                raise OperatorApplicationError("update_thread_target_not_found")
+            team_id = candidate_thread.team_id
+            _require_team_grant(
+                principal, team_id, action="request_update_thread"
+            )
+
+            # Lock order is Team -> Thread -> TeamPolicy/Task/Event.
+            team = session.scalar(
+                select(Team).where(Team.id == team_id).with_for_update()
+            )
+            if team is None or team.status != "active":
+                raise OperatorApplicationError("update_thread_team_not_active")
+
+            thread = session.scalar(
+                select(Thread)
+                .where(Thread.id == request.thread_id, Thread.team_id == team_id)
+                .with_for_update()
+            )
+            if thread is None or thread.status == "resolved":
+                raise OperatorApplicationError(
+                    "update_thread_target_not_available"
+                )
+
+            task_id = task_id_for_request(team_id, request.idempotency_key)
+            existing = session.get(Task, task_id)
+            if existing is not None:
+                try:
+                    envelope = validate_update_thread_task_request(
+                        session, existing
+                    )
+                    load_pinned_policy(
+                        session, team_id, existing.policy_version
+                    )
+                except UpdateThreadTaskError as error:
+                    raise OperatorTaskRequestCorrupt(error.reason) from error
+                expected_payload = build_request_event_payload(
+                    task_id=task_id,
+                    team_id=team_id,
+                    thread_id=request.thread_id,
+                    policy_version=existing.policy_version,
+                    requested_by_operator_id=operator_id,
+                    idempotency_key=request.idempotency_key,
+                )
+                stored_event = session.scalar(
+                    select(Event).where(
+                        Event.task_id == task_id,
+                        Event.type == REQUEST_EVENT_TYPE,
+                    )
+                )
+                if (
+                    envelope.requested_by_operator_id != operator_id
+                    or envelope.thread_id != request.thread_id
+                    or stored_event is None
+                    or stored_event.payload != expected_payload
+                ):
+                    raise OperatorTaskRequestConflict(
+                        "update_thread_idempotency_key_reused"
+                    )
+                return UpdateThreadTaskResult(
+                    task_id=task_id,
+                    team_id=team_id,
+                    status=existing.status,
+                    replayed=True,
+                )
+
+            policy = session.scalar(
+                select(TeamPolicy)
+                .where(TeamPolicy.team_id == team_id)
+                .order_by(TeamPolicy.version.desc())
+                .limit(1)
+                .with_for_update(read=True)
+            )
+            if policy is None:
+                raise OperatorApplicationError("team_policy_missing")
+            try:
+                validate_update_thread_policy(policy, team_id)
+            except UpdateThreadTaskError as error:
+                raise OperatorApplicationError(error.reason) from error
+
+            event_payload = build_request_event_payload(
+                task_id=task_id,
+                team_id=team_id,
+                thread_id=request.thread_id,
+                policy_version=policy.version,
+                requested_by_operator_id=operator_id,
+                idempotency_key=request.idempotency_key,
+            )
+            inserted_id = session.scalar(
+                pg_insert(Task)
+                .values(
+                    id=task_id,
+                    team_id=team_id,
+                    task_type=TASK_TYPE,
+                    status="pending",
+                    attempt_count=0,
+                    policy_version=policy.version,
+                    objective_id=None,
+                    plan_id=None,
+                    plan_action_id=None,
+                    allowed_writes=list(ALLOWED_WRITES),
+                    budget=dict(TASK_BUDGET),
+                    completed_at=None,
+                    max_attempts=MAX_ATTEMPTS,
+                )
+                .on_conflict_do_nothing(index_elements=[Task.id])
+                .returning(Task.id)
+            )
+            if inserted_id is None:
+                existing = session.get(Task, task_id)
+                if existing is None:
+                    raise OperatorTaskRequestCorrupt(
+                        "update_thread_task_insert_conflict_unresolved"
+                    )
+                try:
+                    envelope = validate_update_thread_task_request(
+                        session, existing
+                    )
+                    load_pinned_policy(session, team_id, existing.policy_version)
+                except UpdateThreadTaskError as error:
+                    raise OperatorTaskRequestCorrupt(error.reason) from error
+                expected_payload = build_request_event_payload(
+                    task_id=task_id,
+                    team_id=team_id,
+                    thread_id=request.thread_id,
+                    policy_version=existing.policy_version,
+                    requested_by_operator_id=operator_id,
+                    idempotency_key=request.idempotency_key,
+                )
+                stored_event = session.scalar(
+                    select(Event).where(
+                        Event.task_id == task_id,
+                        Event.type == REQUEST_EVENT_TYPE,
+                    )
+                )
+                if (
+                    envelope.thread_id != request.thread_id
+                    or envelope.requested_by_operator_id != operator_id
+                    or stored_event is None
+                    or stored_event.payload != expected_payload
+                ):
+                    raise OperatorTaskRequestConflict(
+                        "update_thread_idempotency_key_reused"
+                    )
+                return UpdateThreadTaskResult(
+                    task_id=task_id,
+                    team_id=team_id,
+                    status=existing.status,
+                    replayed=True,
+                )
+
+            session.add(
+                Event(
+                    id=uuid4(),
+                    task_id=task_id,
+                    type=REQUEST_EVENT_TYPE,
+                    payload=event_payload,
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+            session.flush()
+            return UpdateThreadTaskResult(
+                task_id=task_id,
+                team_id=team_id,
+                status="pending",
+                replayed=False,
+            )
 
     def propose_retirement(
         self,
