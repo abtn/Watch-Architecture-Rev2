@@ -1,9 +1,9 @@
-"""Stateless Cloudflare Workers AI generation over Chat Completions.
+"""Stateless generation over Chat Completions.
 
-The adapter returns only the final JSON object and provider usage metadata. It
-never exposes or persists reasoning traces, tool calls, prompts, or raw response
-bodies. Each call makes exactly one HTTP request; retry policy belongs to the
-ordinary Task attempt boundary, not this provider adapter.
+The adapter returns raw completion text with validated provider usage. The
+legacy JSON method strictly parses that text for existing callers. It never
+exposes reasoning traces or tool calls. Each call makes one HTTP request;
+retry policy belongs to the ordinary Task attempt boundary.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import os
 import time
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any
+from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -68,7 +68,7 @@ class GenerationUsage:
 
 @dataclass(frozen=True)
 class GenerationResult:
-    """Provider completion plus validated usage accounting."""
+    """Provider completion and usage; content remains for JSON callers."""
 
     content: dict[str, Any]
     model: str
@@ -76,6 +76,24 @@ class GenerationResult:
     elapsed_seconds: float
     request_id: str | None
     raw_content: str | None = None
+
+
+class GenerationProvider(Protocol):
+    """Shared structural contract for production and deterministic test providers."""
+
+    provider_name: str
+
+    def maximum_request_cost(
+        self, *, system_prompt: str, user_prompt: str
+    ) -> GenerationCostQuote: ...
+
+    def generate_raw(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.1,
+    ) -> GenerationResult: ...
 
 
 @dataclass(frozen=True)
