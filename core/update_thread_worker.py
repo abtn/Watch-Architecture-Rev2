@@ -41,12 +41,11 @@ from core.update_thread_context import (
 from core.world_memory import Proposal
 
 OPERATION = "update_thread"
-RECEIPT_EVENT_TYPE = "update_thread_generation_received"
-PROPOSALS_EVENT_TYPE = "update_thread_proposals_validated"
+RECEIPT_EVENT_TYPE = GENERATION_RECEIPT_EVENT_TYPE
 PROPOSAL_FINGERPRINT_DOMAIN = "watch.rw3.update-thread-proposals.v1"
 MAX_MODEL_PROPOSALS = 8
 MAX_TASK_SECONDS = 45
-TEST_PROVIDER_NAME = "watch_test_fake"
+TEST_PROVIDER_NAME = UPDATE_THREAD_TEST_PROVIDER
 
 SYSTEM_PROMPT = """You propose updates to one existing Watch Thread.
 Return exactly one JSON object with exactly one key: "proposals".
