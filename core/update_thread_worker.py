@@ -32,7 +32,11 @@ from core.generation_cost import (
 )
 from core.models import Event, Task, TaskGenerationCharge
 from core.snapshot_store import SnapshotStore
-from core.task_runtime import FailureObservation, TaskRuntime, TerminalObservation
+from core.task_runtime import (
+    FailureObservation,
+    TaskNotFinalizable,
+    TaskRuntime,
+)
 from core.update_thread import (
     GENERATION_RECEIPT_EVENT_TYPE,
     PROPOSAL_FINGERPRINT_DOMAIN,
@@ -45,7 +49,7 @@ from core.update_thread_context import (
     UpdateThreadContextAssembler,
     UpdateThreadContextError,
 )
-from core.world_memory import Proposal
+from core.world_memory import Proposal, WorldMemoryCommitService
 
 OPERATION = TASK_TYPE
 RECEIPT_EVENT_TYPE = GENERATION_RECEIPT_EVENT_TYPE
@@ -202,6 +206,7 @@ class UpdateThreadWorker:
                 "update_thread_live_provider_not_authorized"
             )
         self._session_factory = session_factory
+        self._snapshot_store = snapshot_store
         self._provider = provider
         self._runtime = runtime or TaskRuntime(session_factory, snapshot_store)
         self._context_assembler = context_assembler or UpdateThreadContextAssembler(
@@ -299,20 +304,27 @@ class UpdateThreadWorker:
                 raise UpdateThreadProposalPersistencePending(
                     "update_thread_proposal_persistence_pending"
                 ) from error
-            if not parsed.proposals:
-                try:
-                    self._runtime.finalize(
-                        TerminalObservation(
-                            task_id=task_id,
-                            attempt=attempt,
-                            result_category="success_no_change",
-                            observed_at=datetime.now(timezone.utc),
-                        )
+            try:
+                with self._session_factory.begin() as session:
+                    task = session.scalar(
+                        select(Task)
+                        .where(Task.id == task_id)
+                        .with_for_update()
                     )
-                except SQLAlchemyError as error:
-                    raise UpdateThreadProposalPersistencePending(
-                        "update_thread_no_change_finalization_pending"
-                    ) from error
+                    if task is None:
+                        raise UpdateThreadWorkerError("update_thread_task_missing")
+                    observation = WorldMemoryCommitService(
+                        self._session_factory, self._snapshot_store
+                    ).resume_update_thread_in_session(session, task, attempt)
+                if observation is None:
+                    raise UpdateThreadWorkerError(
+                        "update_thread_durable_receipt_missing"
+                    )
+                self._runtime.finalize(observation)
+            except SQLAlchemyError as error:
+                raise UpdateThreadProposalPersistencePending(
+                    "update_thread_commit_or_finalization_pending"
+                ) from error
 
             return UpdateThreadWorkerResult(
                 task_id=task_id,
@@ -326,11 +338,14 @@ class UpdateThreadWorker:
                 proposals=tuple(parsed.proposals),
             )
         except Exception as error:
-            if isinstance(error, UpdateThreadProposalPersistencePending):
+            if isinstance(
+                error,
+                (UpdateThreadProposalPersistencePending, TaskNotFinalizable),
+            ):
                 raise
-            if reservation is not None:
-                self._mark_unknown(reservation, error)
             reason = getattr(error, "reason", None)
+            if reservation is not None and reason != "generation_cost_overrun":
+                self._mark_unknown(reservation, error)
             if not isinstance(reason, str):
                 reason = "update_thread_generation_failed"
             try:

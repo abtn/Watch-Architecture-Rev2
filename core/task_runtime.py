@@ -9,6 +9,7 @@ from typing import Any, Literal
 from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from core.learning_history import (
@@ -128,6 +129,7 @@ _SUCCESS_CATEGORIES = (
     | _KNOWLEDGE_REVALIDATION_SUCCESS_CATEGORIES
     | _KNOWLEDGE_LIFECYCLE_SUCCESS_CATEGORIES
     | frozenset({"success_operator_update_committed"})
+    | frozenset({"success_update_thread_committed"})
     | _CONTROL_TASK_SUCCESS_CATEGORIES
 )
 _RESULT_CATEGORIES = _SUCCESS_CATEGORIES | {"terminal_failure"}
@@ -201,6 +203,7 @@ class TerminalObservation:
         "success_knowledge_revalidation_assessed",
         "success_knowledge_lifecycle_assessed",
         "success_operator_update_committed",
+        "success_update_thread_committed",
         "success_strategy_accepted",
         "success_strategy_rejected", "success_plan_created", "terminal_failure"
     ]
@@ -824,6 +827,14 @@ class TaskRuntime:
             if task is None:
                 raise TaskNotFound(f"Task {observation.task_id} does not exist")
 
+            if (
+                observation.result_category == "success_update_thread_committed"
+                and task.task_type != "update_thread"
+            ):
+                raise TaskNotFinalizable(
+                    "update_thread_result_wrong_task_type"
+                )
+
             if self._is_r6g_evaluation_task(session, task):
                 self._validate_evaluation_task_request(session, task)
             if self._is_knowledge_quality_task(session, task):
@@ -1437,7 +1448,13 @@ class TaskRuntime:
                 inconsistent.append(candidate.task_id)
                 continue
 
-            outcome = self._recover_candidate(candidate, reference)
+            try:
+                outcome = self._recover_candidate(candidate, reference)
+            except DBAPIError as error:
+                if self._is_transient_recovery_database_error(error):
+                    skipped.append(candidate.task_id)
+                    continue
+                raise
             if outcome == "retried":
                 retried.append(candidate.task_id)
             elif outcome == "failed":
@@ -1529,6 +1546,20 @@ class TaskRuntime:
             if task.task_type == _OPERATOR_TASK_TYPE:
                 recovered_observation = (
                     self._committed_operator_decision_observation(session, task)
+                )
+            elif task.task_type == "update_thread":
+                from core.world_memory import WorldMemoryCommitService
+
+                if self._snapshot_store is None:
+                    raise TaskNotFinalizable(
+                        "update_thread_snapshot_store_required"
+                    )
+                recovered_observation = (
+                    WorldMemoryCommitService(
+                        self._session_factory, self._snapshot_store
+                    ).resume_update_thread_in_session(
+                        session, task, task.attempt_count
+                    )
                 )
             elif task.task_type == _OPERATOR_UPDATE_TASK_TYPE:
                 recovered_observation = self._committed_operator_update_observation(
@@ -1634,6 +1665,17 @@ class TaskRuntime:
         return "failed"
 
     @staticmethod
+    def _is_transient_recovery_database_error(error: DBAPIError) -> bool:
+        sqlstate = getattr(error.orig, "sqlstate", None) or getattr(
+            error.orig, "pgcode", None
+        )
+        return (
+            error.connection_invalidated
+            or sqlstate in {"40001", "40P01", "55P03"}
+            or (isinstance(error, OperationalError) and sqlstate is None)
+        )
+
+    @staticmethod
     def _committed_knowledge_quality_assessment_observation(
         session: Session, task: Task
     ) -> TerminalObservation | None:
@@ -1724,8 +1766,26 @@ class TaskRuntime:
         task: Task,
         observation: TerminalObservation,
     ) -> None:
-        """Validate the only RW3.2 success result before Task finalization."""
-        if observation.result_category == "terminal_failure":
+        """Validate RW-3 results against exact durable generation provenance."""
+        if observation.result_category in {
+            "terminal_failure",
+            "success_update_thread_committed",
+        }:
+            if self._snapshot_store is None:
+                raise TaskNotFinalizable(
+                    "update_thread_snapshot_store_required"
+                )
+            from core.world_memory import (
+                WorldMemoryError,
+                validate_model_update_thread_terminal,
+            )
+
+            try:
+                validate_model_update_thread_terminal(
+                    session, task, observation, self._snapshot_store
+                )
+            except WorldMemoryError as error:
+                raise TaskNotFinalizable(error.reason) from error
             return
         if observation.result_category != "success_no_change":
             raise TaskNotFinalizable("update_thread_result_category_invalid")
@@ -1957,10 +2017,18 @@ class TaskRuntime:
         if session.scalar(
             select(Event.id).where(
                 Event.task_id == task.id,
-                Event.type == "update_thread_committed",
+                Event.type.in_(
+                    (
+                        "update_thread_committed",
+                        "update_thread_rejected",
+                        "update_thread_recovery_inconsistent",
+                    )
+                ),
             )
         ) is not None:
-            raise TaskNotFinalizable("update_thread_no_change_has_commit_event")
+            raise TaskNotFinalizable(
+                "update_thread_no_change_has_terminal_marker"
+            )
         if session.scalar(
             select(EvidenceLink.id).where(
                 EvidenceLink.originating_task_id == task.id
@@ -1977,6 +2045,11 @@ class TaskRuntime:
             raise TaskNotFinalizable(
                 "update_thread_no_change_has_confidence_write"
             )
+        from core.world_memory import WorldMemoryCommitService
+
+        WorldMemoryCommitService._assert_model_empty_set_has_no_writes(
+            session, task
+        )
 
     @staticmethod
     def _validate_operator_update_task_request(

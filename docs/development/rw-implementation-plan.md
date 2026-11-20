@@ -7,6 +7,8 @@
 **RW-1 physical design:** [RW-1 physical world-memory and EvidenceLink design proposal](rw-1-physical-design-proposal.md) — accepted under D132 on 2026-11-16
 **Value harness:** [Newsroom value harness](rw-value-harness.md)
 
+**Current implementation status (2026-11-20):** RW3.1–RW3.3 are accepted and merged (PRs #136–#138). RW3.3 exact-head verification and acceptance evidence are recorded in `docs/testing.md`. RW3.4 integrated closeout remains gated. Live provider authorization remains closed; deterministic fakes only. `PLAN.md` is the sole current-status authority.
+
 This plan turns the accepted architecture and RW proposal into bounded implementation slices. RW-0, RW-1, RW-2, and RW3.1 are formally accepted. RW-3 implementation was authorized on 2026-11-19. RW3.1 PR [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136) was squash-merged at `6260921b451f99ab07756890045175ba9983c3ad`; exact tested PR head `b59ecca786bf418456e0e687c3e77d632d1e4118` passed hosted CI run [#1492](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44705109042) and Programmer-local Windows verification (60 focused R6-B tests; Ruff; Mypy, 41 files; full suite, 1,129 passed; disposable PostgreSQL migration/single-head checks; cleanup and environment restoration). The Operator formally accepted RW3.1 on 2026-11-20. The repository has no production host composition root, so end-to-end host authentication remains unproven. **RW3.2 implementation is authorized on 2026-11-20**: prove attempt-bound Context integrity before provider invocation with deterministic fake providers, and bind the exact Context Event ID, Snapshot reference, and content hash into the generation receipt and proposal fingerprint. Live Cloudflare invocation remains separately unauthorized. RW3.3–RW3.4, RW-4–RW-5, R7-C implementation, persistent-database access, and newsroom scored execution remain separately gated; see `docs/testing.md` and `PLAN.md` for current status.
 
 ## 1. Purpose and boundary
@@ -101,6 +103,8 @@ The Context assembler accepts only a running Task/current attempt, validates the
 
 
 **Purpose:** let a temporary model worker propose updates to one existing Thread while keeping authority, validation, and persistence in application/Kernel code.
+
+**Current slice:** RW3.1–RW3.3 are accepted and merged. Integrated RW3.4 closeout remains gated.
 
 **Implementation status:** RW-3 implementation was authorized on 2026-11-19. RW3.1 is active on `rw3-1-task-creation-bounded-context-20261119`; this branch adds the immutable host Task creator, request validation/replay contract, and deterministic bounded Context assembler. The P2 replay-manifest type-confusion correction and six regression cases are included in PR #136; their exact-head verification remains pending. The pre-correction PR head `445c059a72a7a39f5139a6e0704d4d4d9c8ced3d` passed hosted CI #1472 and programmer-local verification, but those results do not transfer to the correction head. RW3.1 does not admit or execute Tasks, invoke a model/provider, reserve generation cost, or commit world-memory proposals. The repository has no production host composition root or TeamPolicy publishing service; end-to-end host authentication and publisher integration remain explicit integration limitations. RW3.2–RW3.4 remain separately gated. Checkpoint 4 fixes Team-scoped UUIDv5 identity, the R6-F conflict-safe Task/Event creation pattern, versioned request fingerprinting, hashed idempotency-key persistence, replay against the original Task-pinned policy, and a distinct attempt/receipt/charge-bound proposal fingerprint. Same-Team/key reuse with a different Thread or requester conflicts; the same UUID in another Team is a separate scope. Policy advancement alone does not invalidate replay.
 
@@ -222,7 +226,7 @@ The matrix defines required proof obligations, not tests that already exist. Eac
 | RW-KU-02 | KnowledgeUseAssessment is typed and application-validated against the exact claim reference/knowledge version and the later Task's terminal Outcome; it grants no mutation or decision authority. | RW-4-KU: typed-value validation, exact claim/version/terminal-Outcome/Team/Context binding, immutability, replay, and forbidden-write/scope rejection. Proposed test node: `tests/test_knowledge_use_assessment.py`; finalize before RW-4-KU authorization. | RW-4-KU (planned; not authorized) |
 
 
-### RW3.4 — integrated acceptance evidence (required; not authorized yet)
+### RW3.4 — integrated acceptance evidence (required; closeout remains gated)
 
 RW3.4 closeout must collect and rerun the complete evidence chain rather than relying on slice-local green checks:
 
@@ -232,7 +236,7 @@ RW3.4 closeout must collect and rerun the complete evidence chain rather than re
 - Exact-head verification for the integrated RW3.1–RW3.3 implementation: focused slice tests, Ruff, Mypy, full pytest suite, fresh disposable PostgreSQL migration and single-head/current checks, patch whitespace, cleanup and environment restoration, and hosted CI. Record the exact tested SHA separately from the final PR head if documentation-only commits follow.
 - Record each test node and exact result in `docs/testing.md`; include the Context tampering matrix and proof that RW-2 Operator behavior remains unchanged. Green CI alone does not constitute formal acceptance.
 
-This acceptance requirement does not authorize RW3.2–RW3.4 implementation or live provider calls.
+This closeout requirement does not mark RW3.3 accepted or authorize RW3.4 closeout or live provider calls. Live provider authorization remains a separate closed gate.
 
 ## 4.1 RW-1 physical design preparation
 
@@ -334,5 +338,7 @@ Checkpoint 4 is approved. Implementation planning must use:
 Add proof coverage for UUIDv5 golden vectors, concurrent one-Task/one-Event creation, same-Team conflicting reuse, cross-Team scope, exact request-event cardinality and tamper detection, policy advancement replay, fingerprint golden vectors, key privacy, and proposal-set provenance/serialization. These remain proof obligations; the separate implementation authorization currently covers RW3.1 only.
 
 ## Checkpoint 5 — cross-document reconciliation
+
+The earlier status sentence at the end of this checkpoint predates RW3.2 acceptance and RW3.3 authorization. Current status: RW3.1–RW3.3 are accepted and merged; RW3.4 integrated closeout remains gated; live provider authorization remains closed. See `PLAN.md`.
 
 Checkpoints 1–4 are the approved RW-3 planning decisions. This implementation plan carries their sequence and proof obligations; the RW-3 design plan is normative for detailed protocol and failure semantics, `docs/tasks.md` is normative for the Task envelope/write scope/budget, `docs/architecture.md` records the architecture boundary, `PLAN.md` alone owns current status and authorization, and `CHANGE_MAP.md` maps the active sources. Where summaries differ in detail, defer to those named authorities rather than inventing a second contract. The reconciled identity rules are Team-scoped UUIDv5; same-Team/key reuse with a different Thread or requester conflicts; the same UUID in another Team is separate; policy advancement alone does not invalidate replay. Request and proposal-set fingerprints are distinct. The explicit Context identity tuple (`context_event_id`, `context_snapshot_ref`, `context_content_hash`) is a mandatory RW3.2 prerequisite and must be preserved through RW3.3 commit/recovery. RW3.2 must prove Context integrity before provider invocation; RW3.3 must prove tuple continuity through receipt, proposal fingerprint, commit marker, and recovery; RW3.4 must collect all regression/integration evidence. This paragraph records the design prerequisite, not implementation authorization. Current authorization and implementation status are maintained only in PLAN.md; RW3.1 is the first authorized implementation slice.

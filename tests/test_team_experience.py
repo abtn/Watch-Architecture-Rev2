@@ -1823,7 +1823,9 @@ def test_history_loader_rejects_cross_team_change_targeting_item(
         assert item is not None
         previous = knowledge_item_state(item)
 
-    foreign_team_id, approval_task_id, change_id = (uuid4() for _ in range(3))
+    foreign_team_id, foreign_policy_id, approval_task_id, change_id = (
+        uuid4() for _ in range(4)
+    )
     committed_at = datetime.now(timezone.utc)
     started_at = committed_at - timedelta(seconds=30)
     committed = dict(previous)
@@ -1843,7 +1845,7 @@ def test_history_loader_rejects_cross_team_change_targeting_item(
         session.flush()
         session.add(
             TeamPolicy(
-                id=uuid4(),
+                id=foreign_policy_id,
                 team_id=foreign_team_id,
                 version=1,
                 schema_version=2,
@@ -1922,13 +1924,27 @@ def test_history_loader_rejects_cross_team_change_targeting_item(
             ]
         )
 
-    with experience_env.session_factory() as session:
-        item = session.get(KnowledgeItem, item_id)
-        assert item is not None
-        with pytest.raises(
-            KnowledgeHistoryError, match="accepted_change_cross_team"
-        ):
-            reconstruct_knowledge_item_history(session, item)
+    try:
+        with experience_env.session_factory() as session:
+            item = session.get(KnowledgeItem, item_id)
+            assert item is not None
+            with pytest.raises(
+                KnowledgeHistoryError, match="accepted_change_cross_team"
+            ):
+                reconstruct_knowledge_item_history(session, item)
+    finally:
+        with experience_env.session_factory.begin() as session:
+            session.execute(
+                delete(Event).where(Event.task_id == approval_task_id)
+            )
+            session.execute(
+                delete(LearningChange).where(LearningChange.id == change_id)
+            )
+            session.execute(delete(Task).where(Task.id == approval_task_id))
+            session.execute(
+                delete(TeamPolicy).where(TeamPolicy.id == foreign_policy_id)
+            )
+            session.execute(delete(Team).where(Team.id == foreign_team_id))
 
 
 @pytest.mark.parametrize("mutation", ["status", "review_after", "last_validated_at"])

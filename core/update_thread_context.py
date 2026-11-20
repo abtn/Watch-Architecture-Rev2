@@ -93,7 +93,7 @@ class UpdateThreadContextAssembler:
 
     def __init__(
         self,
-        session_factory: sessionmaker[Session],
+        session_factory: sessionmaker[Session] | None,
         snapshot_store: SnapshotStore,
     ) -> None:
         self._session_factory = session_factory
@@ -102,6 +102,10 @@ class UpdateThreadContextAssembler:
     def assemble(
         self, task_id: UUID, attempt: int
     ) -> AssembledUpdateThreadContext:
+        if self._session_factory is None:
+            raise UpdateThreadContextError(
+                "update_thread_context_session_factory_required"
+            )
         if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
             raise UpdateThreadContextError("update_thread_attempt_invalid")
 
@@ -410,6 +414,10 @@ class UpdateThreadContextAssembler:
         self, context: AssembledUpdateThreadContext
     ) -> AssembledUpdateThreadContext:
         """Reload and verify the exact durable Context before provider use."""
+        if self._session_factory is None:
+            raise UpdateThreadContextError(
+                "update_thread_context_session_factory_required"
+            )
         with self._session_factory.begin() as session:
             task = session.scalar(
                 select(Task)
@@ -439,7 +447,7 @@ class UpdateThreadContextAssembler:
         if (
             task is None
             or task.id != context.task_id
-            or task.status not in {"running", "done"}
+            or task.status not in {"running", "done", "failed"}
             or task.attempt_count != context.attempt
         ):
             raise UpdateThreadContextError(

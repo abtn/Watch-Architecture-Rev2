@@ -23,6 +23,43 @@ uv run alembic upgrade head
 
 Use commands supported by `pyproject.toml` and the current repository environment. Report exact commands and outcomes; do not infer success from inspection.
 
+## Current RW-3 status
+
+RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery was formally accepted by the Operator on 2026-11-20 and squash-merged by PR #138; its exact implementation, corrective, local, and hosted verification evidence is recorded below. RW3.4 integrated closeout remains separately gated. Live provider authorization remains closed; only deterministic fake providers are permitted.
+
+## RW3.3 implementation verification and Operator acceptance — 2026-11-20
+
+**Disposition:** The Operator accepted RW3.3 after the corrective pass, independent review, exact-head local verification, and passing hosted CI. PR [#138](https://github.com/abtn/Watch-Architecture-Rev2/pull/138) was squash-merged to `main`. RW3.4 integrated closeout remains gated.
+
+### Initial implementation verification
+
+- Initial tested source SHA: `b98ec65cc295cf92451d40b86fcc6265811c52ba`.
+- Focused RW3.3/world-memory tests: **79 passed** (`tests/test_update_thread.py`, `tests/test_world_memory.py`).
+- Ruff passed on changed Python files; Mypy passed on `core` (**42 source files**); `git diff --check` passed.
+- Full suite: **1,162 passed, 130 existing Alembic `path_separator` deprecation warnings**.
+- Disposable PostgreSQL reached `0019_rw1_world_memory` for both `alembic current` and `alembic heads`. No migration/schema changes or live provider calls were made; deterministic fakes only.
+- A fixture-isolation leak found by the full suite was corrected before the final implementation head was verified.
+
+### Corrective pass and final tested head
+
+- Corrective commit / final tested implementation head: `86f603b019868a3bf49f43ca15a5285292aff7df`.
+- Corrected generation-cost overrun terminalization; added a savepoint boundary so permanent model-commit integrity failures cannot commit staged world-memory writes; and required exact built-in integer types for proposal Event `schema_version` and `attempt`.
+- Regression tests cover overrun terminalization without business writes, rollback of staged writes before the inconsistency marker, and Boolean substitutions for both integer fields.
+- Programmer-local Windows verification passed on this exact head and clean worktree:
+  - Disposable PostgreSQL migration/current/head: `0019_rw1_world_memory`.
+  - Focused `tests/test_update_thread.py`: **60 passed**.
+  - Ruff passed; Mypy passed (**42 source files**).
+  - Full suite: **1,166 passed, 130 existing Alembic deprecation warnings**.
+  - Disposable container removed; environment variables restored; exact branch/head retained; worktree clean.
+- Hosted GitHub Actions run [#1525](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44784779816) passed on the same exact head: fresh PostgreSQL migration/head checks, Ruff, Mypy, patch-whitespace check, and full suite (**1,166 passed, 130 existing Alembic deprecation warnings**).
+- Independent review of the corrective head found no remaining blocking correctness issue. The reviewed scope included actor separation, atomic commit/rejection, recovery, TaskRuntime finalization, generation accounting, and the three corrected failure cases.
+
+### Accepted boundary
+
+RW3.3 extracts the shared RW-2 world-memory validation/transaction core behind the Operator/model-worker boundary, adds atomic model proposal commit/rejection markers bound to exact Task/Team/Thread/policy/attempt/charge/proposal/Context provenance, and provides in-session TaskRuntime recovery for receipt-only, proposal-only, marker-present, empty, interrupted, transient, and inconsistent states. Recovery does not reinvoke the provider or duplicate business writes.
+
+No migration or schema change was introduced; the migration head remains `0019_rw1_world_memory`. No live Cloudflare/provider invocation, production host composition, RW3.4 integrated closeout, RW-4/RW-5 implementation, persistent-database access, or scored newsroom execution is authorized by this acceptance.
+
 ## RW3.1 final verification and Operator acceptance — 2026-11-20
 
 - PR [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136) was accepted by the Operator and squash-merged to `main` at merge commit `6260921b451f99ab07756890045175ba9983c3ad`.

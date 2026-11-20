@@ -3,13 +3,13 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 
 ## RW implementation status and evidence contract
 
-This is the current implementation-status summary after RW-3 implementation authorization on 2026-11-19. `PLAN.md` remains the sole authority for milestone status and authorization; exact verification evidence is recorded in `docs/testing.md`.
+This is the current implementation-status summary. RW3.1, RW3.2, and RW3.3 are accepted and merged; RW3.4 integrated closeout remains gated. Live provider authorization remains closed. `PLAN.md` is the sole authority for milestone status and authorization; exact verification evidence is recorded in `docs/testing.md`.
 
 | Task / entity | Current implementation state |
 |---|---|
 | ingest_source | Implemented for the existing deterministic Signal-ingestion path. This does not include triage. |
 | triage_signal | Specified; not implemented. Planned for RW-4. |
-| update_thread | RW3.1 implementation in progress on `rw3-1-task-creation-bounded-context-20261119`: host-authorized Task creator and bounded Context assembler added; admission/worker/provider/commit path not implemented. Not yet accepted. |
+| update_thread | RW3.1–RW3.3 accepted and merged (PRs #136–#138). RW3.3 adds the shared world-memory commit core and crash-safe TaskRuntime recovery. RW3.4 integrated closeout remains gated. Deterministic fake providers only; live provider authorization remains closed. |
 | operator_update | Deterministic host-invoked Operator path implemented and formally accepted in RW-2; PR #134 merged to main. |
 | apply_decay | Specified; not implemented. Planned for RW-5. |
 | Thread / Hypothesis / ConfidenceChange | ORM persistence implemented in RW-1; deterministic Operator commit path implemented and accepted in RW-2. |
@@ -40,7 +40,7 @@ The Event-scope allow-list in `core/ingestion.py` contains future Task type name
 - Most task types require an `active` Team; `create_team`, `configure_team`, and `activate_team` operate on shell/configuring teams and are the exceptions.
 - **No path bypasses validation for being human** (INV-15): operator task types use the same commit kernel, and operator identity is recorded in Event payloads.
 
-### RW-3 `update_thread` Task envelope — approved design, not implemented
+### RW-3 `update_thread` Task envelope — accepted contract and implementation status
 
 A newly created `update_thread` Task has the following exact shape:
 
@@ -164,7 +164,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Failure:** heuristics error → disposition `deferred` with reason; never silent (INV-09).
 ### `update_thread` — model worker
 
-**Implementation status:** RW3.1 is in progress. The host-authorized Task creator and bounded Context assembler are implemented on `rw3-1-task-creation-bounded-context-20261119`; this is not a completed or accepted worker. RW3.2–RW3.4 remain gated, and live provider invocation still requires separate explicit authorization.
+**Implementation status:** RW3.1–RW3.3 are accepted and merged (PRs #136–#138). RW3.3 adds the shared RW-2 commit core, typed Operator/model-worker actor boundary, provenance-bound proposal dispositions, and in-session crash recovery. RW3.4 integrated closeout remains gated. The worker uses deterministic fakes only; live provider authorization remains closed.
 
 - **Purpose:** incorporate new evidence into one existing Thread's world model through a bounded model proposal and the shared RW-2 commit boundary.
 - **Trusted target:** Team and Thread are resolved from the immutable Task request and canonical database state. Model output cannot select or override them.
@@ -698,4 +698,4 @@ The proposal-set fingerprint is separate and uses watch.rw3.update-thread-propos
 
 ## Checkpoint 5 — cross-document contract alignment
 
-For RW-3, this Task specification is authoritative for Task type, status, attempts, links, write scope, and budget. The detailed request/proposal identity and replay protocol is in [the RW-3 design and acceptance plan](development/rw-3-design-and-acceptance.md); milestone status and authorization are only in `PLAN.md`. The six-document reconciliation confirms the Checkpoint 4 rules: Team-scoped UUIDv5 identity; same-Team/key conflicts for different Thread/requester; separate identity across Teams; original Task policy pin retained after policy advancement; hashed idempotency key only; and distinct request versus proposal-set fingerprints. These are design requirements, not implemented behavior.
+For RW-3, this Task specification is authoritative for Task type, status, attempts, links, write scope, and budget. The detailed request/proposal identity and replay protocol is in [the RW-3 design and acceptance plan](development/rw-3-design-and-acceptance.md); milestone status and authorization are only in `PLAN.md`. The six-document reconciliation confirms the Checkpoint 4 rules: Team-scoped UUIDv5 identity; same-Team/key conflicts for different Thread/requester; separate identity across Teams; original Task policy pin retained after policy advancement; hashed idempotency key only; and distinct request versus proposal-set fingerprints. These requirements are normative. RW3.1–RW3.3 are implemented, accepted, and merged. RW3.4 integrated closeout remains gated, and live provider invocation remains unauthorized.

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Annotated, Literal, Union
@@ -26,6 +27,7 @@ from core.models import (
     Outcome,
     Signal,
     Task,
+    TaskGenerationCharge,
     Team,
     Thread,
 )
@@ -41,6 +43,9 @@ REJECTED_EVENT_TYPE = "operator_update_rejected"
 ALLOWED_WRITES = ["EvidenceLink", "Hypothesis", "ConfidenceChange"]
 MAX_ATTEMPTS = 3
 TASK_BUDGET = {"max_tool_calls": 0, "max_cost_usd": 0.0}
+MODEL_COMMITTED_EVENT_TYPE = "update_thread_committed"
+MODEL_REJECTED_EVENT_TYPE = "update_thread_rejected"
+MODEL_INCONSISTENT_EVENT_TYPE = "update_thread_recovery_inconsistent"
 _TASK_ID_NAMESPACE = UUID("e17c32e7-16e0-4cc7-9c62-8cdeed0e17d1")
 
 
@@ -174,6 +179,59 @@ class OperatorUpdateEnvelope:
 
 
 @dataclass(frozen=True)
+class OperatorActor:
+    """Canonical authenticated Operator identity for the RW-2 path."""
+
+    operator_id: str
+
+
+@dataclass(frozen=True)
+class ModelWorkerActor:
+    """Application-constructed identity for one admitted update_thread Task."""
+
+    actor_type: Literal["model_worker"]
+    task_id: UUID
+    request_event_id: UUID
+
+    def __post_init__(self) -> None:
+        if self.actor_type != "model_worker":
+            raise ValueError("model_worker_actor_type_invalid")
+
+
+WorldMemoryActor = OperatorActor | ModelWorkerActor
+
+
+@dataclass(frozen=True)
+class ModelUpdateThreadEnvelope:
+    task_id: UUID
+    team_id: UUID
+    thread_id: UUID
+    attempt: int
+    policy_version: int
+    request_event_id: UUID
+    receipt_event_id: UUID
+    proposal_event_id: UUID
+    charge_id: UUID
+    context_event_id: UUID
+    context_snapshot_ref: str
+    context_content_hash: str
+    proposal_fingerprint: str
+    proposals: tuple[Proposal, ...]
+
+
+@dataclass(frozen=True)
+class _ProposalCommitContext:
+    thread_id: UUID
+    proposals: tuple[Proposal, ...]
+    request_fingerprint: str
+    model_envelope: ModelUpdateThreadEnvelope | None = None
+
+    @property
+    def request(self) -> _ProposalCommitContext:
+        return self
+
+
+@dataclass(frozen=True)
 class WorldMemoryCommitResult:
     task_id: UUID
     status: Literal["committed", "rejected"]
@@ -183,6 +241,8 @@ class WorldMemoryCommitResult:
     request_fingerprint: str
     replayed: bool = False
     failure_reason: str | None = None
+    committed_proposal_keys: tuple[str, ...] = ()
+    rejected_proposal_keys: tuple[str, ...] = ()
 
 
 def _record_all_rejected(
@@ -246,6 +306,109 @@ def _record_all_rejected(
         committed_at=committed_at,
         request_fingerprint=envelope.request_fingerprint,
         failure_reason="all_operator_update_proposals_rejected",
+    )
+
+
+def _actor_provenance_fields(
+    actor: WorldMemoryActor, fingerprint: str
+) -> dict[str, str]:
+    if isinstance(actor, OperatorActor):
+        return {
+            "operator_id": actor.operator_id,
+            "request_fingerprint": fingerprint,
+        }
+    return {
+        "actor_type": actor.actor_type,
+        "proposal_fingerprint": fingerprint,
+    }
+
+
+def _record_rejected_for_actor(
+    session: Session,
+    task: Task,
+    context: _ProposalCommitContext,
+    actor: WorldMemoryActor,
+    attempt: int,
+    reasons: dict[str, str],
+    *,
+    operator_envelope: OperatorUpdateEnvelope | None = None,
+    created_at: datetime | None = None,
+) -> WorldMemoryCommitResult:
+    if isinstance(actor, OperatorActor):
+        if operator_envelope is None:
+            raise WorldMemoryError("operator_update_envelope_required")
+        return _record_all_rejected(
+            session,
+            task,
+            operator_envelope,
+            attempt,
+            reasons,
+            created_at=created_at,
+        )
+
+    binding = context.model_envelope
+    if binding is None or set(reasons) != {
+        proposal.key for proposal in context.proposals
+    }:
+        raise WorldMemoryError("update_thread_rejection_set_incomplete")
+    committed_at = created_at or datetime.now(timezone.utc)
+    rejected_keys = [proposal.key for proposal in context.proposals]
+    for proposal in context.proposals:
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=task.id,
+                type="update_thread_proposal_rejected",
+                payload={
+                    "schema_version": 1,
+                    "task_id": str(task.id),
+                    "team_id": str(task.team_id),
+                    "thread_id": str(context.thread_id),
+                    "attempt": attempt,
+                    "actor_type": actor.actor_type,
+                    "proposal_key": proposal.key,
+                    "proposal_fingerprint": context.request_fingerprint,
+                    "reason": reasons[proposal.key],
+                },
+                created_at=committed_at,
+            )
+        )
+    session.add(
+        Event(
+            id=uuid4(),
+            task_id=task.id,
+            type="update_thread_rejected",
+            payload={
+                "schema_version": 1,
+                "task_id": str(task.id),
+                "team_id": str(task.team_id),
+                "thread_id": str(context.thread_id),
+                "attempt": attempt,
+                "actor_type": actor.actor_type,
+                "request_event_id": str(binding.request_event_id),
+                "generation_receipt_event_id": str(binding.receipt_event_id),
+                "proposal_event_id": str(binding.proposal_event_id),
+                "charge_id": str(binding.charge_id),
+                "context_event_id": str(binding.context_event_id),
+                "context_snapshot_ref": binding.context_snapshot_ref,
+                "context_content_hash": binding.context_content_hash,
+                "proposal_fingerprint": context.request_fingerprint,
+                "accepted_proposal_keys": [],
+                "rejected_proposal_keys": rejected_keys,
+            },
+            created_at=committed_at,
+        )
+    )
+    session.flush()
+    return WorldMemoryCommitResult(
+        task_id=task.id,
+        status="rejected",
+        committed_count=0,
+        rejected_count=len(rejected_keys),
+        committed_at=committed_at,
+        request_fingerprint=context.request_fingerprint,
+        failure_reason="all_update_thread_proposals_rejected",
+        rejected_proposal_keys=tuple(rejected_keys),
     )
 
 
@@ -472,8 +635,988 @@ def _verify_snapshot(
             raise WorldMemoryError("quote_text_offset_mismatch")
 
 
+def _attempt_event(
+    session: Session,
+    task: Task,
+    event_type: str,
+    attempt: int,
+) -> Event:
+    events = list(
+        session.scalars(
+            select(Event).where(Event.task_id == task.id, Event.type == event_type)
+        )
+    )
+    matching: list[Event] = []
+    for event in events:
+        if not isinstance(event.payload, dict) or type(
+            event.payload.get("attempt")
+        ) is not int:
+            raise WorldMemoryError("update_thread_event_corrupt")
+        if event.payload["attempt"] > attempt:
+            raise WorldMemoryError("update_thread_future_attempt_event")
+        if event.payload["attempt"] == attempt:
+            matching.append(event)
+    if len(matching) != 1:
+        raise WorldMemoryError("update_thread_event_missing_or_duplicate")
+    return matching[0]
+
+
+def _verified_model_receipt(
+    session: Session,
+    task: Task,
+    attempt: int,
+    snapshot_store: SnapshotStore,
+    *,
+    allow_overrun: bool = False,
+):
+    from core.update_thread import (
+        GENERATION_RECEIPT_EVENT_TYPE,
+        TASK_TYPE,
+        UPDATE_THREAD_TEST_PROVIDER,
+        UpdateThreadTaskError,
+        load_pinned_policy,
+        validate_update_thread_task_request,
+    )
+    from core.update_thread_context import (
+        CONTEXT_EVENT_TYPE,
+        AssembledUpdateThreadContext,
+        UpdateThreadContextAssembler,
+        UpdateThreadContextError,
+    )
+
+    if (
+        task.task_type != TASK_TYPE
+        or task.status not in {"running", "done", "failed"}
+        or type(attempt) is not int
+        or attempt < 1
+        or task.attempt_count != attempt
+    ):
+        raise WorldMemoryError("update_thread_task_attempt_not_current")
+    try:
+        request = validate_update_thread_task_request(session, task)
+        load_pinned_policy(session, task.team_id, task.policy_version)
+    except UpdateThreadTaskError as error:
+        raise WorldMemoryError(error.reason) from error
+    context_event = _attempt_event(session, task, CONTEXT_EVENT_TYPE, attempt)
+    context_payload = context_event.payload
+    if (
+        set(context_payload)
+        != {
+            "schema_version",
+            "task_id",
+            "team_id",
+            "thread_id",
+            "attempt",
+            "policy_version",
+            "snapshot_ref",
+            "content_hash",
+            "manifest",
+        }
+        or type(context_payload.get("schema_version")) is not int
+        or context_payload.get("schema_version") != 1
+        or context_payload.get("task_id") != str(task.id)
+        or context_payload.get("team_id") != str(task.team_id)
+        or context_payload.get("thread_id") != str(request.thread_id)
+        or type(context_payload.get("attempt")) is not int
+        or context_payload.get("attempt") != attempt
+        or type(context_payload.get("policy_version")) is not int
+        or context_payload.get("policy_version") != task.policy_version
+        or not isinstance(context_payload.get("snapshot_ref"), str)
+        or not isinstance(context_payload.get("content_hash"), str)
+        or not isinstance(context_payload.get("manifest"), dict)
+    ):
+        raise WorldMemoryError("update_thread_context_event_invalid")
+    context = AssembledUpdateThreadContext(
+        task_id=task.id,
+        team_id=task.team_id,
+        thread_id=request.thread_id,
+        attempt=attempt,
+        snapshot_ref=context_payload["snapshot_ref"],
+        content_hash=context_payload["content_hash"],
+        event_id=context_event.id,
+        manifest=context_payload["manifest"],
+        document={},
+        replayed=True,
+    )
+    try:
+        verified_context = UpdateThreadContextAssembler(
+            None, snapshot_store
+        ).verify_context_in_session(session, task, context)
+    except UpdateThreadContextError as error:
+        raise WorldMemoryError(error.reason) from error
+
+    receipt_event = _attempt_event(
+        session, task, GENERATION_RECEIPT_EVENT_TYPE, attempt
+    )
+    receipt = receipt_event.payload
+    expected_receipt_keys = {
+        "schema_version",
+        "task_id",
+        "team_id",
+        "thread_id",
+        "attempt",
+        "policy_version",
+        "context_event_id",
+        "context_snapshot_ref",
+        "context_content_hash",
+        "actor_type",
+        "operation",
+        "charge_id",
+        "provider",
+        "model",
+        "request_id",
+        "prompt_tokens",
+        "completion_tokens",
+        "raw_completion_text",
+    }
+    if (
+        set(receipt) != expected_receipt_keys
+        or type(receipt.get("schema_version")) is not int
+        or receipt.get("schema_version") != 1
+        or receipt.get("task_id") != str(task.id)
+        or receipt.get("team_id") != str(task.team_id)
+        or receipt.get("thread_id") != str(request.thread_id)
+        or type(receipt.get("attempt")) is not int
+        or receipt.get("attempt") != attempt
+        or type(receipt.get("policy_version")) is not int
+        or receipt.get("policy_version") != task.policy_version
+        or receipt.get("context_event_id") != str(verified_context.event_id)
+        or receipt.get("context_snapshot_ref") != verified_context.snapshot_ref
+        or receipt.get("context_content_hash") != verified_context.content_hash
+        or receipt.get("actor_type") != "model_worker"
+        or receipt.get("operation") != TASK_TYPE
+        or receipt.get("provider") != UPDATE_THREAD_TEST_PROVIDER
+        or not isinstance(receipt.get("model"), str)
+        or not receipt["model"]
+        or not isinstance(receipt.get("charge_id"), str)
+        or (
+            receipt.get("request_id") is not None
+            and not isinstance(receipt.get("request_id"), str)
+        )
+        or type(receipt.get("prompt_tokens")) is not int
+        or receipt["prompt_tokens"] < 0
+        or type(receipt.get("completion_tokens")) is not int
+        or receipt["completion_tokens"] < 0
+        or not isinstance(receipt.get("raw_completion_text"), str)
+    ):
+        raise WorldMemoryError("update_thread_generation_receipt_invalid")
+    try:
+        charge_id = UUID(receipt["charge_id"])
+    except (TypeError, ValueError) as error:
+        raise WorldMemoryError("update_thread_generation_charge_invalid") from error
+    charges = list(
+        session.scalars(
+            select(TaskGenerationCharge)
+            .where(
+                TaskGenerationCharge.task_id == task.id,
+                TaskGenerationCharge.attempt_count == attempt,
+                TaskGenerationCharge.operation == TASK_TYPE,
+            )
+            .with_for_update()
+        )
+    )
+    if len(charges) != 1 or charges[0].id != charge_id:
+        raise WorldMemoryError("update_thread_generation_charge_cardinality_invalid")
+    charge = charges[0]
+    reconciliation_events = [
+        event
+        for event in session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type.in_(
+                    ("generation_cost_reconciled", "generation_cost_overrun")
+                ),
+            )
+        )
+        if isinstance(event.payload, dict)
+        and event.payload.get("charge_id") == str(charge_id)
+    ]
+    expected_event_type = (
+        "generation_cost_overrun"
+        if charge.status == "overrun"
+        else "generation_cost_reconciled"
+    )
+    allowed_charge_statuses = (
+        {"reconciled", "overrun"} if allow_overrun else {"reconciled"}
+    )
+    if (
+        charge.status not in allowed_charge_statuses
+        or charge.accounted_cost_usd is None
+        or charge.provider != receipt["provider"]
+        or charge.model != receipt["model"]
+        or charge.request_id != receipt["request_id"]
+        or charge.input_tokens != receipt["prompt_tokens"]
+        or charge.output_tokens != receipt["completion_tokens"]
+        or len(reconciliation_events) != 1
+        or reconciliation_events[0].type != expected_event_type
+    ):
+        raise WorldMemoryError("update_thread_generation_charge_invalid")
+    charge_payload = reconciliation_events[0].payload
+    expected_failure_reason = (
+        "provider_usage_exceeded_reserved_bound"
+        if charge.status == "overrun"
+        else None
+    )
+    if (
+        charge_payload.get("attempt_count") != attempt
+        or charge_payload.get("provider") != charge.provider
+        or charge_payload.get("model") != charge.model
+        or charge_payload.get("request_id") != charge.request_id
+        or charge_payload.get("input_tokens") != charge.input_tokens
+        or charge_payload.get("output_tokens") != charge.output_tokens
+        or charge_payload.get("failure_reason") != expected_failure_reason
+    ):
+        raise WorldMemoryError("update_thread_generation_charge_event_invalid")
+    return request, verified_context, receipt_event, charge
+
+
+def load_model_update_thread_envelope(
+    session: Session,
+    task: Task,
+    attempt: int,
+    snapshot_store: SnapshotStore,
+) -> ModelUpdateThreadEnvelope:
+    """Reconstruct one fully verified model proposal envelope from durable rows."""
+    from core.update_thread import PROPOSALS_EVENT_TYPE
+    from core.update_thread_worker import _fingerprint, _parse_model_response
+
+    request, verified_context, receipt_event, charge = _verified_model_receipt(
+        session, task, attempt, snapshot_store
+    )
+    receipt = receipt_event.payload
+    request_events = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == "update_thread_requested",
+            )
+        )
+    )
+    if len(request_events) != 1:
+        raise WorldMemoryError("update_thread_request_event_missing_or_duplicate")
+    request_event_id = request_events[0].id
+
+    proposal_event = _attempt_event(session, task, PROPOSALS_EVENT_TYPE, attempt)
+    proposal_payload = proposal_event.payload
+    proposal_keys = {
+        "schema_version",
+        "task_id",
+        "team_id",
+        "thread_id",
+        "attempt",
+        "policy_version",
+        "generation_receipt_event_id",
+        "context_event_id",
+        "context_snapshot_ref",
+        "context_content_hash",
+        "charge_id",
+        "proposal_fingerprint",
+        "proposals",
+    }
+    if (
+        set(proposal_payload) != proposal_keys
+        or type(proposal_payload.get("schema_version")) is not int
+        or proposal_payload.get("schema_version") != 1
+        or proposal_payload.get("task_id") != str(task.id)
+        or proposal_payload.get("team_id") != str(task.team_id)
+        or proposal_payload.get("thread_id") != str(request.thread_id)
+        or type(proposal_payload.get("attempt")) is not int
+        or proposal_payload.get("attempt") != attempt
+        or type(proposal_payload.get("policy_version")) is not int
+        or proposal_payload.get("policy_version") != task.policy_version
+        or proposal_payload.get("generation_receipt_event_id")
+        != str(receipt_event.id)
+        or proposal_payload.get("context_event_id")
+        != str(verified_context.event_id)
+        or proposal_payload.get("context_snapshot_ref")
+        != verified_context.snapshot_ref
+        or proposal_payload.get("context_content_hash")
+        != verified_context.content_hash
+        or proposal_payload.get("charge_id") != str(charge.id)
+        or not isinstance(proposal_payload.get("proposals"), list)
+    ):
+        raise WorldMemoryError("update_thread_proposals_event_invalid")
+    try:
+        parsed = _parse_model_response(
+            json.dumps(
+                {"proposals": proposal_payload["proposals"]},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        )
+        canonical_proposals = [
+            proposal.model_dump(mode="json") for proposal in parsed.proposals
+        ]
+        raw_parsed = _parse_model_response(receipt["raw_completion_text"])
+        if canonical_proposals != proposal_payload["proposals"] or [
+            proposal.model_dump(mode="json") for proposal in raw_parsed.proposals
+        ] != canonical_proposals:
+            raise ValueError("update_thread_proposal_payload_mismatch")
+    except (TypeError, ValueError) as error:
+        raise WorldMemoryError("update_thread_proposals_event_invalid") from error
+    fingerprint = _fingerprint(
+        task_id=task.id,
+        team_id=task.team_id,
+        thread_id=request.thread_id,
+        attempt=attempt,
+        policy_version=task.policy_version,
+        receipt_event_id=receipt_event.id,
+        context=verified_context,
+        charge_id=charge.id,
+        proposals=canonical_proposals,
+    )
+    if proposal_payload.get("proposal_fingerprint") != fingerprint:
+        raise WorldMemoryError("update_thread_proposal_fingerprint_invalid")
+
+    return ModelUpdateThreadEnvelope(
+        task_id=task.id,
+        team_id=task.team_id,
+        thread_id=request.thread_id,
+        attempt=attempt,
+        policy_version=task.policy_version,
+        request_event_id=request_event_id,
+        receipt_event_id=receipt_event.id,
+        proposal_event_id=proposal_event.id,
+        charge_id=charge.id,
+        context_event_id=verified_context.event_id,
+        context_snapshot_ref=verified_context.snapshot_ref,
+        context_content_hash=verified_context.content_hash,
+        proposal_fingerprint=fingerprint,
+        proposals=tuple(parsed.proposals),
+    )
+
+
+def validate_model_update_thread_envelope(
+    session: Session,
+    task: Task,
+    attempt: int,
+    envelope: ModelUpdateThreadEnvelope,
+    snapshot_store: SnapshotStore,
+) -> _ProposalCommitContext:
+    if not isinstance(envelope, ModelUpdateThreadEnvelope):
+        raise WorldMemoryError("update_thread_commit_envelope_invalid")
+    durable = load_model_update_thread_envelope(
+        session, task, attempt, snapshot_store
+    )
+    if durable != envelope:
+        raise WorldMemoryError("update_thread_commit_envelope_mismatch")
+    return _ProposalCommitContext(
+        thread_id=durable.thread_id,
+        proposals=durable.proposals,
+        request_fingerprint=durable.proposal_fingerprint,
+        model_envelope=durable,
+    )
+
+
+def validate_model_update_thread_marker(
+    session: Session,
+    task: Task,
+    envelope: ModelUpdateThreadEnvelope,
+    marker: Event,
+    snapshot_store: SnapshotStore,
+) -> WorldMemoryCommitResult:
+    """Verify one model marker and every accepted/rejected proposal record."""
+    proposal_by_key = {proposal.key: proposal for proposal in envelope.proposals}
+    if marker.task_id != task.id or not isinstance(marker.payload, dict):
+        raise WorldMemoryError("update_thread_commit_marker_invalid")
+    payload = marker.payload
+    common = {
+        "schema_version",
+        "task_id",
+        "team_id",
+        "thread_id",
+        "attempt",
+        "actor_type",
+        "request_event_id",
+        "generation_receipt_event_id",
+        "proposal_event_id",
+        "charge_id",
+        "context_event_id",
+        "context_snapshot_ref",
+        "context_content_hash",
+        "proposal_fingerprint",
+        "accepted_proposal_keys",
+        "rejected_proposal_keys",
+    }
+    if (
+        payload.get("schema_version") != 1
+        or type(payload.get("schema_version")) is not int
+        or payload.get("task_id") != str(task.id)
+        or payload.get("team_id") != str(task.team_id)
+        or payload.get("thread_id") != str(envelope.thread_id)
+        or type(payload.get("attempt")) is not int
+        or payload.get("attempt") != envelope.attempt
+        or payload.get("actor_type") != "model_worker"
+        or payload.get("request_event_id") != str(envelope.request_event_id)
+        or payload.get("generation_receipt_event_id")
+        != str(envelope.receipt_event_id)
+        or payload.get("proposal_event_id") != str(envelope.proposal_event_id)
+        or payload.get("charge_id") != str(envelope.charge_id)
+        or payload.get("context_event_id") != str(envelope.context_event_id)
+        or payload.get("context_snapshot_ref") != envelope.context_snapshot_ref
+        or payload.get("context_content_hash") != envelope.context_content_hash
+        or payload.get("proposal_fingerprint") != envelope.proposal_fingerprint
+    ):
+        raise WorldMemoryError("update_thread_commit_marker_invalid")
+
+    accepted = payload.get("accepted_proposal_keys")
+    rejected = payload.get("rejected_proposal_keys")
+    expected_order = [proposal.key for proposal in envelope.proposals]
+    if (
+        not isinstance(accepted, list)
+        or not isinstance(rejected, list)
+        or not all(isinstance(key, str) for key in accepted + rejected)
+        or len(accepted) != len(set(accepted))
+        or len(rejected) != len(set(rejected))
+        or set(accepted) & set(rejected)
+        or set(accepted) | set(rejected) != set(proposal_by_key)
+        or accepted != [key for key in expected_order if key in accepted]
+        or rejected != [key for key in expected_order if key in rejected]
+    ):
+        raise WorldMemoryError("update_thread_commit_key_partition_invalid")
+
+    accepted_events = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == "update_thread_proposal_accepted",
+            )
+        )
+    )
+    rejected_events = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == "update_thread_proposal_rejected",
+            )
+        )
+    )
+    by_disposition: dict[str, list[Event]] = {}
+    for event in accepted_events + rejected_events:
+        event_payload = event.payload
+        if (
+            not isinstance(event_payload, dict)
+            or "operator_id" in event_payload
+            or type(event_payload.get("schema_version")) is not int
+            or event_payload.get("schema_version") != 1
+            or event_payload.get("task_id") != str(task.id)
+            or event_payload.get("team_id") != str(task.team_id)
+            or event_payload.get("thread_id") != str(envelope.thread_id)
+            or type(event_payload.get("attempt")) is not int
+            or event_payload.get("attempt") != envelope.attempt
+            or event_payload.get("actor_type") != "model_worker"
+            or event_payload.get("proposal_fingerprint")
+            != envelope.proposal_fingerprint
+            or event_payload.get("proposal_key") not in proposal_by_key
+        ):
+            raise WorldMemoryError("update_thread_proposal_event_invalid")
+        by_disposition.setdefault(event_payload["proposal_key"], []).append(event)
+    if set(by_disposition) != set(proposal_by_key) or any(
+        len(events) != 1 for events in by_disposition.values()
+    ):
+        raise WorldMemoryError("update_thread_proposal_event_set_invalid")
+    for key in expected_order:
+        event = by_disposition[key][0]
+        if key in accepted:
+            if (
+                event.type != "update_thread_proposal_accepted"
+                or set(event.payload)
+                != {
+                    "schema_version",
+                    "task_id",
+                    "team_id",
+                    "thread_id",
+                    "attempt",
+                    "actor_type",
+                    "proposal_key",
+                    "proposal_fingerprint",
+                    "disposition",
+                }
+                or event.payload.get("disposition") != "accepted"
+            ):
+                raise WorldMemoryError("update_thread_proposal_event_invalid")
+        elif (
+            event.type != "update_thread_proposal_rejected"
+            or set(event.payload)
+            != {
+                "schema_version",
+                "task_id",
+                "team_id",
+                "thread_id",
+                "attempt",
+                "actor_type",
+                "proposal_key",
+                "proposal_fingerprint",
+                "reason",
+            }
+            or not isinstance(event.payload.get("reason"), str)
+            or not event.payload["reason"].strip()
+        ):
+            raise WorldMemoryError("update_thread_proposal_event_invalid")
+
+    accepted_domain_types: dict[str, str] = {}
+    for key in accepted:
+        proposal = proposal_by_key[key]
+        if isinstance(proposal, HypothesisCreateProposal):
+            accepted_domain_types[key] = "hypothesis_created"
+        elif isinstance(proposal, EvidenceLinkProposal):
+            accepted_domain_types[key] = "evidence_link_added"
+        elif isinstance(proposal, ConfidenceChangeProposal):
+            accepted_domain_types[key] = "confidence_changed"
+        elif isinstance(proposal, HypothesisTransitionProposal):
+            accepted_domain_types[key] = (
+                "hypothesis_rejected"
+                if proposal.action == "reject"
+                else "hypothesis_superseded"
+            )
+    domain_events = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type.in_(
+                    (
+                        "hypothesis_created",
+                        "evidence_link_added",
+                        "confidence_changed",
+                        "hypothesis_rejected",
+                        "hypothesis_superseded",
+                    )
+                ),
+            )
+        )
+    )
+    domain_by_key: dict[str, list[Event]] = {}
+    for event in domain_events:
+        item = event.payload
+        if (
+            not isinstance(item, dict)
+            or "operator_id" in item
+            or item.get("task_id") != str(task.id)
+            or item.get("team_id") != str(task.team_id)
+            or item.get("actor_type") != "model_worker"
+            or item.get("proposal_fingerprint") != envelope.proposal_fingerprint
+            or item.get("proposal_key") not in accepted_domain_types
+        ):
+            raise WorldMemoryError("update_thread_business_event_invalid")
+        domain_by_key.setdefault(item["proposal_key"], []).append(event)
+    if set(domain_by_key) != set(accepted_domain_types) or any(
+        len(events) != 1 or events[0].type != accepted_domain_types[key]
+        for key, events in domain_by_key.items()
+    ):
+        raise WorldMemoryError("update_thread_business_event_set_invalid")
+
+    if marker.type == MODEL_REJECTED_EVENT_TYPE:
+        if set(payload) != common or accepted or rejected != expected_order:
+            raise WorldMemoryError("update_thread_rejection_marker_invalid")
+        if (
+            accepted_events
+            or len(rejected_events) != len(expected_order)
+            or domain_events
+            or session.scalar(
+                select(EvidenceLink.id)
+                .where(EvidenceLink.originating_task_id == task.id)
+                .limit(1)
+            )
+            is not None
+            or session.scalar(
+                select(ConfidenceChange.id)
+                .where(ConfidenceChange.created_by_task_id == task.id)
+                .limit(1)
+            )
+            is not None
+        ):
+            raise WorldMemoryError("update_thread_rejection_rows_invalid")
+        return WorldMemoryCommitResult(
+            task_id=task.id,
+            status="rejected",
+            committed_count=0,
+            rejected_count=len(rejected),
+            committed_at=marker.created_at,
+            request_fingerprint=envelope.proposal_fingerprint,
+            replayed=True,
+            failure_reason="all_update_thread_proposals_rejected",
+            rejected_proposal_keys=tuple(rejected),
+        )
+    if marker.type != MODEL_COMMITTED_EVENT_TYPE or set(payload) != (
+        common
+        | {"hypothesis_ids", "evidence_link_ids", "confidence_change_ids"}
+    ) or not accepted:
+        raise WorldMemoryError("update_thread_commit_marker_invalid")
+
+    row_fields = {
+        "hypothesis_ids": [
+            str(item.id)
+            for item in session.scalars(
+                select(Hypothesis).where(
+                    Hypothesis.id.in_(
+                        [
+                            proposal.hypothesis_id
+                            for proposal in envelope.proposals
+                            if isinstance(proposal, HypothesisCreateProposal)
+                            and proposal.key in accepted
+                        ]
+                        or {UUID(int=0)}
+                    ),
+                    Hypothesis.team_id == task.team_id,
+                    Hypothesis.thread_id == envelope.thread_id,
+                )
+            )
+        ],
+        "evidence_link_ids": [
+            str(item.id)
+            for item in session.scalars(
+                select(EvidenceLink).where(
+                    EvidenceLink.originating_task_id == task.id,
+                    EvidenceLink.team_id == task.team_id,
+                    EvidenceLink.subject_kind == "hypothesis",
+                )
+            )
+        ],
+        "confidence_change_ids": [
+            str(item.id)
+            for item in session.scalars(
+                select(ConfidenceChange).where(
+                    ConfidenceChange.created_by_task_id == task.id,
+                    ConfidenceChange.team_id == task.team_id,
+                )
+            )
+        ],
+    }
+    for field, values in row_fields.items():
+        marker_values = payload.get(field)
+        if (
+            not isinstance(marker_values, list)
+            or not all(isinstance(value, str) for value in marker_values)
+            or len(marker_values) != len(set(marker_values))
+            or set(marker_values) != set(values)
+        ):
+            raise WorldMemoryError("update_thread_committed_rows_mismatch")
+    for proposal in envelope.proposals:
+        if proposal.key not in accepted:
+            continue
+        domain_event = domain_by_key[proposal.key][0]
+        if isinstance(proposal, HypothesisCreateProposal):
+            hypothesis = session.get(Hypothesis, proposal.hypothesis_id)
+            if (
+                hypothesis is None
+                or hypothesis.team_id != task.team_id
+                or hypothesis.thread_id != envelope.thread_id
+                or hypothesis.confidence != "low"
+                or hypothesis.statement != proposal.statement.strip()
+            ):
+                raise WorldMemoryError("update_thread_created_hypothesis_invalid")
+        elif isinstance(proposal, EvidenceLinkProposal):
+            evidence_id = domain_event.payload.get("evidence_link_id")
+            try:
+                link = session.get(EvidenceLink, UUID(evidence_id))
+            except (TypeError, ValueError) as error:
+                raise WorldMemoryError(
+                    "update_thread_evidence_link_invalid"
+                ) from error
+            if (
+                link is None
+                or link.originating_task_id != task.id
+                or link.team_id != task.team_id
+                or link.subject_kind != "hypothesis"
+                or link.hypothesis_id != proposal.hypothesis_id
+            ):
+                raise WorldMemoryError("update_thread_evidence_link_invalid")
+            team = session.get(Team, task.team_id)
+            if team is None:
+                raise WorldMemoryError("update_thread_team_missing")
+            try:
+                source_ref, source_hash, signal_id, outcome_id = (
+                    _snapshot_for_source(session, team, proposal)
+                )
+                _verify_snapshot(
+                    snapshot_store,
+                    source_ref,
+                    source_hash,
+                    proposal.quote_text,
+                    proposal.quote_start,
+                    proposal.quote_end,
+                )
+            except WorldMemoryError:
+                raise
+            expected_reference_key = _sha256_json(
+                {
+                    "source_kind": proposal.source_kind,
+                    "outcome_id": str(outcome_id) if outcome_id else None,
+                    "signal_id": str(signal_id) if signal_id else None,
+                    "snapshot_ref": source_ref,
+                    "snapshot_hash": source_hash,
+                    "stance": proposal.stance,
+                    "quote_text": proposal.quote_text,
+                    "quote_start": proposal.quote_start,
+                    "quote_end": proposal.quote_end,
+                }
+            )
+            if (
+                link.source_kind != proposal.source_kind
+                or link.signal_id != signal_id
+                or link.outcome_id != outcome_id
+                or link.snapshot_ref != source_ref
+                or link.snapshot_hash != source_hash
+                or link.stance != proposal.stance
+                or link.quote_text != proposal.quote_text
+                or link.quote_start != proposal.quote_start
+                or link.quote_end != proposal.quote_end
+                or link.reference_key != expected_reference_key
+            ):
+                raise WorldMemoryError("update_thread_evidence_link_invalid")
+        elif isinstance(proposal, ConfidenceChangeProposal):
+            change_id = domain_event.payload.get("confidence_change_id")
+            try:
+                change = session.get(ConfidenceChange, UUID(change_id))
+            except (TypeError, ValueError) as error:
+                raise WorldMemoryError(
+                    "update_thread_confidence_change_invalid"
+                ) from error
+            if (
+                change is None
+                or change.created_by_task_id != task.id
+                or change.team_id != task.team_id
+                or change.hypothesis_id != proposal.hypothesis_id
+                or change.evidence_link_id != proposal.evidence_link_id
+                or change.cause_kind != "evidence"
+                or change.to_confidence != proposal.to_confidence
+                or change.from_confidence == change.to_confidence
+                or domain_event.payload.get("confidence_change_id")
+                != str(change.id)
+                or domain_event.payload.get("from_confidence")
+                != change.from_confidence
+                or domain_event.payload.get("to_confidence")
+                != change.to_confidence
+            ):
+                raise WorldMemoryError("update_thread_confidence_change_invalid")
+            cause = session.get(EvidenceLink, change.evidence_link_id)
+            if (
+                cause is None
+                or cause.subject_kind != "hypothesis"
+                or cause.hypothesis_id != change.hypothesis_id
+                or cause.team_id != task.team_id
+                or cause.stance not in {"supports", "challenges"}
+            ):
+                raise WorldMemoryError("update_thread_confidence_cause_invalid")
+        else:
+            hypothesis = session.get(Hypothesis, proposal.hypothesis_id)
+            expected_status = (
+                "rejected" if proposal.action == "reject" else "superseded"
+            )
+            if (
+                hypothesis is None
+                or hypothesis.team_id != task.team_id
+                or hypothesis.thread_id != envelope.thread_id
+                or hypothesis.status != expected_status
+                or domain_event.payload.get("hypothesis_id")
+                != str(proposal.hypothesis_id)
+                or domain_event.payload.get("reason") != proposal.reason.strip()
+                or (
+                    proposal.action == "supersede"
+                    and domain_event.payload.get("successor_hypothesis_id")
+                    != str(proposal.successor_hypothesis_id)
+                )
+                or (
+                    proposal.action == "reject"
+                    and "successor_hypothesis_id" in domain_event.payload
+                )
+            ):
+                raise WorldMemoryError("update_thread_transition_invalid")
+
+    return WorldMemoryCommitResult(
+        task_id=task.id,
+        status="committed",
+        committed_count=len(accepted),
+        rejected_count=len(rejected),
+        committed_at=marker.created_at,
+        request_fingerprint=envelope.proposal_fingerprint,
+        replayed=True,
+        committed_proposal_keys=tuple(accepted),
+        rejected_proposal_keys=tuple(rejected),
+    )
+
+
+def validate_model_update_thread_terminal(
+    session: Session,
+    task: Task,
+    observation: TerminalObservation,
+    snapshot_store: SnapshotStore,
+) -> None:
+    from pydantic import ValidationError
+
+    from core.update_thread import (
+        GENERATION_RECEIPT_EVENT_TYPE,
+        PROPOSALS_EVENT_TYPE,
+        UpdateThreadTaskError,
+        validate_update_thread_task_request,
+    )
+    from core.update_thread_worker import _parse_model_response
+
+    attempt = observation.attempt
+    if task.attempt_count != attempt:
+        raise WorldMemoryError("update_thread_terminal_attempt_mismatch")
+    markers = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type.in_(
+                    (
+                        MODEL_COMMITTED_EVENT_TYPE,
+                        MODEL_REJECTED_EVENT_TYPE,
+                        MODEL_INCONSISTENT_EVENT_TYPE,
+                    )
+                ),
+            )
+        )
+    )
+    inconsistent_markers = [
+        marker
+        for marker in markers
+        if marker.type == MODEL_INCONSISTENT_EVENT_TYPE
+    ]
+    if len(inconsistent_markers) > 1:
+        raise WorldMemoryError("update_thread_recovery_marker_duplicate")
+    if inconsistent_markers:
+        marker = inconsistent_markers[0]
+        WorldMemoryCommitService._validate_inconsistent_marker(
+            task, attempt, marker
+        )
+        if (
+            observation.result_category != "terminal_failure"
+            or observation.failure_reason
+            != "update_thread_recovery_inconsistent"
+            or observation.observed_at != marker.created_at
+        ):
+            raise WorldMemoryError("update_thread_inconsistent_result_invalid")
+        WorldMemoryCommitService._assert_model_empty_set_has_no_writes(
+            session, task
+        )
+        return
+    try:
+        validate_update_thread_task_request(session, task)
+    except UpdateThreadTaskError as error:
+        raise WorldMemoryError(error.reason) from error
+
+    proposal_events = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+    )
+    current_proposals: list[Event] = []
+    for event in proposal_events:
+        if not isinstance(event.payload, dict) or type(
+            event.payload.get("attempt")
+        ) is not int:
+            raise WorldMemoryError("update_thread_proposals_event_corrupt")
+        if event.payload["attempt"] > attempt:
+            raise WorldMemoryError("update_thread_proposals_event_future_attempt")
+        if event.payload["attempt"] == attempt:
+            current_proposals.append(event)
+    if len(current_proposals) > 1:
+        raise WorldMemoryError("update_thread_proposals_event_duplicate")
+
+    if observation.result_category == "success_update_thread_committed":
+        if len(markers) != 1 or markers[0].type != MODEL_COMMITTED_EVENT_TYPE:
+            raise WorldMemoryError("update_thread_commit_marker_missing")
+        envelope = load_model_update_thread_envelope(
+            session, task, attempt, snapshot_store
+        )
+        result = validate_model_update_thread_marker(
+            session, task, envelope, markers[0], snapshot_store
+        )
+        if (
+            result.status != "committed"
+            or result.committed_count < 1
+            or result.committed_at != observation.observed_at
+        ):
+            raise WorldMemoryError("update_thread_committed_result_invalid")
+        return
+
+    if observation.result_category != "terminal_failure":
+        raise WorldMemoryError("update_thread_result_category_invalid")
+    if len(markers) > 1:
+        raise WorldMemoryError("update_thread_commit_marker_count_invalid")
+
+    if not current_proposals:
+        if markers:
+            raise WorldMemoryError("update_thread_terminal_marker_without_proposals")
+        receipts = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == GENERATION_RECEIPT_EVENT_TYPE,
+                )
+            )
+        )
+        if not receipts:
+            charges = list(
+                session.scalars(
+                    select(TaskGenerationCharge).where(
+                        TaskGenerationCharge.task_id == task.id,
+                        TaskGenerationCharge.attempt_count == attempt,
+                        TaskGenerationCharge.operation == "update_thread",
+                    )
+                )
+            )
+            if any(charge.status == "reserved" for charge in charges):
+                raise WorldMemoryError(
+                    "update_thread_reserved_charge_not_unknown"
+                )
+            WorldMemoryCommitService._assert_model_empty_set_has_no_writes(
+                session, task
+            )
+            return
+        _, _, receipt_event, charge = _verified_model_receipt(
+            session,
+            task,
+            attempt,
+            snapshot_store,
+            allow_overrun=True,
+        )
+        if charge.status == "overrun":
+            if observation.failure_reason != "generation_cost_overrun":
+                raise WorldMemoryError(
+                    "update_thread_generation_overrun_result_invalid"
+                )
+            WorldMemoryCommitService._assert_model_empty_set_has_no_writes(
+                session, task
+            )
+            return
+        try:
+            receipt = receipt_event.payload
+            _parse_model_response(receipt["raw_completion_text"])
+        except (ValidationError, ValueError, TypeError):
+            if observation.failure_reason == "update_thread_model_output_invalid":
+                WorldMemoryCommitService._assert_model_empty_set_has_no_writes(
+                    session, task
+                )
+                return
+            raise WorldMemoryError("update_thread_parser_failure_result_invalid")
+        raise WorldMemoryError("update_thread_proposal_set_remains_resumable")
+
+    envelope = load_model_update_thread_envelope(
+        session, task, attempt, snapshot_store
+    )
+    if not envelope.proposals:
+        raise WorldMemoryError("update_thread_empty_set_cannot_fail")
+    if len(markers) != 1 or markers[0].type != MODEL_REJECTED_EVENT_TYPE:
+        raise WorldMemoryError("update_thread_nonempty_failure_marker_required")
+    result = validate_model_update_thread_marker(
+        session, task, envelope, markers[0], snapshot_store
+    )
+    if (
+        result.status != "rejected"
+        or observation.failure_reason != "all_update_thread_proposals_rejected"
+        or observation.observed_at != result.committed_at
+    ):
+        raise WorldMemoryError("update_thread_rejection_result_invalid")
+
+
 class WorldMemoryCommitService:
-    """Validate and commit one complete Operator proposal set atomically."""
+    """Validate and commit one complete trusted proposal set atomically."""
 
     def __init__(
         self,
@@ -483,11 +1626,65 @@ class WorldMemoryCommitService:
         self._session_factory = session_factory
         self._snapshot_store = snapshot_store
 
-    def commit(
-        self, task_id: UUID, attempt: int, operator_id: str
-    ) -> WorldMemoryCommitResult:
+    def commit_model(self, task_id: UUID, attempt: int) -> WorldMemoryCommitResult:
         with self._session_factory.begin() as session:
             task = session.scalar(
+                select(Task).where(Task.id == task_id).with_for_update()
+            )
+            if task is None:
+                raise WorldMemoryError("update_thread_task_missing")
+            envelope = load_model_update_thread_envelope(
+                session, task, attempt, self._snapshot_store
+            )
+            return self.commit(
+                task_id,
+                attempt,
+                None,
+                session=session,
+                locked_task=task,
+                model_envelope=envelope,
+            )
+
+    def commit_model_in_session(
+        self,
+        session: Session,
+        task: Task,
+        attempt: int,
+        envelope: ModelUpdateThreadEnvelope | None = None,
+    ) -> WorldMemoryCommitResult:
+        if envelope is None:
+            envelope = load_model_update_thread_envelope(
+                session, task, attempt, self._snapshot_store
+            )
+        return self.commit(
+            task.id,
+            attempt,
+            None,
+            session=session,
+            locked_task=task,
+            model_envelope=envelope,
+        )
+
+    def commit(
+        self,
+        task_id: UUID,
+        attempt: int,
+        operator_id: str | None,
+        *,
+        session: Session | None = None,
+        locked_task: Task | None = None,
+        model_envelope: ModelUpdateThreadEnvelope | None = None,
+    ) -> WorldMemoryCommitResult:
+        scope = (
+            self._session_factory.begin()
+            if session is None
+            else nullcontext(session)
+        )
+        with scope as active_session:
+            session = active_session
+            if session is None:
+                raise WorldMemoryError("world_memory_session_required")
+            task = locked_task or session.scalar(
                 select(Task).where(Task.id == task_id).with_for_update()
             )
             if (
@@ -495,15 +1692,51 @@ class WorldMemoryCommitService:
                 or task.status != "running"
                 or task.attempt_count != attempt
             ):
-                raise WorldMemoryError("operator_update_task_not_running")
-            envelope = validate_operator_update_task_request(session, task)
-            if envelope.operator_id != operator_id:
-                raise WorldMemoryError("operator_update_principal_mismatch")
+                raise WorldMemoryError(
+                    "operator_update_task_not_running"
+                    if operator_id is not None
+                    else "update_thread_task_not_running"
+                )
+            if task.id != task_id:
+                raise WorldMemoryError("world_memory_task_identity_mismatch")
 
-            prior = self._existing_result(session, task, envelope)
+            operator_envelope: OperatorUpdateEnvelope | None = None
+            if operator_id is not None:
+                if model_envelope is not None:
+                    raise WorldMemoryError("world_memory_actor_envelope_conflict")
+                operator_envelope = validate_operator_update_task_request(
+                    session, task
+                )
+                if operator_envelope.operator_id != operator_id:
+                    raise WorldMemoryError("operator_update_principal_mismatch")
+                actor: WorldMemoryActor = OperatorActor(operator_id=operator_id)
+                commit_context = _ProposalCommitContext(
+                    thread_id=operator_envelope.request.thread_id,
+                    proposals=tuple(operator_envelope.request.proposals),
+                    request_fingerprint=operator_envelope.request_fingerprint,
+                )
+                prior = self._existing_result(
+                    session, task, operator_envelope
+                )
+            else:
+                if model_envelope is None:
+                    raise WorldMemoryError("model_update_thread_envelope_required")
+                commit_context = validate_model_update_thread_envelope(
+                    session, task, attempt, model_envelope, self._snapshot_store
+                )
+                actor = ModelWorkerActor(
+                    actor_type="model_worker",
+                    task_id=task.id,
+                    request_event_id=model_envelope.request_event_id,
+                )
+                prior = self._existing_model_result(
+                    session, task, commit_context, actor
+                )
             if prior is not None:
                 return prior
 
+            envelope = commit_context
+            proposals = commit_context.proposals
             team = session.scalar(
                 select(Team)
                 .where(Team.id == task.team_id)
@@ -512,35 +1745,46 @@ class WorldMemoryCommitService:
             thread = session.scalar(
                 select(Thread)
                 .where(
-                    Thread.id == envelope.request.thread_id,
+                    Thread.id == commit_context.thread_id,
                     Thread.team_id == task.team_id,
                 )
                 .with_for_update()
             )
             if team is None or team.status != "active":
-                return _record_all_rejected(
+                return _record_rejected_for_actor(
                     session,
                     task,
-                    envelope,
+                    commit_context,
+                    actor,
                     attempt,
                     {
-                        proposal.key: "operator_update_team_not_active"
-                        for proposal in envelope.request.proposals
+                        proposal.key: (
+                            "operator_update_team_not_active"
+                            if isinstance(actor, OperatorActor)
+                            else "update_thread_team_not_active"
+                        )
+                        for proposal in proposals
                     },
+                    operator_envelope=operator_envelope,
                 )
             if thread is None or thread.status == "resolved":
-                return _record_all_rejected(
+                return _record_rejected_for_actor(
                     session,
                     task,
-                    envelope,
+                    commit_context,
+                    actor,
                     attempt,
                     {
-                        proposal.key: "operator_update_thread_not_available"
-                        for proposal in envelope.request.proposals
+                        proposal.key: (
+                            "operator_update_thread_not_available"
+                            if isinstance(actor, OperatorActor)
+                            else "update_thread_target_not_available"
+                        )
+                        for proposal in proposals
                     },
+                    operator_envelope=operator_envelope,
                 )
 
-            proposals = envelope.request.proposals
             rejected: dict[str, str] = {}
             valid_creates: dict[UUID, HypothesisCreateProposal] = {}
             for proposal in proposals:
@@ -769,12 +2013,41 @@ class WorldMemoryCommitService:
             committed_at = datetime.now(timezone.utc)
 
             if not valid_proposal_keys:
-                return _record_all_rejected(
-                    session, task, envelope, attempt, rejected
+                return _record_rejected_for_actor(
+                    session,
+                    task,
+                    commit_context,
+                    actor,
+                    attempt,
+                    rejected,
+                    operator_envelope=operator_envelope,
                 )
 
             for proposal in proposals:
                 if proposal.key in rejected:
+                    if isinstance(actor, ModelWorkerActor):
+                        session.add(
+                            Event(
+                                id=uuid4(),
+                                task_id=task.id,
+                                type="update_thread_proposal_rejected",
+                                payload={
+                                    "schema_version": 1,
+                                    "task_id": str(task.id),
+                                    "team_id": str(task.team_id),
+                                    "thread_id": str(commit_context.thread_id),
+                                    "attempt": attempt,
+                                    "actor_type": actor.actor_type,
+                                    "proposal_key": proposal.key,
+                                    "proposal_fingerprint": (
+                                        commit_context.request_fingerprint
+                                    ),
+                                    "reason": rejected[proposal.key],
+                                },
+                                created_at=committed_at,
+                            )
+                        )
+                        continue
                     session.add(
                         Event(
                             id=uuid4(),
@@ -783,8 +2056,9 @@ class WorldMemoryCommitService:
                             payload={
                                 "task_id": str(task.id),
                                 "team_id": str(task.team_id),
-                                "operator_id": operator_id,
-                                "request_fingerprint": envelope.request_fingerprint,
+                                **_actor_provenance_fields(
+                                    actor, commit_context.request_fingerprint
+                                ),
                                 "proposal_key": proposal.key,
                                 "reason": rejected[proposal.key],
                             },
@@ -804,7 +2078,7 @@ class WorldMemoryCommitService:
                         Hypothesis(
                             id=proposal.hypothesis_id,
                             team_id=task.team_id,
-                            thread_id=envelope.request.thread_id,
+                            thread_id=commit_context.thread_id,
                             statement=proposal.statement.strip(),
                             status="active",
                             confidence="low",
@@ -821,11 +2095,12 @@ class WorldMemoryCommitService:
                             payload={
                                 "task_id": str(task.id),
                                 "team_id": str(task.team_id),
-                                "operator_id": operator_id,
-                                "request_fingerprint": envelope.request_fingerprint,
+                                **_actor_provenance_fields(
+                                    actor, commit_context.request_fingerprint
+                                ),
                                 "proposal_key": proposal.key,
                                 "hypothesis_id": str(proposal.hypothesis_id),
-                                "thread_id": str(envelope.request.thread_id),
+                                "thread_id": str(commit_context.thread_id),
                                 "confidence": "low",
                             },
                             created_at=committed_at,
@@ -853,8 +2128,9 @@ class WorldMemoryCommitService:
                         payload={
                             "task_id": str(task.id),
                             "team_id": str(task.team_id),
-                            "operator_id": operator_id,
-                            "request_fingerprint": envelope.request_fingerprint,
+                            **_actor_provenance_fields(
+                                actor, commit_context.request_fingerprint
+                            ),
                             "proposal_key": proposal.key,
                             "evidence_link_id": str(link.id),
                             "hypothesis_id": str(link.hypothesis_id),
@@ -892,8 +2168,9 @@ class WorldMemoryCommitService:
                         payload={
                             "task_id": str(task.id),
                             "team_id": str(task.team_id),
-                            "operator_id": operator_id,
-                            "request_fingerprint": envelope.request_fingerprint,
+                            **_actor_provenance_fields(
+                                actor, commit_context.request_fingerprint
+                            ),
                             "proposal_key": proposal.key,
                             "hypothesis_id": str(hypothesis.id),
                             "confidence_change_id": str(change.id),
@@ -919,8 +2196,9 @@ class WorldMemoryCommitService:
                 payload: dict[str, object] = {
                     "task_id": str(task.id),
                     "team_id": str(task.team_id),
-                    "operator_id": operator_id,
-                    "request_fingerprint": envelope.request_fingerprint,
+                    **_actor_provenance_fields(
+                        actor, commit_context.request_fingerprint
+                    ),
                     "proposal_key": proposal.key,
                     "hypothesis_id": str(hypothesis.id),
                     "reason": proposal.reason.strip(),
@@ -939,6 +2217,30 @@ class WorldMemoryCommitService:
                     )
                 )
 
+            if isinstance(actor, ModelWorkerActor):
+                for key in committed_keys:
+                    session.add(
+                        Event(
+                            id=uuid4(),
+                            task_id=task.id,
+                            type="update_thread_proposal_accepted",
+                            payload={
+                                "schema_version": 1,
+                                "task_id": str(task.id),
+                                "team_id": str(task.team_id),
+                                "thread_id": str(commit_context.thread_id),
+                                "attempt": attempt,
+                                "actor_type": actor.actor_type,
+                                "proposal_key": key,
+                                "proposal_fingerprint": (
+                                    commit_context.request_fingerprint
+                                ),
+                                "disposition": "accepted",
+                            },
+                            created_at=committed_at,
+                        )
+                    )
+
             for hypothesis_id in touched_hypothesis_ids:
                 hypothesis = locked_hypotheses.get(hypothesis_id) or session.get(
                     Hypothesis, hypothesis_id
@@ -947,28 +2249,58 @@ class WorldMemoryCommitService:
                     raise WorldMemoryError("operator_update_touched_hypothesis_missing")
                 hypothesis.last_touched_at = committed_at
 
-            session.add(
-                Event(
-                    id=uuid4(),
-                    task_id=task.id,
-                    type=COMMITTED_EVENT_TYPE,
-                    payload={
-                        "schema_version": 1,
-                        "task_id": str(task.id),
-                        "team_id": str(task.team_id),
-                        "thread_id": str(envelope.request.thread_id),
-                        "attempt_count": attempt,
-                        "operator_id": operator_id,
-                        "request_fingerprint": envelope.request_fingerprint,
-                        "committed_proposal_keys": committed_keys,
-                        "rejected_proposal_keys": rejected_keys,
-                        "hypothesis_ids": created_hypothesis_ids,
-                        "evidence_link_ids": evidence_link_ids,
-                        "confidence_change_ids": confidence_change_ids,
-                    },
-                    created_at=committed_at,
-                )
+            if isinstance(actor, OperatorActor):
+                marker_type = COMMITTED_EVENT_TYPE
+                marker_payload: dict[str, object] = {
+                    "schema_version": 1,
+                    "task_id": str(task.id),
+                    "team_id": str(task.team_id),
+                    "thread_id": str(commit_context.thread_id),
+                    "attempt_count": attempt,
+                    "operator_id": actor.operator_id,
+                    "request_fingerprint": commit_context.request_fingerprint,
+                    "committed_proposal_keys": committed_keys,
+                    "rejected_proposal_keys": rejected_keys,
+                    "hypothesis_ids": created_hypothesis_ids,
+                    "evidence_link_ids": evidence_link_ids,
+                    "confidence_change_ids": confidence_change_ids,
+                }
+            else:
+                binding = commit_context.model_envelope
+                if binding is None:
+                    raise WorldMemoryError(
+                        "update_thread_commit_envelope_missing"
+                    )
+                marker_type = "update_thread_committed"
+                marker_payload = {
+                    "schema_version": 1,
+                    "task_id": str(task.id),
+                    "team_id": str(task.team_id),
+                    "thread_id": str(commit_context.thread_id),
+                    "attempt": attempt,
+                    "actor_type": actor.actor_type,
+                    "request_event_id": str(binding.request_event_id),
+                    "generation_receipt_event_id": str(binding.receipt_event_id),
+                    "proposal_event_id": str(binding.proposal_event_id),
+                    "charge_id": str(binding.charge_id),
+                    "context_event_id": str(binding.context_event_id),
+                    "context_snapshot_ref": binding.context_snapshot_ref,
+                    "context_content_hash": binding.context_content_hash,
+                    "proposal_fingerprint": commit_context.request_fingerprint,
+                    "accepted_proposal_keys": committed_keys,
+                    "rejected_proposal_keys": rejected_keys,
+                    "hypothesis_ids": created_hypothesis_ids,
+                    "evidence_link_ids": evidence_link_ids,
+                    "confidence_change_ids": confidence_change_ids,
+                }
+            marker = Event(
+                id=uuid4(),
+                task_id=task.id,
+                type=marker_type,
+                payload=marker_payload,
+                created_at=committed_at,
             )
+            session.add(marker)
             session.flush()
             return WorldMemoryCommitResult(
                 task_id=task.id,
@@ -976,8 +2308,451 @@ class WorldMemoryCommitService:
                 committed_count=len(valid_proposal_keys),
                 rejected_count=len(rejected_keys),
                 committed_at=committed_at,
-                request_fingerprint=envelope.request_fingerprint,
+                request_fingerprint=commit_context.request_fingerprint,
+                committed_proposal_keys=tuple(committed_keys),
+                rejected_proposal_keys=tuple(rejected_keys),
             )
+
+    def resume_update_thread_in_session(
+        self, session: Session, task: Task, attempt: int
+    ) -> TerminalObservation | None:
+        """Resume one admitted Task attempt without opening or closing a Session."""
+        from pydantic import ValidationError
+
+        from core.generation_cost import TaskGenerationCostService
+        from core.task_runtime import TerminalObservation
+        from core.update_thread import (
+            GENERATION_RECEIPT_EVENT_TYPE,
+            PROPOSALS_EVENT_TYPE,
+            TASK_TYPE,
+            UpdateThreadTaskError,
+            load_pinned_policy,
+            validate_update_thread_task_request,
+        )
+        from core.update_thread_context import UpdateThreadContextError
+        from core.update_thread_worker import (
+            _fingerprint,
+            _parse_model_response,
+        )
+
+        try:
+            if (
+                task.task_type != TASK_TYPE
+                or task.status != "running"
+                or type(attempt) is not int
+                or task.attempt_count != attempt
+            ):
+                raise WorldMemoryError("update_thread_task_attempt_not_current")
+            request = validate_update_thread_task_request(session, task)
+            load_pinned_policy(session, task.team_id, task.policy_version)
+
+            marker_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type.in_(
+                            (
+                                MODEL_COMMITTED_EVENT_TYPE,
+                                MODEL_REJECTED_EVENT_TYPE,
+                                MODEL_INCONSISTENT_EVENT_TYPE,
+                            )
+                        ),
+                    )
+                )
+            )
+            inconsistent_markers = [
+                marker
+                for marker in marker_events
+                if marker.type == MODEL_INCONSISTENT_EVENT_TYPE
+            ]
+            if inconsistent_markers:
+                if len(inconsistent_markers) != 1:
+                    raise WorldMemoryError(
+                        "update_thread_recovery_marker_duplicate"
+                    )
+                marker = inconsistent_markers[0]
+                self._validate_inconsistent_marker(task, attempt, marker)
+                return TerminalObservation(
+                    task_id=task.id,
+                    attempt=attempt,
+                    result_category="terminal_failure",
+                    observed_at=marker.created_at,
+                    failure_reason="update_thread_recovery_inconsistent",
+                )
+            if len(marker_events) > 1:
+                raise WorldMemoryError(
+                    "update_thread_commit_marker_count_invalid"
+                )
+            if marker_events:
+                marker = marker_events[0]
+                envelope = load_model_update_thread_envelope(
+                    session, task, attempt, self._snapshot_store
+                )
+                result = validate_model_update_thread_marker(
+                    session, task, envelope, marker, self._snapshot_store
+                )
+                return self._model_observation(task, attempt, result)
+
+            receipt_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == GENERATION_RECEIPT_EVENT_TYPE,
+                    )
+                )
+            )
+            current_receipts = []
+            for event in receipt_events:
+                if not isinstance(event.payload, dict) or type(
+                    event.payload.get("attempt")
+                ) is not int:
+                    raise WorldMemoryError(
+                        "update_thread_generation_receipt_corrupt"
+                    )
+                if event.payload["attempt"] > attempt:
+                    raise WorldMemoryError(
+                        "update_thread_generation_receipt_future_attempt"
+                    )
+                if event.payload["attempt"] == attempt:
+                    current_receipts.append(event)
+
+            charges = list(
+                session.scalars(
+                    select(TaskGenerationCharge)
+                    .where(
+                        TaskGenerationCharge.task_id == task.id,
+                        TaskGenerationCharge.attempt_count == attempt,
+                        TaskGenerationCharge.operation == TASK_TYPE,
+                    )
+                    .with_for_update()
+                )
+            )
+            if not current_receipts:
+                if len(charges) > 1:
+                    raise WorldMemoryError(
+                        "update_thread_generation_charge_duplicate"
+                    )
+                if charges:
+                    charge = charges[0]
+                    if charge.status == "reserved":
+                        TaskGenerationCostService(
+                            self._session_factory
+                        ).mark_unknown_in_session(
+                            session, task, charge, "provider_call_interrupted"
+                        )
+                    elif charge.status != "unknown":
+                        raise WorldMemoryError(
+                            "update_thread_receipt_missing_for_settled_charge"
+                        )
+                return None
+            if len(current_receipts) != 1 or len(charges) != 1:
+                raise WorldMemoryError(
+                    "update_thread_receipt_charge_cardinality_invalid"
+                )
+
+            request, verified_context, receipt_event, charge = (
+                _verified_model_receipt(
+                    session, task, attempt, self._snapshot_store
+                )
+            )
+            receipt = receipt_event.payload
+
+            existing_proposals = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == PROPOSALS_EVENT_TYPE,
+                    )
+                )
+            )
+            current_proposals: list[Event] = []
+            for event in existing_proposals:
+                if not isinstance(event.payload, dict) or type(
+                    event.payload.get("attempt")
+                ) is not int:
+                    raise WorldMemoryError(
+                        "update_thread_proposals_event_corrupt"
+                    )
+                if event.payload["attempt"] > attempt:
+                    raise WorldMemoryError(
+                        "update_thread_proposals_event_future_attempt"
+                    )
+                if event.payload["attempt"] == attempt:
+                    current_proposals.append(event)
+            if len(current_proposals) > 1:
+                raise WorldMemoryError(
+                    "update_thread_proposals_event_duplicate"
+                )
+            if not current_proposals:
+                try:
+                    parsed = _parse_model_response(
+                        receipt["raw_completion_text"]
+                    )
+                except (ValidationError, ValueError, TypeError):
+                    return TerminalObservation(
+                        task_id=task.id,
+                        attempt=attempt,
+                        result_category="terminal_failure",
+                        observed_at=receipt_event.created_at,
+                        failure_reason="update_thread_model_output_invalid",
+                    )
+                proposals = [
+                    proposal.model_dump(mode="json")
+                    for proposal in parsed.proposals
+                ]
+                fingerprint = _fingerprint(
+                    task_id=task.id,
+                    team_id=task.team_id,
+                    thread_id=request.thread_id,
+                    attempt=attempt,
+                    policy_version=task.policy_version,
+                    receipt_event_id=receipt_event.id,
+                    context=verified_context,
+                    charge_id=charge.id,
+                    proposals=proposals,
+                )
+                proposal_event = Event(
+                    id=uuid4(),
+                    task_id=task.id,
+                    type=PROPOSALS_EVENT_TYPE,
+                    payload={
+                        "schema_version": 1,
+                        "task_id": str(task.id),
+                        "team_id": str(task.team_id),
+                        "thread_id": str(request.thread_id),
+                        "attempt": attempt,
+                        "policy_version": task.policy_version,
+                        "generation_receipt_event_id": str(receipt_event.id),
+                        "context_event_id": str(verified_context.event_id),
+                        "context_snapshot_ref": verified_context.snapshot_ref,
+                        "context_content_hash": verified_context.content_hash,
+                        "charge_id": str(charge.id),
+                        "proposal_fingerprint": fingerprint,
+                        "proposals": proposals,
+                    },
+                    created_at=datetime.now(timezone.utc),
+                )
+                session.add(proposal_event)
+                session.flush()
+            envelope = load_model_update_thread_envelope(
+                session, task, attempt, self._snapshot_store
+            )
+            if not envelope.proposals:
+                self._assert_model_empty_set_has_no_writes(session, task)
+                return TerminalObservation(
+                    task_id=task.id,
+                    attempt=attempt,
+                    result_category="success_no_change",
+                    observed_at=proposal_event.created_at
+                    if not current_proposals
+                    else current_proposals[0].created_at,
+                )
+            with session.begin_nested():
+                result = self.commit_model_in_session(
+                    session, task, attempt, envelope
+                )
+            return self._model_observation(task, attempt, result)
+        except WorldMemoryError as error:
+            return self._record_recovery_inconsistent(
+                session, task, attempt, error.reason
+            )
+        except UpdateThreadContextError as error:
+            return self._record_recovery_inconsistent(
+                session, task, attempt, error.reason
+            )
+        except UpdateThreadTaskError as error:
+            return self._record_recovery_inconsistent(
+                session, task, attempt, error.reason
+            )
+
+    @staticmethod
+    def _model_observation(
+        task: Task, attempt: int, result: WorldMemoryCommitResult
+    ) -> TerminalObservation:
+        from core.task_runtime import TerminalObservation
+
+        if result.status == "committed":
+            return TerminalObservation(
+                task_id=task.id,
+                attempt=attempt,
+                result_category="success_update_thread_committed",
+                observed_at=result.committed_at,
+            )
+        return TerminalObservation(
+            task_id=task.id,
+            attempt=attempt,
+            result_category="terminal_failure",
+            observed_at=result.committed_at,
+            failure_reason="all_update_thread_proposals_rejected",
+        )
+
+    @staticmethod
+    def _assert_model_empty_set_has_no_writes(
+        session: Session, task: Task
+    ) -> None:
+        if (
+            session.scalar(
+                select(EvidenceLink.id)
+                .where(EvidenceLink.originating_task_id == task.id)
+                .limit(1)
+            )
+            is not None
+            or session.scalar(
+                select(ConfidenceChange.id)
+                .where(ConfidenceChange.created_by_task_id == task.id)
+                .limit(1)
+            )
+            is not None
+            or session.scalar(
+                select(Event.id)
+                .where(
+                    Event.task_id == task.id,
+                    Event.type.in_(
+                        (
+                            "hypothesis_created",
+                            "evidence_link_added",
+                            "confidence_changed",
+                            "hypothesis_rejected",
+                            "hypothesis_superseded",
+                            "update_thread_proposal_accepted",
+                            "update_thread_proposal_rejected",
+                            MODEL_COMMITTED_EVENT_TYPE,
+                            MODEL_REJECTED_EVENT_TYPE,
+                        )
+                    ),
+                )
+                .limit(1)
+            )
+            is not None
+        ):
+            raise WorldMemoryError("update_thread_empty_set_has_business_writes")
+
+    @staticmethod
+    def _validate_inconsistent_marker(
+        task: Task, attempt: int, marker: Event
+    ) -> None:
+        payload = marker.payload
+        if (
+            marker.task_id != task.id
+            or not isinstance(payload, dict)
+            or set(payload)
+            != {
+                "schema_version",
+                "task_id",
+                "team_id",
+                "thread_id",
+                "attempt",
+                "actor_type",
+                "proposal_fingerprint",
+                "failure_category",
+            }
+            or type(payload.get("schema_version")) is not int
+            or payload.get("schema_version") != 1
+            or payload.get("task_id") != str(task.id)
+            or payload.get("team_id") != str(task.team_id)
+            or (
+                payload.get("thread_id") is not None
+                and not isinstance(payload.get("thread_id"), str)
+            )
+            or type(payload.get("attempt")) is not int
+            or payload.get("attempt") != attempt
+            or payload.get("actor_type") != "model_worker"
+            or payload.get("failure_category") != "update_thread_recovery_inconsistent"
+            or (
+                payload.get("proposal_fingerprint") is not None
+                and (
+                    not isinstance(payload.get("proposal_fingerprint"), str)
+                    or len(payload["proposal_fingerprint"]) != 71
+                    or not payload["proposal_fingerprint"].startswith("sha256:")
+                )
+            )
+        ):
+            raise WorldMemoryError("update_thread_recovery_marker_invalid")
+
+    @classmethod
+    def _record_recovery_inconsistent(
+        cls, session: Session, task: Task, attempt: int, reason: str
+    ) -> TerminalObservation:
+        from core.task_runtime import TerminalObservation
+
+        existing = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type == MODEL_INCONSISTENT_EVENT_TYPE,
+                )
+            )
+        )
+        if existing:
+            if len(existing) != 1:
+                raise WorldMemoryError("update_thread_recovery_marker_duplicate")
+            cls._validate_inconsistent_marker(task, attempt, existing[0])
+            marker = existing[0]
+        else:
+            request_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == "update_thread_requested",
+                    )
+                )
+            )
+            proposal_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == "update_thread_proposals_validated",
+                    )
+                )
+            )
+            current = [
+                event
+                for event in proposal_events
+                if isinstance(event.payload, dict)
+                and type(event.payload.get("attempt")) is int
+                and event.payload["attempt"] == attempt
+            ]
+            fingerprint = (
+                current[0].payload.get("proposal_fingerprint")
+                if len(current) == 1
+                else None
+            )
+            if fingerprint is not None and (
+                not isinstance(fingerprint, str)
+                or len(fingerprint) != 71
+                or not fingerprint.startswith("sha256:")
+            ):
+                fingerprint = None
+            marker = Event(
+                id=uuid4(),
+                task_id=task.id,
+                type=MODEL_INCONSISTENT_EVENT_TYPE,
+                payload={
+                    "schema_version": 1,
+                    "task_id": str(task.id),
+                    "team_id": str(task.team_id),
+                    "thread_id": (
+                        request_events[0].payload.get("thread_id")
+                        if len(request_events) == 1
+                        and isinstance(request_events[0].payload, dict)
+                        else None
+                    ),
+                    "attempt": attempt,
+                    "actor_type": "model_worker",
+                    "proposal_fingerprint": fingerprint,
+                    "failure_category": "update_thread_recovery_inconsistent",
+                },
+                created_at=datetime.now(timezone.utc),
+            )
+            session.add(marker)
+            session.flush()
+        return TerminalObservation(
+            task_id=task.id,
+            attempt=attempt,
+            result_category="terminal_failure",
+            observed_at=marker.created_at,
+            failure_reason="update_thread_recovery_inconsistent",
+        )
 
     @staticmethod
     def _existing_result(
@@ -1043,6 +2818,45 @@ class WorldMemoryCommitService:
                 failure_reason=payload["failure_reason"],
             )
         return None
+
+    def _existing_model_result(
+        self,
+        session: Session,
+        task: Task,
+        context: _ProposalCommitContext,
+        actor: ModelWorkerActor,
+    ) -> WorldMemoryCommitResult | None:
+        envelope = context.model_envelope
+        if (
+            envelope is None
+            or actor.task_id != task.id
+            or actor.request_event_id != envelope.request_event_id
+        ):
+            raise WorldMemoryError("update_thread_actor_envelope_mismatch")
+        markers = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == task.id,
+                    Event.type.in_(
+                        (
+                            MODEL_COMMITTED_EVENT_TYPE,
+                            MODEL_REJECTED_EVENT_TYPE,
+                            MODEL_INCONSISTENT_EVENT_TYPE,
+                        )
+                    ),
+                )
+            )
+        )
+        if not markers:
+            return None
+        if len(markers) != 1:
+            raise WorldMemoryError("update_thread_commit_marker_count_invalid")
+        marker = markers[0]
+        if marker.type == MODEL_INCONSISTENT_EVENT_TYPE:
+            raise WorldMemoryError("update_thread_recovery_already_inconsistent")
+        return validate_model_update_thread_marker(
+            session, task, envelope, marker, self._snapshot_store
+        )
 
 
 def validate_operator_update_terminal(

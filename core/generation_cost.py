@@ -220,6 +220,19 @@ class TaskGenerationCostService:
             self._mark_unknown_in_session(session, task, charge, safe_reason)
             session.flush()
 
+    def mark_unknown_in_session(
+        self,
+        session: Session,
+        task: Task,
+        charge: TaskGenerationCharge,
+        reason: str,
+    ) -> None:
+        if task.id != charge.task_id:
+            raise TaskGenerationCostError("generation_charge_task_mismatch")
+        self._mark_unknown_in_session(
+            session, task, charge, self._safe_reason(reason)
+        )
+
     def reconcile(
         self,
         reservation: GenerationCostReservation,

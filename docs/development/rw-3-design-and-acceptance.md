@@ -1,6 +1,8 @@
 # RW-3 — Bounded model `update_thread` design and acceptance plan
 
-**Status:** RW-3 implementation was explicitly authorized on 2026-11-19. RW3.1 was accepted on 2026-11-20 and squash-merged by PR [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136) at `6260921b451f99ab07756890045175ba9983c3ad`; its exact tested head `b59ecca786bf418456e0e687c3e77d632d1e4118` passed hosted CI run [#1492](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44705109042) and Programmer-local verification. RW3.2 implementation was authorized on 2026-11-20: validate and replay the exact attempt-bound Context before provider invocation, use deterministic fake providers only, and preserve `context_event_id`, `context_snapshot_ref`, and `context_content_hash` in the generation receipt and proposal fingerprint. Live Cloudflare provider invocation remains separately unauthorized. RW3.3–RW3.4 remain separately gated. `PLAN.md` remains the sole current-status authority.
+**Status:** RW-3 implementation was explicitly authorized on 2026-11-19. RW3.1 was accepted and squash-merged by PR [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136); RW3.2 was accepted and squash-merged by PR [#137](https://github.com/abtn/Watch-Architecture-Rev2/pull/137). RW3.3 was accepted and squash-merged by PR [#138](https://github.com/abtn/Watch-Architecture-Rev2/pull/138) after corrective review, exact-head Programmer-local verification, and passing hosted CI. RW3.3 adds the shared RW-2 world-memory commit core, typed actor separation, atomic provenance-bound disposition markers, and in-session crash recovery. RW3.4 integrated closeout remains separately gated. Live Cloudflare provider invocation remains unauthorized; deterministic fake providers only. `PLAN.md` remains the sole current-status authority.
+
+**Current status (2026-11-20):** RW3.1–RW3.3 are accepted and merged (PRs #136–#138). RW3.3 exact-head verification and acceptance evidence are recorded in `docs/testing.md`. RW3.4 integrated closeout remains gated. Live provider authorization remains closed; deterministic fakes only. `PLAN.md` is the sole current-status authority.
 
 **Depends on:** accepted RW-1 persistence and RW-2 deterministic Operator commit path.
 
@@ -258,7 +260,7 @@ The receipt transaction must revalidate that the tuple identifies exactly one Co
 
 RW3.3 recovery must revalidate the same tuple against the Context Event and Snapshot before parsing a receipt-only response, resuming a proposal-only commit, accepting an existing marker, or reconstructing a terminal result. A missing, duplicate, cross-Task/Team/Thread/attempt/policy, changed-reference, or hash-mismatched Context identity is permanent integrity failure: no provider reinvocation, no business writes, and no guessed substitution. The proposal fingerprint inherits Context provenance through its explicit tuple and receipt binding; it does not replace the independent verification of the referenced Context Snapshot.
 
-This decision does not change the RW3.1 Context Event/Snapshot schema or add a migration. It is a prerequisite for RW3.2 implementation and must be covered by RW3.2 integration tests and RW3.3 commit/recovery tests. It does not authorize RW3.2, RW3.3, or live provider use.
+This decision does not change the RW3.1 Context Event/Snapshot schema or add a migration. It was a prerequisite for RW3.2 implementation; RW3.2 was subsequently authorized, accepted, and merged by PR #137. RW3.3 has since been accepted and merged by PR #138. Neither milestone authorizes live provider use.
 
 ### 10.2 Crash windows and TaskRuntime recovery
 
