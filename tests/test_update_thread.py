@@ -24,6 +24,7 @@ from core.models import (
     Event,
     EvidenceLink,
     Hypothesis,
+    Outcome,
     Signal,
     Task,
     TaskGenerationCharge,
@@ -156,6 +157,9 @@ def rw3_fixture(
         with session_factory.begin() as session:
             task_ids = select(Task.id).where(Task.team_id == team_id)
             session.execute(delete(Event).where(Event.task_id.in_(task_ids)))
+            session.execute(
+                delete(Outcome).where(Outcome.recorded_by_task_id.in_(task_ids))
+            )
             session.execute(
                 delete(TaskGenerationCharge).where(
                     TaskGenerationCharge.task_id.in_(task_ids)
@@ -1030,13 +1034,31 @@ def test_update_thread_worker_records_context_identity_and_empty_proposal_set(
         )
         assert charge.operation == "update_thread"
         assert charge.status == "reconciled"
-        assert task.status == "running"
+        assert task.status == "done"
         assert task.attempt_count == 1
+        outcome = session.scalar(
+            select(Outcome).where(
+                Outcome.recorded_by_task_id == created.task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        )
+        completed_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_completed",
+            )
+        )
+        assert outcome is not None
+        assert completed_event is not None
+        assert completed_event.payload["result_category"] == "success_no_change"
         assert session.scalar(
             select(Event).where(
                 Event.task_id == created.task_id,
                 Event.type == "update_thread_committed",
             )
+        ) is None
+        assert session.scalar(
+            select(Hypothesis).where(Hypothesis.team_id == rw3_fixture.team_id)
         ) is None
 
 
