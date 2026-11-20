@@ -239,3 +239,24 @@ def test_generation_fails_closed_when_provider_returns_a_different_model(
             system_prompt="Return JSON.",
             user_prompt="Propose one item.",
         )
+
+
+def test_generation_raw_returns_malformed_completion_with_validated_usage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        generation,
+        "urlopen",
+        lambda *_args, **_kwargs: FakeHTTPResponse(_response("Not JSON.")),
+    )
+
+    result = _provider().generate_raw(
+        system_prompt="Return JSON.",
+        user_prompt="Test raw completion handling.",
+    )
+
+    assert result.raw_content == "Not JSON."
+    assert result.content == {}
+    assert result.usage.input_tokens == 100
+    assert result.usage.output_tokens == 20
+    assert result.request_id == "chatcmpl-test"
