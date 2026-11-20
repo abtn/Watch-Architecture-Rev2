@@ -195,7 +195,7 @@ The Task contract fixes a cumulative `$0.02` ceiling across at most three starts
 
 The end-to-end worker test exercises the exact `update_thread` operation, one reservation for each provider start, a reconciled charge plus an unknown reservation, cumulative aggregation before the next provider invocation, and the absence of a third provider call or business commit after exhaustion. It separately asserts the production `$0.02` Task budget and three-start limit.
 
-The exhaustion branch is otherwise unreachable under the bounded three-start maximum quote and the accepted `$0.02` ceiling. The test therefore uses a smaller test-only Task budget to exercise the same accounting branch; it does not change the production contract. Hosted CI run #1545 is in progress. Programmer-local focused/full verification and independent review remain open. Do not mark `RW-GC-01` or `RW-GC-03` accepted yet.
+The exhaustion branch is otherwise unreachable under the bounded three-start maximum quote and the accepted `$0.02` ceiling. The test therefore uses a smaller test-only Task budget to exercise the same accounting branch; it does not change the production contract. Hosted CI run #1545 passed on the exact PR #142 head: 1,175 tests passed, 130 existing warnings; fresh PostgreSQL migration/single-head, Ruff, Mypy, and patch-whitespace checks passed. Programmer-local focused/full verification and independent review remain open. Do not mark `RW-GC-01` or `RW-GC-03` accepted yet.
 
 ### 5.3 Host authentication and TeamPolicy publication limitations
 
