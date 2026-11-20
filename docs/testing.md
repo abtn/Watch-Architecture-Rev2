@@ -23,6 +23,10 @@ uv run alembic upgrade head
 
 Use commands supported by `pyproject.toml` and the current repository environment. Report exact commands and outcomes; do not infer success from inspection.
 
+## Current RW-3 status
+
+RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery implementation is in progress on `rw3-3-shared-commit-recovery-20261120`; it has not been accepted. RW3.4 integrated closeout remains gated. Live provider authorization remains closed; only deterministic fake providers are permitted. Current RW3.3 verification will be recorded here against the exact tested source SHA and separately identified PR head; no results transfer between SHAs.
+
 ## RW3.1 final verification and Operator acceptance — 2026-11-20
 
 - PR [#136](https://github.com/abtn/Watch-Architecture-Rev2/pull/136) was accepted by the Operator and squash-merged to `main` at merge commit `6260921b451f99ab07756890045175ba9983c3ad`.

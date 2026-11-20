@@ -2,6 +2,8 @@
 
 This file identifies the active source for each concern. It is an index, not a second specification. Read only the rows relevant to the task.
 
+**RW-3 status pointer:** RW3.2 is accepted and merged; RW3.3 implementation is in progress and not accepted; RW3.4 integrated closeout remains gated; live provider authorization remains closed. The detailed RW-3 row below includes an earlier status snapshot; current status and authorization are governed by [PLAN.md](PLAN.md).
+
 | Concern | Authoritative source | Boundary |
 |---|---|---|
 | Plain-language project orientation | [docs/simple-explain.md](docs/simple-explain.md) | Explains the product vision and memory model for readers and agents. Orientation only; PLAN.md owns current status and canonical specifications/ADRs own contracts. |
