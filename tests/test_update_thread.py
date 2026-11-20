@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from threading import Barrier
+from types import SimpleNamespace
 from typing import Iterator
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, sessionmaker
+
+import core.update_thread_worker as worker_module
 
 from core.generation import (
     GenerationCostQuote,
@@ -46,6 +49,7 @@ from core.operator_application import (
 )
 from core.snapshot_store import SnapshotStore
 from core.task_runtime import (
+    AdmissionResult,
     TaskNotEligible,
     TaskRuntime,
 )
@@ -946,6 +950,24 @@ def test_task_runtime_admission_rejects_tampered_update_thread_request(
         assert starts == []
 
 
+class _FixedAdmissionRuntime(TaskRuntime):
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        snapshot_store: SnapshotStore,
+        admitted_monotonic: float,
+    ) -> None:
+        super().__init__(session_factory, snapshot_store)
+        self._admitted_monotonic = admitted_monotonic
+
+    def admit(self, task_id: UUID) -> AdmissionResult:
+        admission = super().admit(task_id)
+        return replace(
+            admission,
+            admitted_monotonic=self._admitted_monotonic,
+        )
+
+
 class _FakeUpdateThreadProvider:
     provider_name = "watch_test_fake"
     model = "watch-rw3-update-thread-fake"
@@ -1003,13 +1025,19 @@ def test_update_thread_worker_caps_provider_timeout_at_thirty_seconds(
     rw3_fixture: Fixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("core.task_runtime.time.monotonic", lambda: 100.0)
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
+    )
     _, created = _create_task(session_factory, rw3_fixture)
     provider = _FakeUpdateThreadProvider('{"proposals":[]}')
 
-    UpdateThreadWorker(session_factory, snapshot_store, provider).run(
-        created.task_id
-    )
+    UpdateThreadWorker(
+        session_factory,
+        snapshot_store,
+        provider,
+        runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+    ).run(created.task_id)
 
     assert provider.calls == 1
     assert provider.timeout_seconds == 30.0
@@ -1023,7 +1051,7 @@ def test_update_thread_worker_provider_timeout_is_capped_by_remaining_deadline(
 ) -> None:
     clock = {"now": 100.0}
     monkeypatch.setattr(
-        "core.task_runtime.time.monotonic", lambda: clock["now"]
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
     )
     _, created = _create_task(session_factory, rw3_fixture)
 
@@ -1046,6 +1074,7 @@ def test_update_thread_worker_provider_timeout_is_capped_by_remaining_deadline(
         session_factory,
         snapshot_store,
         provider,
+        runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
         cost_service=_AdvancingCostService(session_factory),
     )
 
@@ -1063,7 +1092,7 @@ def test_update_thread_worker_does_not_invoke_provider_after_deadline(
 ) -> None:
     clock = {"now": 100.0}
     monkeypatch.setattr(
-        "core.task_runtime.time.monotonic", lambda: clock["now"]
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
     )
     _, created = _create_task(session_factory, rw3_fixture)
 
@@ -1086,6 +1115,7 @@ def test_update_thread_worker_does_not_invoke_provider_after_deadline(
         session_factory,
         snapshot_store,
         provider,
+        runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
         cost_service=_ExpiredCostService(session_factory),
     )
 
@@ -1114,7 +1144,7 @@ def test_update_thread_worker_discards_provider_result_returned_after_deadline(
 ) -> None:
     clock = {"now": 100.0}
     monkeypatch.setattr(
-        "core.task_runtime.time.monotonic", lambda: clock["now"]
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
     )
 
     class _LateProvider(_FakeUpdateThreadProvider):
@@ -1140,9 +1170,12 @@ def test_update_thread_worker_discards_provider_result_returned_after_deadline(
     with pytest.raises(
         UpdateThreadWorkerError, match="update_thread_deadline_exceeded"
     ):
-        UpdateThreadWorker(session_factory, snapshot_store, provider).run(
-            created.task_id
-        )
+        UpdateThreadWorker(
+            session_factory,
+            snapshot_store,
+            provider,
+            runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+        ).run(created.task_id)
 
     assert provider.calls == 1
     with session_factory() as session:
@@ -1185,9 +1218,8 @@ def test_update_thread_worker_checks_deadline_after_parsing(
 ) -> None:
     clock = {"now": 100.0}
     monkeypatch.setattr(
-        "core.task_runtime.time.monotonic", lambda: clock["now"]
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
     )
-    import core.update_thread_worker as worker_module
 
     original_parser = worker_module._parse_model_response
 
@@ -1203,9 +1235,12 @@ def test_update_thread_worker_checks_deadline_after_parsing(
     with pytest.raises(
         UpdateThreadWorkerError, match="update_thread_deadline_exceeded"
     ):
-        UpdateThreadWorker(session_factory, snapshot_store, provider).run(
-            created.task_id
-        )
+        UpdateThreadWorker(
+            session_factory,
+            snapshot_store,
+            provider,
+            runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+        ).run(created.task_id)
 
     assert provider.calls == 1
     with session_factory() as session:
