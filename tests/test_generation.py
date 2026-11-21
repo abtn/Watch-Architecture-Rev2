@@ -288,11 +288,13 @@ def test_late_dns_result_after_deadline_never_opens_socket(
     dns_release = Event()
     dns_returning = Event()
     caller_finished = Event()
+    dns_workers: list[Thread] = []
     connection_holder: list[generation._DeadlineHTTPSConnection] = []
     errors: list[BaseException] = []
     socket_attempts: list[tuple[object, ...]] = []
 
     def late_dns(*_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+        dns_workers.append(current_thread())
         dns_started.set()
         assert dns_release.wait(timeout=2.0)
         dns_returning.set()
@@ -347,6 +349,8 @@ def test_late_dns_result_after_deadline_never_opens_socket(
         assert dns_returning.wait(timeout=1.0)
         assert slots.acquire(timeout=2.0)
         reserved_slots = 2
+        dns_workers[0].join(timeout=2.0)
+        assert not dns_workers[0].is_alive()
         assert socket_attempts == []
     finally:
         dns_release.set()
@@ -357,6 +361,7 @@ def test_late_dns_result_after_deadline_never_opens_socket(
             slots.release()
 
     assert not caller.is_alive()
+    assert not dns_workers[0].is_alive()
     assert socket_attempts == []
 
 
@@ -380,7 +385,10 @@ def test_dns_resolver_thread_start_failure_releases_capacity(
         deadline=time.monotonic() + 1.0,
     )
 
-    with pytest.raises(RuntimeError, match="controlled resolver thread start failure"):
+    with pytest.raises(
+        RuntimeError,
+        match="controlled resolver thread start failure",
+    ):
         connection.connect()
 
     assert start_attempts == 1
