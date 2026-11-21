@@ -1504,11 +1504,13 @@ def test_update_thread_worker_rechecks_deadline_during_proposal_persistence(
         assert charge is not None and charge.status == "reconciled"
 
 
-def test_update_thread_recovery_rejects_proposal_event_persisted_after_deadline(
+@pytest.mark.parametrize("proposal_seconds", [45, 46])
+def test_update_thread_recovery_rejects_proposal_event_persisted_at_or_after_deadline(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
     rw3_fixture: Fixture,
     monkeypatch: pytest.MonkeyPatch,
+    proposal_seconds: int,
 ) -> None:
     clock = {"now": 100.0}
     monkeypatch.setattr(
@@ -1562,7 +1564,7 @@ def test_update_thread_recovery_rejects_proposal_event_persisted_after_deadline(
         )
         assert started is not None
         assert proposal_event is not None
-        proposal_event.created_at = started + timedelta(seconds=46)
+        proposal_event.created_at = started + timedelta(seconds=proposal_seconds)
 
     recovered = TaskRuntime(
         session_factory, snapshot_store

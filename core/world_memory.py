@@ -159,7 +159,7 @@ def _validate_update_thread_proposal_deadline(
     durable_event: Event,
 ) -> None:
     deadline = _update_thread_proposal_deadline(session, task, attempt)
-    if durable_event.created_at > deadline:
+    if durable_event.created_at >= deadline:
         raise WorldMemoryError("update_thread_proposal_persisted_after_deadline")
 
 
@@ -2670,7 +2670,7 @@ class WorldMemoryCommitService:
                 _validate_update_thread_proposal_deadline(
                     session, task, attempt, receipt_event
                 )
-                if reference > _update_thread_proposal_deadline(
+                if reference >= _update_thread_proposal_deadline(
                     session, task, attempt
                 ):
                     return TerminalObservation(
