@@ -112,13 +112,15 @@ class _DeadlineHTTPSHandler(HTTPSHandler):
 @contextmanager
 def _open_with_deadline(
     request: Request,
-    timeout_seconds: float,
+    deadline: float,
 ) -> Iterator[Any]:
-    deadline = time.monotonic() + timeout_seconds
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("generation_deadline_exceeded")
     handler = _DeadlineHTTPSHandler(deadline)
     opener = build_opener(handler)
     try:
-        with opener.open(request, timeout=timeout_seconds) as response:
+        with opener.open(request, timeout=remaining) as response:
             yield response
     finally:
         handler.cancel_deadline()
@@ -376,6 +378,7 @@ class CloudflareWorkersAIGenerationProvider:
             if timeout_seconds is None
             else min(self._config.timeout_seconds, float(timeout_seconds))
         )
+        request_deadline = time.monotonic() + request_timeout
 
         self.maximum_request_cost(
             system_prompt=system_prompt, user_prompt=user_prompt
@@ -402,7 +405,7 @@ class CloudflareWorkersAIGenerationProvider:
 
         started = time.perf_counter()
         try:
-            with _open_with_deadline(request, request_timeout) as response:
+            with _open_with_deadline(request, request_deadline) as response:
                 document = json.loads(response.read().decode("utf-8"))
         except HTTPError as error:
             raise GenerationProviderError(
