@@ -203,6 +203,69 @@ def test_absolute_generation_deadline_interrupts_tcp_and_tls(
         connection.cancel_deadline()
 
 
+def test_absolute_deadline_closes_socket_during_response_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client_socket, peer_socket = generation.socket.socketpair()
+
+    class ConnectedSocket:
+        def settimeout(self, timeout: float) -> None:
+            client_socket.settimeout(timeout)
+
+        def connect(self, _address: object) -> None:
+            return None
+
+        def shutdown(self, how: int) -> None:
+            client_socket.shutdown(how)
+
+        def close(self) -> None:
+            client_socket.close()
+
+    class PassthroughTLSContext:
+        def wrap_socket(
+            self,
+            sock: ConnectedSocket,
+            *,
+            server_hostname: str,
+        ) -> ConnectedSocket:
+            assert server_hostname == "api.cloudflare.com"
+            return sock
+
+    monkeypatch.setattr(
+        generation.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (
+                generation.socket.AF_INET,
+                generation.socket.SOCK_STREAM,
+                0,
+                "",
+                ("127.0.0.1", 443),
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        generation.socket,
+        "socket",
+        lambda *_args, **_kwargs: ConnectedSocket(),
+    )
+    connection = generation._DeadlineHTTPSConnection(
+        "api.cloudflare.com",
+        timeout=1.0,
+        deadline=time.monotonic() + 0.05,
+    )
+    connection._context = PassthroughTLSContext()  # type: ignore[assignment]
+
+    try:
+        connection.connect()
+        peer_socket.settimeout(0.5)
+        assert peer_socket.recv(1) == b""
+    finally:
+        connection.cancel_deadline()
+        client_socket.close()
+        peer_socket.close()
+
+
 def test_incomplete_http_response_is_a_retryable_provider_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
