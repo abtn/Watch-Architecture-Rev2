@@ -1185,6 +1185,7 @@ def test_provider_timeout_at_task_deadline_is_terminal_and_keeps_charge_unknown(
         assert charge is not None and charge.status == "unknown"
         assert failed is not None
         assert failed.payload["failure_reason"] == "update_thread_deadline_exceeded"
+        assert terminal_attempt_failed is not None
         assert retry_events == []
         assert durable_generation_events == []
 
