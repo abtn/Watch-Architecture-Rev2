@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from threading import Barrier
+import time
 from typing import Iterator
 from uuid import UUID, uuid4
 
@@ -407,6 +408,42 @@ def test_daily_task_quota_allows_admission_below_limit(
         assert task.status == "running"
         assert task.attempt_count == 1
         assert session.get(Event, result.event_id).type == "task_started"
+
+
+def test_daily_quota_query_delay_is_excluded_from_durable_admission_deadline(
+    session_factory, pending_task, monkeypatch
+) -> None:
+    with session_factory.begin() as session:
+        task = session.get(Task, pending_task)
+        policy = session.scalar(
+            select(TeamPolicy).where(
+                TeamPolicy.team_id == task.team_id,
+                TeamPolicy.version == task.policy_version,
+            )
+        )
+        policy.rules = {"budgets": {"max_tasks_per_day": 2}}
+
+    original_scalar = Session.scalar
+    quota_query_completed: list[datetime] = []
+
+    def delayed_scalar(self, statement, *args, **kwargs):
+        if "count(events.id)" in str(statement).lower():
+            time.sleep(0.05)
+            result = original_scalar(self, statement, *args, **kwargs)
+            quota_query_completed.append(datetime.now(timezone.utc))
+            return result
+        return original_scalar(self, statement, *args, **kwargs)
+
+    monkeypatch.setattr(Session, "scalar", delayed_scalar)
+    admission = TaskRuntime(session_factory).admit(pending_task)
+
+    assert len(quota_query_completed) == 1
+    assert admission.admitted_at >= quota_query_completed[0]
+    with session_factory() as session:
+        started = session.get(Event, admission.event_id)
+        assert started is not None
+        assert started.type == "task_started"
+        assert started.created_at == admission.admitted_at
 
 
 def test_daily_task_quota_rejects_without_partial_changes(
