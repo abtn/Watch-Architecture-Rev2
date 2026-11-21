@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, sessionmaker
 import core.update_thread_worker as worker_module
 from core.generation import (
     GenerationCostQuote,
+    GenerationProviderError,
     GenerationResult,
     GenerationUsage,
 )
@@ -965,6 +966,86 @@ class _FixedAdmissionRuntime(TaskRuntime):
             admission,
             admitted_monotonic=self._admitted_monotonic,
         )
+
+
+def test_retryable_provider_interruption_schedules_task_retry(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    class _InterruptedProvider:
+        provider_name = "cloudflare_workers_ai"
+        model = "watch-rw3-interrupted-provider"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def maximum_request_cost(
+            self, *, system_prompt: str, user_prompt: str
+        ) -> GenerationCostQuote:
+            return GenerationCostQuote(
+                provider=self.provider_name,
+                model=self.model,
+                maximum_input_tokens=1,
+                maximum_output_tokens=1,
+                input_usd_per_million_tokens=Decimal("0.152"),
+                output_usd_per_million_tokens=Decimal("0.287"),
+                pricing_revision="test",
+            )
+
+        def generate_raw(
+            self,
+            *,
+            system_prompt: str,
+            user_prompt: str,
+            temperature: float = 0.1,
+            timeout_seconds: float | None = None,
+        ) -> GenerationResult:
+            self.calls += 1
+            raise GenerationProviderError(
+                "cloudflare_connection_or_timeout",
+                retryable=True,
+            )
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _InterruptedProvider()
+
+    with pytest.raises(
+        UpdateThreadWorkerError,
+        match="cloudflare_connection_or_timeout",
+    ):
+        UpdateThreadWorker(
+            session_factory,
+            snapshot_store,
+            provider,
+        ).run(created.task_id)
+
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        retry_events = set(
+            session.scalars(
+                select(Event.type).where(
+                    Event.task_id == created.task_id,
+                    Event.type.in_(
+                        ["task_attempt_failed", "task_retry_scheduled"]
+                    ),
+                )
+            )
+        )
+        assert task is not None
+        assert task.status == "pending"
+        assert task.attempt_count == 1
+        assert charge is not None and charge.status == "unknown"
+        assert retry_events == {
+            "task_attempt_failed",
+            "task_retry_scheduled",
+        }
 
 
 class _FakeUpdateThreadProvider:
