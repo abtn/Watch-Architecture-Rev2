@@ -18,6 +18,7 @@ from core.generation import (
     GenerationCostQuote,
     GenerationProviderError,
 )
+from core.update_thread import MAX_ATTEMPTS, TASK_BUDGET
 
 
 class FakeHTTPResponse:
@@ -543,7 +544,10 @@ def test_three_maximum_update_thread_reservations_fit_task_cost_ceiling() -> Non
     assert quote.maximum_cost_usd == Decimal("0.00500224")
     three_attempt_reservations = quote.maximum_cost_usd * 3
     assert three_attempt_reservations == Decimal("0.01500672")
-    assert three_attempt_reservations < Decimal("0.02")
+    task_ceiling = Decimal(str(TASK_BUDGET["max_cost_usd"]))
+    assert task_ceiling == Decimal("0.02")
+    assert MAX_ATTEMPTS == 3
+    assert three_attempt_reservations < task_ceiling
 
 
 def test_initial_provider_rejects_a_model_without_a_pinned_price_card() -> None:
