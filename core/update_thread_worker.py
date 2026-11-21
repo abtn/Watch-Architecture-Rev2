@@ -241,13 +241,20 @@ class UpdateThreadWorker:
             provider_timeout = min(
                 MAX_PROVIDER_TIMEOUT_SECONDS, remaining_seconds
             )
-            generated = self._provider.generate_raw(
-                system_prompt=SYSTEM_PROMPT,
-                user_prompt=user_prompt,
-                temperature=0.1,
-                timeout_seconds=provider_timeout,
-                deadline_monotonic=deadline,
-            )
+            try:
+                generated = self._provider.generate_raw(
+                    system_prompt=SYSTEM_PROMPT,
+                    user_prompt=user_prompt,
+                    temperature=0.1,
+                    timeout_seconds=provider_timeout,
+                    deadline_monotonic=deadline,
+                )
+            except Exception as error:
+                try:
+                    self._check_deadline(deadline)
+                except UpdateThreadWorkerError as deadline_error:
+                    raise deadline_error from error
+                raise
             if (
                 not isinstance(generated, GenerationResult)
                 or not isinstance(generated.model, str)
