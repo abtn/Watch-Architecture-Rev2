@@ -1090,6 +1090,100 @@ class _FakeUpdateThreadProvider:
         )
 
 
+def test_provider_timeout_at_task_deadline_is_terminal_and_keeps_charge_unknown(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
+    )
+
+    class _DeadlineTimeoutProvider(_FakeUpdateThreadProvider):
+        def generate_raw(
+            self,
+            *,
+            system_prompt: str,
+            user_prompt: str,
+            temperature: float = 0.1,
+            timeout_seconds: float | None = None,
+            deadline_monotonic: float | None = None,
+        ) -> GenerationResult:
+            self.calls += 1
+            self.timeout_seconds = timeout_seconds
+            self.deadline_monotonic = deadline_monotonic
+            clock["now"] = deadline_monotonic
+            raise GenerationProviderError(
+                "cloudflare_connection_or_timeout",
+                retryable=True,
+            )
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _DeadlineTimeoutProvider('{"proposals":[]}')
+
+    with pytest.raises(
+        UpdateThreadWorkerError,
+        match="update_thread_deadline_exceeded",
+    ):
+        UpdateThreadWorker(
+            session_factory,
+            snapshot_store,
+            provider,
+            runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+        ).run(created.task_id)
+
+    assert provider.calls == 1
+    assert provider.timeout_seconds == 30.0
+    assert provider.deadline_monotonic == 145.0
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        failed = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_failed",
+            )
+        )
+        retry_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == created.task_id,
+                    Event.type.in_(
+                        ["task_attempt_failed", "task_retry_scheduled"]
+                    ),
+                )
+            )
+        )
+        durable_generation_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == created.task_id,
+                    Event.type.in_(
+                        [
+                            RECEIPT_EVENT_TYPE,
+                            PROPOSALS_EVENT_TYPE,
+                            "update_thread_committed",
+                            "update_thread_rejected",
+                        ]
+                    ),
+                )
+            )
+        )
+        assert task is not None and task.status == "failed"
+        assert task.attempt_count == 1
+        assert charge is not None and charge.status == "unknown"
+        assert failed is not None
+        assert failed.payload["failure_reason"] == "update_thread_deadline_exceeded"
+        assert retry_events == []
+        assert durable_generation_events == []
+
+
 def test_update_thread_worker_caps_provider_timeout_at_thirty_seconds(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
