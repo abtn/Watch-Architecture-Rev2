@@ -10,7 +10,7 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -218,12 +218,7 @@ class UpdateThreadWorker:
     def run(self, task_id: UUID) -> UpdateThreadWorkerResult:
         admission = self._runtime.admit(task_id)
         attempt = admission.attempt_count
-        remaining = (
-            admission.admitted_at
-            + timedelta(seconds=MAX_TASK_SECONDS)
-            - datetime.now(timezone.utc)
-        ).total_seconds()
-        deadline = time.monotonic() + max(0.0, remaining)
+        deadline = admission.admitted_monotonic + MAX_TASK_SECONDS
         reservation: GenerationCostReservation | None = None
 
         try:
