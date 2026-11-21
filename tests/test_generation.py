@@ -173,7 +173,6 @@ def test_absolute_generation_deadline_bounds_slow_dns_resolution(
             assert not dns_worker[0].is_alive()
 
 
-
 def test_repeated_stalled_dns_resolution_is_process_bounded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
