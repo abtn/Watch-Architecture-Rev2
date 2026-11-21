@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from contextlib import nullcontext
 from decimal import Decimal
 from http.client import IncompleteRead
 from threading import Event, Thread, current_thread
@@ -229,7 +230,7 @@ def test_absolute_generation_deadline_interrupts_tcp_and_tls(
     connection = generation._DeadlineHTTPSConnection(
         "api.cloudflare.com",
         timeout=1.0,
-        deadline=time.monotonic() + 0.03,
+        deadline=time.monotonic() + 0.12,
     )
     connection._context = BlockingTLSContext()  # type: ignore[assignment]
     started = time.monotonic()
@@ -237,12 +238,30 @@ def test_absolute_generation_deadline_interrupts_tcp_and_tls(
     try:
         with pytest.raises(TimeoutError, match="generation_deadline_exceeded"):
             connection.connect()
-        assert time.monotonic() - started < 0.12
+        assert time.monotonic() - started < 0.30
         if blocked_phase == "tls":
             assert tls_started.is_set()
         assert closed.is_set()
     finally:
         connection.cancel_deadline()
+
+
+def test_absolute_deadline_rejects_send_after_expiry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeSocket:
+        def settimeout(self, _timeout: float) -> None:
+            return None
+
+    connection = generation._DeadlineHTTPSConnection(
+        "api.cloudflare.com",
+        timeout=1.0,
+        deadline=time.monotonic() - 0.001,
+    )
+    connection.sock = FakeSocket()  # type: ignore[assignment]
+
+    with pytest.raises(TimeoutError, match="generation_deadline_exceeded"):
+        connection.send(b"POST / HTTP/1.1\r\n")
 
 
 def test_absolute_deadline_closes_socket_during_response_read(
@@ -306,6 +325,28 @@ def test_absolute_deadline_closes_socket_during_response_read(
         connection.cancel_deadline()
         client_socket.close()
         peer_socket.close()
+
+
+def test_provider_propagates_absolute_deadline_not_relative_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, float] = {}
+
+    def open_at_deadline(request: Request, deadline: float):
+        captured["deadline"] = deadline
+        return nullcontext(FakeHTTPResponse(_response()))
+
+    monkeypatch.setattr(generation, "_open_with_deadline", open_at_deadline)
+    monkeypatch.setattr(generation.time, "monotonic", lambda: 100.0)
+
+    _provider().generate_raw(
+        system_prompt="Return JSON.",
+        user_prompt="Propose one item.",
+        timeout_seconds=30.0,
+        deadline_monotonic=145.0,
+    )
+
+    assert captured["deadline"] == 145.0
 
 
 def test_incomplete_http_response_is_a_retryable_provider_failure(

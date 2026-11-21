@@ -246,6 +246,7 @@ class UpdateThreadWorker:
                 user_prompt=user_prompt,
                 temperature=0.1,
                 timeout_seconds=provider_timeout,
+                deadline_monotonic=deadline,
             )
             if (
                 not isinstance(generated, GenerationResult)
@@ -257,6 +258,8 @@ class UpdateThreadWorker:
                     reservation, "generation_result_invalid"
                 )
                 raise UpdateThreadWorkerError("generation_result_invalid")
+
+            self._check_deadline(deadline)
 
             receipt = self._record_receipt(
                 task_id, attempt, context, reservation, generated
@@ -660,7 +663,7 @@ class UpdateThreadWorker:
                     )
                 )
             )
-            prior_attempts = []
+            prior_attempts: set[int] = set()
             for event in prior:
                 if not isinstance(event.payload, dict) or type(
                     event.payload.get("attempt")
@@ -668,9 +671,21 @@ class UpdateThreadWorker:
                     raise UpdateThreadWorkerError(
                         "update_thread_proposals_event_corrupt"
                     )
-                if event.payload["attempt"] >= attempt:
-                    prior_attempts.append(event)
-            if prior_attempts:
+                prior_attempt = event.payload["attempt"]
+                if prior_attempt <= 0:
+                    raise UpdateThreadWorkerError(
+                        "update_thread_proposals_event_attempt_invalid"
+                    )
+                if prior_attempt > attempt:
+                    raise UpdateThreadWorkerError(
+                        "update_thread_proposals_event_future_attempt"
+                    )
+                if prior_attempt in prior_attempts:
+                    raise UpdateThreadWorkerError(
+                        "update_thread_proposals_event_duplicate"
+                    )
+                prior_attempts.add(prior_attempt)
+            if attempt in prior_attempts:
                 raise UpdateThreadWorkerError("update_thread_proposals_event_duplicate")
             payload = {
                 "schema_version": 1,

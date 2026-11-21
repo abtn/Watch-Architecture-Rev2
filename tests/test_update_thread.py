@@ -927,6 +927,10 @@ def test_task_runtime_admission_rejects_tampered_update_thread_request(
         session.execute(
             update(Event).where(Event.id == event.id).values(payload=payload)
         )
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        task.status = "pending"
+        task.attempt_count = 0
 
     with pytest.raises(
         TaskNotEligible,
@@ -981,6 +985,7 @@ def test_retryable_provider_interruption_schedules_task_retry(
             user_prompt: str,
             temperature: float = 0.1,
             timeout_seconds: float | None = None,
+            deadline_monotonic: float | None = None,
         ) -> GenerationResult:
             self.calls += 1
             raise GenerationProviderError(
@@ -1037,6 +1042,7 @@ class _FakeUpdateThreadProvider:
         self.raw_completion = raw_completion
         self.calls = 0
         self.timeout_seconds: float | None = None
+        self.deadline_monotonic: float | None = None
 
     def maximum_request_cost(
         self, *, system_prompt: str, user_prompt: str
@@ -1063,9 +1069,11 @@ class _FakeUpdateThreadProvider:
         user_prompt: str,
         temperature: float = 0.1,
         timeout_seconds: float | None = None,
+        deadline_monotonic: float | None = None,
     ) -> GenerationResult:
         self.calls += 1
         self.timeout_seconds = timeout_seconds
+        self.deadline_monotonic = deadline_monotonic
         return GenerationResult(
             content={},
             model=self.model,
@@ -1102,6 +1110,7 @@ def test_update_thread_worker_caps_provider_timeout_at_thirty_seconds(
 
     assert provider.calls == 1
     assert provider.timeout_seconds == 30.0
+    assert provider.deadline_monotonic == 145.0
 
 
 def test_update_thread_worker_provider_timeout_is_capped_by_remaining_deadline(
@@ -1216,6 +1225,7 @@ def test_update_thread_worker_discards_provider_result_returned_after_deadline(
             user_prompt: str,
             temperature: float = 0.1,
             timeout_seconds: float | None = None,
+            deadline_monotonic: float | None = None,
         ) -> GenerationResult:
             result = super().generate_raw(
                 system_prompt=system_prompt,
@@ -1265,10 +1275,10 @@ def test_update_thread_worker_discards_provider_result_returned_after_deadline(
             )
         )
         assert task is not None and task.status == "failed"
-        assert receipt is not None
+        assert receipt is None
         assert proposals is None
         assert marker is None
-        assert charge is not None and charge.status == "reconciled"
+        assert charge is not None and charge.status == "unknown"
 
 
 def test_update_thread_worker_checks_deadline_after_parsing(
@@ -1426,6 +1436,73 @@ def test_update_thread_worker_leaves_persisted_proposals_for_recovery_after_dead
         assert marker is None
 
 
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "attempt_zero",
+        "attempt_negative",
+        "attempt_boolean",
+        "duplicate",
+        "malformed",
+        "future",
+    ],
+)
+def test_update_thread_receipt_history_validation_rejects_invalid_history(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    tamper: str,
+) -> None:
+    from core.world_memory import (
+        WorldMemoryError,
+        _validate_update_thread_receipt_history,
+    )
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    UpdateThreadWorker(
+        session_factory, snapshot_store, _FakeUpdateThreadProvider('{"proposals":[]}')
+    ).run(created.task_id)
+
+    with session_factory.begin() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        assert receipt is not None
+        payload = dict(receipt.payload)
+        if tamper == "attempt_zero":
+            payload["attempt"] = 0
+        elif tamper == "attempt_negative":
+            payload["attempt"] = -1
+        elif tamper == "attempt_boolean":
+            payload["attempt"] = True
+        elif tamper == "malformed":
+            payload.pop("raw_completion_text")
+        elif tamper == "future":
+            payload["attempt"] = task.attempt_count + 1
+        elif tamper == "duplicate":
+            session.add(
+                Event(
+                    id=uuid4(),
+                    task_id=created.task_id,
+                    type=RECEIPT_EVENT_TYPE,
+                    payload=payload,
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+        if tamper != "duplicate":
+            session.execute(
+                update(Event).where(Event.id == receipt.id).values(payload=payload)
+            )
+
+        with pytest.raises(WorldMemoryError):
+            _validate_update_thread_receipt_history(session, task)
+
+
 def test_update_thread_worker_records_context_identity_and_empty_proposal_set(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
@@ -1565,6 +1642,7 @@ def test_interrupted_provider_call_marks_reserved_charge_unknown_before_retry(
             user_prompt: str,
             temperature: float = 0.1,
             timeout_seconds: float | None = None,
+            deadline_monotonic: float | None = None,
         ) -> GenerationResult:
             self.calls += 1
             self.timeout_seconds = timeout_seconds
@@ -1683,6 +1761,71 @@ def test_model_output_cannot_supply_actor_identity(
                 ),
             )
         ) is None
+
+
+@pytest.mark.parametrize(
+    ("location", "field"),
+    [
+        ("event_manifest", "attempt"),
+        ("event_manifest", "policy_version"),
+        ("event_manifest", "evidence_characters"),
+        ("snapshot_task", "attempt"),
+        ("snapshot_task", "policy_version"),
+        ("snapshot_policy", "version"),
+    ],
+)
+def test_update_thread_worker_never_calls_provider_for_boolean_context_fields(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    location: str,
+    field: str,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    _admit_fixture_task(session_factory, created.task_id)
+    assembler = UpdateThreadContextAssembler(session_factory, snapshot_store)
+    assembler.assemble(created.task_id, 1)
+
+    with session_factory.begin() as session:
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == CONTEXT_EVENT_TYPE,
+            )
+        )
+        assert event is not None
+        payload = dict(event.payload)
+        if location == "event_manifest":
+            payload["manifest"] = {**payload["manifest"], field: True}
+        else:
+            document = json.loads(snapshot_store.read(payload["snapshot_ref"]))
+            document_key = "task" if location == "snapshot_task" else "policy"
+            document[document_key][field] = True
+            snapshot_ref, content_hash = snapshot_store.put(
+                json.dumps(
+                    document,
+                    sort_keys=True,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ).encode("utf-8")
+            )
+            payload["snapshot_ref"] = snapshot_ref
+            payload["content_hash"] = content_hash
+        session.execute(
+            update(Event).where(Event.id == event.id).values(payload=payload)
+        )
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        task.status = "pending"
+        task.attempt_count = 0
+
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    with pytest.raises(UpdateThreadWorkerError):
+        UpdateThreadWorker(session_factory, snapshot_store, provider).run(
+            created.task_id
+        )
+    assert provider.calls == 0
 
 
 @pytest.mark.parametrize(
@@ -2317,6 +2460,8 @@ def test_update_thread_worker_rejects_live_provider_until_separately_authorized(
             system_prompt: str,
             user_prompt: str,
             temperature: float = 0.1,
+            timeout_seconds: float | None = None,
+            deadline_monotonic: float | None = None,
         ) -> GenerationResult:
             raise AssertionError("live provider must not be called")
 
@@ -2643,6 +2788,7 @@ def test_update_thread_worker_terminalizes_generation_cost_overrun_without_write
             user_prompt: str,
             temperature: float = 0.1,
             timeout_seconds: float | None = None,
+            deadline_monotonic: float | None = None,
         ) -> GenerationResult:
             self.calls += 1
             self.timeout_seconds = timeout_seconds

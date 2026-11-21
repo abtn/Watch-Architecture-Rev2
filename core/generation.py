@@ -42,6 +42,16 @@ class _DeadlineHTTPSConnection(HTTPSConnection):
         self._deadline_expired = Event()
         super().__init__(host, **kwargs)
 
+    def send(self, data: Any) -> None:
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0 or self._deadline_expired.is_set():
+            raise TimeoutError("generation_deadline_exceeded")
+        if self.sock is not None:
+            self.sock.settimeout(remaining)
+        super().send(data)
+        if time.monotonic() >= self._deadline:
+            raise TimeoutError("generation_deadline_exceeded")
+
     def connect(self) -> None:
         remaining = self._deadline - time.monotonic()
         if remaining <= 0:
@@ -77,7 +87,10 @@ class _DeadlineHTTPSConnection(HTTPSConnection):
         try:
             if not resolved.wait(remaining):
                 raise TimeoutError("generation_deadline_exceeded")
-            if self._deadline_expired.is_set() or time.monotonic() >= self._deadline:
+            if (
+                self._deadline_expired.is_set()
+                or time.monotonic() >= self._deadline
+            ):
                 raise TimeoutError("generation_deadline_exceeded")
             if failures:
                 raise failures[0]
@@ -119,7 +132,16 @@ class _DeadlineHTTPSConnection(HTTPSConnection):
 
             tunnel_host = getattr(self, "_tunnel_host", None)
             if tunnel_host:
+                remaining = self._deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("generation_deadline_exceeded")
+                self.sock.settimeout(remaining)
                 getattr(self, "_tunnel")()
+                if (
+                    self._deadline_expired.is_set()
+                    or time.monotonic() >= self._deadline
+                ):
+                    raise TimeoutError("generation_deadline_exceeded")
 
             remaining = self._deadline - time.monotonic()
             if remaining <= 0:
@@ -272,6 +294,7 @@ class GenerationProvider(Protocol):
         user_prompt: str,
         temperature: float = 0.1,
         timeout_seconds: float | None = None,
+        deadline_monotonic: float | None = None,
     ) -> GenerationResult: ...
 
 
@@ -430,6 +453,7 @@ class CloudflareWorkersAIGenerationProvider:
         user_prompt: str,
         temperature: float = 0.1,
         timeout_seconds: float | None = None,
+        deadline_monotonic: float | None = None,
     ) -> GenerationResult:
         """Return raw completion text with validated model and usage metadata.
 
@@ -454,12 +478,24 @@ class CloudflareWorkersAIGenerationProvider:
             or timeout_seconds <= 0
         ):
             raise ValueError("invalid_generation_timeout")
+        if deadline_monotonic is not None and (
+            isinstance(deadline_monotonic, bool)
+            or not isinstance(deadline_monotonic, (int, float))
+            or not math.isfinite(deadline_monotonic)
+        ):
+            raise ValueError("invalid_generation_deadline")
         request_timeout = (
             self._config.timeout_seconds
             if timeout_seconds is None
             else min(self._config.timeout_seconds, float(timeout_seconds))
         )
-        request_deadline = time.monotonic() + request_timeout
+        now = time.monotonic()
+        if deadline_monotonic is None:
+            request_deadline = now + request_timeout
+        else:
+            request_deadline = float(deadline_monotonic)
+            if time.monotonic() >= request_deadline:
+                raise TimeoutError("generation_deadline_exceeded")
 
         self.maximum_request_cost(
             system_prompt=system_prompt, user_prompt=user_prompt

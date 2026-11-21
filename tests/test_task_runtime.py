@@ -231,6 +231,21 @@ def test_admission_transitions_and_audits(session_factory, pending_task) -> None
         }
 
 
+def test_admission_captures_monotonic_timestamp_used_by_worker(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory,
+    pending_task,
+) -> None:
+    monkeypatch.setattr(
+        "core.task_runtime.time.monotonic",
+        lambda: 1234.5,
+    )
+
+    result = TaskRuntime(session_factory).admit(pending_task)
+
+    assert result.admitted_monotonic == 1234.5
+
+
 @pytest.mark.parametrize("status", ["running", "done", "failed", "unknown"])
 def test_non_pending_task_cannot_be_admitted(
     session_factory, pending_task, status
