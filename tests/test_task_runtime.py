@@ -410,7 +410,7 @@ def test_daily_task_quota_allows_admission_below_limit(
         assert session.get(Event, result.event_id).type == "task_started"
 
 
-def test_daily_quota_query_delay_is_excluded_from_durable_admission_deadline(
+def test_daily_quota_query_delay_preserves_paired_admission_deadline(
     session_factory, pending_task, monkeypatch
 ) -> None:
     with session_factory.begin() as session:
