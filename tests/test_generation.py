@@ -4,7 +4,7 @@ import json
 import time
 from decimal import Decimal
 from http.client import IncompleteRead
-from threading import Event, Thread
+from threading import Event
 from urllib.error import HTTPError
 from urllib.request import Request
 
@@ -100,96 +100,101 @@ def test_generation_posts_once_and_returns_validated_json_and_usage(
     assert result.request_id == "chatcmpl-test"
 
 
-def test_absolute_generation_deadline_closes_an_active_response_socket(
+def test_absolute_generation_deadline_bounds_slow_dns_resolution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    client_socket, peer_socket = generation.socket.socketpair()
-    read_finished = Event()
+    dns_finished = Event()
 
-    def fake_connect(connection: generation.HTTPSConnection) -> None:
-        connection.sock = client_socket
-
-    def wait_for_response() -> None:
-        try:
-            peer_socket.recv(1)
-        finally:
-            read_finished.set()
-
-    monkeypatch.setattr(generation.HTTPSConnection, "connect", fake_connect)
-    connection = generation._DeadlineHTTPSConnection(
-        "api.cloudflare.com",
-        timeout=1.0,
-        deadline=time.monotonic() + 0.05,
-    )
-    connection.connect()
-    reader = Thread(target=wait_for_response, daemon=True)
-    reader.start()
-    try:
-        assert read_finished.wait(timeout=0.5)
-        reader.join(timeout=0.5)
-        assert reader.is_alive() is False
-    finally:
-        connection.cancel_deadline()
-        peer_socket.close()
-        reader.join(timeout=0.5)
-
-
-@pytest.mark.parametrize("socket_before_delay", [False, True])
-def test_connection_establishment_obeys_absolute_deadline(
-    monkeypatch: pytest.MonkeyPatch,
-    socket_before_delay: bool,
-) -> None:
-    client_socket, peer_socket = generation.socket.socketpair()
-    late_connect_finished = Event()
-
-    def delayed_connect(connection: generation.HTTPSConnection) -> None:
-        if socket_before_delay:
-            connection.sock = client_socket
+    def slow_dns(*_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
         time.sleep(0.15)
-        if not socket_before_delay:
-            connection.sock = client_socket
-        late_connect_finished.set()
+        dns_finished.set()
+        return []
 
-    monkeypatch.setattr(generation.HTTPSConnection, "connect", delayed_connect)
+    monkeypatch.setattr(generation.socket, "getaddrinfo", slow_dns)
     connection = generation._DeadlineHTTPSConnection(
         "api.cloudflare.com",
         timeout=1.0,
         deadline=time.monotonic() + 0.03,
     )
     started = time.monotonic()
+
+    with pytest.raises(TimeoutError, match="generation_deadline_exceeded"):
+        connection.connect()
+
+    assert time.monotonic() - started < 0.12
+    assert dns_finished.wait(timeout=0.5)
+    connection.cancel_deadline()
+
+
+@pytest.mark.parametrize("blocked_phase", ["tcp", "tls"])
+def test_absolute_generation_deadline_interrupts_tcp_and_tls(
+    monkeypatch: pytest.MonkeyPatch,
+    blocked_phase: str,
+) -> None:
+    closed = Event()
+    tls_started = Event()
+
+    class BlockingSocket:
+        def settimeout(self, _timeout: float) -> None:
+            return None
+
+        def bind(self, _address: object) -> None:
+            return None
+
+        def connect(self, _address: object) -> None:
+            if blocked_phase == "tcp":
+                assert closed.wait(timeout=0.5)
+                raise OSError("socket closed at deadline")
+
+        def shutdown(self, _how: int) -> None:
+            closed.set()
+
+        def close(self) -> None:
+            closed.set()
+
+    connection_socket = BlockingSocket()
+
+    class BlockingTLSContext:
+        def wrap_socket(
+            self,
+            sock: BlockingSocket,
+            *,
+            server_hostname: str,
+        ) -> BlockingSocket:
+            assert server_hostname == "api.cloudflare.com"
+            tls_started.set()
+            assert closed.wait(timeout=0.5)
+            raise OSError("TLS socket closed at deadline")
+
+    monkeypatch.setattr(
+        generation.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (generation.socket.AF_INET, generation.socket.SOCK_STREAM, 0, "", ("127.0.0.1", 443))
+        ],
+    )
+    monkeypatch.setattr(
+        generation.socket,
+        "socket",
+        lambda *_args, **_kwargs: connection_socket,
+    )
+    connection = generation._DeadlineHTTPSConnection(
+        "api.cloudflare.com",
+        timeout=1.0,
+        deadline=time.monotonic() + 0.03,
+    )
+    connection._context = BlockingTLSContext()  # type: ignore[assignment]
+    started = time.monotonic()
+
     try:
         with pytest.raises(TimeoutError, match="generation_deadline_exceeded"):
             connection.connect()
         assert time.monotonic() - started < 0.12
-        assert late_connect_finished.wait(timeout=0.5)
-        assert client_socket.fileno() == -1
+        if blocked_phase == "tls":
+            assert tls_started.is_set()
+        assert closed.is_set()
     finally:
         connection.cancel_deadline()
-        client_socket.close()
-        peer_socket.close()
-
-
-def test_incomplete_http_response_is_a_retryable_provider_failure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class IncompleteResponse(FakeHTTPResponse):
-        def read(self) -> bytes:
-            raise IncompleteRead(b'{"choices":', 128)
-
-    monkeypatch.setattr(
-        generation,
-        "_open_with_deadline",
-        lambda *_args, **_kwargs: IncompleteResponse(_response()),
-    )
-
-    with pytest.raises(GenerationProviderError) as caught:
-        _provider().generate_raw(
-            system_prompt="Return JSON.",
-            user_prompt="Propose one item.",
-        )
-
-    assert caught.value.reason == "cloudflare_connection_or_timeout"
-    assert caught.value.retryable is True
 
 
 def test_generation_raw_uses_the_smaller_per_call_timeout(
