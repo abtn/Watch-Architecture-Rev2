@@ -228,6 +228,8 @@ The matrix defines required proof obligations, not tests that already exist. Eac
 
 ### RW3.4 — integrated acceptance evidence (required; closeout remains gated)
 
+The deadline/recovery correction is implemented on PR #140 at source head `d291ca9e54a5a3bfd65fe5b446b11ea7bbc8c9d3` and verified by hosted CI run [44906465733](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44906465733). PR #142 is test-only and rebased onto that head at `64acea7df6f245e23b771324f3a07f77619d7cf1`, verified by hosted CI run [44906862664](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44906862664). A 45-second monotonic Task deadline closes provider invocation and transport transmission; pre-expiry persisted proposals may be recovered without reinvocation, while late proposals cannot be persisted or committed. Receipt history and Context fail-closed rules apply in terminal and recovery paths. This evidence does not close RW3.4 or authorize live providers.
+
 RW3.4 closeout must collect and rerun the complete evidence chain rather than relying on slice-local green checks:
 
 - RW3.1: host authorization/request replay, exact Task shape, deterministic Context ordering/bounds, source Snapshot and quote validation, immutable same-attempt replay, and all six boolean-substitution regression cases in `test_context_replay_rejects_boolean_substitution_for_integer_fields`.

@@ -386,6 +386,8 @@ TaskRuntime owns the Task row lock, attempt identity, retry decision, and termin
 
 The handoff is a narrow Task-type-specific branch in the existing TaskRuntime, not a generic recovery framework. The worker may expose a normal first-attempt execution method, but all interrupted/replayed execution must converge on this same in-session resume function.
 
+**RW3.4 deadline/recovery correction:** the 45-second Task deadline is one absolute monotonic deadline captured at real TaskRuntime admission. It bounds provider invocation, DNS/connect/tunnel/request/send/read phases where the existing transport supports them, and proposal persistence/commit. A proposal immutable and durably persisted before expiry remains eligible for interrupted recovery and commit; recovery revalidates all receipt, Context, fingerprint, charge, authorization, and marker invariants and never invokes the provider. A provider response/proposal first presented after expiry is discarded and cannot persist or commit. Receipt history validation is shared by terminal and recovery paths.
+
 ### 10.6 Typed actor, proposal Events, and terminal validators
 
 The shared commit core accepts a validated proposal envelope and a closed actor union; it does not accept an untyped actor dictionary or infer authority from Event payloads.

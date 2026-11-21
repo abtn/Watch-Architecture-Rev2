@@ -27,6 +27,27 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 
 RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery was formally accepted by the Operator on 2026-11-20 and squash-merged by PR #138; its exact implementation, corrective, local, and hosted verification evidence is recorded below. RW3.4 integrated closeout remains separately gated. Live provider authorization remains closed; only deterministic fake providers are permitted.
 
+## RW3.4 deadline/recovery corrective proof — 2026-11-21
+
+**Status:** implementation and proof correction delivered for PR #140 only. RW3.4 closeout remains gated; no live provider authorization or milestone acceptance is claimed.
+
+- PR #140: implementation branch `rw3-4-deadline-enforcement-20261120`; implementation head `d291ca9e54a5a3bfd65fe5b446b11ea7bbc8c9d3`; exact hosted CI run [44906465733](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44906465733) passed on that head.
+- PR #142: test-only branch `rw3-4-cumulative-cost-proof-stacked-20261120`; rebased exact head `64acea7df6f245e23b771324f3a07f77619d7cf1`; base PR #140 at `d291ca9e54a5a3bfd65fe5b446b11ea7bbc8c9d3`; exact hosted CI run [44906862664](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44906862664) passed on that head.
+- Starting PR heads were verified exactly: PR #140 `3074eb39bc97e254940f1f9bb1689974cac740b7`, PR #142 `081c08eedc2e24925621af2da1f4e8ddd0f5a278`.
+- Chosen semantics: a 45-second Task deadline bounds admission-to-generation/proposal production. A proposal durably persisted before expiry may be committed by interrupted recovery after expiry, but recovery never invokes the provider and an expired attempt cannot present or persist a new proposal. Context, receipt, fingerprint, authorization, and commit-marker validation remain fail-closed.
+- Absolute monotonic deadline propagation is implemented at worker/provider invocation and the existing HTTP opener/connection boundary, including DNS/connect/TLS and send/read phases supported by the transport.
+- Full receipt history is validated for positive built-in integers, duplicate attempts, future attempts, malformed payloads, and prior-attempt preservation. Terminal and interrupted-recovery paths use the same fail-closed rules.
+- Local PR #140 disposable pgvector verification: Alembic migration reached `0019_rw1_world_memory (head)` and reported exactly one head/current revision. Focused suite: **160 passed**; Ruff passed; mypy passed (`42` source files); full suite: **1195 passed, 130 warnings**; `git diff --check` passed; the exact container was removed and environment variables restored.
+- Local PR #142 verification: migration reached `0019_rw1_world_memory (head)` with exactly one head/current revision; cumulative-cost focused suite: **2 passed**; Ruff, mypy, and `git diff --check` passed; the exact container was removed and environment variables restored.
+- Node proofs:
+  - Six Boolean Context worker cases: `tests/test_update_thread.py::test_update_thread_worker_never_calls_provider_for_boolean_context_fields[event_manifest-attempt]`, `[event_manifest-policy_version]`, `[event_manifest-evidence_characters]`, `[snapshot_task-attempt]`, `[snapshot_task-policy_version]`, `[snapshot_policy-version]`.
+  - Deadline proposal recovery: `tests/test_update_thread.py::test_update_thread_worker_leaves_persisted_proposals_for_recovery_after_deadline`.
+  - No late provider: `tests/test_update_thread.py::test_update_thread_worker_does_not_invoke_provider_after_deadline`, `tests/test_update_thread.py::test_update_thread_worker_discards_provider_result_returned_after_deadline`, `tests/test_generation.py::test_absolute_deadline_rejects_send_after_expiry`.
+  - Receipt history: `tests/test_update_thread.py::test_update_thread_receipt_history_validation_rejects_invalid_history[attempt_zero]`, `[attempt_negative]`, `[attempt_boolean]`, `[duplicate]`, `[malformed]`, `[future]`.
+  - Admission timestamp: `tests/test_task_runtime.py::test_admission_captures_monotonic_timestamp_used_by_worker`.
+  - RW-2/Operator and recovery regressions remain covered by `tests/test_operator_application.py`, `tests/test_task_runtime.py`, `tests/test_task_lifecycle_recovery.py`, and `tests/test_update_thread.py`; no provider reinvocation or duplicate commit is claimed beyond their exact passing nodes.
+- Limitations: no production host composition root, no live provider authorization, and no formal RW3.4/RW-3 acceptance. The integrated technical review and explicit Operator acceptance remain required.
+
 ## RW3.3 implementation verification and Operator acceptance — 2026-11-20
 
 **Disposition:** The Operator accepted RW3.3 after the corrective pass, independent review, exact-head local verification, and passing hosted CI. PR [#138](https://github.com/abtn/Watch-Architecture-Rev2/pull/138) was squash-merged to `main` at `8fff9fa9d515b46d446fdf46d076d2504e7f462f` (final PR head `1893dcda27c962d1091cfd29b124f0b8e6e37ed8`). The documentation-inclusive hosted CI run [#1531](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44789724923) passed on that final PR head. RW3.4 integrated closeout remains gated.
