@@ -431,9 +431,9 @@ def test_daily_quota_query_delay_preserves_paired_admission_deadline(
 
     def delayed_scalar(self, statement, *args, **kwargs):
         if "count(events.id)" in str(statement).lower():
-            # Advance a deterministic clock while the quota query is in progress.
-            monotonic_clock[0] += 1.0
             result = original_scalar(self, statement, *args, **kwargs)
+            # Model elapsed time after the quota query completes.
+            monotonic_clock[0] += 1.0
             quota_query_completed.append(datetime.now(timezone.utc))
             return result
         return original_scalar(self, statement, *args, **kwargs)
