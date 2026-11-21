@@ -11,13 +11,17 @@ from __future__ import annotations
 import json
 import math
 import os
+import socket
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Protocol
+from http.client import HTTPSConnection
+from threading import Timer
+from typing import Any, Iterator, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPSHandler, Request, build_opener
 
 DEFAULT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"
 MAX_MODEL_CONTEXT_TOKENS = 32_000
@@ -27,6 +31,97 @@ DEFAULT_MAX_OUTPUT_TOKENS = 1024
 INPUT_USD_PER_MILLION_TOKENS = Decimal("0.152")
 OUTPUT_USD_PER_MILLION_TOKENS = Decimal("0.287")
 _RETRYABLE_HTTP_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
+
+
+class _DeadlineHTTPSConnection(HTTPSConnection):
+    """HTTPS connection forcibly closed when its absolute request deadline expires."""
+
+    def __init__(self, host: str, *, deadline: float, **kwargs: Any) -> None:
+        self._deadline = deadline
+        self._deadline_timer: Timer | None = None
+        super().__init__(host, **kwargs)
+
+    def connect(self) -> None:
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("generation_deadline_exceeded")
+        self.timeout = remaining
+        super().connect()
+
+        connection_socket = self.sock
+        if connection_socket is None:
+            raise OSError("generation_connection_socket_missing")
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            self._close_socket(connection_socket)
+            raise TimeoutError("generation_deadline_exceeded")
+
+        timer = Timer(
+            remaining,
+            self._close_socket,
+            args=(connection_socket,),
+        )
+        timer.daemon = True
+        self._deadline_timer = timer
+        timer.start()
+
+    def cancel_deadline(self) -> None:
+        if self._deadline_timer is not None:
+            self._deadline_timer.cancel()
+
+    @staticmethod
+    def _close_socket(connection_socket: socket.socket) -> None:
+        try:
+            connection_socket.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            connection_socket.close()
+        except OSError:
+            pass
+
+
+class _DeadlineHTTPSHandler(HTTPSHandler):
+    def __init__(self, deadline: float) -> None:
+        super().__init__()
+        self._deadline = deadline
+        self._connection: _DeadlineHTTPSConnection | None = None
+
+    def https_open(self, request):
+        def create_connection(host: str, *, timeout: float, **kwargs: Any):
+            connection = _DeadlineHTTPSConnection(
+                host,
+                timeout=timeout,
+                deadline=self._deadline,
+                **kwargs,
+            )
+            self._connection = connection
+            return connection
+
+        return self.do_open(
+            create_connection,
+            request,
+            context=self._context,
+        )
+
+    def cancel_deadline(self) -> None:
+        if self._connection is not None:
+            self._connection.cancel_deadline()
+
+
+@contextmanager
+def _open_with_deadline(
+    request: Request,
+    timeout_seconds: float,
+) -> Iterator[Any]:
+    deadline = time.monotonic() + timeout_seconds
+    handler = _DeadlineHTTPSHandler(deadline)
+    opener = build_opener(handler)
+    try:
+        with opener.open(request, timeout=timeout_seconds) as response:
+            yield response
+    finally:
+        handler.cancel_deadline()
 
 
 class GenerationProviderError(RuntimeError):
@@ -307,7 +402,7 @@ class CloudflareWorkersAIGenerationProvider:
 
         started = time.perf_counter()
         try:
-            with urlopen(request, timeout=request_timeout) as response:
+            with _open_with_deadline(request, request_timeout) as response:
                 document = json.loads(response.read().decode("utf-8"))
         except HTTPError as error:
             raise GenerationProviderError(
