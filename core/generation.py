@@ -96,8 +96,9 @@ class _DeadlineHTTPSConnection(HTTPSConnection):
                     if self._deadline_expired.is_set():
                         raise TimeoutError("generation_deadline_exceeded")
                     connection_socket.settimeout(remaining)
-                    if self.source_address:
-                        connection_socket.bind(self.source_address)
+                    source_address = getattr(self, "source_address", None)
+                    if source_address is not None:
+                        connection_socket.bind(source_address)
                     connection_socket.connect(address)
                     last_error = None
                     break
