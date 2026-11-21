@@ -2,8 +2,8 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from threading import Barrier
 import time
+from threading import Barrier
 from typing import Iterator
 from uuid import UUID, uuid4
 
