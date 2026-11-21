@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
 from http.client import HTTPSConnection, IncompleteRead
-from threading import Event, Thread, Timer
+from threading import BoundedSemaphore, Event, Thread, Timer
 from typing import Any, Iterator, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -31,6 +31,14 @@ DEFAULT_MAX_OUTPUT_TOKENS = 1024
 INPUT_USD_PER_MILLION_TOKENS = Decimal("0.152")
 OUTPUT_USD_PER_MILLION_TOKENS = Decimal("0.287")
 _RETRYABLE_HTTP_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
+
+DNS_RESOLVER_CONCURRENCY_LIMIT = 2
+_DNS_RESOLVER_SLOTS = BoundedSemaphore(DNS_RESOLVER_CONCURRENCY_LIMIT)
+
+
+class _DNSResolverCapacityError(OSError):
+    """The process-wide DNS resolver limit is currently exhausted."""
+
 
 
 class _DeadlineHTTPSConnection(HTTPSConnection):
@@ -57,6 +65,11 @@ class _DeadlineHTTPSConnection(HTTPSConnection):
         if remaining <= 0:
             raise TimeoutError("generation_deadline_exceeded")
 
+        if not _DNS_RESOLVER_SLOTS.acquire(blocking=False):
+            raise _DNSResolverCapacityError(
+                "generation_dns_resolver_capacity_exhausted"
+            )
+
         resolved = Event()
         addresses: list[tuple[Any, ...]] = []
         failures: list[Exception] = []
@@ -74,10 +87,15 @@ class _DeadlineHTTPSConnection(HTTPSConnection):
             except Exception as error:
                 failures.append(error)
             finally:
+                _DNS_RESOLVER_SLOTS.release()
                 resolved.set()
 
         resolver = Thread(target=resolve_host, daemon=True)
-        resolver.start()
+        try:
+            resolver.start()
+        except BaseException:
+            _DNS_RESOLVER_SLOTS.release()
+            raise
 
         timer = Timer(remaining, self._expire_connection)
         timer.daemon = True
@@ -532,7 +550,17 @@ class CloudflareWorkersAIGenerationProvider:
                 f"cloudflare_http_{error.code}",
                 retryable=error.code in _RETRYABLE_HTTP_CODES,
             ) from None
-        except (URLError, TimeoutError, OSError, IncompleteRead):
+        except URLError as error:
+            if isinstance(error.reason, _DNSResolverCapacityError):
+                raise GenerationProviderError(
+                    "generation_dns_resolver_capacity_exhausted",
+                    retryable=True,
+                ) from None
+            raise GenerationProviderError(
+                "cloudflare_connection_or_timeout",
+                retryable=True,
+            ) from None
+        except (TimeoutError, OSError, IncompleteRead):
             raise GenerationProviderError(
                 "cloudflare_connection_or_timeout",
                 retryable=True,
