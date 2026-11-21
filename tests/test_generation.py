@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import time
 from decimal import Decimal
+from threading import Event
 from urllib.error import HTTPError
 from urllib.request import Request
 
@@ -71,7 +73,7 @@ def test_generation_posts_once_and_returns_validated_json_and_usage(
         captured["body"] = json.loads(request.data.decode("utf-8"))
         return FakeHTTPResponse(_response())
 
-    monkeypatch.setattr(generation, "urlopen", fake_urlopen)
+    monkeypatch.setattr(generation, "_open_with_deadline", fake_urlopen)
     result = _provider().generate_json(
         system_prompt="Return JSON.",
         user_prompt="Propose one item.",
@@ -97,6 +99,36 @@ def test_generation_posts_once_and_returns_validated_json_and_usage(
     assert result.request_id == "chatcmpl-test"
 
 
+def test_absolute_generation_deadline_closes_an_active_response_socket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed = Event()
+
+    class _FakeSocket:
+        def shutdown(self, _how: int) -> None:
+            closed.set()
+
+        def close(self) -> None:
+            closed.set()
+
+    fake_socket = _FakeSocket()
+
+    def fake_connect(connection: generation.HTTPSConnection) -> None:
+        connection.sock = fake_socket
+
+    monkeypatch.setattr(generation.HTTPSConnection, "connect", fake_connect)
+    connection = generation._DeadlineHTTPSConnection(
+        "api.cloudflare.com",
+        timeout=1.0,
+        deadline=time.monotonic() + 0.05,
+    )
+    connection.connect()
+    try:
+        assert closed.wait(timeout=0.5)
+    finally:
+        connection.cancel_deadline()
+
+
 def test_generation_raw_uses_the_smaller_per_call_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -106,7 +138,7 @@ def test_generation_raw_uses_the_smaller_per_call_timeout(
         captured["timeout"] = timeout
         return FakeHTTPResponse(_response())
 
-    monkeypatch.setattr(generation, "urlopen", fake_urlopen)
+    monkeypatch.setattr(generation, "_open_with_deadline", fake_urlopen)
     result = _provider().generate_raw(
         system_prompt="Return JSON.",
         user_prompt="Propose one item.",
@@ -122,7 +154,7 @@ def test_generation_fails_closed_when_usage_is_missing(
 ) -> None:
     monkeypatch.setattr(
         generation,
-        "urlopen",
+        "_open_with_deadline",
         lambda *_args, **_kwargs: FakeHTTPResponse(
             {
                 "model": generation.DEFAULT_MODEL,
@@ -142,7 +174,7 @@ def test_generation_rejects_non_json_completion(
 ) -> None:
     monkeypatch.setattr(
         generation,
-        "urlopen",
+        "_open_with_deadline",
         lambda *_args, **_kwargs: FakeHTTPResponse(_response("Not JSON.")),
     )
 
@@ -172,7 +204,7 @@ def test_http_errors_are_categorized_without_retrying(
             fp=None,
         )
 
-    monkeypatch.setattr(generation, "urlopen", fake_urlopen)
+    monkeypatch.setattr(generation, "_open_with_deadline", fake_urlopen)
     with pytest.raises(GenerationProviderError) as caught:
         _provider().generate_json(system_prompt="Return JSON.", user_prompt="Test.")
 
@@ -250,7 +282,7 @@ def test_generation_fails_closed_when_provider_returns_a_different_model(
     document["model"] = "@cf/meta/different-model"
     monkeypatch.setattr(
         generation,
-        "urlopen",
+        "_open_with_deadline",
         lambda *_args, **_kwargs: FakeHTTPResponse(document),
     )
 
@@ -266,7 +298,7 @@ def test_generation_raw_returns_malformed_completion_with_validated_usage(
 ) -> None:
     monkeypatch.setattr(
         generation,
-        "urlopen",
+        "_open_with_deadline",
         lambda *_args, **_kwargs: FakeHTTPResponse(_response("Not JSON.")),
     )
 
