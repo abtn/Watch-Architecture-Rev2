@@ -1,6 +1,5 @@
 """Application-controlled pending-to-running Task admission tests."""
 
-import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from threading import Barrier
@@ -425,20 +424,27 @@ def test_daily_quota_query_delay_preserves_paired_admission_deadline(
 
     original_scalar = Session.scalar
     quota_query_completed: list[datetime] = []
+    monotonic_clock = [1234.5]
+
+    def fake_monotonic() -> float:
+        return monotonic_clock[0]
 
     def delayed_scalar(self, statement, *args, **kwargs):
         if "count(events.id)" in str(statement).lower():
-            time.sleep(0.05)
+            # Advance a deterministic clock while the quota query is in progress.
+            monotonic_clock[0] += 1.0
             result = original_scalar(self, statement, *args, **kwargs)
             quota_query_completed.append(datetime.now(timezone.utc))
             return result
         return original_scalar(self, statement, *args, **kwargs)
 
+    monkeypatch.setattr("core.task_runtime.time.monotonic", fake_monotonic)
     monkeypatch.setattr(Session, "scalar", delayed_scalar)
     admission = TaskRuntime(session_factory).admit(pending_task)
 
     assert len(quota_query_completed) == 1
-    assert time.monotonic() - admission.admitted_monotonic >= 0.05
+    assert admission.admitted_monotonic == 1234.5
+    assert admission.admitted_monotonic < monotonic_clock[0]
     assert admission.admitted_at < quota_query_completed[0]
     with session_factory() as session:
         started = session.get(Event, admission.event_id)
