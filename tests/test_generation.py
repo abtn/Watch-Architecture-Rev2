@@ -125,6 +125,7 @@ def test_absolute_generation_deadline_closes_an_active_response_socket(
     reader.start()
     try:
         assert read_finished.wait(timeout=0.5)
+        reader.join(timeout=0.5)
         assert reader.is_alive() is False
     finally:
         connection.cancel_deadline()
