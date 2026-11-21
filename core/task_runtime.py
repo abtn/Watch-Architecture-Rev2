@@ -1569,7 +1569,7 @@ class TaskRuntime:
                     WorldMemoryCommitService(
                         self._session_factory, self._snapshot_store
                     ).resume_update_thread_in_session(
-                        session, task, task.attempt_count
+                        session, task, task.attempt_count, recovery_at=reference
                     )
                 )
             elif task.task_type == _OPERATOR_UPDATE_TASK_TYPE:

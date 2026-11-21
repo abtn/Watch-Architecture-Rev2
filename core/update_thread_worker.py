@@ -308,6 +308,7 @@ class UpdateThreadWorker:
                     receipt.event_id,
                     proposals,
                     fingerprint,
+                    deadline,
                 )
             except SQLAlchemyError as error:
                 raise UpdateThreadProposalPersistencePending(
@@ -530,6 +531,7 @@ class UpdateThreadWorker:
         receipt_event_id: UUID,
         proposals: list[dict[str, Any]],
         fingerprint: str,
+        deadline: float,
     ) -> UUID:
         with self._session_factory.begin() as session:
             task = session.scalar(
@@ -541,6 +543,7 @@ class UpdateThreadWorker:
                 or task.attempt_count != attempt
             ):
                 raise UpdateThreadWorkerError("update_thread_attempt_not_current")
+            self._check_deadline(deadline)
             verified = self._context_assembler.verify_context_in_session(
                 session, task, context
             )
@@ -702,6 +705,7 @@ class UpdateThreadWorker:
                 "proposal_fingerprint": fingerprint,
                 "proposals": proposals,
             }
+            self._check_deadline(deadline)
             event = Event(
                 id=uuid4(),
                 task_id=task.id,
@@ -709,8 +713,10 @@ class UpdateThreadWorker:
                 payload=payload,
                 created_at=datetime.now(timezone.utc),
             )
+            self._check_deadline(deadline)
             session.add(event)
             session.flush()
+            self._check_deadline(deadline)
             return event.id
 
     @staticmethod

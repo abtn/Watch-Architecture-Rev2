@@ -135,12 +135,11 @@ def _validate_update_thread_receipt_history(
     return receipts
 
 
-def _validate_update_thread_proposal_deadline(
+def _update_thread_proposal_deadline(
     session: Session,
     task: Task,
     attempt: int,
-    durable_event: Event,
-) -> None:
+) -> datetime:
     started = session.scalar(
         select(Event.created_at).where(
             Event.task_id == task.id,
@@ -150,7 +149,17 @@ def _validate_update_thread_proposal_deadline(
     )
     if started is None:
         raise WorldMemoryError("update_thread_task_started_missing")
-    if durable_event.created_at > started + timedelta(seconds=45):
+    return started + timedelta(seconds=45)
+
+
+def _validate_update_thread_proposal_deadline(
+    session: Session,
+    task: Task,
+    attempt: int,
+    durable_event: Event,
+) -> None:
+    deadline = _update_thread_proposal_deadline(session, task, attempt)
+    if durable_event.created_at > deadline:
         raise WorldMemoryError("update_thread_proposal_persisted_after_deadline")
 
 
@@ -2457,7 +2466,12 @@ class WorldMemoryCommitService:
             )
 
     def resume_update_thread_in_session(
-        self, session: Session, task: Task, attempt: int
+        self,
+        session: Session,
+        task: Task,
+        attempt: int,
+        *,
+        recovery_at: datetime | None = None,
     ) -> TerminalObservation | None:
         """Resume one admitted Task attempt without opening or closing a Session."""
         from pydantic import ValidationError
@@ -2477,6 +2491,10 @@ class WorldMemoryCommitService:
             _fingerprint,
             _parse_model_response,
         )
+
+        reference = recovery_at or datetime.now(timezone.utc)
+        if reference.tzinfo is None or reference.utcoffset() is None:
+            raise WorldMemoryError("update_thread_recovery_time_not_timezone_aware")
 
         try:
             if (
@@ -2652,6 +2670,18 @@ class WorldMemoryCommitService:
                 _validate_update_thread_proposal_deadline(
                     session, task, attempt, receipt_event
                 )
+                if reference > _update_thread_proposal_deadline(
+                    session, task, attempt
+                ):
+                    return TerminalObservation(
+                        task_id=task.id,
+                        attempt=attempt,
+                        result_category="terminal_failure",
+                        observed_at=reference,
+                        failure_reason=(
+                            "update_thread_proposal_not_persisted_before_deadline"
+                        ),
+                    )
                 try:
                     parsed = _parse_model_response(
                         receipt["raw_completion_text"]
@@ -2698,10 +2728,14 @@ class WorldMemoryCommitService:
                         "proposal_fingerprint": fingerprint,
                         "proposals": proposals,
                     },
-                    created_at=datetime.now(timezone.utc),
+                    created_at=reference,
                 )
                 session.add(proposal_event)
                 session.flush()
+            else:
+                _validate_update_thread_proposal_deadline(
+                    session, task, attempt, current_proposals[0]
+                )
             envelope = load_model_update_thread_envelope(
                 session, task, attempt, self._snapshot_store
             )

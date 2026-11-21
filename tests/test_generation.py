@@ -33,7 +33,9 @@ class FakeHTTPResponse:
         return self._body
 
 
-def _provider() -> CloudflareWorkersAIGenerationProvider:
+def _provider(
+    timeout_seconds: float = 12.0,
+) -> CloudflareWorkersAIGenerationProvider:
     return CloudflareWorkersAIGenerationProvider(
         CloudflareWorkersAIConfig(
             base_url=(
@@ -42,7 +44,7 @@ def _provider() -> CloudflareWorkersAIGenerationProvider:
             ),
             model="@cf/meta/llama-3.1-8b-instruct-fp8",
             api_key="test-token",
-            timeout_seconds=12,
+            timeout_seconds=timeout_seconds,
             max_output_tokens=512,
         )
     )
@@ -327,8 +329,20 @@ def test_absolute_deadline_closes_socket_during_response_read(
         peer_socket.close()
 
 
-def test_provider_propagates_absolute_deadline_not_relative_timeout(
+@pytest.mark.parametrize(
+    ("provider_timeout", "call_timeout", "task_deadline", "expected_deadline"),
+    [
+        (12.0, 30.0, 145.0, 112.0),
+        (60.0, 30.0, 145.0, 130.0),
+        (60.0, 30.0, 115.0, 115.0),
+    ],
+)
+def test_provider_uses_earliest_absolute_or_relative_deadline(
     monkeypatch: pytest.MonkeyPatch,
+    provider_timeout: float,
+    call_timeout: float,
+    task_deadline: float,
+    expected_deadline: float,
 ) -> None:
     captured: dict[str, float] = {}
 
@@ -339,14 +353,14 @@ def test_provider_propagates_absolute_deadline_not_relative_timeout(
     monkeypatch.setattr(generation, "_open_with_deadline", open_at_deadline)
     monkeypatch.setattr(generation.time, "monotonic", lambda: 100.0)
 
-    _provider().generate_raw(
+    _provider(timeout_seconds=provider_timeout).generate_raw(
         system_prompt="Return JSON.",
         user_prompt="Propose one item.",
-        timeout_seconds=30.0,
-        deadline_monotonic=145.0,
+        timeout_seconds=call_timeout,
+        deadline_monotonic=task_deadline,
     )
 
-    assert captured["deadline"] == 145.0
+    assert captured["deadline"] == expected_deadline
 
 
 def test_incomplete_http_response_is_a_retryable_provider_failure(

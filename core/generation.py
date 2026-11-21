@@ -493,9 +493,12 @@ class CloudflareWorkersAIGenerationProvider:
         if deadline_monotonic is None:
             request_deadline = now + request_timeout
         else:
-            request_deadline = float(deadline_monotonic)
-            if time.monotonic() >= request_deadline:
-                raise TimeoutError("generation_deadline_exceeded")
+            request_deadline = min(
+                float(deadline_monotonic),
+                now + request_timeout,
+            )
+        if now >= request_deadline:
+            raise TimeoutError("generation_deadline_exceeded")
 
         self.maximum_request_cost(
             system_prompt=system_prompt, user_prompt=user_prompt
