@@ -5,8 +5,8 @@ import time
 from contextlib import nullcontext
 from decimal import Decimal
 from http.client import IncompleteRead
-from threading import Event, Thread, current_thread
-from urllib.error import HTTPError
+from threading import BoundedSemaphore, Event, Lock, Thread, current_thread
+from urllib.error import HTTPError, URLError
 from urllib.request import Request
 
 import pytest
@@ -171,6 +171,133 @@ def test_absolute_generation_deadline_bounds_slow_dns_resolution(
         if dns_worker:
             assert dns_finished.is_set()
             assert not dns_worker[0].is_alive()
+
+
+
+def test_repeated_stalled_dns_resolution_is_process_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capacity = generation.DNS_RESOLVER_CONCURRENCY_LIMIT
+    monkeypatch.setattr(
+        generation,
+        "_DNS_RESOLVER_SLOTS",
+        BoundedSemaphore(capacity),
+    )
+    dns_release = Event()
+    capacity_reached = Event()
+    workers: list[Thread] = []
+    workers_lock = Lock()
+    active_workers = 0
+    maximum_active_workers = 0
+    errors: dict[int, BaseException] = {}
+    callers: dict[int, Thread] = {}
+    finished: dict[int, Event] = {}
+
+    def slow_dns(*_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+        nonlocal active_workers, maximum_active_workers
+        with workers_lock:
+            active_workers += 1
+            maximum_active_workers = max(maximum_active_workers, active_workers)
+            workers.append(current_thread())
+            if active_workers == capacity:
+                capacity_reached.set()
+        dns_release.wait()
+        with workers_lock:
+            active_workers -= 1
+        return []
+
+    monkeypatch.setattr(generation.socket, "getaddrinfo", slow_dns)
+
+    def connect(index: int) -> None:
+        connection = generation._DeadlineHTTPSConnection(
+            "api.cloudflare.com",
+            timeout=1.0,
+            deadline=time.monotonic() + 0.2,
+        )
+        try:
+            connection.connect()
+        except BaseException as error:
+            errors[index] = error
+        finally:
+            connection.cancel_deadline()
+            finished[index].set()
+
+    try:
+        for index in range(capacity):
+            finished[index] = Event()
+            callers[index] = Thread(target=connect, args=(index,), daemon=True)
+            callers[index].start()
+
+        assert capacity_reached.wait(timeout=0.5)
+        assert len(workers) == capacity
+        assert maximum_active_workers == capacity
+
+        for index in range(capacity, capacity + 8):
+            finished[index] = Event()
+            callers[index] = Thread(target=connect, args=(index,), daemon=True)
+            callers[index].start()
+
+        for index in range(capacity, capacity + 8):
+            assert finished[index].wait(timeout=0.2)
+            assert isinstance(errors[index], generation._DNSResolverCapacityError)
+
+        for index in range(capacity):
+            assert finished[index].wait(timeout=0.6)
+            assert isinstance(errors[index], TimeoutError)
+
+        # Timed-out callers must not release capacity while getaddrinfo is
+        # still blocked. Further requests remain rejected without new workers.
+        for index in range(capacity + 8, capacity + 16):
+            finished[index] = Event()
+            callers[index] = Thread(target=connect, args=(index,), daemon=True)
+            callers[index].start()
+            assert finished[index].wait(timeout=0.2)
+            assert isinstance(errors[index], generation._DNSResolverCapacityError)
+
+        assert len(workers) == capacity
+        assert maximum_active_workers == capacity
+        assert active_workers == capacity
+    finally:
+        dns_release.set()
+        for caller in callers.values():
+            caller.join(timeout=0.5)
+        for worker in workers:
+            worker.join(timeout=0.5)
+
+    assert all(not caller.is_alive() for caller in callers.values())
+    assert all(not worker.is_alive() for worker in workers)
+    assert active_workers == 0
+
+    # Capacity is reclaimed only after the resolver workers actually finish.
+    acquired = [
+        generation._DNS_RESOLVER_SLOTS.acquire(blocking=False)
+        for _ in range(capacity)
+    ]
+    assert all(acquired)
+    for _ in acquired:
+        generation._DNS_RESOLVER_SLOTS.release()
+
+
+def test_provider_preserves_dns_capacity_exhaustion_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_with_capacity_error(*_args: object, **_kwargs: object) -> None:
+        raise URLError(
+            generation._DNSResolverCapacityError(
+                "generation_dns_resolver_capacity_exhausted"
+            )
+        )
+
+    monkeypatch.setattr(generation, "_open_with_deadline", fail_with_capacity_error)
+
+    with pytest.raises(GenerationProviderError) as caught:
+        _provider().generate_raw(
+            system_prompt="Return JSON.",
+            user_prompt="Test DNS capacity exhaustion.",
+        )
+
+    assert caught.value.reason == "generation_dns_resolver_capacity_exhausted"
+    assert caught.value.retryable is True
 
 
 @pytest.mark.parametrize("blocked_phase", ["tcp", "tls"])
