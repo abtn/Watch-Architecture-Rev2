@@ -103,10 +103,13 @@ def test_generation_posts_once_and_returns_validated_json_and_usage(
 def test_absolute_generation_deadline_bounds_slow_dns_resolution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    dns_started = Event()
+    dns_release = Event()
     dns_finished = Event()
 
     def slow_dns(*_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
-        time.sleep(0.15)
+        dns_started.set()
+        dns_release.wait()
         dns_finished.set()
         return []
 
@@ -118,12 +121,17 @@ def test_absolute_generation_deadline_bounds_slow_dns_resolution(
     )
     started = time.monotonic()
 
-    with pytest.raises(TimeoutError, match="generation_deadline_exceeded"):
-        connection.connect()
+    try:
+        with pytest.raises(TimeoutError, match="generation_deadline_exceeded"):
+            connection.connect()
 
-    assert time.monotonic() - started < 0.12
-    assert dns_finished.wait(timeout=0.5)
-    connection.cancel_deadline()
+        assert time.monotonic() - started < 0.12
+        assert dns_started.wait(timeout=0.5)
+        assert not dns_finished.is_set()
+    finally:
+        dns_release.set()
+        assert dns_finished.wait(timeout=0.5)
+        connection.cancel_deadline()
 
 
 @pytest.mark.parametrize("blocked_phase", ["tcp", "tls"])
