@@ -40,7 +40,6 @@ class _DNSResolverCapacityError(OSError):
     """The process-wide DNS resolver limit is currently exhausted."""
 
 
-
 class _DeadlineHTTPSConnection(HTTPSConnection):
     """HTTPS connection whose establishment and I/O share one absolute deadline."""
 
