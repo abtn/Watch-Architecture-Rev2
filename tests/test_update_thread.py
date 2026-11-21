@@ -1151,13 +1151,17 @@ def test_provider_timeout_at_task_deadline_is_terminal_and_keeps_charge_unknown(
                 Event.type == "task_failed",
             )
         )
+        terminal_attempt_failed = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_attempt_failed",
+            )
+        )
         retry_events = list(
             session.scalars(
                 select(Event).where(
                     Event.task_id == created.task_id,
-                    Event.type.in_(
-                        ["task_attempt_failed", "task_retry_scheduled"]
-                    ),
+                    Event.type == "task_retry_scheduled",
                 )
             )
         )
