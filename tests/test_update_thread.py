@@ -1114,6 +1114,7 @@ def test_provider_timeout_at_task_deadline_is_terminal_and_keeps_charge_unknown(
             self.calls += 1
             self.timeout_seconds = timeout_seconds
             self.deadline_monotonic = deadline_monotonic
+            assert deadline_monotonic is not None
             clock["now"] = deadline_monotonic
             raise GenerationProviderError(
                 "cloudflare_connection_or_timeout",
