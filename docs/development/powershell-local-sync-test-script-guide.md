@@ -148,6 +148,185 @@ git fetch origin $refspec
 if ($LASTEXITCODE -ne 0) { throw 'Fetch failed.' }
 ~~~
 
+## Alembic revision output — mandatory
+
+Do not assume `alembic current` or `alembic heads` always prints a verbose `Rev: <revision>` line. Depending on the Alembic command/output mode, a valid revision can be printed as a plain line, for example:
+
+~~~text
+0019_rw1_world_memory (head)
+~~~
+
+A parser that accepts only `Rev:` will reject this valid output. Capture stdout and stderr, check the native exit code immediately, then parse both the verbose and normal forms. Ignore informational headings/log lines, and require the exact number of revision identifiers expected by the check.
+
+For a database expected to have exactly one current revision:
+
+~~~powershell
+$currentOutput = & uv run alembic current 2>&1
+$currentExitCode = $LASTEXITCODE
+if ($currentExitCode -ne 0) {
+    throw "Alembic current failed: $($currentOutput -join "`n")"
+}
+
+$currentLines = @(
+    $currentOutput |
+        ForEach-Object { $_.ToString().Trim() } |
+        Where-Object { $_ }
+)
+
+$currentRevisions = @(
+    foreach ($line in $currentLines) {
+        if ($line -match '^Rev:\s*(\S+)') {
+            $Matches[1]
+        }
+        elseif ($line -match '^(\S+)\s+\([^)]*\)
+
+- Doubled braces such as {{ or }}, often introduced by templating.
+- Bash-style backslash line continuations; they are not PowerShell continuations.
+- Literal \n where actual newline characters or a here-string are required.
+- Missing $LASTEXITCODE checks after native commands.
+- Double-quoted here-strings where variable expansion was not intended.
+- Indented here-string terminators.
+- Cleanup that can match containers or volumes not created by the current script.
+- A success message that can run after a failed native command.
+- Raw string comparison between Git's forward-slash repository path and a Windows backslash path.
+- Backtick-escaped colons in Git fetch refspecs.
+- Literal origin URL comparisons that reject the optional `.git` suffix or trailing slash.
+- Origin checks that compare only a URL suffix instead of validating scheme, host, and repository path.
+- Alembic current-revision parsers that accept only the verbose `Rev:` format and reject normal output such as `0019_rw1_world_memory (head)`.
+- Alembic parsers that silently accept zero or multiple revisions when exactly one is expected.
+
+## Pre-send checklist
+
+Before presenting a generated script, verify each item:
+
+- [ ] The introduction identifies PowerShell as the shell.
+- [ ] A script longer than approximately ten lines is delivered through the file-in-here-string scaffold.
+- [ ] $ErrorActionPreference = 'Stop' is present.
+- [ ] Preflight checks read and validate the expected repository, branch, HEAD, and worktree state where relevant.
+- [ ] Every consequential native command is followed immediately by a $LASTEXITCODE check.
+- [ ] Repository-root comparisons normalize slash direction and use a case-insensitive Windows comparison.
+- [ ] Git fetch refspecs use safe string construction without backtick escaping.
+- [ ] GitHub HTTPS origin validation parses the URL and validates scheme, host, and normalized repository path, accepting optional `.git` and trailing slash.
+- [ ] Alembic current/head parsing accepts the observed normal and verbose formats, checks the native exit code, and asserts the expected revision count.
+- [ ] No doubled braces, Bash continuations, or accidental literal newline escapes remain.
+- [ ] Here-string markers begin in column zero.
+- [ ] No destructive Git command is used unless explicitly requested and authorized.
+- [ ] Database-backed checks use a disposable database and narrowly scoped cleanup.
+- [ ] The final line is an unambiguous PASSED success message.
+
+If an item fails, correct the script or split the workflow into smaller checkpoints.
+
+## Worked example: safe branch sync
+
+The following is an example only. Replace the illustrative repository path, branch names, and SHA with values established for the specific task before generating a user-facing script.
+
+~~~powershell
+$path = "$env:TEMP\sync-target-branch.ps1"
+@'
+# Sync one local branch to one verified remote commit.
+# Shell: PowerShell.
+# Preconditions: expected repository, expected current branch, clean worktree.
+$ErrorActionPreference = 'Stop'
+Set-Location 'C:\path\to\Watch-Architecture-Rev2'
+
+$expectedRoot = 'C:\path\to\Watch-Architecture-Rev2'
+$expectedCurrent = 'source-branch'
+$expectedCurrentSha = 'fedcba9876543210fedcba9876543210fedcba98'
+$targetBranch = 'target-branch'
+$expectedSha = '0123456789abcdef0123456789abcdef01234567'
+
+# --- Preflight ---
+$actualRoot = (git rev-parse --show-toplevel)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the Git repository root.' }
+$actualRoot = [System.IO.Path]::GetFullPath($actualRoot).TrimEnd('\', '/').Replace('/', '\')
+$expectedRoot = [System.IO.Path]::GetFullPath($expectedRoot).TrimEnd('\', '/').Replace('/', '\')
+if (-not [string]::Equals($actualRoot, $expectedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Wrong repository root. Expected '$expectedRoot'; found '$actualRoot'."
+}
+
+$currentBranch = (git branch --show-current)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the current branch.' }
+if ($currentBranch -ne $expectedCurrent) {
+    throw "Wrong current branch. Expected $expectedCurrent; found $currentBranch."
+}
+
+$currentSha = (git rev-parse HEAD)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the current HEAD.' }
+if ($currentSha -ne $expectedCurrentSha) { throw "Unexpected current HEAD: $currentSha" }
+
+$status = (git status --porcelain)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the worktree.' }
+if ($status) { throw 'Worktree is dirty. Aborting without changes.' }
+
+# --- Fetch and verify target ---
+$refspec = 'refs/heads/{0}:refs/remotes/origin/{0}' -f $targetBranch
+git fetch origin $refspec
+if ($LASTEXITCODE -ne 0) { throw 'Fetch failed.' }
+
+$remoteSha = (git rev-parse "refs/remotes/origin/$targetBranch")
+if ($LASTEXITCODE -ne 0) { throw 'Cannot read the fetched remote SHA.' }
+if ($remoteSha -ne $expectedSha) { throw "Remote SHA mismatch: $remoteSha" }
+
+# --- Switch ---
+git show-ref --verify --quiet "refs/heads/$targetBranch"
+$showRefExit = $LASTEXITCODE
+if ($showRefExit -eq 0) {
+    git switch $targetBranch
+} elseif ($showRefExit -eq 1) {
+    git switch --track -c $targetBranch "origin/$targetBranch"
+} else {
+    throw "git show-ref failed with exit code $showRefExit."
+}
+if ($LASTEXITCODE -ne 0) { throw 'Branch switch failed.' }
+
+# --- Verify ---
+$finalBranch = (git branch --show-current)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify the final branch.' }
+if ($finalBranch -ne $targetBranch) { throw "Final branch mismatch: $finalBranch" }
+
+$finalSha = (git rev-parse HEAD)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify final HEAD.' }
+if ($finalSha -ne $expectedSha) { throw "Final HEAD mismatch: $finalSha" }
+
+Write-Host "PASSED: on $targetBranch at $expectedSha"
+'@ | Set-Content -LiteralPath $path -Encoding UTF8
+
+$tokens = $null
+$errors = $null
+[System.Management.Automation.Language.Parser]::ParseFile(
+    $path,
+    [ref]$tokens,
+    [ref]$errors
+) | Out-Null
+if ($errors.Count -gt 0) {
+    $errors | Format-List
+    throw 'PowerShell syntax errors found.'
+}
+
+& $path
+~~~
+
+## Governing principle
+
+A script is a deliverable, not a suggestion. It should be safe to paste, fail closed when assumptions are wrong, preserve the user's state, and report success only after its assertions pass.
+) {
+            $Matches[1]
+        }
+    }
+)
+
+if ($currentRevisions.Count -ne 1) {
+    throw "Expected exactly one current Alembic revision. Found $($currentRevisions.Count). Output: $($currentOutput -join "`n")"
+}
+
+$currentRevision = $currentRevisions[0]
+if ($currentRevision -ne $expectedHeadRevision) {
+    throw "Alembic current revision mismatch. Expected '$expectedHeadRevision'; found '$currentRevision'."
+}
+~~~
+
+If the expected database state is a single head, separately parse `alembic heads` and assert exactly one head. Do not silently take the first result, accept multiple revisions, or treat an unparsed output as success. Keep the expected revision as an explicit value established for the task. If a supported Alembic version emits another format, inspect its actual output and extend the parser deliberately rather than weakening the assertion.
+
 ## Additional failure modes to inspect
 
 - Doubled braces such as {{ or }}, often introduced by templating.
