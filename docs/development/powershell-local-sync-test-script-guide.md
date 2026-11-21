@@ -103,6 +103,41 @@ if (-not [string]::Equals(
 
 Use the same normalization whenever comparing resolved filesystem paths on Windows. Do not solve this by weakening or removing the repository-root check.
 
+## GitHub HTTPS origin comparison — mandatory
+
+Do not require a literal trailing `.git` in an HTTPS GitHub remote URL. Both `https://github.com/owner/repository` and `https://github.com/owner/repository.git` are valid forms; a trailing slash may also be present. Compare the parsed URI's scheme, host, and normalized repository path rather than comparing the raw strings.
+
+For this repository, use an explicit expected repository identity:
+
+~~~powershell
+$originUrl = (git remote get-url origin)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot read the origin remote URL.' }
+
+$originUri = $null
+if (-not [System.Uri]::TryCreate($originUrl.Trim(), [System.UriKind]::Absolute, [ref]$originUri)) {
+    throw "Origin is not a valid absolute URL: $originUrl"
+}
+
+$originPath = $originUri.AbsolutePath.TrimEnd('/')
+if ($originPath.EndsWith('.git', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $originPath = $originPath.Substring(0, $originPath.Length - 4)
+}
+
+if (
+    $originUri.Scheme -ne 'https' -or
+    $originUri.Host -ne 'github.com' -or
+    -not [string]::Equals(
+        $originPath,
+        '/abtn/Watch-Architecture-Rev2',
+        [System.StringComparison]::OrdinalIgnoreCase
+    )
+) {
+    throw "Unexpected origin URL: $originUrl"
+}
+~~~
+
+Do not accept an arbitrary host or repository merely because its URL ends with the expected repository name. If SSH remotes are intentionally supported, handle that as a separate explicit accepted format rather than weakening this HTTPS check.
+
 ## Git fetch refspecs — safe construction
 
 Do not escape the colon in a double-quoted refspec with a PowerShell backtick. Build the refspec with the format operator:
@@ -125,6 +160,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Fetch failed.' }
 - A success message that can run after a failed native command.
 - Raw string comparison between Git's forward-slash repository path and a Windows backslash path.
 - Backtick-escaped colons in Git fetch refspecs.
+- Literal origin URL comparisons that reject the optional `.git` suffix or trailing slash.
+- Origin checks that compare only a URL suffix instead of validating scheme, host, and repository path.
 
 ## Pre-send checklist
 
@@ -137,6 +174,7 @@ Before presenting a generated script, verify each item:
 - [ ] Every consequential native command is followed immediately by a $LASTEXITCODE check.
 - [ ] Repository-root comparisons normalize slash direction and use a case-insensitive Windows comparison.
 - [ ] Git fetch refspecs use safe string construction without backtick escaping.
+- [ ] GitHub HTTPS origin validation parses the URL and validates scheme, host, and normalized repository path, accepting optional `.git` and trailing slash.
 - [ ] No doubled braces, Bash continuations, or accidental literal newline escapes remain.
 - [ ] Here-string markers begin in column zero.
 - [ ] No destructive Git command is used unless explicitly requested and authorized.
