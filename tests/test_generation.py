@@ -278,6 +278,33 @@ def test_repeated_stalled_dns_resolution_is_process_bounded(
         generation._DNS_RESOLVER_SLOTS.release()
 
 
+def test_dns_resolver_exception_releases_capacity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capacity = generation.DNS_RESOLVER_CONCURRENCY_LIMIT
+    slots = BoundedSemaphore(capacity)
+    monkeypatch.setattr(generation, "_DNS_RESOLVER_SLOTS", slots)
+
+    def failed_dns(*_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+        raise generation.socket.gaierror("controlled resolver failure")
+
+    monkeypatch.setattr(generation.socket, "getaddrinfo", failed_dns)
+    connection = generation._DeadlineHTTPSConnection(
+        "api.cloudflare.com",
+        timeout=1.0,
+        deadline=time.monotonic() + 1.0,
+    )
+
+    with pytest.raises(generation.socket.gaierror, match="controlled resolver failure"):
+        connection.connect()
+
+    acquired = [slots.acquire(blocking=False) for _ in range(capacity)]
+    assert all(acquired)
+    for _ in acquired:
+        slots.release()
+    connection.cancel_deadline()
+
+
 def test_provider_preserves_dns_capacity_exhaustion_reason(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
