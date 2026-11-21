@@ -2679,7 +2679,7 @@ class WorldMemoryCommitService:
                         result_category="terminal_failure",
                         observed_at=reference,
                         failure_reason=(
-                            "update_thread_proposal_not_persisted_before_deadline"
+                            "update_thread_deadline_exceeded"
                         ),
                     )
                 try:

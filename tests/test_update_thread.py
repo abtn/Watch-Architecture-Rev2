@@ -1349,7 +1349,7 @@ def test_update_thread_worker_rechecks_deadline_after_commit_lock(
 
     def expire_at_commit_gate(deadline: float) -> None:
         checks["count"] += 1
-        if checks["count"] == 7:
+        if checks["count"] == 12:
             clock["now"] = 146.0
         original_check(deadline)
 
@@ -1362,7 +1362,7 @@ def test_update_thread_worker_rechecks_deadline_after_commit_lock(
         worker.run(created.task_id)
 
     assert provider.calls == 1
-    assert checks["count"] == 7
+    assert checks["count"] == 12
     with session_factory() as session:
         task = session.get(Task, created.task_id)
         proposals = session.scalar(
@@ -2178,7 +2178,7 @@ def test_update_thread_worker_does_not_materialize_receipt_only_recovery_after_d
         assert task is not None and task.status == "failed"
         assert failed_event is not None
         assert failed_event.payload["failure_reason"] == (
-            "update_thread_proposal_not_persisted_before_deadline"
+            "update_thread_deadline_exceeded"
         )
         assert proposal_event is None
         assert session.scalar(
