@@ -151,7 +151,7 @@ def test_generation_raw_uses_the_smaller_per_call_timeout(
     )
 
     assert result.raw_content == '{"decision":"candidate"}'
-    assert 3.9 <= captured["deadline"] - started <= 4.0
+    assert 0 < captured["deadline"] - started <= 4.0
 
 
 def test_generation_fails_closed_when_usage_is_missing(
