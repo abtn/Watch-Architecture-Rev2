@@ -973,26 +973,7 @@ def test_retryable_provider_interruption_schedules_task_retry(
     snapshot_store: SnapshotStore,
     rw3_fixture: Fixture,
 ) -> None:
-    class _InterruptedProvider:
-        provider_name = "cloudflare_workers_ai"
-        model = "watch-rw3-interrupted-provider"
-
-        def __init__(self) -> None:
-            self.calls = 0
-
-        def maximum_request_cost(
-            self, *, system_prompt: str, user_prompt: str
-        ) -> GenerationCostQuote:
-            return GenerationCostQuote(
-                provider=self.provider_name,
-                model=self.model,
-                maximum_input_tokens=1,
-                maximum_output_tokens=1,
-                input_usd_per_million_tokens=Decimal("0.152"),
-                output_usd_per_million_tokens=Decimal("0.287"),
-                pricing_revision="test",
-            )
-
+    class _InterruptedProvider(_FakeUpdateThreadProvider):
         def generate_raw(
             self,
             *,
@@ -1008,7 +989,7 @@ def test_retryable_provider_interruption_schedules_task_retry(
             )
 
     _, created = _create_task(session_factory, rw3_fixture)
-    provider = _InterruptedProvider()
+    provider = _InterruptedProvider('{"proposals":[]}')
 
     with pytest.raises(
         UpdateThreadWorkerError,
