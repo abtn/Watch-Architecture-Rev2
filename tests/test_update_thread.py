@@ -1254,6 +1254,62 @@ def test_update_thread_worker_checks_deadline_after_parsing(
         assert proposals is None
 
 
+def test_update_thread_worker_rechecks_deadline_after_commit_lock(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
+    )
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(
+        session_factory,
+        snapshot_store,
+        provider,
+        runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+    )
+    original_check = worker._check_deadline
+    checks = {"count": 0}
+
+    def expire_at_commit_gate(deadline: float) -> None:
+        checks["count"] += 1
+        if checks["count"] == 7:
+            clock["now"] = 146.0
+        original_check(deadline)
+
+    monkeypatch.setattr(worker, "_check_deadline", expire_at_commit_gate)
+
+    with pytest.raises(
+        UpdateThreadProposalPersistencePending,
+        match="update_thread_deadline_commit_recovery_pending",
+    ):
+        worker.run(created.task_id)
+
+    assert provider.calls == 1
+    assert checks["count"] == 7
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        proposals = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        marker = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        )
+        assert task is not None and task.status == "running"
+        assert proposals is not None
+        assert marker is None
+
+
 def test_update_thread_worker_leaves_persisted_proposals_for_recovery_after_deadline(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
