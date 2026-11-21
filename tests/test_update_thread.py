@@ -2087,14 +2087,14 @@ def test_update_thread_worker_does_not_materialize_receipt_only_recovery_after_d
     with session_factory.begin() as session:
         session.connection().exec_driver_sql(
             f"""
-            CREATE FUNCTION {function_name}() RETURNS trigger AS $
+            CREATE FUNCTION {function_name}() RETURNS trigger AS $fn$
             BEGIN
                 IF NEW.type = '{PROPOSALS_EVENT_TYPE}' THEN
                     RAISE EXCEPTION 'injected proposal Event failure';
                 END IF;
                 RETURN NEW;
             END;
-            $ LANGUAGE plpgsql
+            $fn$ LANGUAGE plpgsql
             """
         )
         session.connection().exec_driver_sql(
