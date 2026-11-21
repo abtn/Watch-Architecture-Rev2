@@ -325,6 +325,18 @@ class UpdateThreadWorker:
                     )
                     if task is None:
                         raise UpdateThreadWorkerError("update_thread_task_missing")
+                    try:
+                        # Recheck after acquiring the Task lock: lock contention
+                        # must not allow the shared commit to begin after expiry.
+                        self._check_deadline(deadline)
+                    except UpdateThreadWorkerError as error:
+                        raise UpdateThreadProposalPersistencePending(
+                            "update_thread_deadline_commit_recovery_pending"
+                        ) from error
+                    # The deadline gates entry into the atomic commit. Once this
+                    # transaction starts, let it finish or roll back atomically;
+                    # interrupting an in-flight commit would make its outcome
+                    # ambiguous and the existing recovery path handles that case.
                     observation = WorldMemoryCommitService(
                         self._session_factory, self._snapshot_store
                     ).resume_update_thread_in_session(session, task, attempt)
