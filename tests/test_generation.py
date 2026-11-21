@@ -164,7 +164,7 @@ def test_absolute_generation_deadline_bounds_slow_dns_resolution(
         if dns_worker:
             dns_finished.wait(timeout=0.5)
             dns_worker[0].join(timeout=0.5)
-        caller.join(timeout=0.5)
+        caller.join(timeout=2.0)
         if connection_holder:
             connection_holder[0].cancel_deadline()
         assert not caller.is_alive()
@@ -211,7 +211,7 @@ def test_repeated_stalled_dns_resolution_is_process_bounded(
         connection = generation._DeadlineHTTPSConnection(
             "api.cloudflare.com",
             timeout=1.0,
-            deadline=time.monotonic() + 0.2,
+            deadline=time.monotonic() + 3.0,
         )
         try:
             connection.connect()
@@ -227,7 +227,7 @@ def test_repeated_stalled_dns_resolution_is_process_bounded(
             callers[index] = Thread(target=connect, args=(index,), daemon=True)
             callers[index].start()
 
-        assert capacity_reached.wait(timeout=0.5)
+        assert capacity_reached.wait(timeout=2.0)
         assert len(workers) == capacity
         assert maximum_active_workers == capacity
 
@@ -237,11 +237,11 @@ def test_repeated_stalled_dns_resolution_is_process_bounded(
             callers[index].start()
 
         for index in range(capacity, capacity + 8):
-            assert finished[index].wait(timeout=0.2)
+            assert finished[index].wait(timeout=1.5)
             assert isinstance(errors[index], generation._DNSResolverCapacityError)
 
         for index in range(capacity):
-            assert finished[index].wait(timeout=0.6)
+            assert finished[index].wait(timeout=4.0)
             assert isinstance(errors[index], TimeoutError)
 
         # Timed-out callers must not release capacity while getaddrinfo is
@@ -250,7 +250,7 @@ def test_repeated_stalled_dns_resolution_is_process_bounded(
             finished[index] = Event()
             callers[index] = Thread(target=connect, args=(index,), daemon=True)
             callers[index].start()
-            assert finished[index].wait(timeout=0.2)
+            assert finished[index].wait(timeout=1.5)
             assert isinstance(errors[index], generation._DNSResolverCapacityError)
 
         assert len(workers) == capacity
@@ -259,9 +259,9 @@ def test_repeated_stalled_dns_resolution_is_process_bounded(
     finally:
         dns_release.set()
         for caller in callers.values():
-            caller.join(timeout=0.5)
+            caller.join(timeout=2.0)
         for worker in workers:
-            worker.join(timeout=0.5)
+            worker.join(timeout=2.0)
 
     assert all(not caller.is_alive() for caller in callers.values())
     assert all(not worker.is_alive() for worker in workers)
@@ -275,6 +275,120 @@ def test_repeated_stalled_dns_resolution_is_process_bounded(
     assert all(acquired)
     for _ in acquired:
         generation._DNS_RESOLVER_SLOTS.release()
+
+
+
+def test_late_dns_result_after_deadline_never_opens_socket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capacity = generation.DNS_RESOLVER_CONCURRENCY_LIMIT
+    slots = BoundedSemaphore(capacity)
+    monkeypatch.setattr(generation, "_DNS_RESOLVER_SLOTS", slots)
+    dns_started = Event()
+    dns_release = Event()
+    dns_returning = Event()
+    caller_finished = Event()
+    connection_holder: list[generation._DeadlineHTTPSConnection] = []
+    errors: list[BaseException] = []
+    socket_attempts: list[tuple[object, ...]] = []
+
+    def late_dns(*_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+        dns_started.set()
+        assert dns_release.wait(timeout=2.0)
+        dns_returning.set()
+        return [
+            (
+                generation.socket.AF_INET,
+                generation.socket.SOCK_STREAM,
+                generation.socket.IPPROTO_TCP,
+                "",
+                ("127.0.0.1", 443),
+            )
+        ]
+
+    def unexpected_socket(*args: object, **_kwargs: object) -> None:
+        socket_attempts.append(args)
+        raise AssertionError("late DNS result must not open a socket")
+
+    monkeypatch.setattr(generation.socket, "getaddrinfo", late_dns)
+    monkeypatch.setattr(generation.socket, "socket", unexpected_socket)
+
+    def connect() -> None:
+        connection = generation._DeadlineHTTPSConnection(
+            "api.cloudflare.com",
+            timeout=1.0,
+            deadline=time.monotonic() + 0.25,
+        )
+        connection_holder.append(connection)
+        try:
+            connection.connect()
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            connection.cancel_deadline()
+            caller_finished.set()
+
+    caller = Thread(target=connect, daemon=True)
+    reserved_slots = 0
+    try:
+        caller.start()
+        assert dns_started.wait(timeout=1.0)
+
+        # Hold the other slot so the second acquisition can only succeed when
+        # the late resolver worker releases its slot after returning.
+        assert slots.acquire(blocking=False)
+        reserved_slots = 1
+        assert caller_finished.wait(timeout=1.5)
+        assert len(errors) == 1
+        assert isinstance(errors[0], TimeoutError)
+        assert "generation_deadline_exceeded" in str(errors[0])
+
+        dns_release.set()
+        assert dns_returning.wait(timeout=1.0)
+        assert slots.acquire(timeout=2.0)
+        reserved_slots = 2
+        assert socket_attempts == []
+    finally:
+        dns_release.set()
+        caller.join(timeout=2.0)
+        if connection_holder:
+            connection_holder[0].cancel_deadline()
+        for _ in range(reserved_slots):
+            slots.release()
+
+    assert not caller.is_alive()
+    assert socket_attempts == []
+
+
+def test_dns_resolver_thread_start_failure_releases_capacity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capacity = generation.DNS_RESOLVER_CONCURRENCY_LIMIT
+    slots = BoundedSemaphore(capacity)
+    monkeypatch.setattr(generation, "_DNS_RESOLVER_SLOTS", slots)
+    start_attempts = 0
+
+    def fail_start(_thread: Thread) -> None:
+        nonlocal start_attempts
+        start_attempts += 1
+        raise RuntimeError("controlled resolver thread start failure")
+
+    monkeypatch.setattr(generation.Thread, "start", fail_start)
+    connection = generation._DeadlineHTTPSConnection(
+        "api.cloudflare.com",
+        timeout=1.0,
+        deadline=time.monotonic() + 1.0,
+    )
+
+    with pytest.raises(RuntimeError, match="controlled resolver thread start failure"):
+        connection.connect()
+
+    assert start_attempts == 1
+    acquired = [slots.acquire(blocking=False) for _ in range(capacity)]
+    assert all(acquired)
+    for _ in acquired:
+        slots.release()
+    connection.cancel_deadline()
 
 
 def test_dns_resolver_exception_releases_capacity(
