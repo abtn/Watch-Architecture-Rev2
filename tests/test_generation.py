@@ -170,7 +170,13 @@ def test_absolute_generation_deadline_interrupts_tcp_and_tls(
         generation.socket,
         "getaddrinfo",
         lambda *_args, **_kwargs: [
-            (generation.socket.AF_INET, generation.socket.SOCK_STREAM, 0, "", ("127.0.0.1", 443))
+            (
+                generation.socket.AF_INET,
+                generation.socket.SOCK_STREAM,
+                0,
+                "",
+                ("127.0.0.1", 443),
+            )
         ],
     )
     monkeypatch.setattr(
