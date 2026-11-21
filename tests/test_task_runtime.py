@@ -438,7 +438,8 @@ def test_daily_quota_query_delay_is_excluded_from_durable_admission_deadline(
     admission = TaskRuntime(session_factory).admit(pending_task)
 
     assert len(quota_query_completed) == 1
-    assert admission.admitted_at >= quota_query_completed[0]
+    assert time.monotonic() - admission.admitted_monotonic >= 0.05
+    assert admission.admitted_at < quota_query_completed[0]
     with session_factory() as session:
         started = session.get(Event, admission.event_id)
         assert started is not None
