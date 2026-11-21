@@ -105,7 +105,10 @@ class _DeadlineHTTPSConnection(HTTPSConnection):
                     self._close_socket(connection_socket)
                     self.sock = None
                     last_error = error
-                    if self._deadline_expired.is_set() or time.monotonic() >= self._deadline:
+                    if (
+                        self._deadline_expired.is_set()
+                        or time.monotonic() >= self._deadline
+                    ):
                         raise TimeoutError("generation_deadline_exceeded") from None
 
             if self.sock is None:
