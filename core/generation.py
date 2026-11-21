@@ -16,8 +16,8 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
-from http.client import HTTPSConnection
-from threading import Timer
+from http.client import HTTPSConnection, IncompleteRead
+from threading import Event, Thread, Timer
 from typing import Any, Iterator, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -34,7 +34,7 @@ _RETRYABLE_HTTP_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 
 
 class _DeadlineHTTPSConnection(HTTPSConnection):
-    """HTTPS connection forcibly closed when its absolute request deadline expires."""
+    """HTTPS connection whose establishment and I/O share one absolute deadline."""
 
     def __init__(self, host: str, *, deadline: float, **kwargs: Any) -> None:
         self._deadline = deadline
@@ -46,24 +46,43 @@ class _DeadlineHTTPSConnection(HTTPSConnection):
         if remaining <= 0:
             raise TimeoutError("generation_deadline_exceeded")
         self.timeout = remaining
-        super().connect()
 
-        connection_socket = self.sock
-        if connection_socket is None:
-            raise OSError("generation_connection_socket_missing")
-        remaining = self._deadline - time.monotonic()
-        if remaining <= 0:
-            self._close_socket(connection_socket)
-            raise TimeoutError("generation_deadline_exceeded")
+        connected = Event()
+        failures: list[BaseException] = []
 
-        timer = Timer(
-            remaining,
-            self._close_socket,
-            args=(connection_socket,),
-        )
+        def establish_connection() -> None:
+            try:
+                super(_DeadlineHTTPSConnection, self).connect()
+            except BaseException as error:
+                failures.append(error)
+            finally:
+                if time.monotonic() >= self._deadline and self.sock is not None:
+                    self._close_socket(self.sock)
+                connected.set()
+
+        timer = Timer(remaining, self._expire_connection)
         timer.daemon = True
         self._deadline_timer = timer
         timer.start()
+
+        connector = Thread(target=establish_connection, daemon=True)
+        connector.start()
+        if not connected.wait(remaining):
+            self._expire_connection()
+            raise TimeoutError("generation_deadline_exceeded")
+        if time.monotonic() >= self._deadline:
+            self._expire_connection()
+            raise TimeoutError("generation_deadline_exceeded")
+        if failures:
+            raise failures[0]
+
+        if self.sock is None:
+            raise OSError("generation_connection_socket_missing")
+
+    def _expire_connection(self) -> None:
+        connection_socket = self.sock
+        if connection_socket is not None:
+            self._close_socket(connection_socket)
 
     def cancel_deadline(self) -> None:
         if self._deadline_timer is not None:
@@ -412,7 +431,7 @@ class CloudflareWorkersAIGenerationProvider:
                 f"cloudflare_http_{error.code}",
                 retryable=error.code in _RETRYABLE_HTTP_CODES,
             ) from None
-        except (URLError, TimeoutError, OSError):
+        except (URLError, TimeoutError, OSError, IncompleteRead):
             raise GenerationProviderError(
                 "cloudflare_connection_or_timeout",
                 retryable=True,
