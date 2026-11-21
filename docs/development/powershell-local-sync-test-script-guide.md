@@ -78,6 +78,41 @@ The here-string opener and terminator must both begin in column zero. Do not put
 
 7. **Avoid continuation backticks.** Prefer argument arrays or splatting. A trailing PowerShell backtick is easy to lose in a copied terminal block and can silently change command parsing.
 
+## Windows path comparison — mandatory
+
+Do not compare a path returned by Git or PowerShell directly to a hard-coded Windows path as raw strings. Git commonly emits forward slashes (for example, C:/work/repo), while a configured Windows path commonly uses backslashes (C:\work\repo). They can identify the same directory while a raw string comparison reports a false mismatch.
+
+For repository-root checks, resolve both paths, normalize separators, and compare case-insensitively:
+
+~~~powershell
+$expectedRoot = 'C:\path\to\Watch-Architecture-Rev2'
+$actualRoot = (git rev-parse --show-toplevel)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the Git repository root.' }
+
+$actualRoot = [System.IO.Path]::GetFullPath($actualRoot).TrimEnd('\', '/').Replace('/', '\')
+$expectedRoot = [System.IO.Path]::GetFullPath($expectedRoot).TrimEnd('\', '/').Replace('/', '\')
+
+if (-not [string]::Equals(
+    $actualRoot,
+    $expectedRoot,
+    [System.StringComparison]::OrdinalIgnoreCase
+)) {
+    throw "Wrong repository root. Expected '$expectedRoot'; found '$actualRoot'."
+}
+~~~
+
+Use the same normalization whenever comparing resolved filesystem paths on Windows. Do not solve this by weakening or removing the repository-root check.
+
+## Git fetch refspecs — safe construction
+
+Do not escape the colon in a double-quoted refspec with a PowerShell backtick. Build the refspec with the format operator:
+
+~~~powershell
+$refspec = 'refs/heads/{0}:refs/remotes/origin/{0}' -f $targetBranch
+git fetch origin $refspec
+if ($LASTEXITCODE -ne 0) { throw 'Fetch failed.' }
+~~~
+
 ## Additional failure modes to inspect
 
 - Doubled braces such as {{ or }}, often introduced by templating.
@@ -88,6 +123,8 @@ The here-string opener and terminator must both begin in column zero. Do not put
 - Indented here-string terminators.
 - Cleanup that can match containers or volumes not created by the current script.
 - A success message that can run after a failed native command.
+- Raw string comparison between Git's forward-slash repository path and a Windows backslash path.
+- Backtick-escaped colons in Git fetch refspecs.
 
 ## Pre-send checklist
 
@@ -98,6 +135,8 @@ Before presenting a generated script, verify each item:
 - [ ] $ErrorActionPreference = 'Stop' is present.
 - [ ] Preflight checks read and validate the expected repository, branch, HEAD, and worktree state where relevant.
 - [ ] Every consequential native command is followed immediately by a $LASTEXITCODE check.
+- [ ] Repository-root comparisons normalize slash direction and use a case-insensitive Windows comparison.
+- [ ] Git fetch refspecs use safe string construction without backtick escaping.
 - [ ] No doubled braces, Bash continuations, or accidental literal newline escapes remain.
 - [ ] Here-string markers begin in column zero.
 - [ ] No destructive Git command is used unless explicitly requested and authorized.
@@ -128,7 +167,11 @@ $expectedSha = '0123456789abcdef0123456789abcdef01234567'
 # --- Preflight ---
 $actualRoot = (git rev-parse --show-toplevel)
 if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the Git repository root.' }
-if ($actualRoot -ne $expectedRoot) { throw "Wrong repository root: $actualRoot" }
+$actualRoot = [System.IO.Path]::GetFullPath($actualRoot).TrimEnd('\', '/').Replace('/', '\')
+$expectedRoot = [System.IO.Path]::GetFullPath($expectedRoot).TrimEnd('\', '/').Replace('/', '\')
+if (-not [string]::Equals($actualRoot, $expectedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Wrong repository root. Expected '$expectedRoot'; found '$actualRoot'."
+}
 
 $currentBranch = (git branch --show-current)
 if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the current branch.' }
@@ -145,7 +188,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the worktree.' }
 if ($status) { throw 'Worktree is dirty. Aborting without changes.' }
 
 # --- Fetch and verify target ---
-git fetch origin ("refs/heads/{0}:refs/remotes/origin/{0}" -f $targetBranch)
+$refspec = 'refs/heads/{0}:refs/remotes/origin/{0}' -f $targetBranch
+git fetch origin $refspec
 if ($LASTEXITCODE -ne 0) { throw 'Fetch failed.' }
 
 $remoteSha = (git rev-parse "refs/remotes/origin/$targetBranch")
