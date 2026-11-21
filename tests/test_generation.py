@@ -203,6 +203,29 @@ def test_absolute_generation_deadline_interrupts_tcp_and_tls(
         connection.cancel_deadline()
 
 
+def test_incomplete_http_response_is_a_retryable_provider_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class IncompleteResponse(FakeHTTPResponse):
+        def read(self) -> bytes:
+            raise IncompleteRead(b'{"choices":', 128)
+
+    monkeypatch.setattr(
+        generation,
+        "_open_with_deadline",
+        lambda *_args, **_kwargs: IncompleteResponse(_response()),
+    )
+
+    with pytest.raises(GenerationProviderError) as caught:
+        _provider().generate_raw(
+            system_prompt="Return JSON.",
+            user_prompt="Propose one item.",
+        )
+
+    assert caught.value.reason == "cloudflare_connection_or_timeout"
+    assert caught.value.retryable is True
+
+
 def test_generation_raw_uses_the_smaller_per_call_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
