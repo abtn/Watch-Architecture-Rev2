@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 from decimal import Decimal
-from threading import Event
+from threading import Event, Thread
 from urllib.error import HTTPError
 from urllib.request import Request
 
@@ -102,19 +102,17 @@ def test_generation_posts_once_and_returns_validated_json_and_usage(
 def test_absolute_generation_deadline_closes_an_active_response_socket(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    closed = Event()
-
-    class _FakeSocket:
-        def shutdown(self, _how: int) -> None:
-            closed.set()
-
-        def close(self) -> None:
-            closed.set()
-
-    fake_socket = _FakeSocket()
+    client_socket, peer_socket = generation.socket.socketpair()
+    read_finished = Event()
 
     def fake_connect(connection: generation.HTTPSConnection) -> None:
-        connection.sock = fake_socket
+        connection.sock = client_socket
+
+    def wait_for_response() -> None:
+        try:
+            peer_socket.recv(1)
+        finally:
+            read_finished.set()
 
     monkeypatch.setattr(generation.HTTPSConnection, "connect", fake_connect)
     connection = generation._DeadlineHTTPSConnection(
@@ -123,10 +121,15 @@ def test_absolute_generation_deadline_closes_an_active_response_socket(
         deadline=time.monotonic() + 0.05,
     )
     connection.connect()
+    reader = Thread(target=wait_for_response, daemon=True)
+    reader.start()
     try:
-        assert closed.wait(timeout=0.5)
+        assert read_finished.wait(timeout=0.5)
+        assert reader.is_alive() is False
     finally:
         connection.cancel_deadline()
+        peer_socket.close()
+        reader.join(timeout=0.5)
 
 
 def test_generation_raw_uses_the_smaller_per_call_timeout(
