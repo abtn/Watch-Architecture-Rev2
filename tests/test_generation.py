@@ -139,11 +139,10 @@ def test_generation_raw_uses_the_smaller_per_call_timeout(
     captured: dict[str, object] = {}
 
     def fake_urlopen(request: Request, deadline: float) -> FakeHTTPResponse:
-        captured["deadline"] = deadline
+        captured["remaining"] = deadline - time.monotonic()
         return FakeHTTPResponse(_response())
 
     monkeypatch.setattr(generation, "_open_with_deadline", fake_urlopen)
-    started = time.monotonic()
     result = _provider().generate_raw(
         system_prompt="Return JSON.",
         user_prompt="Propose one item.",
@@ -151,7 +150,7 @@ def test_generation_raw_uses_the_smaller_per_call_timeout(
     )
 
     assert result.raw_content == '{"decision":"candidate"}'
-    assert 0 < captured["deadline"] - started <= 4.0
+    assert 0 < captured["remaining"] <= 4.0
 
 
 def test_generation_fails_closed_when_usage_is_missing(
