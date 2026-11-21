@@ -116,15 +116,17 @@ class _DeadlineHTTPSConnection(HTTPSConnection):
                     raise last_error
                 raise OSError("generation_connection_socket_missing")
 
-            if self._tunnel_host:
-                self._tunnel()
+            tunnel_host = getattr(self, "_tunnel_host", None)
+            if tunnel_host:
+                getattr(self, "_tunnel")()
 
             remaining = self._deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError("generation_deadline_exceeded")
             self.sock.settimeout(remaining)
-            server_hostname = self._tunnel_host or self.host
-            self.sock = self._context.wrap_socket(
+            server_hostname = tunnel_host or self.host
+            context = getattr(self, "_context")
+            self.sock = context.wrap_socket(
                 self.sock,
                 server_hostname=server_hostname,
             )
