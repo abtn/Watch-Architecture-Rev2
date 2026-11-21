@@ -178,6 +178,7 @@ class AdmissionResult:
     attempt_count: int
     event_id: UUID
     admitted_at: datetime
+    admitted_monotonic: float
     replayed: bool = False
 
 
@@ -585,11 +586,14 @@ class TaskRuntime:
             except InvalidPolicyError as error:
                 raise TaskNotEligible(str(error)) from error
 
+            # Pair the durable UTC anchor with its process-local monotonic
+            # equivalent before the quota query. Recovery reads task_started;
+            # the live worker uses the paired monotonic value.
+            admission_time = datetime.now(timezone.utc)
+            admitted_monotonic = time.monotonic()
+
             if daily_limit is not None:
-                # The quota read is part of admission latency, not Task runtime.
-                # Capture the durable start only after that read succeeds.
-                quota_check_time = datetime.now(timezone.utc)
-                day_start = quota_check_time.replace(
+                day_start = admission_time.replace(
                     hour=0,
                     minute=0,
                     second=0,
@@ -612,11 +616,6 @@ class TaskRuntime:
                     raise TaskNotEligible(
                         "team_daily_task_quota_exhausted"
                     )
-
-            # One durable timestamp is the deadline origin for both the
-            # live worker and interrupted recovery. Capture it after the quota
-            # query so time spent waiting for that query is not charged twice.
-            admission_time = datetime.now(timezone.utc)
 
             # All changes below belong to the same transaction as the quota
             # check. If admission fails or commit raises, they roll back.
@@ -643,6 +642,7 @@ class TaskRuntime:
                 task.attempt_count,
                 event.id,
                 admission_time,
+                admitted_monotonic,
             )
 
     @staticmethod
