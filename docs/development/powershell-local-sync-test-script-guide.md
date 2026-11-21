@@ -78,6 +78,124 @@ The here-string opener and terminator must both begin in column zero. Do not put
 
 7. **Avoid continuation backticks.** Prefer argument arrays or splatting. A trailing PowerShell backtick is easy to lose in a copied terminal block and can silently change command parsing.
 
+## Windows path comparison — mandatory
+
+Do not compare a path returned by Git or PowerShell directly to a hard-coded Windows path as raw strings. Git commonly emits forward slashes (for example, C:/work/repo), while a configured Windows path commonly uses backslashes (C:\work\repo). They can identify the same directory while a raw string comparison reports a false mismatch.
+
+For repository-root checks, resolve both paths, normalize separators, and compare case-insensitively:
+
+~~~powershell
+$expectedRoot = 'C:\path\to\Watch-Architecture-Rev2'
+$actualRoot = (git rev-parse --show-toplevel)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the Git repository root.' }
+
+$actualRoot = [System.IO.Path]::GetFullPath($actualRoot).TrimEnd('\', '/').Replace('/', '\')
+$expectedRoot = [System.IO.Path]::GetFullPath($expectedRoot).TrimEnd('\', '/').Replace('/', '\')
+
+if (-not [string]::Equals(
+    $actualRoot,
+    $expectedRoot,
+    [System.StringComparison]::OrdinalIgnoreCase
+)) {
+    throw "Wrong repository root. Expected '$expectedRoot'; found '$actualRoot'."
+}
+~~~
+
+Use the same normalization whenever comparing resolved filesystem paths on Windows. Do not solve this by weakening or removing the repository-root check.
+
+## GitHub HTTPS origin comparison — mandatory
+
+Do not require a literal trailing `.git` in an HTTPS GitHub remote URL. Both `https://github.com/owner/repository` and `https://github.com/owner/repository.git` are valid forms; a trailing slash may also be present. Compare the parsed URI's scheme, host, and normalized repository path rather than comparing the raw strings.
+
+For this repository, use an explicit expected repository identity:
+
+~~~powershell
+$originUrl = (git remote get-url origin)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot read the origin remote URL.' }
+
+$originUri = $null
+if (-not [System.Uri]::TryCreate($originUrl.Trim(), [System.UriKind]::Absolute, [ref]$originUri)) {
+    throw "Origin is not a valid absolute URL: $originUrl"
+}
+
+$originPath = $originUri.AbsolutePath.TrimEnd('/')
+if ($originPath.EndsWith('.git', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $originPath = $originPath.Substring(0, $originPath.Length - 4)
+}
+
+if (
+    $originUri.Scheme -ne 'https' -or
+    $originUri.Host -ne 'github.com' -or
+    -not [string]::Equals(
+        $originPath,
+        '/abtn/Watch-Architecture-Rev2',
+        [System.StringComparison]::OrdinalIgnoreCase
+    )
+) {
+    throw "Unexpected origin URL: $originUrl"
+}
+~~~
+
+Do not accept an arbitrary host or repository merely because its URL ends with the expected repository name. If SSH remotes are intentionally supported, handle that as a separate explicit accepted format rather than weakening this HTTPS check.
+
+## Git fetch refspecs — safe construction
+
+Do not escape the colon in a double-quoted refspec with a PowerShell backtick. Build the refspec with the format operator:
+
+~~~powershell
+$refspec = 'refs/heads/{0}:refs/remotes/origin/{0}' -f $targetBranch
+git fetch origin $refspec
+if ($LASTEXITCODE -ne 0) { throw 'Fetch failed.' }
+~~~
+
+## Alembic revision output — mandatory
+
+Do not assume \`alembic current\` or \`alembic heads\` always prints a verbose \`Rev: <revision>\` line. Depending on the Alembic command/output mode, a valid revision can be printed as a plain line, for example:
+
+~~~text
+0019_rw1_world_memory (head)
+~~~
+
+A parser that accepts only \`Rev:\` will reject this valid output. Capture stdout and stderr, check the native exit code immediately, then parse both the verbose and normal forms. Ignore informational headings/log lines, and require the exact number of revision identifiers expected by the check.
+
+For a database expected to have exactly one current revision:
+
+~~~powershell
+$currentOutput = & uv run alembic current 2>&1
+$currentExitCode = $LASTEXITCODE
+if ($currentExitCode -ne 0) {
+    throw "Alembic current failed: $($currentOutput -join [Environment]::NewLine)"
+}
+
+$currentLines = @(
+    $currentOutput |
+        ForEach-Object { $_.ToString().Trim() } |
+        Where-Object { $_ }
+)
+
+$currentRevisions = @(
+    foreach ($line in $currentLines) {
+        if ($line -match '^Rev:\s*(\S+)') {
+            $Matches[1]
+        }
+        elseif ($line -match '^(\S+)\s+\([^)]*\)$') {
+            $Matches[1]
+        }
+    }
+)
+
+if ($currentRevisions.Count -ne 1) {
+    throw "Expected exactly one current Alembic revision. Found $($currentRevisions.Count). Output: $($currentOutput -join [Environment]::NewLine)"
+}
+
+$currentRevision = $currentRevisions[0]
+if ($currentRevision -ne $expectedHeadRevision) {
+    throw "Alembic current revision mismatch. Expected '$expectedHeadRevision'; found '$currentRevision'."
+}
+~~~
+
+If the expected database state is a single head, separately parse \`alembic heads\` and assert exactly one head. Do not silently take the first result, accept multiple revisions, or treat an unparsed output as success. Keep the expected revision as an explicit value established for the task. If a supported Alembic version emits another format, inspect its actual output and extend the parser deliberately rather than weakening the assertion.
+
 ## Additional failure modes to inspect
 
 - Doubled braces such as {{ or }}, often introduced by templating.
@@ -88,6 +206,10 @@ The here-string opener and terminator must both begin in column zero. Do not put
 - Indented here-string terminators.
 - Cleanup that can match containers or volumes not created by the current script.
 - A success message that can run after a failed native command.
+- Raw string comparison between Git's forward-slash repository path and a Windows backslash path.
+- Backtick-escaped colons in Git fetch refspecs.
+- Literal origin URL comparisons that reject the optional `.git` suffix or trailing slash.
+- Origin checks that compare only a URL suffix instead of validating scheme, host, and repository path.
 
 ## Pre-send checklist
 
@@ -98,6 +220,9 @@ Before presenting a generated script, verify each item:
 - [ ] $ErrorActionPreference = 'Stop' is present.
 - [ ] Preflight checks read and validate the expected repository, branch, HEAD, and worktree state where relevant.
 - [ ] Every consequential native command is followed immediately by a $LASTEXITCODE check.
+- [ ] Repository-root comparisons normalize slash direction and use a case-insensitive Windows comparison.
+- [ ] Git fetch refspecs use safe string construction without backtick escaping.
+- [ ] GitHub HTTPS origin validation parses the URL and validates scheme, host, and normalized repository path, accepting optional `.git` and trailing slash.
 - [ ] No doubled braces, Bash continuations, or accidental literal newline escapes remain.
 - [ ] Here-string markers begin in column zero.
 - [ ] No destructive Git command is used unless explicitly requested and authorized.
@@ -128,7 +253,11 @@ $expectedSha = '0123456789abcdef0123456789abcdef01234567'
 # --- Preflight ---
 $actualRoot = (git rev-parse --show-toplevel)
 if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the Git repository root.' }
-if ($actualRoot -ne $expectedRoot) { throw "Wrong repository root: $actualRoot" }
+$actualRoot = [System.IO.Path]::GetFullPath($actualRoot).TrimEnd('\', '/').Replace('/', '\')
+$expectedRoot = [System.IO.Path]::GetFullPath($expectedRoot).TrimEnd('\', '/').Replace('/', '\')
+if (-not [string]::Equals($actualRoot, $expectedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Wrong repository root. Expected '$expectedRoot'; found '$actualRoot'."
+}
 
 $currentBranch = (git branch --show-current)
 if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the current branch.' }
@@ -145,7 +274,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the worktree.' }
 if ($status) { throw 'Worktree is dirty. Aborting without changes.' }
 
 # --- Fetch and verify target ---
-git fetch origin ("refs/heads/{0}:refs/remotes/origin/{0}" -f $targetBranch)
+$refspec = 'refs/heads/{0}:refs/remotes/origin/{0}' -f $targetBranch
+git fetch origin $refspec
 if ($LASTEXITCODE -ne 0) { throw 'Fetch failed.' }
 
 $remoteSha = (git rev-parse "refs/remotes/origin/$targetBranch")
