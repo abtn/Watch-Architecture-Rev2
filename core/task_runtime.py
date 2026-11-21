@@ -177,7 +177,7 @@ class AdmissionResult:
     task_id: UUID
     attempt_count: int
     event_id: UUID
-    admitted_monotonic: float
+    admitted_at: datetime
     replayed: bool = False
 
 
@@ -585,13 +585,11 @@ class TaskRuntime:
             except InvalidPolicyError as error:
                 raise TaskNotEligible(str(error)) from error
 
-            admission_time: datetime | None = None
-
             if daily_limit is not None:
-                # Use one timestamp for both the quota window and this
-                # successful start Event, avoiding UTC-midnight boundary drift.
-                admission_time = datetime.now(timezone.utc)
-                day_start = admission_time.replace(
+                # The quota read is part of admission latency, not Task runtime.
+                # Capture the durable start only after that read succeeds.
+                quota_check_time = datetime.now(timezone.utc)
+                day_start = quota_check_time.replace(
                     hour=0,
                     minute=0,
                     second=0,
@@ -615,9 +613,10 @@ class TaskRuntime:
                         "team_daily_task_quota_exhausted"
                     )
 
-            # Capture the process-local deadline origin at the admission
-            # transition, not after the admission transaction returns.
-            admitted_monotonic = time.monotonic()
+            # One durable timestamp is the deadline origin for both the
+            # live worker and interrupted recovery. Capture it after the quota
+            # query so time spent waiting for that query is not charged twice.
+            admission_time = datetime.now(timezone.utc)
 
             # All changes below belong to the same transaction as the quota
             # check. If admission fails or commit raises, they roll back.
@@ -635,8 +634,7 @@ class TaskRuntime:
                 },
             )
 
-            if admission_time is not None:
-                event.created_at = admission_time
+            event.created_at = admission_time
 
             session.flush()
 
@@ -644,7 +642,7 @@ class TaskRuntime:
                 task.id,
                 task.attempt_count,
                 event.id,
-                admitted_monotonic,
+                admission_time,
             )
 
     @staticmethod
