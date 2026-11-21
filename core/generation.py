@@ -45,39 +45,91 @@ class _DeadlineHTTPSConnection(HTTPSConnection):
         remaining = self._deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("generation_deadline_exceeded")
-        self.timeout = remaining
 
-        connected = Event()
-        failures: list[BaseException] = []
+        resolved = Event()
+        addresses: list[tuple[Any, ...]] = []
+        failures: list[Exception] = []
 
-        def establish_connection() -> None:
+        def resolve_host() -> None:
             try:
-                super(_DeadlineHTTPSConnection, self).connect()
-            except BaseException as error:
+                addresses.extend(
+                    socket.getaddrinfo(
+                        self.host,
+                        self.port,
+                        0,
+                        socket.SOCK_STREAM,
+                    )
+                )
+            except Exception as error:
                 failures.append(error)
             finally:
-                if time.monotonic() >= self._deadline and self.sock is not None:
-                    self._close_socket(self.sock)
-                connected.set()
+                resolved.set()
+
+        resolver = Thread(target=resolve_host, daemon=True)
+        resolver.start()
 
         timer = Timer(remaining, self._expire_connection)
         timer.daemon = True
         self._deadline_timer = timer
         timer.start()
 
-        connector = Thread(target=establish_connection, daemon=True)
-        connector.start()
-        if not connected.wait(remaining):
-            self._expire_connection()
-            raise TimeoutError("generation_deadline_exceeded")
-        if time.monotonic() >= self._deadline:
-            self._expire_connection()
-            raise TimeoutError("generation_deadline_exceeded")
-        if failures:
-            raise failures[0]
+        try:
+            if not resolved.wait(remaining):
+                raise TimeoutError("generation_deadline_exceeded")
+            if time.monotonic() >= self._deadline:
+                raise TimeoutError("generation_deadline_exceeded")
+            if failures:
+                raise failures[0]
+            if not addresses:
+                raise OSError("generation_dns_returned_no_addresses")
 
-        if self.sock is None:
-            raise OSError("generation_connection_socket_missing")
+            last_error: OSError | None = None
+            for family, socktype, protocol, _canonical_name, address in addresses:
+                remaining = self._deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("generation_deadline_exceeded")
+
+                connection_socket = socket.socket(family, socktype, protocol)
+                self.sock = connection_socket
+                try:
+                    connection_socket.settimeout(remaining)
+                    if self.source_address:
+                        connection_socket.bind(self.source_address)
+                    connection_socket.connect(address)
+                    last_error = None
+                    break
+                except OSError as error:
+                    self._close_socket(connection_socket)
+                    self.sock = None
+                    last_error = error
+                    if time.monotonic() >= self._deadline:
+                        raise TimeoutError("generation_deadline_exceeded") from None
+
+            if self.sock is None:
+                if last_error is not None:
+                    raise last_error
+                raise OSError("generation_connection_socket_missing")
+
+            if self._tunnel_host:
+                self._tunnel()
+
+            remaining = self._deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("generation_deadline_exceeded")
+            self.sock.settimeout(remaining)
+            server_hostname = self._tunnel_host or self.host
+            self.sock = self._context.wrap_socket(
+                self.sock,
+                server_hostname=server_hostname,
+            )
+            if time.monotonic() >= self._deadline:
+                self._expire_connection()
+                raise TimeoutError("generation_deadline_exceeded")
+        except OSError:
+            if time.monotonic() >= self._deadline:
+                self._expire_connection()
+                raise TimeoutError("generation_deadline_exceeded") from None
+            raise
 
     def _expire_connection(self) -> None:
         connection_socket = self.sock
