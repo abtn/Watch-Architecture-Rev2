@@ -1,8 +1,8 @@
 """Application-controlled pending-to-running Task admission tests."""
 
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-import time
 from threading import Barrier
 from typing import Iterator
 from uuid import UUID, uuid4
