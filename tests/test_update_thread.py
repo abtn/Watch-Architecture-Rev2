@@ -2240,10 +2240,12 @@ def test_update_thread_worker_never_calls_provider_for_invalid_context(
         assert charges == []
 
 
+@pytest.mark.parametrize("receipt_offset_seconds", [45, 46])
 def test_update_thread_worker_does_not_materialize_receipt_only_recovery_after_deadline(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
     rw3_fixture: Fixture,
+    receipt_offset_seconds: int,
 ) -> None:
     _, created = _create_task(session_factory, rw3_fixture)
     provider = _FakeUpdateThreadProvider('{"proposals":[]}')
@@ -2320,6 +2322,16 @@ def test_update_thread_worker_does_not_materialize_receipt_only_recovery_after_d
             )
         )
     assert started is not None
+    receipt_timestamp = started + timedelta(seconds=receipt_offset_seconds)
+    with session_factory.begin() as session:
+        session.execute(
+            update(Event)
+            .where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+            .values(created_at=receipt_timestamp)
+        )
     recovered = TaskRuntime(
         session_factory, snapshot_store
     ).recover_interrupted(now=started + timedelta(seconds=61))
@@ -2346,6 +2358,26 @@ def test_update_thread_worker_does_not_materialize_receipt_only_recovery_after_d
             "update_thread_deadline_exceeded"
         )
         assert proposal_event is None
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        inconsistent_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_recovery_inconsistent",
+            )
+        )
+        assert receipt is not None and receipt.created_at == receipt_timestamp
+        assert charge is not None and charge.status == "reconciled"
+        assert inconsistent_event is None
         assert session.scalar(
             select(Event).where(
                 Event.task_id == created.task_id,

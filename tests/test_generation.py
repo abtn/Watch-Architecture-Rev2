@@ -15,6 +15,7 @@ import core.generation as generation
 from core.generation import (
     CloudflareWorkersAIConfig,
     CloudflareWorkersAIGenerationProvider,
+    GenerationCostQuote,
     GenerationProviderError,
 )
 
@@ -520,6 +521,29 @@ def test_initial_provider_quotes_conservative_maximum_without_a_request() -> Non
     assert quote.maximum_input_tokens == expected_input
     assert quote.maximum_output_tokens == 512
     assert quote.maximum_cost_usd == expected_cost
+
+
+def test_three_maximum_update_thread_reservations_fit_task_cost_ceiling() -> None:
+    quote = GenerationCostQuote(
+        provider="cloudflare_workers_ai",
+        model=generation.DEFAULT_MODEL,
+        maximum_input_tokens=30_976,
+        maximum_output_tokens=1_024,
+        input_usd_per_million_tokens=generation.INPUT_USD_PER_MILLION_TOKENS,
+        output_usd_per_million_tokens=generation.OUTPUT_USD_PER_MILLION_TOKENS,
+        pricing_revision=generation.CLOUDFLARE_PRICING_REVISION,
+    )
+
+    assert generation.CHAT_TOKEN_OVERHEAD_TOKENS == 128
+    assert generation.DEFAULT_MAX_OUTPUT_TOKENS == 1_024
+    assert (
+        quote.maximum_input_tokens + quote.maximum_output_tokens
+        == generation.MAX_MODEL_CONTEXT_TOKENS
+    )
+    assert quote.maximum_cost_usd == Decimal("0.00500224")
+    three_attempt_reservations = quote.maximum_cost_usd * 3
+    assert three_attempt_reservations == Decimal("0.01500672")
+    assert three_attempt_reservations < Decimal("0.02")
 
 
 def test_initial_provider_rejects_a_model_without_a_pinned_price_card() -> None:

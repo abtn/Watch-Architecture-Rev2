@@ -2667,20 +2667,16 @@ class WorldMemoryCommitService:
                     "update_thread_proposals_event_duplicate"
                 )
             if not current_proposals:
-                _validate_update_thread_proposal_deadline(
-                    session, task, attempt, receipt_event
-                )
-                if reference >= _update_thread_proposal_deadline(
+                deadline = _update_thread_proposal_deadline(
                     session, task, attempt
-                ):
+                )
+                if receipt_event.created_at >= deadline or reference >= deadline:
                     return TerminalObservation(
                         task_id=task.id,
                         attempt=attempt,
                         result_category="terminal_failure",
-                        observed_at=reference,
-                        failure_reason=(
-                            "update_thread_deadline_exceeded"
-                        ),
+                        observed_at=max(reference, receipt_event.created_at),
+                        failure_reason="update_thread_deadline_exceeded",
                     )
                 try:
                     parsed = _parse_model_response(
