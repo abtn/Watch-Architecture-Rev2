@@ -65,10 +65,10 @@ def test_generation_posts_once_and_returns_validated_json_and_usage(
 ) -> None:
     captured: dict[str, object] = {}
 
-    def fake_urlopen(request: Request, timeout: float) -> FakeHTTPResponse:
+    def fake_urlopen(request: Request, deadline: float) -> FakeHTTPResponse:
         captured["url"] = request.full_url
         captured["headers"] = request.headers
-        captured["timeout"] = timeout
+        captured["deadline"] = deadline
         assert request.data is not None
         captured["body"] = json.loads(request.data.decode("utf-8"))
         return FakeHTTPResponse(_response())
@@ -138,11 +138,12 @@ def test_generation_raw_uses_the_smaller_per_call_timeout(
 ) -> None:
     captured: dict[str, object] = {}
 
-    def fake_urlopen(request: Request, timeout: float) -> FakeHTTPResponse:
-        captured["timeout"] = timeout
+    def fake_urlopen(request: Request, deadline: float) -> FakeHTTPResponse:
+        captured["deadline"] = deadline
         return FakeHTTPResponse(_response())
 
     monkeypatch.setattr(generation, "_open_with_deadline", fake_urlopen)
+    started = time.monotonic()
     result = _provider().generate_raw(
         system_prompt="Return JSON.",
         user_prompt="Propose one item.",
@@ -150,7 +151,7 @@ def test_generation_raw_uses_the_smaller_per_call_timeout(
     )
 
     assert result.raw_content == '{"decision":"candidate"}'
-    assert captured["timeout"] == 4.0
+    assert 3.9 <= captured["deadline"] - started <= 4.0
 
 
 def test_generation_fails_closed_when_usage_is_missing(
