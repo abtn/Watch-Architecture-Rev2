@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -176,6 +177,7 @@ class AdmissionResult:
     task_id: UUID
     attempt_count: int
     event_id: UUID
+    admitted_monotonic: float
     replayed: bool = False
 
 
@@ -613,6 +615,10 @@ class TaskRuntime:
                         "team_daily_task_quota_exhausted"
                     )
 
+            # Capture the process-local deadline origin at the admission
+            # transition, not after the admission transaction returns.
+            admitted_monotonic = time.monotonic()
+
             # All changes below belong to the same transaction as the quota
             # check. If admission fails or commit raises, they roll back.
             task.status = "running"
@@ -634,7 +640,12 @@ class TaskRuntime:
 
             session.flush()
 
-            return AdmissionResult(task.id, task.attempt_count, event.id)
+            return AdmissionResult(
+                task.id,
+                task.attempt_count,
+                event.id,
+                admitted_monotonic,
+            )
 
     @staticmethod
     def _validate_operator_admission(

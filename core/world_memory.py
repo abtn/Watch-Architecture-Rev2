@@ -1551,7 +1551,23 @@ def validate_model_update_thread_terminal(
                 )
             )
         )
-        if not receipts:
+        current_receipts: list[Event] = []
+        for receipt in receipts:
+            if (
+                not isinstance(receipt.payload, dict)
+                or type(receipt.payload.get("attempt")) is not int
+            ):
+                raise WorldMemoryError("update_thread_receipt_event_corrupt")
+            receipt_attempt = receipt.payload["attempt"]
+            if receipt_attempt > attempt:
+                raise WorldMemoryError(
+                    "update_thread_receipt_event_future_attempt"
+                )
+            if receipt_attempt == attempt:
+                current_receipts.append(receipt)
+        if len(current_receipts) > 1:
+            raise WorldMemoryError("update_thread_receipt_event_duplicate")
+        if not current_receipts:
             charges = list(
                 session.scalars(
                     select(TaskGenerationCharge).where(
@@ -1589,12 +1605,20 @@ def validate_model_update_thread_terminal(
             receipt = receipt_event.payload
             _parse_model_response(receipt["raw_completion_text"])
         except (ValidationError, ValueError, TypeError):
-            if observation.failure_reason == "update_thread_model_output_invalid":
+            if observation.failure_reason in {
+                "update_thread_model_output_invalid",
+                "update_thread_deadline_exceeded",
+            }:
                 WorldMemoryCommitService._assert_model_empty_set_has_no_writes(
                     session, task
                 )
                 return
             raise WorldMemoryError("update_thread_parser_failure_result_invalid")
+        if observation.failure_reason == "update_thread_deadline_exceeded":
+            WorldMemoryCommitService._assert_model_empty_set_has_no_writes(
+                session, task
+            )
+            return
         raise WorldMemoryError("update_thread_proposal_set_remains_resumable")
 
     envelope = load_model_update_thread_envelope(

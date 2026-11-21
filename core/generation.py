@@ -11,13 +11,17 @@ from __future__ import annotations
 import json
 import math
 import os
+import socket
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Protocol
+from http.client import HTTPSConnection, IncompleteRead
+from threading import Event, Thread, Timer
+from typing import Any, Iterator, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPSHandler, Request, build_opener
 
 DEFAULT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8"
 MAX_MODEL_CONTEXT_TOKENS = 32_000
@@ -27,6 +31,180 @@ DEFAULT_MAX_OUTPUT_TOKENS = 1024
 INPUT_USD_PER_MILLION_TOKENS = Decimal("0.152")
 OUTPUT_USD_PER_MILLION_TOKENS = Decimal("0.287")
 _RETRYABLE_HTTP_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
+
+
+class _DeadlineHTTPSConnection(HTTPSConnection):
+    """HTTPS connection whose establishment and I/O share one absolute deadline."""
+
+    def __init__(self, host: str, *, deadline: float, **kwargs: Any) -> None:
+        self._deadline = deadline
+        self._deadline_timer: Timer | None = None
+        self._deadline_expired = Event()
+        super().__init__(host, **kwargs)
+
+    def connect(self) -> None:
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("generation_deadline_exceeded")
+
+        resolved = Event()
+        addresses: list[tuple[Any, ...]] = []
+        failures: list[Exception] = []
+
+        def resolve_host() -> None:
+            try:
+                addresses.extend(
+                    socket.getaddrinfo(
+                        self.host,
+                        self.port,
+                        0,
+                        socket.SOCK_STREAM,
+                    )
+                )
+            except Exception as error:
+                failures.append(error)
+            finally:
+                resolved.set()
+
+        resolver = Thread(target=resolve_host, daemon=True)
+        resolver.start()
+
+        timer = Timer(remaining, self._expire_connection)
+        timer.daemon = True
+        self._deadline_timer = timer
+        timer.start()
+
+        try:
+            if not resolved.wait(remaining):
+                raise TimeoutError("generation_deadline_exceeded")
+            if self._deadline_expired.is_set() or time.monotonic() >= self._deadline:
+                raise TimeoutError("generation_deadline_exceeded")
+            if failures:
+                raise failures[0]
+            if not addresses:
+                raise OSError("generation_dns_returned_no_addresses")
+
+            last_error: OSError | None = None
+            for family, socktype, protocol, _canonical_name, address in addresses:
+                remaining = self._deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("generation_deadline_exceeded")
+
+                connection_socket = socket.socket(family, socktype, protocol)
+                self.sock = connection_socket
+                try:
+                    if self._deadline_expired.is_set():
+                        raise TimeoutError("generation_deadline_exceeded")
+                    connection_socket.settimeout(remaining)
+                    source_address = getattr(self, "source_address", None)
+                    if source_address is not None:
+                        connection_socket.bind(source_address)
+                    connection_socket.connect(address)
+                    last_error = None
+                    break
+                except OSError as error:
+                    self._close_socket(connection_socket)
+                    self.sock = None
+                    last_error = error
+                    if (
+                        self._deadline_expired.is_set()
+                        or time.monotonic() >= self._deadline
+                    ):
+                        raise TimeoutError("generation_deadline_exceeded") from None
+
+            if self.sock is None:
+                if last_error is not None:
+                    raise last_error
+                raise OSError("generation_connection_socket_missing")
+
+            tunnel_host = getattr(self, "_tunnel_host", None)
+            if tunnel_host:
+                getattr(self, "_tunnel")()
+
+            remaining = self._deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("generation_deadline_exceeded")
+            self.sock.settimeout(remaining)
+            server_hostname = tunnel_host or self.host
+            context = getattr(self, "_context")
+            self.sock = context.wrap_socket(
+                self.sock,
+                server_hostname=server_hostname,
+            )
+            if self._deadline_expired.is_set() or time.monotonic() >= self._deadline:
+                self._expire_connection()
+                raise TimeoutError("generation_deadline_exceeded")
+        except OSError:
+            if self._deadline_expired.is_set() or time.monotonic() >= self._deadline:
+                self._expire_connection()
+                raise TimeoutError("generation_deadline_exceeded") from None
+            raise
+
+    def _expire_connection(self) -> None:
+        self._deadline_expired.set()
+        connection_socket = self.sock
+        if connection_socket is not None:
+            self._close_socket(connection_socket)
+
+    def cancel_deadline(self) -> None:
+        if self._deadline_timer is not None:
+            self._deadline_timer.cancel()
+
+    @staticmethod
+    def _close_socket(connection_socket: socket.socket) -> None:
+        try:
+            connection_socket.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            connection_socket.close()
+        except OSError:
+            pass
+
+
+class _DeadlineHTTPSHandler(HTTPSHandler):
+    def __init__(self, deadline: float) -> None:
+        super().__init__()
+        self._deadline = deadline
+        self._connection: _DeadlineHTTPSConnection | None = None
+
+    def https_open(self, request):
+        def create_connection(host: str, *, timeout: float, **kwargs: Any):
+            connection = _DeadlineHTTPSConnection(
+                host,
+                timeout=timeout,
+                deadline=self._deadline,
+                **kwargs,
+            )
+            self._connection = connection
+            return connection
+
+        return self.do_open(
+            create_connection,
+            request,
+            context=self._context,
+        )
+
+    def cancel_deadline(self) -> None:
+        if self._connection is not None:
+            self._connection.cancel_deadline()
+
+
+@contextmanager
+def _open_with_deadline(
+    request: Request,
+    deadline: float,
+) -> Iterator[Any]:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("generation_deadline_exceeded")
+    handler = _DeadlineHTTPSHandler(deadline)
+    opener = build_opener(handler)
+    try:
+        with opener.open(request, timeout=remaining) as response:
+            yield response
+    finally:
+        handler.cancel_deadline()
 
 
 class GenerationProviderError(RuntimeError):
@@ -93,6 +271,7 @@ class GenerationProvider(Protocol):
         system_prompt: str,
         user_prompt: str,
         temperature: float = 0.1,
+        timeout_seconds: float | None = None,
     ) -> GenerationResult: ...
 
 
@@ -250,6 +429,7 @@ class CloudflareWorkersAIGenerationProvider:
         system_prompt: str,
         user_prompt: str,
         temperature: float = 0.1,
+        timeout_seconds: float | None = None,
     ) -> GenerationResult:
         """Return raw completion text with validated model and usage metadata.
 
@@ -267,6 +447,19 @@ class CloudflareWorkersAIGenerationProvider:
             or not 0 <= temperature <= 2
         ):
             raise ValueError("invalid_generation_temperature")
+        if timeout_seconds is not None and (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not math.isfinite(timeout_seconds)
+            or timeout_seconds <= 0
+        ):
+            raise ValueError("invalid_generation_timeout")
+        request_timeout = (
+            self._config.timeout_seconds
+            if timeout_seconds is None
+            else min(self._config.timeout_seconds, float(timeout_seconds))
+        )
+        request_deadline = time.monotonic() + request_timeout
 
         self.maximum_request_cost(
             system_prompt=system_prompt, user_prompt=user_prompt
@@ -293,14 +486,14 @@ class CloudflareWorkersAIGenerationProvider:
 
         started = time.perf_counter()
         try:
-            with urlopen(request, timeout=self._config.timeout_seconds) as response:
+            with _open_with_deadline(request, request_deadline) as response:
                 document = json.loads(response.read().decode("utf-8"))
         except HTTPError as error:
             raise GenerationProviderError(
                 f"cloudflare_http_{error.code}",
                 retryable=error.code in _RETRYABLE_HTTP_CODES,
             ) from None
-        except (URLError, TimeoutError, OSError):
+        except (URLError, TimeoutError, OSError, IncompleteRead):
             raise GenerationProviderError(
                 "cloudflare_connection_or_timeout",
                 retryable=True,
