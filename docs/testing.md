@@ -27,6 +27,37 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 
 RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery was formally accepted by the Operator on 2026-11-20 and squash-merged by PR #138; its exact implementation, corrective, local, and hosted verification evidence is recorded below. RW3.4 integrated closeout remains separately gated. Live provider authorization remains closed; only deterministic fake providers are permitted.
 
+## RW3.4 integrated implementation-stack verification — 2026-11-22
+
+**Disposition:** The currently open, draft implementation stack PRs #140, #142, #144, #145, and #146 has passed integrated exact-head hosted CI and Programmer-local Windows verification at PR #146 head `8bf4140bb05624ca86ff699c1e3156315edf682d`. This is verification evidence for the combined stack at that exact commit; it is not formal RW3.4 acceptance, merge authorization, or live-provider authorization. All five implementation PRs remain open and in draft status.
+
+**Stack and scope at the verified head:**
+
+- PR #140: absolute generation/Task deadline enforcement, including the paired durable UTC and monotonic admission anchors before the daily-quota query.
+- PR #142: test-only proof of cumulative generation-cost accounting against the configured three-start/$0.02 Task contract.
+- PR #144: receipt-only recovery deadline enforcement and maximum-cost proof.
+- PR #145: process-wide DNS resolver concurrency bounded to two active resolver workers, with fail-fast saturation and capacity retained until the resolver actually exits.
+- PR #146: classify a provider timeout at or beyond the absolute Task deadline as terminal `update_thread_deadline_exceeded`, while preserving pre-deadline retry behavior.
+
+PR #146 is based on PR #145. Its final PR head is the merge commit `8bf4140bb05624ca86ff699c1e3156315edf682d`, with base `3603c4cdb693f97fc979a892281004b2beb17ea6`. Its own PR diff remains limited to `core/update_thread_worker.py` and `tests/test_update_thread.py`; the earlier stack changes are inherited through the base.
+
+**Hosted exact-head CI:**
+
+- GitHub Actions CI [run #1626](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44945154358) completed successfully on exact head `8bf4140bb05624ca86ff699c1e3156315edf682d`.
+- The run completed fresh PostgreSQL migration and head verification, Ruff, Mypy, patch-whitespace validation, and the full test step successfully.
+
+**Programmer-local Windows verification on the same exact head:**
+
+- Repository branch: `rw3-4-deadline-timeout-classification-20261121-local-verify`.
+- Exact HEAD and remote PR #146 head: `8bf4140bb05624ca86ff699c1e3156315edf682d`; final verification confirmed the expected branch, HEAD, remote head, and clean worktree.
+- Fresh disposable PostgreSQL migrated successfully to `0019_rw1_world_memory`.
+- Ruff passed; Mypy passed with no issues in 42 source files.
+- Focused test selection: **124 passed**.
+- Full suite: **1,213 passed, 130 warnings in 450.55s**. The warnings are Alembic `path_separator` deprecations; they did not fail the run.
+- The disposable PostgreSQL container was removed and the original process `DATABASE_URL` and `TEST_DATABASE_URL` values were restored. The persistent application database was not used.
+
+**Boundary retained:** No schema/migration change was introduced by this stack; the verified database reached the existing `0019_rw1_world_memory` head. Verification used deterministic fakes; no live Cloudflare/provider invocation was made. RW3.4 integrated closeout, formal Operator acceptance, merge of the implementation PRs, live-provider authorization, RW-4–RW-5, R7-C implementation, persistent-database access, and scored newsroom execution remain separately gated.
+
 ## RW3.3 implementation verification and Operator acceptance — 2026-11-20
 
 **Disposition:** The Operator accepted RW3.3 after the corrective pass, independent review, exact-head local verification, and passing hosted CI. PR [#138](https://github.com/abtn/Watch-Architecture-Rev2/pull/138) was squash-merged to `main` at `8fff9fa9d515b46d446fdf46d076d2504e7f462f` (final PR head `1893dcda27c962d1091cfd29b124f0b8e6e37ed8`). The documentation-inclusive hosted CI run [#1531](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/44789724923) passed on that final PR head. RW3.4 integrated closeout remains gated.
