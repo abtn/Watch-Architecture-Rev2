@@ -4,7 +4,7 @@ import json
 import time
 from decimal import Decimal
 from http.client import IncompleteRead
-from threading import Event
+from threading import Event, Thread, current_thread
 from urllib.error import HTTPError
 from urllib.request import Request
 
@@ -103,35 +103,69 @@ def test_generation_posts_once_and_returns_validated_json_and_usage(
 def test_absolute_generation_deadline_bounds_slow_dns_resolution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    deadline_seconds = 0.2
+    deadline_tolerance = 0.2
     dns_started = Event()
     dns_release = Event()
     dns_finished = Event()
+    caller_finished = Event()
+    dns_worker: list[Thread] = []
+    connection_holder: list[generation._DeadlineHTTPSConnection] = []
+    connection_started_at: list[float] = []
+    errors: list[BaseException] = []
 
     def slow_dns(*_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+        dns_worker.append(current_thread())
         dns_started.set()
         dns_release.wait()
         dns_finished.set()
         return []
 
     monkeypatch.setattr(generation.socket, "getaddrinfo", slow_dns)
-    connection = generation._DeadlineHTTPSConnection(
-        "api.cloudflare.com",
-        timeout=1.0,
-        deadline=time.monotonic() + 0.03,
-    )
-    started = time.monotonic()
+
+    def connect() -> None:
+        try:
+            connection_started_at.append(time.monotonic())
+            connection = generation._DeadlineHTTPSConnection(
+                "api.cloudflare.com",
+                timeout=1.0,
+                deadline=connection_started_at[0] + deadline_seconds,
+            )
+            connection_holder.append(connection)
+            connection.connect()
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            caller_finished.set()
+
+    caller = Thread(target=connect, daemon=True)
 
     try:
-        with pytest.raises(TimeoutError, match="generation_deadline_exceeded"):
-            connection.connect()
-
-        assert time.monotonic() - started < 0.12
+        caller.start()
         assert dns_started.wait(timeout=0.5)
+        assert not caller_finished.is_set()
+        assert not dns_finished.is_set()
+        assert caller_finished.wait(timeout=deadline_seconds + deadline_tolerance)
+        assert len(errors) == 1
+        assert isinstance(errors[0], TimeoutError)
+        assert "generation_deadline_exceeded" in str(errors[0])
+        assert (
+            time.monotonic() - connection_started_at[0]
+            < deadline_seconds + deadline_tolerance
+        )
         assert not dns_finished.is_set()
     finally:
         dns_release.set()
-        assert dns_finished.wait(timeout=0.5)
-        connection.cancel_deadline()
+        if dns_worker:
+            dns_finished.wait(timeout=0.5)
+            dns_worker[0].join(timeout=0.5)
+        caller.join(timeout=0.5)
+        if connection_holder:
+            connection_holder[0].cancel_deadline()
+        assert not caller.is_alive()
+        if dns_worker:
+            assert dns_finished.is_set()
+            assert not dns_worker[0].is_alive()
 
 
 @pytest.mark.parametrize("blocked_phase", ["tcp", "tls"])
