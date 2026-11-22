@@ -26,7 +26,6 @@ from core.generation_cost import (
     TaskGenerationCostError,
     TaskGenerationCostService,
 )
-from core.update_thread import UPDATE_THREAD_TEST_PROVIDER
 from core.models import (
     Event,
     Objective,
@@ -35,6 +34,7 @@ from core.models import (
     Team,
     TeamPolicy,
 )
+from core.update_thread import UPDATE_THREAD_TEST_PROVIDER
 
 
 @dataclass(frozen=True)
