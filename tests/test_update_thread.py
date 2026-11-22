@@ -13,6 +13,7 @@ from typing import Iterator
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -40,7 +41,9 @@ from core.models import (
     Thread,
 )
 from core.operator_application import (
+    InvalidOperatorPrincipal,
     OperatorApplicationAdapter,
+    OperatorApplicationError,
     OperatorGrant,
     OperatorNotAuthorized,
     OperatorTaskRequestConflict,
@@ -78,6 +81,7 @@ from core.update_thread_worker import (
     UpdateThreadWorker,
     UpdateThreadWorkerError,
 )
+from core.world_memory import HypothesisCreateProposal, OperatorUpdateRequest
 
 _CONTENT = b"Market report: supply increased by 5 percent."
 _QUOTE = "supply increased by 5 percent"
@@ -2711,6 +2715,10 @@ def test_marker_recovery_reconstructs_terminal_result_without_reapplying(
         "context_snapshot_ref",
         "context_content_hash",
         "context_event_id",
+        "receipt_context_snapshot_ref",
+        "receipt_context_content_hash",
+        "receipt_context_event_id",
+        "context_event_content_hash",
         "task_id",
         "team_id",
         "thread_id",
@@ -2793,6 +2801,41 @@ def test_permanent_provenance_conflict_records_inconsistent_without_writes(
                     payload=dict(proposal_event.payload),
                     created_at=datetime.now(timezone.utc),
                 )
+            )
+        elif tamper.startswith("receipt_context_"):
+            receipt_event = session.scalar(
+                select(Event).where(
+                    Event.task_id == created.task_id,
+                    Event.type == RECEIPT_EVENT_TYPE,
+                )
+            )
+            assert receipt_event is not None
+            receipt_payload = dict(receipt_event.payload)
+            receipt_field = tamper.removeprefix("receipt_")
+            receipt_payload[receipt_field] = (
+                str(uuid4())
+                if receipt_field != "context_content_hash"
+                else "sha256:" + ("0" * 64)
+            )
+            session.execute(
+                update(Event)
+                .where(Event.id == receipt_event.id)
+                .values(payload=receipt_payload)
+            )
+        elif tamper == "context_event_content_hash":
+            context_event = session.scalar(
+                select(Event).where(
+                    Event.task_id == created.task_id,
+                    Event.type == CONTEXT_EVENT_TYPE,
+                )
+            )
+            assert context_event is not None
+            context_payload = dict(context_event.payload)
+            context_payload["content_hash"] = "sha256:" + ("0" * 64)
+            session.execute(
+                update(Event)
+                .where(Event.id == context_event.id)
+                .values(payload=context_payload)
             )
         else:
             tampered_payload = dict(proposal_event.payload)
@@ -2912,6 +2955,92 @@ def test_missing_request_provenance_terminalizes_as_recovery_inconsistent(
         ) is None
 
 
+def test_model_workers_serialize_concurrent_commits_for_same_thread(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    from core.world_memory import WorldMemoryCommitService
+
+    _, first_task = _create_task(session_factory, rw3_fixture)
+    _, second_task = _create_task(session_factory, rw3_fixture)
+    first_hypothesis_id, second_hypothesis_id = uuid4(), uuid4()
+    first_provider = _FakeUpdateThreadProvider(
+        json.dumps({"proposals": [{
+            "kind": "hypothesis_create",
+            "key": "first-concurrent-create",
+            "hypothesis_id": str(first_hypothesis_id),
+            "statement": "First concurrent model proposal.",
+            "confidence": "low",
+        }]}, separators=(",", ":"))
+    )
+    second_provider = _FakeUpdateThreadProvider(
+        json.dumps({"proposals": [{
+            "kind": "hypothesis_create",
+            "key": "second-concurrent-create",
+            "hypothesis_id": str(second_hypothesis_id),
+            "statement": "Second concurrent model proposal.",
+            "confidence": "low",
+        }]}, separators=(",", ":"))
+    )
+    barrier = Barrier(2)
+    original_commit = WorldMemoryCommitService.commit_model_in_session
+
+    def synchronized_commit(
+        self: WorldMemoryCommitService,
+        session: Session,
+        task: Task,
+        attempt: int,
+        envelope=None,
+    ):
+        barrier.wait(timeout=10)
+        return original_commit(self, session, task, attempt, envelope)
+
+    monkeypatch.setattr(
+        WorldMemoryCommitService,
+        "commit_model_in_session",
+        synchronized_commit,
+    )
+    workers = (
+        UpdateThreadWorker(session_factory, snapshot_store, first_provider),
+        UpdateThreadWorker(session_factory, snapshot_store, second_provider),
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(
+                lambda args: args[0].run(args[1]),
+                zip(workers, (first_task.task_id, second_task.task_id)),
+            )
+        )
+
+    assert {result.task_id for result in results} == {
+        first_task.task_id,
+        second_task.task_id,
+    }
+    assert first_provider.calls == second_provider.calls == 1
+    with session_factory() as session:
+        tasks = [
+            session.get(Task, task_id)
+            for task_id in (first_task.task_id, second_task.task_id)
+        ]
+        assert all(task is not None and task.status == "done" for task in tasks)
+        hypotheses = list(
+            session.scalars(
+                select(Hypothesis).where(
+                    Hypothesis.id.in_(
+                        (first_hypothesis_id, second_hypothesis_id)
+                    )
+                )
+            )
+        )
+        assert {item.id for item in hypotheses} == {
+            first_hypothesis_id,
+            second_hypothesis_id,
+        }
+        assert {item.thread_id for item in hypotheses} == {rw3_fixture.thread_id}
+
+
 def test_update_thread_worker_rejects_live_provider_until_separately_authorized(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
@@ -2940,6 +3069,55 @@ def test_update_thread_worker_rejects_live_provider_until_separately_authorized(
         match="update_thread_live_provider_not_authorized",
     ):
         UpdateThreadWorker(session_factory, snapshot_store, _LiveProvider())
+
+
+def test_update_thread_worker_rejects_unsupported_task_type_before_provider_call(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    with session_factory.begin() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None and task.status == "pending"
+        task.task_type = "ingest_source"
+
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+
+    with pytest.raises(
+        UpdateThreadWorkerError,
+        match="update_thread_task_shape_invalid",
+    ):
+        worker.run(created.task_id)
+
+    assert provider.calls == 0
+
+
+def test_update_thread_context_schema_excludes_team_experience_projection(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    TaskRuntime(session_factory, snapshot_store).admit(created.task_id)
+    context = UpdateThreadContextAssembler(
+        session_factory, snapshot_store
+    ).assemble(created.task_id, 1)
+
+    assert set(context.document) == {
+        "schema_version",
+        "task",
+        "team",
+        "thread",
+        "policy",
+        "hypotheses",
+        "evidence_links",
+        "source_snapshots",
+        "manifest",
+    }
+    assert "team_experience" not in context.document
+    assert "team_experience_passages" not in context.document
 
 
 def test_update_thread_committed_result_is_rejected_for_other_task_types(
@@ -3520,3 +3698,347 @@ def test_model_proposal_disposition_event_rejects_boolean_integer_substitution(
             validate_model_update_thread_marker(
                 session, task, envelope, marker, snapshot_store
             )
+
+
+
+# RW3.4 test-only proof obligations: model proposal boundaries and fingerprint.
+
+def _model_proposal(index: int) -> dict[str, object]:
+    return {
+        "kind": "hypothesis_create",
+        "key": f"hypothesis-{index}",
+        "hypothesis_id": str(UUID(int=index + 1)),
+        "statement": f"Hypothesis {index}",
+        "confidence": "low",
+    }
+
+
+def test_model_response_rejects_duplicate_json_object_keys() -> None:
+    raw = '{"proposals":[],"proposals":[{"kind":"hypothesis_create"}]}'
+    with pytest.raises(ValueError, match="duplicate_json_object_key"):
+        worker_module._parse_model_response(raw)
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_model_response_rejects_nonstandard_json_constants(constant: str) -> None:
+    raw = '{"proposals":[],"extra":' + constant + "}"
+    with pytest.raises(ValueError, match="nonstandard_json_constant"):
+        worker_module._parse_model_response(raw)
+
+
+def test_model_response_rejects_unknown_top_level_fields() -> None:
+    raw = json.dumps({"proposals": [], "operator_id": "forged"})
+    with pytest.raises(ValidationError):
+        worker_module._parse_model_response(raw)
+
+
+def test_model_proposal_count_accepts_eight_and_rejects_nine() -> None:
+    accepted = worker_module._parse_model_response(
+        json.dumps({"proposals": [_model_proposal(i) for i in range(8)]})
+    )
+    assert len(accepted.proposals) == 8
+
+    with pytest.raises(ValidationError):
+        worker_module._parse_model_response(
+            json.dumps({"proposals": [_model_proposal(i) for i in range(9)]})
+        )
+
+
+def test_operator_update_proposal_count_remains_sixty_four() -> None:
+    proposals = [
+        HypothesisCreateProposal(
+            kind="hypothesis_create",
+            key=f"operator-hypothesis-{index}",
+            hypothesis_id=UUID(int=index + 1),
+            statement=f"Operator hypothesis {index}",
+            confidence="low",
+        )
+        for index in range(64)
+    ]
+    request = OperatorUpdateRequest(
+        thread_id=UUID(int=1000),
+        idempotency_key=UUID(int=1001),
+        proposals=proposals,
+    )
+    assert len(request.proposals) == 64
+
+    with pytest.raises(ValidationError):
+        OperatorUpdateRequest(
+            thread_id=UUID(int=1000),
+            idempotency_key=UUID(int=1002),
+            proposals=[
+                *proposals,
+                HypothesisCreateProposal(
+                    kind="hypothesis_create",
+                    key="operator-hypothesis-64",
+                    hypothesis_id=UUID(int=65),
+                    statement="Operator hypothesis 64",
+                    confidence="low",
+                ),
+            ],
+        )
+
+
+def test_model_proposal_fingerprint_has_canonical_golden_vector() -> None:
+    context = SimpleNamespace(
+        event_id=UUID("00000000-0000-0000-0000-000000000006"),
+        snapshot_ref="sha256:context-snapshot",
+        content_hash="sha256:" + "a" * 64,
+    )
+    proposal = _model_proposal(6)
+    proposal["key"] = "create-one"
+    proposal["statement"] = "Supply pressure persists."
+    proposals = [proposal]
+    actual = worker_module._fingerprint(
+        task_id=UUID("00000000-0000-0000-0000-000000000001"),
+        team_id=UUID("00000000-0000-0000-0000-000000000002"),
+        thread_id=UUID("00000000-0000-0000-0000-000000000003"),
+        attempt=1,
+        policy_version=2,
+        receipt_event_id=UUID("00000000-0000-0000-0000-000000000004"),
+        context=context,
+        charge_id=UUID("00000000-0000-0000-0000-000000000005"),
+        proposals=proposals,
+    )
+    assert actual == (
+        "sha256:57921c654b93a07f8d30065377d8e77b109394676482359c2007cb005d546893"
+    )
+    assert worker_module._canonical_json(
+        {
+            "z": "آخر",
+            "a": ["first", "second"],
+        }
+    ) == '{"a":["first","second"],"z":"آخر"}'.encode("utf-8")
+
+
+def test_model_proposal_fingerprint_preserves_proposal_array_order() -> None:
+    context = SimpleNamespace(
+        event_id=UUID("00000000-0000-0000-0000-000000000006"),
+        snapshot_ref="sha256:context-snapshot",
+        content_hash="sha256:" + "a" * 64,
+    )
+    proposals = [_model_proposal(1), _model_proposal(2)]
+    arguments = {
+        "task_id": UUID("00000000-0000-0000-0000-000000000001"),
+        "team_id": UUID("00000000-0000-0000-0000-000000000002"),
+        "thread_id": UUID("00000000-0000-0000-0000-000000000003"),
+        "attempt": 1,
+        "policy_version": 2,
+        "receipt_event_id": UUID("00000000-0000-0000-0000-000000000004"),
+        "context": context,
+        "charge_id": UUID("00000000-0000-0000-0000-000000000005"),
+    }
+    forward = worker_module._fingerprint(**arguments, proposals=proposals)
+    reverse = worker_module._fingerprint(
+        **arguments, proposals=list(reversed(proposals))
+    )
+    assert forward != reverse
+
+
+@pytest.mark.parametrize(
+    ("principal", "error_type"),
+    [
+        (None, InvalidOperatorPrincipal),
+        (
+            TrustedOperatorPrincipal(
+                issuer="https://host.example/identity",
+                subject="",
+                grants=frozenset(),
+            ),
+            InvalidOperatorPrincipal,
+        ),
+    ],
+)
+def test_creator_rejects_missing_or_malformed_principal_without_task_or_event(
+    session_factory: sessionmaker[Session],
+    rw3_fixture: Fixture,
+    principal: TrustedOperatorPrincipal | None,
+    error_type: type[Exception],
+) -> None:
+    request = UpdateThreadTaskRequest(rw3_fixture.thread_id, uuid4())
+    with pytest.raises(error_type):
+        OperatorApplicationAdapter(session_factory).create_update_thread_task(
+            principal, request  # type: ignore[arg-type]
+        )
+    with session_factory() as session:
+        assert session.scalar(
+            select(Task.id).where(
+                Task.team_id == rw3_fixture.team_id,
+                Task.task_type == "update_thread",
+            )
+        ) is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.type == REQUEST_EVENT_TYPE,
+                Event.payload["team_id"].as_string() == str(rw3_fixture.team_id),
+            )
+        ) is None
+
+
+def test_creator_rejects_wrong_team_grant_without_task_or_event(
+    session_factory: sessionmaker[Session],
+    rw3_fixture: Fixture,
+) -> None:
+    request = UpdateThreadTaskRequest(rw3_fixture.thread_id, uuid4())
+    principal = TrustedOperatorPrincipal(
+        issuer="https://host.example/identity",
+        subject="rw3-operator",
+        grants=frozenset({OperatorGrant(uuid4(), "request_update_thread")}),
+    )
+    with pytest.raises(OperatorNotAuthorized):
+        OperatorApplicationAdapter(session_factory).create_update_thread_task(
+            principal, request
+        )
+    with session_factory() as session:
+        assert session.scalar(
+            select(Task.id).where(
+                Task.team_id == rw3_fixture.team_id,
+                Task.task_type == "update_thread",
+            )
+        ) is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.type == REQUEST_EVENT_TYPE,
+                Event.task_id.in_(
+                    select(Task.id).where(Task.team_id == rw3_fixture.team_id)
+                ),
+            )
+        ) is None
+
+
+def test_creator_rejects_inactive_team_without_task_or_event(
+    session_factory: sessionmaker[Session],
+    rw3_fixture: Fixture,
+) -> None:
+    with session_factory.begin() as session:
+        team = session.get(Team, rw3_fixture.team_id)
+        assert team is not None
+        team.status = "inactive"
+    request = UpdateThreadTaskRequest(rw3_fixture.thread_id, uuid4())
+    with pytest.raises(
+        OperatorApplicationError, match="update_thread_team_not_active"
+    ):
+        OperatorApplicationAdapter(session_factory).create_update_thread_task(
+            _principal(rw3_fixture.team_id), request
+        )
+    with session_factory() as session:
+        assert session.scalar(
+            select(Task.id).where(Task.team_id == rw3_fixture.team_id)
+        ) is not None  # The source fixture Task remains; no update_thread Task exists.
+        assert session.scalar(
+            select(Task.id).where(
+                Task.team_id == rw3_fixture.team_id,
+                Task.task_type == "update_thread",
+            )
+        ) is None
+
+
+def test_creator_rejects_resolved_thread_without_task_or_event(
+    session_factory: sessionmaker[Session],
+    rw3_fixture: Fixture,
+) -> None:
+    with session_factory.begin() as session:
+        thread = session.get(Thread, rw3_fixture.thread_id)
+        assert thread is not None
+        thread.status = "resolved"
+    request = UpdateThreadTaskRequest(rw3_fixture.thread_id, uuid4())
+    with pytest.raises(
+        OperatorApplicationError, match="update_thread_target_not_available"
+    ):
+        OperatorApplicationAdapter(session_factory).create_update_thread_task(
+            _principal(rw3_fixture.team_id), request
+        )
+    with session_factory() as session:
+        assert session.scalar(
+            select(Task.id).where(
+                Task.team_id == rw3_fixture.team_id,
+                Task.task_type == "update_thread",
+            )
+        ) is None
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "operator_id",
+        "actor_type",
+        "task_id",
+        "team_id",
+        "thread_id",
+        "policy_version",
+        "budget",
+        "charge_id",
+        "write_scope",
+        "authority",
+    ],
+)
+def test_model_proposal_rejects_forged_authority_fields(field: str) -> None:
+    proposal = _model_proposal(0)
+    proposal[field] = "forged"
+    with pytest.raises(ValidationError):
+        worker_module._parse_model_response(
+            json.dumps({"proposals": [proposal]})
+        )
+
+
+def test_creator_rejects_cross_team_thread_without_task_or_event(
+    session_factory: sessionmaker[Session],
+    rw3_fixture: Fixture,
+) -> None:
+    foreign_team_id, foreign_thread_id = uuid4(), uuid4()
+    with session_factory.begin() as session:
+        session.add(
+            Team(id=foreign_team_id, domain="foreign_rw3_test", status="active")
+        )
+        session.flush()
+        session.add(
+            TeamPolicy(
+                id=uuid4(),
+                team_id=foreign_team_id,
+                version=1,
+                schema_version=1,
+                rules={},
+            )
+        )
+        session.add(
+            Thread(
+                id=foreign_thread_id,
+                team_id=foreign_team_id,
+                domain="foreign_rw3_test",
+                title="Foreign Thread",
+                status="active",
+            )
+        )
+        session.flush()
+
+    request = UpdateThreadTaskRequest(foreign_thread_id, uuid4())
+    with pytest.raises(OperatorNotAuthorized):
+        OperatorApplicationAdapter(session_factory).create_update_thread_task(
+            _principal(rw3_fixture.team_id), request
+        )
+
+    with session_factory() as session:
+        assert session.scalar(
+            select(Task.id).where(
+                Task.team_id == foreign_team_id,
+                Task.task_type == "update_thread",
+            )
+        ) is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.type == REQUEST_EVENT_TYPE,
+                Event.task_id.in_(
+                    select(Task.id).where(
+                        Task.team_id == foreign_team_id,
+                        Task.task_type == "update_thread",
+                    )
+                ),
+            )
+        ) is None
+
+    with session_factory.begin() as session:
+        session.execute(delete(Thread).where(Thread.id == foreign_thread_id))
+        session.execute(
+            delete(TeamPolicy).where(TeamPolicy.team_id == foreign_team_id)
+        )
+        session.execute(delete(Team).where(Team.id == foreign_team_id))
