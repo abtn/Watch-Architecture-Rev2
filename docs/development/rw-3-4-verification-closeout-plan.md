@@ -178,7 +178,7 @@ For each row, record the exact test node(s), exact tested SHA, and outcome. A ro
 
 The exact SHA in every row is the tree against which the 155 focused tests and 1,213-test full suite were run. A listed test node is evidence that the named test passed as part of that full-suite run; it is not a claim that the test alone proves every clause in a compound proof ID.
 
-**Status meanings:** **PASS** means the identified tests directly exercise the stated obligation at the verified SHA. **PARTIAL** means some clauses are demonstrated but at least one clause lacks direct test evidence or is an explicitly absent integration. **OPEN** means no adequate test node was identified. **NOT IMPLEMENTED** is reserved for an intentionally absent integration, not an accidental test omission. These are evidence statuses, not formal RW3.4 acceptance.
+**Status meanings:** **PASS** means the identified tests directly exercise the stated obligation at the verified SHA. **PARTIAL** means some clauses are demonstrated but at least one clause lacks direct test evidence or is an explicitly absent integration. **OPEN** means no adequate test node was identified. **NOT IMPLEMENTED** is reserved for an intentionally absent integration, not an accidental test omission. These are evidence statuses, not formal RW3.4 acceptance. Within each table row, subsequent unqualified `test_...` names refer to the same test file as the most recently named fully qualified path; a new `tests/...` path starts a new file context. This shorthand does not change the exact pytest node identity.
 
 | Proof ID | Exact test nodes / source evidence | Tested SHA | Status | Remaining qualification or missing proof |
 |---|---|---|---|---|
