@@ -12,8 +12,8 @@ from types import SimpleNamespace
 from typing import Iterator
 from uuid import UUID, uuid4
 
-import pytest
 from pydantic import ValidationError
+import pytest
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -41,11 +41,11 @@ from core.models import (
     Thread,
 )
 from core.operator_application import (
+    InvalidOperatorPrincipal,
     OperatorApplicationAdapter,
+    OperatorApplicationError,
     OperatorGrant,
     OperatorNotAuthorized,
-    InvalidOperatorPrincipal,
-    OperatorApplicationError,
     OperatorTaskRequestConflict,
     OperatorTaskRequestCorrupt,
     TrustedOperatorPrincipal,
@@ -74,7 +74,6 @@ from core.update_thread_context import (
     UpdateThreadContextAssembler,
     UpdateThreadContextError,
 )
-from core.world_memory import HypothesisCreateProposal, OperatorUpdateRequest
 from core.update_thread_worker import (
     PROPOSALS_EVENT_TYPE,
     RECEIPT_EVENT_TYPE,
@@ -82,6 +81,7 @@ from core.update_thread_worker import (
     UpdateThreadWorker,
     UpdateThreadWorkerError,
 )
+from core.world_memory import HypothesisCreateProposal, OperatorUpdateRequest
 
 _CONTENT = b"Market report: supply increased by 5 percent."
 _QUOTE = "supply increased by 5 percent"
