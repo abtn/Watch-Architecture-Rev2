@@ -806,6 +806,9 @@ def _verified_model_receipt(
         or task.attempt_count != attempt
     ):
         raise WorldMemoryError("update_thread_task_attempt_not_current")
+    # An inconsistency marker is the durable failure evidence for a corrupt
+    # receipt; validate that marker before receipt history so the terminal
+    # failure can be finalized even when the receipt itself is malformed.
     _validate_update_thread_receipt_history(session, task)
     try:
         request = validate_update_thread_task_request(session, task)
