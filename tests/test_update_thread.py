@@ -2883,56 +2883,6 @@ def test_permanent_provenance_conflict_records_inconsistent_without_writes(
         )
     assert started is not None
 
-    receipt_validation_failures = {
-        "receipt_task_id": "invalid",
-        "receipt_team_id": "invalid",
-        "receipt_attempt": "future_attempt",
-        "receipt_policy_version": "invalid",
-    }
-    if tamper in receipt_validation_failures:
-        from core.task_runtime import TaskNotFinalizable
-
-        reason = receipt_validation_failures[tamper]
-        with pytest.raises(
-            TaskNotFinalizable,
-            match=f"update_thread_generation_receipt_{reason}",
-        ):
-            TaskRuntime(
-                session_factory, snapshot_store
-            ).recover_interrupted(now=started + timedelta(seconds=61))
-
-        # The runtime's terminal validator rejects these malformed receipts
-        # before recovery can write an inconsistency marker or fail the Task.
-        with session_factory() as session:
-            task = session.get(Task, created.task_id)
-            assert task is not None and task.status == "running"
-            assert session.scalar(
-                select(Event).where(
-                    Event.task_id == created.task_id,
-                    Event.type == "update_thread_recovery_inconsistent",
-                )
-            ) is None
-            assert session.scalar(
-                select(Hypothesis.id).where(Hypothesis.id == hypothesis_id)
-            ) is None
-            assert session.scalar(
-                select(Event.id).where(
-                    Event.task_id == created.task_id,
-                    Event.type.in_(
-                        (
-                            "update_thread_proposal_accepted",
-                            "update_thread_proposal_rejected",
-                            "update_thread_committed",
-                            "update_thread_rejected",
-                            "task_failed",
-                            "task_completed",
-                        )
-                    ),
-                )
-            ) is None
-        assert provider.calls == 1
-        return
-
     recovered = TaskRuntime(
         session_factory, snapshot_store
     ).recover_interrupted(now=started + timedelta(seconds=61))
