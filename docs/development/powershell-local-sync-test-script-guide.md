@@ -57,6 +57,41 @@ if ($errors.Count -gt 0) {
 
 The here-string opener and terminator must both begin in column zero. Do not put trailing text on either marker. Use a single-quoted here-string so embedded PowerShell variables, SQL, and JSON are not expanded while writing the file.
 
+## Execute compound statements atomically
+
+PowerShell control-flow blocks must be delivered and executed as complete syntactic units. Never split a compound statement across separate terminal submissions.
+
+In particular:
+
+- Keep `if { ... } else { ... }`, `if { ... } elseif { ... } else { ... }`, `try { ... } catch { ... } finally { ... }`, loops, and function definitions together in one complete script.
+- Never tell the user to paste or run an `else`, `elseif`, `catch`, or `finally` block after the preceding `if` or `try` block has already been submitted and executed. PowerShell parses those as part of the same statement; once the first block has executed at the prompt, a later `else` or `finally` is a new command and fails.
+- Do not split a compound statement at a prompt boundary, even if the continuation prompt (`>>`) is no longer visible. The full block must be in the same paste/submission.
+- For cleanup and error handling, prefer a complete `.ps1` file created from a single-quoted here-string, parser-checked, and then invoked with `& $path`. Do not ask the user to execute the script body section-by-section.
+- For a genuinely short interactive command, avoid compound control flow when possible. Use one complete expression or provide the entire `if/else` block in one code block for one paste.
+- After writing a script file, parse the entire file with `[System.Management.Automation.Language.Parser]::ParseFile(...)` before executing it. Parser success is necessary but does not replace executing the file as a whole.
+
+Correct — one complete submission:
+
+~~~powershell
+if ($LASTEXITCODE -eq 0) {
+    Write-Host 'Operation succeeded.'
+}
+else {
+    Write-Host 'Operation did not succeed.'
+}
+~~~
+
+Incorrect — do not submit the `else` later:
+
+~~~powershell
+if ($LASTEXITCODE -eq 0) {
+    Write-Host 'Operation succeeded.'
+}
+# A later, separate terminal submission beginning with else is invalid.
+~~~
+
+For scripts using cleanup, keep the complete `try/catch/finally` structure in the same `.ps1` file. A successful main body followed by a separately pasted `finally` does not provide cleanup.
+
 ## Seven safety rules
 
 1. **Stop on errors.** Put $ErrorActionPreference = 'Stop' near the top. This does not reliably turn every native executable's non-zero exit into a terminating PowerShell error. Check $LASTEXITCODE immediately after every consequential native command, including Git, Docker, uv, pytest, Ruff, and Alembic.
@@ -100,6 +135,8 @@ Before presenting a generated script, verify each item:
 - [ ] Every consequential native command is followed immediately by a $LASTEXITCODE check.
 - [ ] No doubled braces, Bash continuations, or accidental literal newline escapes remain.
 - [ ] Here-string markers begin in column zero.
+- [ ] Every compound control-flow statement is complete and remains in one script file or one terminal submission; no `else`, `catch`, or `finally` is provided as a later standalone paste.
+- [ ] The complete script is parser-checked and invoked as a whole, not executed section-by-section.
 - [ ] No destructive Git command is used unless explicitly requested and authorized.
 - [ ] Database-backed checks use a disposable database and narrowly scoped cleanup.
 - [ ] The final line is an unambiguous PASSED success message.
