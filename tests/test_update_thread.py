@@ -4285,4 +4285,3 @@ def test_malformed_receipt_without_inconsistency_marker_blocks_finalization(
                 Event.type == "update_thread_recovery_inconsistent",
             )
         ) is None
-
