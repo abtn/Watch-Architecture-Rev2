@@ -1697,7 +1697,6 @@ def test_exact_quote_with_wrong_offsets_is_rejected(
         assert rejection.payload["reason"] == "quote_text_offset_mismatch"
 
 
-
 def test_accepted_evidence_touches_preexisting_hypothesis_at_commit_time(
     session_factory, snapshot_store, world_memory_context
 ):
@@ -1721,9 +1720,9 @@ def test_accepted_evidence_touches_preexisting_hypothesis_at_commit_time(
             )
         ],
     )
-    result = OperatorApplicationAdapter(session_factory, snapshot_store).operator_update(
-        _principal(context.team_id), request
-    )
+    result = OperatorApplicationAdapter(
+        session_factory, snapshot_store
+    ).operator_update(_principal(context.team_id), request)
 
     assert result.task_status == "done"
     assert result.committed_count == 1
