@@ -1729,7 +1729,14 @@ def test_accepted_evidence_touches_preexisting_hypothesis_at_commit_time(
     with session_factory() as session:
         hypothesis = session.get(Hypothesis, hypothesis_id)
         assert hypothesis is not None
-        assert hypothesis.last_touched_at == result.committed_at
+        marker = session.scalar(
+            select(Event).where(
+                Event.task_id == result.task_id,
+                Event.type == "operator_update_committed",
+            )
+        )
+        assert marker is not None
+        assert hypothesis.last_touched_at == marker.created_at
         assert hypothesis.last_touched_at > original_touch
         accepted = session.scalar(
             select(EvidenceLink).where(
