@@ -27,6 +27,12 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 
 RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery was formally accepted by the Operator on 2026-11-20 and squash-merged by PR #138; its exact implementation, corrective, local, and hosted verification evidence is recorded below. RW3.4 integrated closeout remains separately gated. Live provider authorization remains closed; only deterministic fake providers are permitted.
 
+## RW3.4 consolidated integration branch — verification pending — 2026-11-22
+
+A new integration branch, `rw3-4-integrated-deadline-and-cost`, was created directly from current `main` at `c4b55bdf754ac93ce62caad523971fe2809d0ad6`. It is intended to contain the combined changes from component PRs #140, #142, #144, #145, and #146 in one PR. The five component PRs remain open and unchanged during construction.
+
+The previously recorded PR #146 exact-head CI and local results below are historical evidence for that exact commit only. They do not verify this new branch. Fresh hosted CI, Programmer-local focused/full tests, Ruff, Mypy, and disposable PostgreSQL migration checks are pending on the final consolidated head. No RW3.4 formal acceptance, merge authorization, or live-provider authorization is implied.
+
 ## RW3.4 integrated implementation-stack verification — 2026-11-22
 
 **Disposition:** The currently open, draft implementation stack PRs #140, #142, #144, #145, and #146 has passed integrated exact-head hosted CI and Programmer-local Windows verification at PR #146 head `8bf4140bb05624ca86ff699c1e3156315edf682d`. This is verification evidence for the combined stack at that exact commit; it is not formal RW3.4 acceptance, merge authorization, or live-provider authorization. All five implementation PRs remain open and in draft status.

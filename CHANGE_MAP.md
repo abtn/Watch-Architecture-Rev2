@@ -125,3 +125,7 @@ Checkpoint 4 approved Team-scoped UUIDv5 Task identity, R6-F conflict-safe Task/
 ### Checkpoint 5 — RW-3 document authority
 
 The six-file planning set is reconciled: [RW-3 design](docs/development/rw-3-design-and-acceptance.md) owns detailed protocol and recovery semantics; [implementation plan](docs/development/rw-implementation-plan.md) owns slice sequencing and proof matrix; [Task specification](docs/tasks.md) owns the Task envelope, write scope, and budget; [architecture](docs/architecture.md) records the boundary; `PLAN.md` alone owns current status and authorization. Checkpoints 1–4 are approved design decisions, not implementation evidence. The sixth independent review's creator-authority finding and the seventh review's P2 stale-status finding were resolved before PR #135 merged. RW3.1 implementation was separately authorized on 2026-11-19; the separate provider-authorization gate remains in force. ADR-0031 authorizes Cloudflare for R6-E only; RW-3 live provider calls remain unauthorized until the separate provider decision is accepted.
+
+### RW3.4 corrective proof mapping
+
+PR #140 implementation and proof corrections map to `core/generation.py`, `core/update_thread_worker.py`, `core/world_memory.py`, and focused generation/worker/runtime tests. PR #142 remains test-only and proves cumulative Task cost against the production $0.02/three-start contract. The exact rebased heads and hosted/local evidence are recorded in [`docs/testing.md`](docs/testing.md); no RW3.4 closeout or live-provider authorization is introduced.
