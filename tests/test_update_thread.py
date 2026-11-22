@@ -4042,3 +4042,47 @@ def test_creator_rejects_cross_team_thread_without_task_or_event(
             delete(TeamPolicy).where(TeamPolicy.team_id == foreign_team_id)
         )
         session.execute(delete(Team).where(Team.id == foreign_team_id))
+
+
+def test_update_thread_worker_never_invokes_team_experience_retrieval(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    from core.knowledge_index import HybridKnowledgeRetriever
+
+    retrieval_calls = 0
+
+    def reject_team_experience_retrieval(
+        self: HybridKnowledgeRetriever, team_id: UUID, query: str
+    ):
+        nonlocal retrieval_calls
+        retrieval_calls += 1
+        raise AssertionError("update_thread must not retrieve Team Experience")
+
+    monkeypatch.setattr(
+        HybridKnowledgeRetriever,
+        "retrieve",
+        reject_team_experience_retrieval,
+    )
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    UpdateThreadWorker(session_factory, snapshot_store, provider).run(
+        created.task_id
+    )
+
+    assert provider.calls == 1
+    assert retrieval_calls == 0
+    with session_factory() as session:
+        context_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == CONTEXT_EVENT_TYPE,
+            )
+        )
+        assert context_event is not None
+        context_bytes = snapshot_store.read(context_event.payload["snapshot_ref"])
+        context_document = json.loads(context_bytes)
+        assert "team_experience" not in context_document
+        assert "team_experience_passages" not in context_document
