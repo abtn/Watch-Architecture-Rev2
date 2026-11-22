@@ -267,13 +267,13 @@ if ($LASTEXITCODE -ne 0) { throw 'Fetch failed.' }
 
 ## Alembic revision output — mandatory
 
-Do not assume \`alembic current\` or \`alembic heads\` always prints a verbose \`Rev: <revision>\` line. Depending on the Alembic command/output mode, a valid revision can be printed as a plain line, for example:
+Do not assume `alembic current` or `alembic heads` always prints a verbose `Rev: <revision>` line. Depending on the Alembic command/output mode, a valid revision can be printed as a plain line, for example:
 
 ~~~text
 0019_rw1_world_memory (head)
 ~~~
 
-A parser that accepts only \`Rev:\` will reject this valid output. Capture stdout and stderr, check the native exit code immediately, then parse both the verbose and normal forms. Ignore informational headings/log lines, and require the exact number of revision identifiers expected by the check.
+A parser that accepts only `Rev:` will reject this valid output. Capture stdout and stderr, check the native exit code immediately, then parse both the verbose and normal forms. Ignore informational headings/log lines, and require the exact number of revision identifiers expected by the check.
 
 For a database expected to have exactly one current revision:
 
@@ -311,7 +311,7 @@ if ($currentRevision -ne $expectedHeadRevision) {
 }
 ~~~
 
-If the expected database state is a single head, separately parse \`alembic heads\` and assert exactly one head. Do not silently take the first result, accept multiple revisions, or treat an unparsed output as success. Keep the expected revision as an explicit value established for the task. If a supported Alembic version emits another format, inspect its actual output and extend the parser deliberately rather than weakening the assertion.
+If the expected database state is a single head, separately parse `alembic heads` and assert exactly one head. Do not silently take the first result, accept multiple revisions, or treat an unparsed output as success. Keep the expected revision as an explicit value established for the task. If a supported Alembic version emits another format, inspect its actual output and extend the parser deliberately rather than weakening the assertion.
 
 ## Additional failure modes to inspect
 
