@@ -4042,3 +4042,122 @@ def test_creator_rejects_cross_team_thread_without_task_or_event(
             delete(TeamPolicy).where(TeamPolicy.team_id == foreign_team_id)
         )
         session.execute(delete(Team).where(Team.id == foreign_team_id))
+
+
+def test_proposal_only_recovery_fails_closed_without_business_writes(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    hypothesis_id = uuid4()
+    provider = _FakeUpdateThreadProvider(
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "hypothesis_create",
+                        "key": "proposal-without-receipt",
+                        "hypothesis_id": str(hypothesis_id),
+                        "statement": "A proposal without its generation receipt is invalid.",
+                        "confidence": "low",
+                    }
+                ]
+            },
+            separators=(",", ":"),
+        )
+    )
+    worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+    function_name = f"fail_rw3_commit_{uuid4().hex}"
+    trigger_name = f"fail_rw3_commit_{uuid4().hex}"
+
+    with session_factory.begin() as session:
+        session.connection().exec_driver_sql(
+            f"""
+            CREATE FUNCTION {function_name}() RETURNS trigger AS $$
+            BEGIN
+                RAISE EXCEPTION 'injected model commit failure';
+            END;
+            $$ LANGUAGE plpgsql
+            """
+        )
+        session.connection().exec_driver_sql(
+            f"""
+            CREATE TRIGGER {trigger_name}
+            BEFORE INSERT ON hypotheses
+            FOR EACH ROW EXECUTE FUNCTION {function_name}()
+            """
+        )
+
+    try:
+        with pytest.raises(UpdateThreadProposalPersistencePending):
+            worker.run(created.task_id)
+    finally:
+        with session_factory.begin() as session:
+            session.connection().exec_driver_sql(
+                f"DROP TRIGGER IF EXISTS {trigger_name} ON hypotheses"
+            )
+            session.connection().exec_driver_sql(
+                f"DROP FUNCTION IF EXISTS {function_name}()"
+            )
+
+    assert provider.calls == 1
+    with session_factory.begin() as session:
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        proposal_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        started = session.scalar(
+            select(Event.created_at).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_started",
+            )
+        )
+        assert receipt is not None
+        assert proposal_event is not None
+        assert started is not None
+        session.delete(receipt)
+
+    recovered = TaskRuntime(
+        session_factory, snapshot_store
+    ).recover_interrupted(now=started + timedelta(seconds=61))
+
+    assert recovered.failed == (created.task_id,)
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        inconsistent = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_recovery_inconsistent",
+            )
+        )
+        assert task is not None and task.status == "failed"
+        assert inconsistent is not None
+        assert inconsistent.payload["failure_category"] == (
+            "update_thread_recovery_inconsistent"
+        )
+        assert session.scalar(
+            select(Hypothesis.id).where(Hypothesis.id == hypothesis_id)
+        ) is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type.in_(
+                    (
+                        "update_thread_proposal_accepted",
+                        "update_thread_proposal_rejected",
+                        "update_thread_committed",
+                        "update_thread_rejected",
+                    )
+                ),
+            )
+        ) is None
