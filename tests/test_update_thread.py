@@ -3076,11 +3076,20 @@ def test_update_thread_worker_rejects_unsupported_task_type_before_provider_call
     snapshot_store: SnapshotStore,
     rw3_fixture: Fixture,
 ) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    with session_factory.begin() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None and task.status == "pending"
+        task.task_type = "ingest_source"
+
     provider = _FakeUpdateThreadProvider('{"proposals":[]}')
     worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
 
-    with pytest.raises(TaskNotEligible, match="unsupported_task_type"):
-        worker.run(rw3_fixture.source_task_id)
+    with pytest.raises(
+        UpdateThreadContextError,
+        match="update_thread_task_shape_invalid",
+    ):
+        worker.run(created.task_id)
 
     assert provider.calls == 0
 
