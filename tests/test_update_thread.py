@@ -4184,6 +4184,7 @@ def test_proposal_only_recovery_fails_closed_without_business_writes(
             )
         ) is None
 
+
 def test_malformed_receipt_without_inconsistency_marker_blocks_finalization(
     monkeypatch: pytest.MonkeyPatch,
     session_factory: sessionmaker[Session],
