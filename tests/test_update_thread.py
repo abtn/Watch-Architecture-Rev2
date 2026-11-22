@@ -56,7 +56,9 @@ from core.task_runtime import (
     FailureObservation,
     FailureResult,
     TaskNotEligible,
+    TaskNotFinalizable,
     TaskRuntime,
+    TerminalObservation,
 )
 from core.update_thread import (
     ALLOWED_WRITES,
@@ -2589,6 +2591,11 @@ def test_transient_model_commit_failure_rolls_back_and_recovers_same_proposals(
     ).recover_interrupted(now=started + timedelta(seconds=61))
 
     assert recovered.completed == (created.task_id,)
+    replayed = TaskRuntime(
+        session_factory, snapshot_store
+    ).recover_interrupted(now=started + timedelta(seconds=61))
+    assert replayed.completed == ()
+    assert replayed.failed == ()
     assert provider.calls == 1
     with session_factory() as session:
         task = session.get(Task, created.task_id)
@@ -2718,7 +2725,18 @@ def test_marker_recovery_reconstructs_terminal_result_without_reapplying(
         "receipt_context_snapshot_ref",
         "receipt_context_content_hash",
         "receipt_context_event_id",
+        "receipt_task_id",
+        "receipt_team_id",
+        "receipt_thread_id",
+        "receipt_attempt",
+        "receipt_policy_version",
         "context_event_content_hash",
+        "context_event_task_id",
+        "context_event_team_id",
+        "context_event_thread_id",
+        "context_event_attempt",
+        "context_event_policy_version",
+        "context_event_snapshot_ref",
         "task_id",
         "team_id",
         "thread_id",
@@ -2802,7 +2820,7 @@ def test_permanent_provenance_conflict_records_inconsistent_without_writes(
                     created_at=datetime.now(timezone.utc),
                 )
             )
-        elif tamper.startswith("receipt_context_"):
+        elif tamper.startswith("receipt_"):
             receipt_event = session.scalar(
                 select(Event).where(
                     Event.task_id == created.task_id,
@@ -2812,17 +2830,18 @@ def test_permanent_provenance_conflict_records_inconsistent_without_writes(
             assert receipt_event is not None
             receipt_payload = dict(receipt_event.payload)
             receipt_field = tamper.removeprefix("receipt_")
-            receipt_payload[receipt_field] = (
-                str(uuid4())
-                if receipt_field != "context_content_hash"
-                else "sha256:" + ("0" * 64)
-            )
+            if receipt_field in {"attempt", "policy_version"}:
+                receipt_payload[receipt_field] += 1
+            elif receipt_field == "context_content_hash":
+                receipt_payload[receipt_field] = "sha256:" + ("0" * 64)
+            else:
+                receipt_payload[receipt_field] = str(uuid4())
             session.execute(
                 update(Event)
                 .where(Event.id == receipt_event.id)
                 .values(payload=receipt_payload)
             )
-        elif tamper == "context_event_content_hash":
+        elif tamper.startswith("context_event_"):
             context_event = session.scalar(
                 select(Event).where(
                     Event.task_id == created.task_id,
@@ -2831,7 +2850,13 @@ def test_permanent_provenance_conflict_records_inconsistent_without_writes(
             )
             assert context_event is not None
             context_payload = dict(context_event.payload)
-            context_payload["content_hash"] = "sha256:" + ("0" * 64)
+            context_field = tamper.removeprefix("context_event_")
+            if context_field in {"attempt", "policy_version"}:
+                context_payload[context_field] += 1
+            elif context_field == "content_hash":
+                context_payload[context_field] = "sha256:" + ("0" * 64)
+            else:
+                context_payload[context_field] = str(uuid4())
             session.execute(
                 update(Event)
                 .where(Event.id == context_event.id)
@@ -4042,3 +4067,479 @@ def test_creator_rejects_cross_team_thread_without_task_or_event(
             delete(TeamPolicy).where(TeamPolicy.team_id == foreign_team_id)
         )
         session.execute(delete(Team).where(Team.id == foreign_team_id))
+
+
+def test_proposal_only_recovery_fails_closed_without_business_writes(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    hypothesis_id = uuid4()
+    provider = _FakeUpdateThreadProvider(
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "hypothesis_create",
+                        "key": "proposal-without-receipt",
+                        "hypothesis_id": str(hypothesis_id),
+                        "statement": (
+                            "A proposal without its generation receipt is invalid."
+                        ),
+                        "confidence": "low",
+                    }
+                ]
+            },
+            separators=(",", ":"),
+        )
+    )
+    worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+    function_name = f"fail_rw3_commit_{uuid4().hex}"
+    trigger_name = f"fail_rw3_commit_{uuid4().hex}"
+
+    with session_factory.begin() as session:
+        session.connection().exec_driver_sql(
+            f"""
+            CREATE FUNCTION {function_name}() RETURNS trigger AS $$
+            BEGIN
+                RAISE EXCEPTION 'injected model commit failure';
+            END;
+            $$ LANGUAGE plpgsql
+            """
+        )
+        session.connection().exec_driver_sql(
+            f"""
+            CREATE TRIGGER {trigger_name}
+            BEFORE INSERT ON hypotheses
+            FOR EACH ROW EXECUTE FUNCTION {function_name}()
+            """
+        )
+
+    try:
+        with pytest.raises(UpdateThreadProposalPersistencePending):
+            worker.run(created.task_id)
+    finally:
+        with session_factory.begin() as session:
+            session.connection().exec_driver_sql(
+                f"DROP TRIGGER IF EXISTS {trigger_name} ON hypotheses"
+            )
+            session.connection().exec_driver_sql(
+                f"DROP FUNCTION IF EXISTS {function_name}()"
+            )
+
+    assert provider.calls == 1
+    with session_factory.begin() as session:
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        proposal_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        started = session.scalar(
+            select(Event.created_at).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_started",
+            )
+        )
+        assert receipt is not None
+        assert proposal_event is not None
+        assert started is not None
+        session.delete(receipt)
+
+    recovered = TaskRuntime(
+        session_factory, snapshot_store
+    ).recover_interrupted(now=started + timedelta(seconds=61))
+
+    assert recovered.failed == (created.task_id,)
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        inconsistent = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_recovery_inconsistent",
+            )
+        )
+        assert task is not None and task.status == "failed"
+        assert inconsistent is not None
+        assert inconsistent.payload["failure_category"] == (
+            "update_thread_recovery_inconsistent"
+        )
+        assert session.scalar(
+            select(Hypothesis.id).where(Hypothesis.id == hypothesis_id)
+        ) is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type.in_(
+                    (
+                        "update_thread_proposal_accepted",
+                        "update_thread_proposal_rejected",
+                        "update_thread_committed",
+                        "update_thread_rejected",
+                    )
+                ),
+            )
+        ) is None
+
+
+def test_malformed_receipt_without_inconsistency_marker_blocks_finalization(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    from core.world_memory import WorldMemoryCommitService
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider(
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "hypothesis_create",
+                        "key": "malformed-receipt",
+                        "hypothesis_id": str(uuid4()),
+                        "statement": (
+                            "A malformed receipt cannot authorize finalization."
+                        ),
+                        "confidence": "low",
+                    }
+                ]
+            },
+            separators=(",", ":"),
+        )
+    )
+
+    def transient_commit_failure(
+        self: WorldMemoryCommitService,
+        session: Session,
+        task: Task,
+        attempt: int,
+    ) -> None:
+        raise OperationalError(
+            "injected serialization failure", {}, RuntimeError("retry")
+        )
+
+    monkeypatch.setattr(
+        WorldMemoryCommitService,
+        "resume_update_thread_in_session",
+        transient_commit_failure,
+    )
+    with pytest.raises(UpdateThreadProposalPersistencePending):
+        UpdateThreadWorker(session_factory, snapshot_store, provider).run(
+            created.task_id
+        )
+
+    with session_factory.begin() as session:
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        assert receipt is not None
+        payload = dict(receipt.payload)
+        payload["task_id"] = str(uuid4())
+        session.execute(
+            update(Event)
+            .where(Event.id == receipt.id)
+            .values(payload=payload)
+        )
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_recovery_inconsistent",
+            )
+        ) is None
+
+    observation = TerminalObservation(
+        task_id=created.task_id,
+        attempt=1,
+        result_category="terminal_failure",
+        observed_at=datetime.now(timezone.utc),
+        failure_reason="test_terminal_failure",
+    )
+    with pytest.raises(
+        TaskNotFinalizable,
+        match="update_thread_generation_receipt_invalid",
+    ):
+        TaskRuntime(session_factory, snapshot_store).finalize(observation)
+
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None and task.status == "running"
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_failed",
+            )
+        ) is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_recovery_inconsistent",
+            )
+        ) is None
+
+
+
+def test_context_rejects_evidence_signal_from_another_team_domain(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    _admit_fixture_task(session_factory, created.task_id)
+    hypothesis_id, evidence_id = _seed_hypothesis_and_link(
+        session_factory, rw3_fixture
+    )
+    foreign_signal_id = uuid4()
+    with session_factory.begin() as session:
+        session.add(
+            Signal(
+                id=foreign_signal_id,
+                domain="foreign_rw3_test",
+                source_type="fixture",
+                origin_url=f"https://example.test/foreign/{foreign_signal_id}",
+                fetched_at=datetime.now(timezone.utc),
+                content_hash=rw3_fixture.snapshot_hash,
+                snapshot_ref=rw3_fixture.snapshot_ref,
+            )
+        )
+        session.flush()
+        link = session.get(EvidenceLink, evidence_id)
+        assert link is not None
+        assert link.hypothesis_id == hypothesis_id
+        link.signal_id = foreign_signal_id
+
+    assembler = UpdateThreadContextAssembler(session_factory, snapshot_store)
+    with pytest.raises(
+        UpdateThreadContextError,
+        match="update_thread_signal_team_mismatch",
+    ):
+        assembler.assemble(created.task_id, 1)
+
+    with session_factory() as session:
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type == CONTEXT_EVENT_TYPE,
+            )
+        ) is None
+
+
+
+def test_update_thread_worker_never_invokes_team_experience_retrieval(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    from core.knowledge_index import HybridKnowledgeRetriever
+
+    retrieval_calls = 0
+
+    def reject_team_experience_retrieval(
+        self: HybridKnowledgeRetriever, team_id: UUID, query: str
+    ):
+        nonlocal retrieval_calls
+        retrieval_calls += 1
+        raise AssertionError("update_thread must not retrieve Team Experience")
+
+    monkeypatch.setattr(
+        HybridKnowledgeRetriever,
+        "retrieve",
+        reject_team_experience_retrieval,
+    )
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    UpdateThreadWorker(session_factory, snapshot_store, provider).run(
+        created.task_id
+    )
+
+    assert provider.calls == 1
+    assert retrieval_calls == 0
+    with session_factory() as session:
+        context_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == CONTEXT_EVENT_TYPE,
+            )
+        )
+        assert context_event is not None
+        context_bytes = snapshot_store.read(context_event.payload["snapshot_ref"])
+        context_document = json.loads(context_bytes)
+        assert "team_experience" not in context_document
+        assert "team_experience_passages" not in context_document
+
+
+
+def test_model_marker_validator_rejects_operator_event_family(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    from core.world_memory import (
+        WorldMemoryError,
+        load_model_update_thread_envelope,
+        validate_model_update_thread_marker,
+    )
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    hypothesis_id = uuid4()
+    provider = _FakeUpdateThreadProvider(
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "hypothesis_create",
+                        "key": "actor-family",
+                        "hypothesis_id": str(hypothesis_id),
+                        "statement": "Model marker family must remain distinct.",
+                        "confidence": "low",
+                    }
+                ]
+            },
+            separators=(",", ":"),
+        )
+    )
+    UpdateThreadWorker(session_factory, snapshot_store, provider).run(
+        created.task_id
+    )
+
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        envelope = load_model_update_thread_envelope(
+            session, task, 1, snapshot_store
+        )
+        operator_marker = Event(
+            id=uuid4(),
+            task_id=created.task_id,
+            type="operator_update_committed",
+            payload={},
+            created_at=datetime.now(timezone.utc),
+        )
+        with pytest.raises(
+            WorldMemoryError,
+            match="update_thread_commit_marker_invalid",
+        ):
+            validate_model_update_thread_marker(
+                session, task, envelope, operator_marker, snapshot_store
+            )
+
+
+
+@pytest.mark.parametrize(
+    "proposal",
+    [
+        {
+            "kind": "hypothesis_create",
+            "key": "invalid-reference",
+            "hypothesis_id": "not-a-uuid",
+            "statement": "Malformed references must not pass parsing.",
+            "confidence": "low",
+        },
+        {
+            "kind": "evidence_link_add",
+            "key": "missing-source-reference",
+            "hypothesis_id": str(UUID(int=1)),
+            "source_kind": "signal",
+            "signal_id": None,
+            "outcome_id": None,
+            "stance": "supports",
+        },
+        {
+            "kind": "unsupported_proposal_kind",
+            "key": "unsupported-kind",
+        },
+    ],
+)
+def test_model_response_rejects_unsupported_shapes_and_invalid_references(
+    proposal: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        worker_module._parse_model_response(
+            json.dumps({"proposals": [proposal]})
+        )
+
+
+
+def test_model_worker_accepted_evidence_touches_preexisting_hypothesis_at_commit_time(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    original_touch = datetime(2020, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    hypothesis_id, _ = _seed_hypothesis_and_link(
+        session_factory,
+        rw3_fixture,
+        hypothesis_id=uuid4(),
+        created_at=original_touch,
+    )
+    with session_factory.begin() as session:
+        hypothesis = session.get(Hypothesis, hypothesis_id)
+        assert hypothesis is not None
+        hypothesis.last_touched_at = original_touch
+
+    quote_start = _CONTENT.decode("utf-8").index(_QUOTE)
+    quote_end = quote_start + len(_QUOTE)
+    provider = _FakeUpdateThreadProvider(
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "evidence_link_add",
+                        "key": "accepted-model-evidence-touches-hypothesis",
+                        "hypothesis_id": str(hypothesis_id),
+                        "source_kind": "signal",
+                        "signal_id": str(rw3_fixture.signal_id),
+                        "stance": "challenges",
+                        "snapshot_ref": rw3_fixture.snapshot_ref,
+                        "snapshot_hash": rw3_fixture.snapshot_hash,
+                        "quote_text": _QUOTE,
+                        "quote_start": quote_start,
+                        "quote_end": quote_end,
+                    }
+                ]
+            },
+            separators=(",", ":"),
+        )
+    )
+    result = UpdateThreadWorker(
+        session_factory, snapshot_store, provider
+    ).run(created.task_id)
+
+    assert provider.calls == 1
+    assert result.proposals
+    with session_factory() as session:
+        hypothesis = session.get(Hypothesis, hypothesis_id)
+        marker = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        )
+        accepted = session.scalar(
+            select(EvidenceLink).where(
+                EvidenceLink.originating_task_id == created.task_id,
+                EvidenceLink.hypothesis_id == hypothesis_id,
+                EvidenceLink.stance == "challenges",
+            )
+        )
+        assert hypothesis is not None
+        assert marker is not None
+        assert accepted is not None
+        assert hypothesis.last_touched_at == marker.created_at
+        assert hypothesis.last_touched_at > original_touch

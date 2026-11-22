@@ -1571,7 +1571,6 @@ def validate_model_update_thread_terminal(
     attempt = observation.attempt
     if task.attempt_count != attempt:
         raise WorldMemoryError("update_thread_terminal_attempt_mismatch")
-    _validate_update_thread_receipt_history(session, task)
     markers = list(
         session.scalars(
             select(Event).where(
@@ -1609,6 +1608,9 @@ def validate_model_update_thread_terminal(
             session, task
         )
         return
+    # A valid inconsistency marker is the terminal evidence for corrupt state;
+    # receipt-history validation must not prevent that failure from finalizing.
+    _validate_update_thread_receipt_history(session, task)
     try:
         validate_update_thread_task_request(session, task)
     except UpdateThreadTaskError as error:
