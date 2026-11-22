@@ -2589,6 +2589,11 @@ def test_transient_model_commit_failure_rolls_back_and_recovers_same_proposals(
     ).recover_interrupted(now=started + timedelta(seconds=61))
 
     assert recovered.completed == (created.task_id,)
+    replayed = TaskRuntime(
+        session_factory, snapshot_store
+    ).recover_interrupted(now=started + timedelta(seconds=61))
+    assert replayed.completed == ()
+    assert replayed.failed == ()
     assert provider.calls == 1
     with session_factory() as session:
         task = session.get(Task, created.task_id)
