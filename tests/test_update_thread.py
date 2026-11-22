@@ -3086,7 +3086,7 @@ def test_update_thread_worker_rejects_unsupported_task_type_before_provider_call
     worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
 
     with pytest.raises(
-        UpdateThreadContextError,
+        UpdateThreadWorkerError,
         match="update_thread_task_shape_invalid",
     ):
         worker.run(created.task_id)
