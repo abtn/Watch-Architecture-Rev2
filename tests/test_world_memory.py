@@ -45,8 +45,10 @@ from core.world_memory import (
     HypothesisTransitionProposal,
     OperatorUpdateRequest,
     WorldMemoryCommitService,
+    WorldMemoryError,
     build_request_event_payload,
     task_id_for_request,
+    validate_operator_update_terminal,
 )
 
 _CONTENT = b"Market report: supply increased by 5 percent."
@@ -1746,3 +1748,58 @@ def test_accepted_evidence_touches_preexisting_hypothesis_at_commit_time(
             )
         )
         assert accepted is not None
+
+
+def test_operator_terminal_validator_rejects_model_event_family(
+    session_factory: sessionmaker[Session],
+    world_memory_context: WorldMemoryContext,
+) -> None:
+    context = world_memory_context
+    request = OperatorUpdateRequest(
+        thread_id=context.thread_id,
+        idempotency_key=uuid4(),
+        proposals=[
+            HypothesisCreateProposal(
+                kind="hypothesis_create",
+                key="operator-family",
+                hypothesis_id=uuid4(),
+                statement="Operator terminal validation must reject model markers.",
+                confidence="low",
+            )
+        ],
+    )
+    task_id = _create_pending_task(
+        session_factory,
+        context,
+        request,
+        canonical_operator_identity("test-host", "operator-1"),
+    )
+    admission = TaskRuntime(session_factory).admit(task_id)
+    assert admission.attempt_count == 1
+    marker_time = datetime.now(timezone.utc)
+
+    with session_factory.begin() as session:
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=task_id,
+                type="update_thread_committed",
+                payload={},
+                created_at=marker_time,
+            )
+        )
+
+    observation = TerminalObservation(
+        task_id=task_id,
+        attempt=1,
+        result_category="success_operator_update_committed",
+        observed_at=marker_time,
+    )
+    with session_factory() as session:
+        task = session.get(Task, task_id)
+        assert task is not None
+        with pytest.raises(
+            WorldMemoryError,
+            match="operator_update_commit_marker_count_invalid",
+        ):
+            validate_operator_update_terminal(session, task, observation)
