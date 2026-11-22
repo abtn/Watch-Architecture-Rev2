@@ -3,13 +3,13 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 
 ## RW implementation status and evidence contract
 
-This is the current implementation-status summary. RW3.1–RW3.3 are accepted and merged. RW3.4 implementation and integrated verification are merged through PR #152; formal Operator acceptance remains pending. Live provider authorization remains closed. `PLAN.md` is the sole authority for milestone status and authorization; exact verification evidence is recorded in `docs/testing.md`.
+This is the current implementation-status summary. RW3.1–RW3.3 are accepted and merged. RW3.4 implementation and deadline/cost stack were merged by PR #152; its recovery-finalization correction and supplemental evidence proofs were merged by PR #163 at `6cbef27cd4fb39b1d1c860de8bf419046f35d5ae`. Hosted CI passed on exact PR head `a256a7da8682747581e44cc9381bba4646c822da` with 1,274 tests and PostgreSQL/Ruff/Mypy/patch-whitespace checks. Formal RW3.4 Operator acceptance remains pending; live provider authorization remains closed. `PLAN.md` is the sole authority for milestone status and authorization; exact verification evidence is recorded in `docs/testing.md`.
 
 | Task / entity | Current implementation state |
 |---|---|
 | ingest_source | Implemented for the existing deterministic Signal-ingestion path. This does not include triage. |
 | triage_signal | Specified; not implemented. Planned for RW-4. |
-| update_thread | RW3.1–RW3.3 accepted and merged (PRs #136–#138); RW3.4 implementation and integrated verification merged in PR #152. Formal RW3.4 Operator acceptance remains pending. The worker uses deterministic fake providers only; live provider authorization remains closed. |
+| update_thread | RW3.1–RW3.3 accepted and merged (PRs #136–#138); RW3.4 implementation and integrated recovery/evidence corrections merged by PR #163. Hosted CI passed on exact PR head `a256a7da8682747581e44cc9381bba4646c822da` (1,274 tests). Formal RW3.4 Operator acceptance remains pending. Deterministic fake providers only; live provider authorization remains closed. |
 | operator_update | Deterministic host-invoked Operator path implemented and formally accepted in RW-2; PR #134 merged to main. |
 | apply_decay | Specified; not implemented. Planned for RW-5. |
 | Thread / Hypothesis / ConfidenceChange | ORM persistence implemented in RW-1; deterministic Operator commit path implemented and accepted in RW-2. |
@@ -164,7 +164,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Failure:** heuristics error → disposition `deferred` with reason; never silent (INV-09).
 ### `update_thread` — model worker
 
-**Implementation status:** RW3.1–RW3.3 are accepted and merged (PRs #136–#138). RW3.4 deadline enforcement, bounded DNS resolution, timeout classification, receipt-only recovery correction, and cumulative-cost proof are implemented and integrated in merged PR #152. Exact-head local and hosted verification are recorded in `docs/testing.md`; formal RW3.4 Operator acceptance remains pending. The worker uses deterministic fakes only; live provider authorization remains closed.
+**Implementation status:** RW3.1–RW3.3 are accepted and merged. RW3.4 deadline enforcement, bounded DNS resolution, timeout classification, cumulative-cost proof, recovery-finalization correction, and supplemental evidence proofs are implemented and integrated in merged PRs #152 and #163. Hosted CI passed on exact #163 PR head `a256a7da8682747581e44cc9381bba4646c822da` (1,274 tests, PostgreSQL migration/head checks, Ruff, Mypy, and `git diff --check`). The evidence ledger is 24 PASS / 11 PARTIAL / 0 OPEN. Formal RW3.4 Operator acceptance remains pending. A post-#163 Programmer-local Windows run is not yet recorded. The worker uses deterministic fakes only; live provider authorization remains closed.
 
 - **Purpose:** incorporate new evidence into one existing Thread's world model through a bounded model proposal and the shared RW-2 commit boundary.
 - **Trusted target:** Team and Thread are resolved from the immutable Task request and canonical database state. Model output cannot select or override them.
@@ -698,4 +698,4 @@ The proposal-set fingerprint is separate and uses watch.rw3.update-thread-propos
 
 ## Checkpoint 5 — cross-document contract alignment
 
-For RW-3, this Task specification is authoritative for Task type, status, attempts, links, write scope, and budget. The detailed request/proposal identity and replay protocol is in [the RW-3 design and acceptance plan](development/rw-3-design-and-acceptance.md); milestone status and authorization are only in `PLAN.md`. The six-document reconciliation confirms the Checkpoint 4 rules: Team-scoped UUIDv5 identity; same-Team/key conflicts for different Thread/requester; separate identity across Teams; original Task policy pin retained after policy advancement; hashed idempotency key only; and distinct request versus proposal-set fingerprints. These requirements are normative. RW3.1–RW3.3 are implemented, accepted, and merged. RW3.4 implementation and integrated verification are merged in PR #152; formal Operator acceptance remains pending. Live provider invocation remains unauthorized.
+For RW-3, this Task specification is authoritative for Task type, status, attempts, links, write scope, and budget. The detailed request/proposal identity and replay protocol is in [the RW-3 design and acceptance plan](development/rw-3-design-and-acceptance.md); milestone status and authorization are only in `PLAN.md`. The six-document reconciliation confirms the Checkpoint 4 rules: Team-scoped UUIDv5 identity; same-Team/key conflicts for different Thread/requester; separate identity across Teams; original Task policy pin retained after policy advancement; hashed idempotency key only; and distinct request versus proposal-set fingerprints. These requirements are normative. RW3.1–RW3.3 are implemented, accepted, and merged. RW3.4 implementation and corrective recovery/evidence integration are merged in PR #163; formal Operator acceptance remains pending. Live provider invocation remains unauthorized.
