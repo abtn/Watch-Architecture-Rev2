@@ -3636,7 +3636,9 @@ def test_model_proposal_fingerprint_preserves_proposal_array_order() -> None:
         "charge_id": UUID("00000000-0000-0000-0000-000000000005"),
     }
     forward = worker_module._fingerprint(**arguments, proposals=proposals)
-    reverse = worker_module._fingerprint(**arguments, proposals=list(reversed(proposals)))
+    reverse = worker_module._fingerprint(
+        **arguments, proposals=list(reversed(proposals))
+    )
     assert forward != reverse
 
 
@@ -3720,7 +3722,9 @@ def test_creator_rejects_inactive_team_without_task_or_event(
         assert team is not None
         team.status = "inactive"
     request = UpdateThreadTaskRequest(rw3_fixture.thread_id, uuid4())
-    with pytest.raises(OperatorApplicationError, match="update_thread_team_not_active"):
+    with pytest.raises(
+        OperatorApplicationError, match="update_thread_team_not_active"
+    ):
         OperatorApplicationAdapter(session_factory).create_update_thread_task(
             _principal(rw3_fixture.team_id), request
         )
@@ -3758,7 +3762,6 @@ def test_creator_rejects_resolved_thread_without_task_or_event(
                 Task.task_type == "update_thread",
             )
         ) is None
-
 
 
 @pytest.mark.parametrize(
