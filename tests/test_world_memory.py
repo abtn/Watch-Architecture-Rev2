@@ -45,10 +45,10 @@ from core.world_memory import (
     HypothesisTransitionProposal,
     OperatorUpdateRequest,
     WorldMemoryCommitService,
+    WorldMemoryError,
     build_request_event_payload,
     task_id_for_request,
     validate_operator_update_terminal,
-    WorldMemoryError,
 )
 
 _CONTENT = b"Market report: supply increased by 5 percent."
