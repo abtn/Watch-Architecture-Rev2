@@ -26,6 +26,7 @@ from core.generation_cost import (
     TaskGenerationCostError,
     TaskGenerationCostService,
 )
+from core.update_thread import UPDATE_THREAD_TEST_PROVIDER
 from core.models import (
     Event,
     Objective,
@@ -519,29 +520,81 @@ def test_reconciliation_event_failure_keeps_reservation_and_can_be_marked_unknow
         ) == quote.maximum_cost_usd
 
 
+def _quote_for_operation(operation: str) -> GenerationCostQuote:
+    if operation == "strategy_proposal":
+        return _quote()
+    if operation == "experience_distillation":
+        return GenerationCostQuote(
+            provider="watch_test_fake",
+            model="watch-r6f-distillation-fake",
+            maximum_input_tokens=1024,
+            maximum_output_tokens=128,
+            input_usd_per_million_tokens=Decimal("1"),
+            output_usd_per_million_tokens=Decimal("1"),
+            pricing_revision="watch-r6f-fake-price-v1",
+        )
+    return GenerationCostQuote(
+        provider=UPDATE_THREAD_TEST_PROVIDER,
+        model="watch-rw3-update-thread-fake",
+        maximum_input_tokens=1024,
+        maximum_output_tokens=128,
+        input_usd_per_million_tokens=INPUT_USD_PER_MILLION_TOKENS,
+        output_usd_per_million_tokens=OUTPUT_USD_PER_MILLION_TOKENS,
+        pricing_revision="watch-rw3-update-thread-fake-v1",
+    )
+
+
 @pytest.mark.parametrize(
-    ("task_type", "allowed_writes", "reason"),
+    ("operation", "task_type", "allowed_writes", "reason"),
     [
         (
+            "strategy_proposal",
+            "update_thread",
+            ["EvidenceLink", "Hypothesis", "ConfidenceChange"],
+            "generation_task_scope_violation",
+        ),
+        (
+            "experience_distillation",
+            "update_thread",
+            ["LearningChange"],
+            "generation_task_scope_violation",
+        ),
+        (
+            "update_thread",
             "propose_strategy",
             ["EvidenceLink", "Hypothesis", "ConfidenceChange"],
             "generation_task_scope_violation",
         ),
         (
+            "strategy_proposal",
+            "propose_strategy",
+            ["LearningChange"],
+            "generation_task_write_scope_violation",
+        ),
+        (
+            "experience_distillation",
+            "propose_learning_change",
+            [],
+            "generation_task_write_scope_violation",
+        ),
+        (
+            "update_thread",
             "update_thread",
             ["Hypothesis"],
             "generation_task_write_scope_violation",
         ),
         (
             "update_thread",
+            "update_thread",
             ["EvidenceLink", "ConfidenceChange", "Hypothesis"],
             "generation_task_write_scope_violation",
         ),
     ],
 )
-def test_update_thread_cost_operation_rejects_task_scope_mismatches(
+def test_generation_operations_reject_task_type_and_write_scope_mismatches(
     session_factory: sessionmaker[Session],
     cost_task: _CostTask,
+    operation: str,
     task_type: str,
     allowed_writes: list[str],
     reason: str,
@@ -556,6 +609,6 @@ def test_update_thread_cost_operation_rejects_task_scope_mismatches(
     with pytest.raises(TaskGenerationCostError, match=reason):
         TaskGenerationCostService(session_factory).reserve(
             cost_task.task_id,
-            _quote(),
-            operation="update_thread",
+            _quote_for_operation(operation),
+            operation=operation,
         )
