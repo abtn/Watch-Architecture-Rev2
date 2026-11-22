@@ -410,7 +410,7 @@ def test_daily_task_quota_allows_admission_below_limit(
         assert session.get(Event, result.event_id).type == "task_started"
 
 
-def test_daily_quota_query_delay_preserves_paired_admission_deadline(
+def test_daily_quota_query_preserves_paired_admission_deadline(
     session_factory, pending_task, monkeypatch
 ) -> None:
     with session_factory.begin() as session:
@@ -424,31 +424,38 @@ def test_daily_quota_query_delay_preserves_paired_admission_deadline(
         policy.rules = {"budgets": {"max_tasks_per_day": 2}}
 
     original_scalar = Session.scalar
+    timeline: list[str] = []
     quota_query_completed: list[datetime] = []
-    monotonic_clock = [1234.5]
 
-    def fake_monotonic() -> float:
-        return monotonic_clock[0]
+    def monotonic_clock() -> float:
+        timeline.append("monotonic_sampled")
+        return 1234.5
 
-    def tracking_scalar(self, statement, *args, **kwargs):
+    def tracked_scalar(self, statement, *args, **kwargs):
         if "count(events.id)" in str(statement).lower():
+            timeline.append("quota_query_started")
             result = original_scalar(self, statement, *args, **kwargs)
-            # Model elapsed time after the quota query completes.
-            monotonic_clock[0] += 1.0
             quota_query_completed.append(datetime.now(timezone.utc))
+            timeline.append("quota_query_completed")
             return result
         return original_scalar(self, statement, *args, **kwargs)
 
+    # Replace the module's clock reference, not time.monotonic globally:
+    # SQLAlchemy and pytest may also use the shared time module.
     monkeypatch.setattr(
         "core.task_runtime.time",
-        SimpleNamespace(monotonic=fake_monotonic),
+        SimpleNamespace(monotonic=monotonic_clock),
     )
-    monkeypatch.setattr(Session, "scalar", tracking_scalar)
+    monkeypatch.setattr(Session, "scalar", tracked_scalar)
     admission = TaskRuntime(session_factory).admit(pending_task)
 
-    assert len(quota_query_completed) == 1
+    assert timeline == [
+        "monotonic_sampled",
+        "quota_query_started",
+        "quota_query_completed",
+    ]
     assert admission.admitted_monotonic == 1234.5
-    assert admission.admitted_monotonic < monotonic_clock[0]
+    assert len(quota_query_completed) == 1
     assert admission.admitted_at < quota_query_completed[0]
     with session_factory() as session:
         started = session.get(Event, admission.event_id)
