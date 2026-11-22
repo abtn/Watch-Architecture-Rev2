@@ -25,20 +25,21 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 
 ## Current RW-3 status
 
-RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery was formally accepted by the Operator on 2026-11-20 and squash-merged by PR #138; its exact implementation, corrective, local, and hosted verification evidence is recorded below. RW3.4 integrated closeout remains separately gated. Live provider authorization remains closed; only deterministic fake providers are permitted.
+RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery was formally accepted by the Operator on 2026-11-20 and squash-merged by PR #138; its exact implementation, corrective, local, and hosted verification evidence is recorded below. RW3.4 implementation and integrated verification are merged through PR #152; formal Operator acceptance remains pending. Live provider authorization remains closed; only deterministic fake providers are permitted.
 
 ## RW3.4 consolidated integration branch — exact-head verification — 2026-11-22
 
-**Consolidated PR:** [#152](https://github.com/abtn/Watch-Architecture-Rev2/pull/152), draft and open, targeting `main`.
+**Consolidated PR:** [#152](https://github.com/abtn/Watch-Architecture-Rev2/pull/152), merged to `main` at `77388707c82aa8dbcf4a37d3f44cb14a0b914f60`.
 
 - Integration branch: `rw3-4-integrated-deadline-and-cost`.
 - Base: `main` at `c4b55bdf754ac93ce62caad523971fe2809d0ad6`.
 - Verified exact head: `20cfc252d21bdecc6153c1d8daa8369e1f331ff2`.
-- Scope: combined implementation/proof contributions from component PRs #140, #142, #144, #145, and #146. The five component PRs remain open and unchanged; they were not merged individually.
+- Scope: combined implementation/proof contributions from component PRs #140, #142, #144, #145, and #146. Those component PRs were subsequently closed without individual merges; their changes are represented by #152.
 
 **Hosted exact-head CI:**
 
-- GitHub Actions CI [run #45014525692](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45014525692) completed successfully on exact head `20cfc252d21bdecc6153c1d8daa8369e1f331ff2`.
+- GitHub Actions CI [run #45014525692](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45014525692) completed successfully on implementation head `20cfc252d21bdecc6153c1d8daa8369e1f331ff2`.
+- Final PR-head CI [run #45018330304](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45018330304) completed successfully on `7c7aa3a3c5fc98c4ccfab21900f327b9323ee61d`, the final PR head before merge.
 - Fresh PostgreSQL migration and migration-at-head verification, Ruff, Mypy, patch-whitespace validation, and the full test workflow passed.
 
 **Programmer-local Windows verification on the same exact head:**
@@ -55,12 +56,12 @@ RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2
 
 The earlier PR #146 exact-head verification recorded below remains historical evidence for that earlier commit and is not substituted for these consolidated-branch results. The consolidated branch introduces no schema/migration change; the disposable database reached the existing `0019_rw1_world_memory` head. Verification used deterministic fakes only; no live Cloudflare/provider call was made.
 
-**Boundary retained:** These results establish hosted and Programmer-local verification of the consolidated PR's exact head. They do **not** constitute formal RW3.4 acceptance or merge authorization. The PR remains draft pending review and explicit Operator disposition. Live-provider authorization, RW-4–RW-5, R7-C implementation, persistent-database access, and scored newsroom execution remain separately gated.
+**Boundary retained:** These results establish hosted and Programmer-local verification of the consolidated implementation. PR #152 is merged, but the merge and verification do **not** constitute formal RW3.4 acceptance. Explicit Operator disposition remains pending. Live-provider authorization, RW-4–RW-5, R7-C implementation, persistent-database access, and scored newsroom execution remain separately gated.
 
 
 ## RW3.4 integrated implementation-stack verification — 2026-11-22
 
-**Historical disposition (PR #146 exact head only):** At the time of this verification, the open draft component stack (#140, #142, #144, #145, and #146) had passed hosted CI and Programmer-local Windows verification at PR #146 head `8bf4140bb05624ca86ff699c1e3156315edf682d`. These results do not verify the consolidated branch described above. This is verification evidence for the combined stack at that exact commit; it is not formal RW3.4 acceptance, merge authorization, or live-provider authorization. All five implementation PRs remain open and in draft status.
+**Historical disposition (PR #146 exact head only):** At the time of this earlier verification, the component stack (#140, #142, #144, #145, and #146) was open and in draft status. Those PRs were later closed without individual merges after their contributions were consolidated into #152. The #146 result remains historical evidence for its exact head only; the consolidated #152 verification above is the current integrated evidence. Neither result by itself constitutes formal RW3.4 acceptance or live-provider authorization.
 
 **Stack and scope at the verified head:**
 
@@ -87,7 +88,7 @@ PR #146's recorded base is `3603c4cdb693f97fc979a892281004b2beb17ea6`; its head 
 - Full suite: **1,213 passed, 130 warnings in 450.55s**. The warnings are Alembic `path_separator` deprecations; they did not fail the run.
 - The disposable PostgreSQL container was removed and the original process `DATABASE_URL` and `TEST_DATABASE_URL` values were restored. The persistent application database was not used.
 
-**Boundary retained:** No schema/migration change was introduced by this stack; the verified database reached the existing `0019_rw1_world_memory` head. Verification used deterministic fakes; no live Cloudflare/provider invocation was made. RW3.4 integrated closeout, formal Operator acceptance, merge of the implementation PRs, live-provider authorization, RW-4–RW-5, R7-C implementation, persistent-database access, and scored newsroom execution remain separately gated.
+**Boundary retained:** No schema/migration change was introduced by this stack; the verified database reached the existing `0019_rw1_world_memory` head. Verification used deterministic fakes; no live Cloudflare/provider invocation was made. Formal RW3.4 Operator acceptance, live-provider authorization, RW-4–RW-5, R7-C implementation, persistent-database access, and scored newsroom execution remain separately gated.
 
 ## RW3.3 implementation verification and Operator acceptance — 2026-11-20
 
