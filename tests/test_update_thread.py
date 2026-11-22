@@ -2718,7 +2718,18 @@ def test_marker_recovery_reconstructs_terminal_result_without_reapplying(
         "receipt_context_snapshot_ref",
         "receipt_context_content_hash",
         "receipt_context_event_id",
+        "receipt_task_id",
+        "receipt_team_id",
+        "receipt_thread_id",
+        "receipt_attempt",
+        "receipt_policy_version",
         "context_event_content_hash",
+        "context_event_task_id",
+        "context_event_team_id",
+        "context_event_thread_id",
+        "context_event_attempt",
+        "context_event_policy_version",
+        "context_event_snapshot_ref",
         "task_id",
         "team_id",
         "thread_id",
@@ -2802,7 +2813,7 @@ def test_permanent_provenance_conflict_records_inconsistent_without_writes(
                     created_at=datetime.now(timezone.utc),
                 )
             )
-        elif tamper.startswith("receipt_context_"):
+        elif tamper.startswith("receipt_"):
             receipt_event = session.scalar(
                 select(Event).where(
                     Event.task_id == created.task_id,
@@ -2812,17 +2823,18 @@ def test_permanent_provenance_conflict_records_inconsistent_without_writes(
             assert receipt_event is not None
             receipt_payload = dict(receipt_event.payload)
             receipt_field = tamper.removeprefix("receipt_")
-            receipt_payload[receipt_field] = (
-                str(uuid4())
-                if receipt_field != "context_content_hash"
-                else "sha256:" + ("0" * 64)
-            )
+            if receipt_field in {"attempt", "policy_version"}:
+                receipt_payload[receipt_field] += 1
+            elif receipt_field == "context_content_hash":
+                receipt_payload[receipt_field] = "sha256:" + ("0" * 64)
+            else:
+                receipt_payload[receipt_field] = str(uuid4())
             session.execute(
                 update(Event)
                 .where(Event.id == receipt_event.id)
                 .values(payload=receipt_payload)
             )
-        elif tamper == "context_event_content_hash":
+        elif tamper.startswith("context_event_"):
             context_event = session.scalar(
                 select(Event).where(
                     Event.task_id == created.task_id,
@@ -2831,7 +2843,13 @@ def test_permanent_provenance_conflict_records_inconsistent_without_writes(
             )
             assert context_event is not None
             context_payload = dict(context_event.payload)
-            context_payload["content_hash"] = "sha256:" + ("0" * 64)
+            context_field = tamper.removeprefix("context_event_")
+            if context_field in {"attempt", "policy_version"}:
+                context_payload[context_field] += 1
+            elif context_field == "content_hash":
+                context_payload[context_field] = "sha256:" + ("0" * 64)
+            else:
+                context_payload[context_field] = str(uuid4())
             session.execute(
                 update(Event)
                 .where(Event.id == context_event.id)
