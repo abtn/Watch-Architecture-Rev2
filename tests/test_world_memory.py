@@ -1695,3 +1695,48 @@ def test_exact_quote_with_wrong_offsets_is_rejected(
         )
         assert rejection is not None
         assert rejection.payload["reason"] == "quote_text_offset_mismatch"
+
+
+
+def test_accepted_evidence_touches_preexisting_hypothesis_at_commit_time(
+    session_factory, snapshot_store, world_memory_context
+):
+    context = world_memory_context
+    hypothesis_id, _ = _seed_hypothesis_and_evidence(session_factory, context)
+    original_touch = datetime(2020, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    with session_factory.begin() as session:
+        hypothesis = session.get(Hypothesis, hypothesis_id)
+        assert hypothesis is not None
+        hypothesis.last_touched_at = original_touch
+
+    request = OperatorUpdateRequest(
+        thread_id=context.thread_id,
+        idempotency_key=uuid4(),
+        proposals=[
+            _quote_proposal(
+                context,
+                hypothesis_id,
+                key="accepted-evidence-touches-existing-hypothesis",
+                stance="supports",
+            )
+        ],
+    )
+    result = OperatorApplicationAdapter(session_factory, snapshot_store).operator_update(
+        _principal(context.team_id), request
+    )
+
+    assert result.task_status == "done"
+    assert result.committed_count == 1
+    with session_factory() as session:
+        hypothesis = session.get(Hypothesis, hypothesis_id)
+        assert hypothesis is not None
+        assert hypothesis.last_touched_at == result.committed_at
+        assert hypothesis.last_touched_at > original_touch
+        accepted = session.scalar(
+            select(EvidenceLink).where(
+                EvidenceLink.originating_task_id == result.task_id,
+                EvidenceLink.hypothesis_id == hypothesis_id,
+                EvidenceLink.stance == "supports",
+            )
+        )
+        assert accepted is not None
