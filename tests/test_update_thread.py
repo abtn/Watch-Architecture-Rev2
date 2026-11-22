@@ -56,7 +56,9 @@ from core.task_runtime import (
     FailureObservation,
     FailureResult,
     TaskNotEligible,
+    TaskNotFinalizable,
     TaskRuntime,
+    TerminalObservation,
 )
 from core.update_thread import (
     ALLOWED_WRITES,
@@ -4181,3 +4183,103 @@ def test_proposal_only_recovery_fails_closed_without_business_writes(
                 ),
             )
         ) is None
+
+def test_malformed_receipt_without_inconsistency_marker_blocks_finalization(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    from core.world_memory import WorldMemoryCommitService
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider(
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "hypothesis_create",
+                        "key": "malformed-receipt",
+                        "hypothesis_id": str(uuid4()),
+                        "statement": "A malformed receipt cannot authorize finalization.",
+                        "confidence": "low",
+                    }
+                ]
+            },
+            separators=(",", ":"),
+        )
+    )
+
+    def transient_commit_failure(
+        self: WorldMemoryCommitService,
+        session: Session,
+        task: Task,
+        attempt: int,
+    ) -> None:
+        raise OperationalError(
+            "injected serialization failure", {}, RuntimeError("retry")
+        )
+
+    monkeypatch.setattr(
+        WorldMemoryCommitService,
+        "resume_update_thread_in_session",
+        transient_commit_failure,
+    )
+    with pytest.raises(UpdateThreadProposalPersistencePending):
+        UpdateThreadWorker(session_factory, snapshot_store, provider).run(
+            created.task_id
+        )
+
+    with session_factory.begin() as session:
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        assert receipt is not None
+        payload = dict(receipt.payload)
+        payload["task_id"] = str(uuid4())
+        session.execute(
+            update(Event)
+            .where(Event.id == receipt.id)
+            .values(payload=payload)
+        )
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_recovery_inconsistent",
+            )
+        ) is None
+
+    observation = TerminalObservation(
+        task_id=created.task_id,
+        attempt=1,
+        result_category="terminal_failure",
+        observed_at=datetime.now(timezone.utc),
+        failure_reason="test_terminal_failure",
+    )
+    with pytest.raises(
+        TaskNotFinalizable,
+        match="update_thread_generation_receipt_invalid",
+    ):
+        TaskRuntime(session_factory, snapshot_store).finalize(observation)
+
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None and task.status == "running"
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_failed",
+            )
+        ) is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_recovery_inconsistent",
+            )
+        ) is None
+
