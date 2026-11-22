@@ -4042,3 +4042,73 @@ def test_creator_rejects_cross_team_thread_without_task_or_event(
             delete(TeamPolicy).where(TeamPolicy.team_id == foreign_team_id)
         )
         session.execute(delete(Team).where(Team.id == foreign_team_id))
+
+
+def test_model_worker_accepted_evidence_touches_preexisting_hypothesis_at_commit_time(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    original_touch = datetime(2020, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    hypothesis_id, _ = _seed_hypothesis_and_link(
+        session_factory,
+        rw3_fixture,
+        hypothesis_id=uuid4(),
+        created_at=original_touch,
+    )
+    with session_factory.begin() as session:
+        hypothesis = session.get(Hypothesis, hypothesis_id)
+        assert hypothesis is not None
+        hypothesis.last_touched_at = original_touch
+
+    quote_start = _CONTENT.decode("utf-8").index(_QUOTE)
+    quote_end = quote_start + len(_QUOTE)
+    provider = _FakeUpdateThreadProvider(
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "evidence_link_add",
+                        "key": "accepted-model-evidence-touches-hypothesis",
+                        "hypothesis_id": str(hypothesis_id),
+                        "source_kind": "signal",
+                        "signal_id": str(rw3_fixture.signal_id),
+                        "stance": "challenges",
+                        "snapshot_ref": rw3_fixture.snapshot_ref,
+                        "snapshot_hash": rw3_fixture.snapshot_hash,
+                        "quote_text": _QUOTE,
+                        "quote_start": quote_start,
+                        "quote_end": quote_end,
+                    }
+                ]
+            },
+            separators=(",", ":"),
+        )
+    )
+    result = UpdateThreadWorker(
+        session_factory, snapshot_store, provider
+    ).run(created.task_id)
+
+    assert provider.calls == 1
+    assert result.proposals
+    with session_factory() as session:
+        hypothesis = session.get(Hypothesis, hypothesis_id)
+        marker = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        )
+        accepted = session.scalar(
+            select(EvidenceLink).where(
+                EvidenceLink.originating_task_id == created.task_id,
+                EvidenceLink.hypothesis_id == hypothesis_id,
+                EvidenceLink.stance == "challenges",
+            )
+        )
+        assert hypothesis is not None
+        assert marker is not None
+        assert accepted is not None
+        assert hypothesis.last_touched_at == marker.created_at
+        assert hypothesis.last_touched_at > original_touch
