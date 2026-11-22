@@ -228,13 +228,15 @@ The matrix defines required proof obligations, not tests that already exist. Eac
 
 ### RW3.4 — integrated implementation and verification evidence
 
-PR #152 integrated the deadline/recovery, cumulative-cost, bounded DNS resolver, and provider-timeout corrections from component PRs
+PR #152 integrated the deadline/recovery, cumulative-cost, bounded DNS resolver, and provider-timeout corrections from component PRs #140, #142, #144, #145, and #146. It was merged to `main` at `77388707c82aa8dbcf4a37d3f44cb14a0b914f60`. The component PRs were closed without individual merges after consolidation; their contributions are represented by #152.
 
-The #152 implementation stack was locally verified on exact code/test head
+The #152 implementation stack was locally verified on exact code/test head `20cfc252d21bdecc6153c1d8daa8369e1f331ff2`: 155 focused tests; 1,213 full-suite tests; Ruff; Mypy (42 source files); fresh disposable PostgreSQL migration/current/single-head checks at `0019_rw1_world_memory`; cleanup, environment restoration, exact HEAD, and clean worktree. The full suite reported 130 existing Alembic `path_separator` deprecation warnings. Hosted CI passed on final PR head `7c7aa3a3c5fc98c4ccfab21900f327b9323ee61d` (run [#45018330304](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45018330304)); implementation-head CI also passed on `20cfc252d21bdecc6153c1d8daa8369e1f331ff2` (run [#45014525692](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45014525692)). Exact focused test nodes and verification qualifications are recorded in `docs/testing.md`.
 
-The #152 bounded process-wide resolver implementation addresses the DNS-resolver concern. PR #163 adds the recovery-finalization ordering correction and closes five further proof rows. Its hosted CI passed 1,274 tests on exact PR head `a256a7da8682747581e44cc9381bba4646c822da`; the detailed test mapping and remaining qualifications are in the RW3.4 closeout ledger.
+PR #163 subsequently corrected recovery-finalization ordering and added direct recovery, Context-isolation, actor-family, accepted-evidence, and generation-scope proofs. It was merged at `6cbef27cd4fb39b1d1c860de8bf419046f35d5ae`. Hosted CI passed on exact PR head `a256a7da8682747581e44cc9381bba4646c822da` (run [#45064469109](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45064469109)): 1,274 tests, PostgreSQL migration/current/single-head checks, Ruff, Mypy, and `git diff --check`. A fresh Programmer-local verification on the post-#163 tree has not yet been recorded; the #152 local result above is not evidence of a local pass on #163.
 
-**Disposition:** the implementation and integrated verification evidence are merged through #152 and #163.
+The #152 bounded process-wide resolver implementation addresses the DNS-resolver concern. PR #163 adds the recovery-finalization ordering correction and closes five further proof rows. These changes do not authorize live-provider use: the deterministic fake-provider gate remains mandatory. The repository still has no production host composition root or TeamPolicy publisher, so end-to-end host authentication and production publisher integration remain unproven.
+
+**Disposition:** the implementation and integrated verification evidence are merged through #152 and #163. Formal RW3.4 Operator acceptance remains pending and must be recorded explicitly before the milestone is marked complete. Green CI or merge alone is not acceptance.
 
 ## 4.1 RW-1 physical design preparation
 
