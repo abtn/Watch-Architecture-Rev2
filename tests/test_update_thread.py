@@ -4059,7 +4059,9 @@ def test_proposal_only_recovery_fails_closed_without_business_writes(
                         "kind": "hypothesis_create",
                         "key": "proposal-without-receipt",
                         "hypothesis_id": str(hypothesis_id),
-                        "statement": "A proposal without its generation receipt is invalid.",
+                        "statement": (
+                            "A proposal without its generation receipt is invalid."
+                        ),
                         "confidence": "low",
                     }
                 ]
