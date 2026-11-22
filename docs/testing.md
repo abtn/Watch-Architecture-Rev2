@@ -35,7 +35,7 @@ The previously recorded PR #146 exact-head CI and local results below are histor
 
 ## RW3.4 integrated implementation-stack verification — 2026-11-22
 
-**Disposition:** The currently open, draft implementation stack PRs #140, #142, #144, #145, and #146 has passed integrated exact-head hosted CI and Programmer-local Windows verification at PR #146 head `8bf4140bb05624ca86ff699c1e3156315edf682d`. This is verification evidence for the combined stack at that exact commit; it is not formal RW3.4 acceptance, merge authorization, or live-provider authorization. All five implementation PRs remain open and in draft status.
+**Historical disposition (PR #146 exact head only):** At the time of this verification, the open draft component stack (#140, #142, #144, #145, and #146) had passed hosted CI and Programmer-local Windows verification at PR #146 head `8bf4140bb05624ca86ff699c1e3156315edf682d`. These results do not verify the consolidated branch described above. This is verification evidence for the combined stack at that exact commit; it is not formal RW3.4 acceptance, merge authorization, or live-provider authorization. All five implementation PRs remain open and in draft status.
 
 **Stack and scope at the verified head:**
 
@@ -45,7 +45,7 @@ The previously recorded PR #146 exact-head CI and local results below are histor
 - PR #145: process-wide DNS resolver concurrency bounded to two active resolver workers, with fail-fast saturation and capacity retained until the resolver actually exits.
 - PR #146: classify a provider timeout at or beyond the absolute Task deadline as terminal `update_thread_deadline_exceeded`, while preserving pre-deadline retry behavior.
 
-PR #146 is based on PR #145. Its final PR head is the merge commit `8bf4140bb05624ca86ff699c1e3156315edf682d`, with base `3603c4cdb693f97fc979a892281004b2beb17ea6`. Its own PR diff remains limited to `core/update_thread_worker.py` and `tests/test_update_thread.py`; the earlier stack changes are inherited through the base.
+PR #146's recorded base is `3603c4cdb693f97fc979a892281004b2beb17ea6`; its head `8bf4140bb05624ca86ff699c1e3156315edf682d` is a merge commit containing the timeout-classification change. The current PR #145 head `8bf0f75869d388496ff81715fd80a65262bfff90` is two commits beyond that recorded base. The consolidated branch retains those newer #145 changes (including the deterministic admission-clock correction) and adds #146's two-file timeout-classification diff. The historical #146 PR diff itself is limited to `core/update_thread_worker.py` and `tests/test_update_thread.py`.
 
 **Hosted exact-head CI:**
 
