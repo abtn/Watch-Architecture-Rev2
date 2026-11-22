@@ -4042,3 +4042,48 @@ def test_creator_rejects_cross_team_thread_without_task_or_event(
             delete(TeamPolicy).where(TeamPolicy.team_id == foreign_team_id)
         )
         session.execute(delete(Team).where(Team.id == foreign_team_id))
+
+
+def test_context_rejects_evidence_signal_from_another_team_domain(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    _admit_fixture_task(session_factory, created.task_id)
+    hypothesis_id, evidence_id = _seed_hypothesis_and_link(
+        session_factory, rw3_fixture
+    )
+    foreign_signal_id = uuid4()
+    with session_factory.begin() as session:
+        session.add(
+            Signal(
+                id=foreign_signal_id,
+                domain="foreign_rw3_test",
+                source_type="fixture",
+                origin_url=f"https://example.test/foreign/{foreign_signal_id}",
+                fetched_at=datetime.now(timezone.utc),
+                content_hash=rw3_fixture.snapshot_hash,
+                snapshot_ref=rw3_fixture.snapshot_ref,
+            )
+        )
+        session.flush()
+        link = session.get(EvidenceLink, evidence_id)
+        assert link is not None
+        assert link.hypothesis_id == hypothesis_id
+        link.signal_id = foreign_signal_id
+
+    assembler = UpdateThreadContextAssembler(session_factory, snapshot_store)
+    with pytest.raises(
+        UpdateThreadContextError,
+        match="update_thread_signal_team_mismatch",
+    ):
+        assembler.assemble(created.task_id, 1)
+
+    with session_factory() as session:
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type == CONTEXT_EVENT_TYPE,
+            )
+        ) is None
