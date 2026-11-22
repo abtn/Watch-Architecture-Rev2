@@ -13,6 +13,7 @@ from typing import Iterator
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -43,6 +44,8 @@ from core.operator_application import (
     OperatorApplicationAdapter,
     OperatorGrant,
     OperatorNotAuthorized,
+    InvalidOperatorPrincipal,
+    OperatorApplicationError,
     OperatorTaskRequestConflict,
     OperatorTaskRequestCorrupt,
     TrustedOperatorPrincipal,
@@ -71,6 +74,7 @@ from core.update_thread_context import (
     UpdateThreadContextAssembler,
     UpdateThreadContextError,
 )
+from core.world_memory import HypothesisCreateProposal, OperatorUpdateRequest
 from core.update_thread_worker import (
     PROPOSALS_EVENT_TYPE,
     RECEIPT_EVENT_TYPE,
@@ -3520,3 +3524,237 @@ def test_model_proposal_disposition_event_rejects_boolean_integer_substitution(
             validate_model_update_thread_marker(
                 session, task, envelope, marker, snapshot_store
             )
+
+
+
+# RW3.4 test-only proof obligations: model proposal boundaries and fingerprint.
+
+def _model_proposal(index: int) -> dict[str, object]:
+    return {
+        "kind": "hypothesis_create",
+        "key": f"hypothesis-{index}",
+        "hypothesis_id": str(UUID(int=index + 1)),
+        "statement": f"Hypothesis {index}",
+        "confidence": "low",
+    }
+
+
+def test_model_proposal_count_accepts_eight_and_rejects_nine() -> None:
+    accepted = worker_module._parse_model_response(
+        json.dumps({"proposals": [_model_proposal(i) for i in range(8)]})
+    )
+    assert len(accepted.proposals) == 8
+
+    with pytest.raises(ValidationError):
+        worker_module._parse_model_response(
+            json.dumps({"proposals": [_model_proposal(i) for i in range(9)]})
+        )
+
+
+def test_operator_update_proposal_count_remains_sixty_four() -> None:
+    proposals = [
+        HypothesisCreateProposal(
+            kind="hypothesis_create",
+            key=f"operator-hypothesis-{index}",
+            hypothesis_id=UUID(int=index + 1),
+            statement=f"Operator hypothesis {index}",
+            confidence="low",
+        )
+        for index in range(64)
+    ]
+    request = OperatorUpdateRequest(
+        thread_id=UUID(int=1000),
+        idempotency_key=UUID(int=1001),
+        proposals=proposals,
+    )
+    assert len(request.proposals) == 64
+
+    with pytest.raises(ValidationError):
+        OperatorUpdateRequest(
+            thread_id=UUID(int=1000),
+            idempotency_key=UUID(int=1002),
+            proposals=[
+                *proposals,
+                HypothesisCreateProposal(
+                    kind="hypothesis_create",
+                    key="operator-hypothesis-64",
+                    hypothesis_id=UUID(int=65),
+                    statement="Operator hypothesis 64",
+                    confidence="low",
+                ),
+            ],
+        )
+
+
+def test_model_proposal_fingerprint_has_canonical_golden_vector() -> None:
+    context = SimpleNamespace(
+        event_id=UUID("00000000-0000-0000-0000-000000000006"),
+        snapshot_ref="sha256:context-snapshot",
+        content_hash="sha256:" + "a" * 64,
+    )
+    proposal = _model_proposal(6)
+    proposal["key"] = "create-one"
+    proposal["statement"] = "Supply pressure persists."
+    proposals = [proposal]
+    actual = worker_module._fingerprint(
+        task_id=UUID("00000000-0000-0000-0000-000000000001"),
+        team_id=UUID("00000000-0000-0000-0000-000000000002"),
+        thread_id=UUID("00000000-0000-0000-0000-000000000003"),
+        attempt=1,
+        policy_version=2,
+        receipt_event_id=UUID("00000000-0000-0000-0000-000000000004"),
+        context=context,
+        charge_id=UUID("00000000-0000-0000-0000-000000000005"),
+        proposals=proposals,
+    )
+    assert actual == (
+        "sha256:57921c654b93a07f8d30065377d8e77b109394676482359c2007cb005d546893"
+    )
+    assert worker_module._canonical_json(
+        {
+            "z": "آخر",
+            "a": ["first", "second"],
+        }
+    ) == '{"a":["first","second"],"z":"آخر"}'.encode("utf-8")
+
+
+def test_model_proposal_fingerprint_preserves_proposal_array_order() -> None:
+    context = SimpleNamespace(
+        event_id=UUID("00000000-0000-0000-0000-000000000006"),
+        snapshot_ref="sha256:context-snapshot",
+        content_hash="sha256:" + "a" * 64,
+    )
+    proposals = [_model_proposal(1), _model_proposal(2)]
+    arguments = {
+        "task_id": UUID("00000000-0000-0000-0000-000000000001"),
+        "team_id": UUID("00000000-0000-0000-0000-000000000002"),
+        "thread_id": UUID("00000000-0000-0000-0000-000000000003"),
+        "attempt": 1,
+        "policy_version": 2,
+        "receipt_event_id": UUID("00000000-0000-0000-0000-000000000004"),
+        "context": context,
+        "charge_id": UUID("00000000-0000-0000-0000-000000000005"),
+    }
+    forward = worker_module._fingerprint(**arguments, proposals=proposals)
+    reverse = worker_module._fingerprint(**arguments, proposals=list(reversed(proposals)))
+    assert forward != reverse
+
+
+@pytest.mark.parametrize(
+    ("principal", "error_type"),
+    [
+        (None, InvalidOperatorPrincipal),
+        (
+            TrustedOperatorPrincipal(
+                issuer="https://host.example/identity",
+                subject="",
+                grants=frozenset(),
+            ),
+            InvalidOperatorPrincipal,
+        ),
+    ],
+)
+def test_creator_rejects_missing_or_malformed_principal_without_task_or_event(
+    session_factory: sessionmaker[Session],
+    rw3_fixture: Fixture,
+    principal: TrustedOperatorPrincipal | None,
+    error_type: type[Exception],
+) -> None:
+    request = UpdateThreadTaskRequest(rw3_fixture.thread_id, uuid4())
+    with pytest.raises(error_type):
+        OperatorApplicationAdapter(session_factory).create_update_thread_task(
+            principal, request  # type: ignore[arg-type]
+        )
+    with session_factory() as session:
+        assert session.scalar(
+            select(Task.id).where(
+                Task.team_id == rw3_fixture.team_id,
+                Task.task_type == "update_thread",
+            )
+        ) is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.type == REQUEST_EVENT_TYPE,
+                Event.payload["team_id"].as_string() == str(rw3_fixture.team_id),
+            )
+        ) is None
+
+
+def test_creator_rejects_wrong_team_grant_without_task_or_event(
+    session_factory: sessionmaker[Session],
+    rw3_fixture: Fixture,
+) -> None:
+    request = UpdateThreadTaskRequest(rw3_fixture.thread_id, uuid4())
+    principal = TrustedOperatorPrincipal(
+        issuer="https://host.example/identity",
+        subject="rw3-operator",
+        grants=frozenset({OperatorGrant(uuid4(), "request_update_thread")}),
+    )
+    with pytest.raises(OperatorNotAuthorized):
+        OperatorApplicationAdapter(session_factory).create_update_thread_task(
+            principal, request
+        )
+    with session_factory() as session:
+        assert session.scalar(
+            select(Task.id).where(
+                Task.team_id == rw3_fixture.team_id,
+                Task.task_type == "update_thread",
+            )
+        ) is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.type == REQUEST_EVENT_TYPE,
+                Event.task_id.in_(
+                    select(Task.id).where(Task.team_id == rw3_fixture.team_id)
+                ),
+            )
+        ) is None
+
+
+def test_creator_rejects_inactive_team_without_task_or_event(
+    session_factory: sessionmaker[Session],
+    rw3_fixture: Fixture,
+) -> None:
+    with session_factory.begin() as session:
+        team = session.get(Team, rw3_fixture.team_id)
+        assert team is not None
+        team.status = "inactive"
+    request = UpdateThreadTaskRequest(rw3_fixture.thread_id, uuid4())
+    with pytest.raises(OperatorApplicationError, match="update_thread_team_not_active"):
+        OperatorApplicationAdapter(session_factory).create_update_thread_task(
+            _principal(rw3_fixture.team_id), request
+        )
+    with session_factory() as session:
+        assert session.scalar(
+            select(Task.id).where(Task.team_id == rw3_fixture.team_id)
+        ) is not None  # The source fixture Task remains; no update_thread Task exists.
+        assert session.scalar(
+            select(Task.id).where(
+                Task.team_id == rw3_fixture.team_id,
+                Task.task_type == "update_thread",
+            )
+        ) is None
+
+
+def test_creator_rejects_resolved_thread_without_task_or_event(
+    session_factory: sessionmaker[Session],
+    rw3_fixture: Fixture,
+) -> None:
+    with session_factory.begin() as session:
+        thread = session.get(Thread, rw3_fixture.thread_id)
+        assert thread is not None
+        thread.status = "resolved"
+    request = UpdateThreadTaskRequest(rw3_fixture.thread_id, uuid4())
+    with pytest.raises(
+        OperatorApplicationError, match="update_thread_target_not_available"
+    ):
+        OperatorApplicationAdapter(session_factory).create_update_thread_task(
+            _principal(rw3_fixture.team_id), request
+        )
+    with session_factory() as session:
+        assert session.scalar(
+            select(Task.id).where(
+                Task.team_id == rw3_fixture.team_id,
+                Task.task_type == "update_thread",
+            )
+        ) is None
