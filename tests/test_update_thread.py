@@ -4042,3 +4042,58 @@ def test_creator_rejects_cross_team_thread_without_task_or_event(
             delete(TeamPolicy).where(TeamPolicy.team_id == foreign_team_id)
         )
         session.execute(delete(Team).where(Team.id == foreign_team_id))
+
+
+def test_model_marker_validator_rejects_operator_event_family(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    from core.world_memory import (
+        WorldMemoryError,
+        load_model_update_thread_envelope,
+        validate_model_update_thread_marker,
+    )
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    hypothesis_id = uuid4()
+    provider = _FakeUpdateThreadProvider(
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "hypothesis_create",
+                        "key": "actor-family",
+                        "hypothesis_id": str(hypothesis_id),
+                        "statement": "Model marker family must remain distinct.",
+                        "confidence": "low",
+                    }
+                ]
+            },
+            separators=(",", ":"),
+        )
+    )
+    UpdateThreadWorker(session_factory, snapshot_store, provider).run(
+        created.task_id
+    )
+
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        envelope = load_model_update_thread_envelope(
+            session, task, 1, snapshot_store
+        )
+        operator_marker = Event(
+            id=uuid4(),
+            task_id=created.task_id,
+            type="operator_update_committed",
+            payload={},
+            created_at=datetime.now(timezone.utc),
+        )
+        with pytest.raises(
+            WorldMemoryError,
+            match="update_thread_commit_marker_invalid",
+        ):
+            validate_model_update_thread_marker(
+                session, task, envelope, operator_marker, snapshot_store
+            )
