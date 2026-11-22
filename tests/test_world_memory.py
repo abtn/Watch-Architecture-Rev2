@@ -1769,7 +1769,10 @@ def test_operator_terminal_validator_rejects_model_event_family(
         ],
     )
     task_id = _create_pending_task(
-        session_factory, context, request, "test-host|operator-1"
+        session_factory,
+        context,
+        request,
+        canonical_operator_identity("test-host", "operator-1"),
     )
     admission = TaskRuntime(session_factory).admit(task_id)
     assert admission.attempt_count == 1
