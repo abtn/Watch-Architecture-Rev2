@@ -12,8 +12,8 @@ from types import SimpleNamespace
 from typing import Iterator
 from uuid import UUID, uuid4
 
-from pydantic import ValidationError
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
