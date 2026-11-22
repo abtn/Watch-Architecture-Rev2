@@ -158,10 +158,13 @@ Primary test nodes in `tests/test_update_thread.py`:
 
 The closeout report must explicitly account for these proof rows from the implementation plan:
 
-- Identity/provenance: `RW-REQ-01`, `RW-CT-02`, `RW-CTX-04`, `RW-CTX-05`, `RW-CTX-06`, `RW-REPLAY-01`, `RW-SER-01`.
-- Runtime and recovery: `RW-LC-01`, `RW-RT-01`, `RW-RT-02`, `RW-REC-01`, `RW-CF-01`.
-- Actor and commit behavior: `RW-ACT-01`, `RW-ACT-02`, `RW-AT-01`, `RW-RP-01`, `RW-RC-01`, `RW-LT-01`.
-- Scope and budget: `RW-TS-02`, `RW-POL-01`, `RW-GC-01`, `RW-GC-02`, `RW-GC-03`, `RW-GN-01`, `RW-GN-02`, `RW-DL-01`, `RW-PR-01`, `RW-PV-01`, `RW-PR-02`, `RW-NO-01`, `RW-PF-01`.
+- Context selection and scope: `RW-CT-01`, `RW-CT-02`, `RW-CT-03`, `RW-CTX-04`, `RW-CTX-05`, `RW-CTX-06`.
+- Identity and durable provenance: `RW-REQ-01`, `RW-ID-01`, `RW-REPLAY-01`, `RW-SER-01`.
+- Runtime and recovery: `RW-LC-01`, `RW-RT-01`, `RW-RT-02`, `RW-REC-01`, `RW-CF-01`, `RW-WK-01`.
+- Actor, commit, and retained state: `RW-ACT-01`, `RW-ACT-02`, `RW-AT-01`, `RW-RP-01`, `RW-RC-01`, `RW-LT-01`.
+- Scope, provider, and budget: `RW-TS-02`, `RW-POL-01`, `RW-GC-01`, `RW-GC-02`, `RW-GC-03`, `RW-GN-01`, `RW-GN-02`, `RW-DL-01`, `RW-PR-01`, `RW-PV-01`, `RW-PR-02`, `RW-NO-01`, `RW-PF-01`.
+
+The ledger below contains 35 RW-3 proof rows: **14 PASS, 20 PARTIAL, and 1 OPEN**. PASS/PARTIAL are evidence-coverage classifications only; they do not replace the explicit Operator acceptance gate.
 
 For each row, record the exact test node(s), exact tested SHA, and outcome. A row with only design text, a generic unit test, or an earlier-slice CI result is not closed evidence.
 
