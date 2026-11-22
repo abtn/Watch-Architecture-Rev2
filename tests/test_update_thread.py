@@ -4042,3 +4042,37 @@ def test_creator_rejects_cross_team_thread_without_task_or_event(
             delete(TeamPolicy).where(TeamPolicy.team_id == foreign_team_id)
         )
         session.execute(delete(Team).where(Team.id == foreign_team_id))
+
+
+@pytest.mark.parametrize(
+    "proposal",
+    [
+        {
+            "kind": "hypothesis_create",
+            "key": "invalid-reference",
+            "hypothesis_id": "not-a-uuid",
+            "statement": "Malformed references must not pass parsing.",
+            "confidence": "low",
+        },
+        {
+            "kind": "evidence_link_add",
+            "key": "missing-source-reference",
+            "hypothesis_id": str(UUID(int=1)),
+            "source_kind": "signal",
+            "signal_id": None,
+            "outcome_id": None,
+            "stance": "supports",
+        },
+        {
+            "kind": "unsupported_proposal_kind",
+            "key": "unsupported-kind",
+        },
+    ],
+)
+def test_model_response_rejects_unsupported_shapes_and_invalid_references(
+    proposal: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        worker_module._parse_model_response(
+            json.dumps({"proposals": [proposal]})
+        )
