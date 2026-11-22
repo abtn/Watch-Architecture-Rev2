@@ -4204,7 +4204,9 @@ def test_malformed_receipt_without_inconsistency_marker_blocks_finalization(
                         "kind": "hypothesis_create",
                         "key": "malformed-receipt",
                         "hypothesis_id": str(uuid4()),
-                        "statement": (\n                            "A malformed receipt cannot authorize finalization."\n                        ),
+                        "statement": (
+                            "A malformed receipt cannot authorize finalization."
+                        ),
                         "confidence": "low",
                     }
                 ]
