@@ -11,7 +11,7 @@ import hashlib
 import json
 from contextlib import nullcontext
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Literal, Union
 from uuid import UUID, uuid4, uuid5
 
@@ -47,6 +47,120 @@ MODEL_COMMITTED_EVENT_TYPE = "update_thread_committed"
 MODEL_REJECTED_EVENT_TYPE = "update_thread_rejected"
 MODEL_INCONSISTENT_EVENT_TYPE = "update_thread_recovery_inconsistent"
 _TASK_ID_NAMESPACE = UUID("e17c32e7-16e0-4cc7-9c62-8cdeed0e17d1")
+
+_UPDATE_THREAD_RECEIPT_KEYS = {
+    "schema_version",
+    "task_id",
+    "team_id",
+    "thread_id",
+    "attempt",
+    "policy_version",
+    "context_event_id",
+    "context_snapshot_ref",
+    "context_content_hash",
+    "actor_type",
+    "operation",
+    "charge_id",
+    "provider",
+    "model",
+    "request_id",
+    "prompt_tokens",
+    "completion_tokens",
+    "raw_completion_text",
+}
+
+
+def _validate_update_thread_receipt_history(
+    session: Session,
+    task: Task,
+) -> list[Event]:
+    from core.update_thread import GENERATION_RECEIPT_EVENT_TYPE
+
+    receipts = list(
+        session.scalars(
+            select(Event).where(
+                Event.task_id == task.id,
+                Event.type == GENERATION_RECEIPT_EVENT_TYPE,
+            )
+        )
+    )
+    attempts: set[int] = set()
+    for receipt in receipts:
+        payload = receipt.payload
+        if not isinstance(payload, dict):
+            raise WorldMemoryError("update_thread_generation_receipt_corrupt")
+        attempt = payload.get("attempt")
+        if type(attempt) is not int:
+            raise WorldMemoryError("update_thread_generation_receipt_corrupt")
+        if attempt <= 0:
+            raise WorldMemoryError("update_thread_generation_receipt_attempt_invalid")
+        if attempt > task.attempt_count:
+            raise WorldMemoryError(
+                "update_thread_generation_receipt_future_attempt"
+            )
+        if attempt in attempts:
+            raise WorldMemoryError("update_thread_generation_receipt_duplicate")
+        attempts.add(attempt)
+        if (
+            set(payload) != _UPDATE_THREAD_RECEIPT_KEYS
+            or type(payload.get("schema_version")) is not int
+            or payload["schema_version"] != 1
+            or payload.get("task_id") != str(task.id)
+            or payload.get("team_id") != str(task.team_id)
+            or not isinstance(payload.get("thread_id"), str)
+            or type(payload.get("policy_version")) is not int
+            or payload["policy_version"] is False
+            or payload["policy_version"] is True
+            or payload["policy_version"] != task.policy_version
+            or not isinstance(payload.get("context_event_id"), str)
+            or not isinstance(payload.get("context_snapshot_ref"), str)
+            or not isinstance(payload.get("context_content_hash"), str)
+            or payload.get("actor_type") != "model_worker"
+            or payload.get("operation") != "update_thread"
+            or payload.get("provider") != "watch_test_fake"
+            or not isinstance(payload.get("model"), str)
+            or not payload["model"]
+            or not isinstance(payload.get("charge_id"), str)
+            or (
+                payload.get("request_id") is not None
+                and not isinstance(payload["request_id"], str)
+            )
+            or type(payload.get("prompt_tokens")) is not int
+            or payload["prompt_tokens"] < 0
+            or type(payload.get("completion_tokens")) is not int
+            or payload["completion_tokens"] < 0
+            or not isinstance(payload.get("raw_completion_text"), str)
+        ):
+            raise WorldMemoryError("update_thread_generation_receipt_invalid")
+    return receipts
+
+
+def _update_thread_proposal_deadline(
+    session: Session,
+    task: Task,
+    attempt: int,
+) -> datetime:
+    started = session.scalar(
+        select(Event.created_at).where(
+            Event.task_id == task.id,
+            Event.type == "task_started",
+            Event.payload["attempt_count"].as_integer() == attempt,
+        )
+    )
+    if started is None:
+        raise WorldMemoryError("update_thread_task_started_missing")
+    return started + timedelta(seconds=45)
+
+
+def _validate_update_thread_proposal_deadline(
+    session: Session,
+    task: Task,
+    attempt: int,
+    durable_event: Event,
+) -> None:
+    deadline = _update_thread_proposal_deadline(session, task, attempt)
+    if durable_event.created_at >= deadline:
+        raise WorldMemoryError("update_thread_proposal_persisted_after_deadline")
 
 
 class WorldMemoryError(ValueError):
@@ -692,9 +806,11 @@ def _verified_model_receipt(
         or task.attempt_count != attempt
     ):
         raise WorldMemoryError("update_thread_task_attempt_not_current")
+    _validate_update_thread_receipt_history(session, task)
     try:
         request = validate_update_thread_task_request(session, task)
         load_pinned_policy(session, task.team_id, task.policy_version)
+        _validate_update_thread_receipt_history(session, task)
     except UpdateThreadTaskError as error:
         raise WorldMemoryError(error.reason) from error
     context_event = _attempt_event(session, task, CONTEXT_EVENT_TYPE, attempt)
@@ -1455,6 +1571,7 @@ def validate_model_update_thread_terminal(
     attempt = observation.attempt
     if task.attempt_count != attempt:
         raise WorldMemoryError("update_thread_terminal_attempt_mismatch")
+    _validate_update_thread_receipt_history(session, task)
     markers = list(
         session.scalars(
             select(Event).where(
@@ -1506,15 +1623,26 @@ def validate_model_update_thread_terminal(
         )
     )
     current_proposals: list[Event] = []
+    proposal_attempts: set[int] = set()
     for event in proposal_events:
         if not isinstance(event.payload, dict) or type(
             event.payload.get("attempt")
         ) is not int:
             raise WorldMemoryError("update_thread_proposals_event_corrupt")
-        if event.payload["attempt"] > attempt:
+        proposal_attempt = event.payload["attempt"]
+        if proposal_attempt <= 0:
+            raise WorldMemoryError("update_thread_proposals_event_attempt_invalid")
+        if proposal_attempt > attempt:
             raise WorldMemoryError("update_thread_proposals_event_future_attempt")
-        if event.payload["attempt"] == attempt:
+        if proposal_attempt in proposal_attempts:
+            raise WorldMemoryError("update_thread_proposals_event_duplicate")
+        proposal_attempts.add(proposal_attempt)
+        if proposal_attempt == attempt:
             current_proposals.append(event)
+    for proposal_event in current_proposals:
+        _validate_update_thread_proposal_deadline(
+            session, task, attempt, proposal_event
+        )
     if len(current_proposals) > 1:
         raise WorldMemoryError("update_thread_proposals_event_duplicate")
 
@@ -1551,7 +1679,23 @@ def validate_model_update_thread_terminal(
                 )
             )
         )
-        if not receipts:
+        current_receipts: list[Event] = []
+        for receipt in receipts:
+            if (
+                not isinstance(receipt.payload, dict)
+                or type(receipt.payload.get("attempt")) is not int
+            ):
+                raise WorldMemoryError("update_thread_receipt_event_corrupt")
+            receipt_attempt = receipt.payload["attempt"]
+            if receipt_attempt > attempt:
+                raise WorldMemoryError(
+                    "update_thread_receipt_event_future_attempt"
+                )
+            if receipt_attempt == attempt:
+                current_receipts.append(receipt)
+        if len(current_receipts) > 1:
+            raise WorldMemoryError("update_thread_receipt_event_duplicate")
+        if not current_receipts:
             charges = list(
                 session.scalars(
                     select(TaskGenerationCharge).where(
@@ -1589,12 +1733,20 @@ def validate_model_update_thread_terminal(
             receipt = receipt_event.payload
             _parse_model_response(receipt["raw_completion_text"])
         except (ValidationError, ValueError, TypeError):
-            if observation.failure_reason == "update_thread_model_output_invalid":
+            if observation.failure_reason in {
+                "update_thread_model_output_invalid",
+                "update_thread_deadline_exceeded",
+            }:
                 WorldMemoryCommitService._assert_model_empty_set_has_no_writes(
                     session, task
                 )
                 return
             raise WorldMemoryError("update_thread_parser_failure_result_invalid")
+        if observation.failure_reason == "update_thread_deadline_exceeded":
+            WorldMemoryCommitService._assert_model_empty_set_has_no_writes(
+                session, task
+            )
+            return
         raise WorldMemoryError("update_thread_proposal_set_remains_resumable")
 
     envelope = load_model_update_thread_envelope(
@@ -2314,7 +2466,12 @@ class WorldMemoryCommitService:
             )
 
     def resume_update_thread_in_session(
-        self, session: Session, task: Task, attempt: int
+        self,
+        session: Session,
+        task: Task,
+        attempt: int,
+        *,
+        recovery_at: datetime | None = None,
     ) -> TerminalObservation | None:
         """Resume one admitted Task attempt without opening or closing a Session."""
         from pydantic import ValidationError
@@ -2334,6 +2491,10 @@ class WorldMemoryCommitService:
             _fingerprint,
             _parse_model_response,
         )
+
+        reference = recovery_at or datetime.now(timezone.utc)
+        if reference.tzinfo is None or reference.utcoffset() is None:
+            raise WorldMemoryError("update_thread_recovery_time_not_timezone_aware")
 
         try:
             if (
@@ -2388,6 +2549,17 @@ class WorldMemoryCommitService:
                 envelope = load_model_update_thread_envelope(
                     session, task, attempt, self._snapshot_store
                 )
+                proposal_event = session.scalar(
+                    select(Event).where(
+                        Event.task_id == task.id,
+                        Event.type == PROPOSALS_EVENT_TYPE,
+                        Event.payload["attempt"].as_integer() == attempt,
+                    )
+                )
+                if proposal_event is not None:
+                    _validate_update_thread_proposal_deadline(
+                        session, task, attempt, proposal_event
+                    )
                 result = validate_model_update_thread_marker(
                     session, task, envelope, marker, self._snapshot_store
                 )
@@ -2466,6 +2638,7 @@ class WorldMemoryCommitService:
                 )
             )
             current_proposals: list[Event] = []
+            proposal_attempts: set[int] = set()
             for event in existing_proposals:
                 if not isinstance(event.payload, dict) or type(
                     event.payload.get("attempt")
@@ -2473,17 +2646,38 @@ class WorldMemoryCommitService:
                     raise WorldMemoryError(
                         "update_thread_proposals_event_corrupt"
                     )
-                if event.payload["attempt"] > attempt:
+                proposal_attempt = event.payload["attempt"]
+                if proposal_attempt <= 0:
+                    raise WorldMemoryError(
+                        "update_thread_proposals_event_attempt_invalid"
+                    )
+                if proposal_attempt > attempt:
                     raise WorldMemoryError(
                         "update_thread_proposals_event_future_attempt"
                     )
-                if event.payload["attempt"] == attempt:
+                if proposal_attempt in proposal_attempts:
+                    raise WorldMemoryError(
+                        "update_thread_proposals_event_duplicate"
+                    )
+                proposal_attempts.add(proposal_attempt)
+                if proposal_attempt == attempt:
                     current_proposals.append(event)
             if len(current_proposals) > 1:
                 raise WorldMemoryError(
                     "update_thread_proposals_event_duplicate"
                 )
             if not current_proposals:
+                deadline = _update_thread_proposal_deadline(
+                    session, task, attempt
+                )
+                if receipt_event.created_at >= deadline or reference >= deadline:
+                    return TerminalObservation(
+                        task_id=task.id,
+                        attempt=attempt,
+                        result_category="terminal_failure",
+                        observed_at=max(reference, receipt_event.created_at),
+                        failure_reason="update_thread_deadline_exceeded",
+                    )
                 try:
                     parsed = _parse_model_response(
                         receipt["raw_completion_text"]
@@ -2530,10 +2724,14 @@ class WorldMemoryCommitService:
                         "proposal_fingerprint": fingerprint,
                         "proposals": proposals,
                     },
-                    created_at=datetime.now(timezone.utc),
+                    created_at=reference,
                 )
                 session.add(proposal_event)
                 session.flush()
+            else:
+                _validate_update_thread_proposal_deadline(
+                    session, task, attempt, current_proposals[0]
+                )
             envelope = load_model_update_thread_envelope(
                 session, task, attempt, self._snapshot_store
             )
@@ -2543,7 +2741,7 @@ class WorldMemoryCommitService:
                     task_id=task.id,
                     attempt=attempt,
                     result_category="success_no_change",
-                    observed_at=proposal_event.created_at
+                    observed_at=receipt_event.created_at
                     if not current_proposals
                     else current_proposals[0].created_at,
                 )

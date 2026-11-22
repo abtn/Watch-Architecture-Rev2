@@ -219,7 +219,9 @@ def _chronological(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
             try:
                 parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
             except ValueError as exc:
-                raise ValueError(f"invalid ISO-8601 timestamp in {field}: {value}") from exc
+                raise ValueError(
+                    f"invalid ISO-8601 timestamp in {field}: {value}"
+                ) from exc
             if parsed.tzinfo is None or parsed.utcoffset() is None:
                 raise ValueError(f"{field} must include an explicit UTC offset")
             return False, parsed.astimezone(timezone.utc), index

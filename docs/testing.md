@@ -27,9 +27,40 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 
 RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery was formally accepted by the Operator on 2026-11-20 and squash-merged by PR #138; its exact implementation, corrective, local, and hosted verification evidence is recorded below. RW3.4 integrated closeout remains separately gated. Live provider authorization remains closed; only deterministic fake providers are permitted.
 
+## RW3.4 consolidated integration branch — exact-head verification — 2026-11-22
+
+**Consolidated PR:** [#152](https://github.com/abtn/Watch-Architecture-Rev2/pull/152), draft and open, targeting `main`.
+
+- Integration branch: `rw3-4-integrated-deadline-and-cost`.
+- Base: `main` at `c4b55bdf754ac93ce62caad523971fe2809d0ad6`.
+- Verified exact head: `20cfc252d21bdecc6153c1d8daa8369e1f331ff2`.
+- Scope: combined implementation/proof contributions from component PRs #140, #142, #144, #145, and #146. The five component PRs remain open and unchanged; they were not merged individually.
+
+**Hosted exact-head CI:**
+
+- GitHub Actions CI [run #45014525692](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45014525692) completed successfully on exact head `20cfc252d21bdecc6153c1d8daa8369e1f331ff2`.
+- Fresh PostgreSQL migration and migration-at-head verification, Ruff, Mypy, patch-whitespace validation, and the full test workflow passed.
+
+**Programmer-local Windows verification on the same exact head:**
+
+- Clean clone: `Watch_RW34_Integration_Check`; branch and final HEAD matched the expected integration branch and `20cfc252d21bdecc6153c1d8daa8369e1f331ff2`.
+- Runtime: **CPython 3.12.12**. The clean clone's `.venv` was recreated with the locked dependencies; the shell's unrelated active `VIRTUAL_ENV` was ignored by uv.
+- Fresh disposable PostgreSQL container `watch_rw34_py312`, bound to localhost port 55468; migration completed and exactly one Alembic head/current revision matched: `0019_rw1_world_memory`.
+- Focused tests (`tests/test_generation.py`, `tests/test_task_runtime.py`, `tests/test_update_thread.py`): **155 passed**.
+- Ruff: passed.
+- Mypy: passed, no issues in 42 source files.
+- Full suite: **1,213 passed, 130 warnings in 558.63s**. All 130 warnings are Alembic deprecations for missing `path_separator`; they did not fail the suite.
+- Final exact-HEAD and clean-worktree checks passed.
+- The disposable PostgreSQL container was stopped and removed; the original process `DATABASE_URL` and `TEST_DATABASE_URL` values were restored.
+
+The earlier PR #146 exact-head verification recorded below remains historical evidence for that earlier commit and is not substituted for these consolidated-branch results. The consolidated branch introduces no schema/migration change; the disposable database reached the existing `0019_rw1_world_memory` head. Verification used deterministic fakes only; no live Cloudflare/provider call was made.
+
+**Boundary retained:** These results establish hosted and Programmer-local verification of the consolidated PR's exact head. They do **not** constitute formal RW3.4 acceptance or merge authorization. The PR remains draft pending review and explicit Operator disposition. Live-provider authorization, RW-4–RW-5, R7-C implementation, persistent-database access, and scored newsroom execution remain separately gated.
+
+
 ## RW3.4 integrated implementation-stack verification — 2026-11-22
 
-**Disposition:** The currently open, draft implementation stack PRs #140, #142, #144, #145, and #146 has passed integrated exact-head hosted CI and Programmer-local Windows verification at PR #146 head `8bf4140bb05624ca86ff699c1e3156315edf682d`. This is verification evidence for the combined stack at that exact commit; it is not formal RW3.4 acceptance, merge authorization, or live-provider authorization. All five implementation PRs remain open and in draft status.
+**Historical disposition (PR #146 exact head only):** At the time of this verification, the open draft component stack (#140, #142, #144, #145, and #146) had passed hosted CI and Programmer-local Windows verification at PR #146 head `8bf4140bb05624ca86ff699c1e3156315edf682d`. These results do not verify the consolidated branch described above. This is verification evidence for the combined stack at that exact commit; it is not formal RW3.4 acceptance, merge authorization, or live-provider authorization. All five implementation PRs remain open and in draft status.
 
 **Stack and scope at the verified head:**
 
@@ -39,7 +70,7 @@ RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2
 - PR #145: process-wide DNS resolver concurrency bounded to two active resolver workers, with fail-fast saturation and capacity retained until the resolver actually exits.
 - PR #146: classify a provider timeout at or beyond the absolute Task deadline as terminal `update_thread_deadline_exceeded`, while preserving pre-deadline retry behavior.
 
-PR #146 is based on PR #145. Its final PR head is the merge commit `8bf4140bb05624ca86ff699c1e3156315edf682d`, with base `3603c4cdb693f97fc979a892281004b2beb17ea6`. Its own PR diff remains limited to `core/update_thread_worker.py` and `tests/test_update_thread.py`; the earlier stack changes are inherited through the base.
+PR #146's recorded base is `3603c4cdb693f97fc979a892281004b2beb17ea6`; its head `8bf4140bb05624ca86ff699c1e3156315edf682d` is a merge commit containing the timeout-classification change. The current PR #145 head `8bf0f75869d388496ff81715fd80a65262bfff90` is two commits beyond that recorded base. The consolidated branch retains those newer #145 changes (including the deterministic admission-clock correction) and adds #146's two-file timeout-classification diff. The historical #146 PR diff itself is limited to `core/update_thread_worker.py` and `tests/test_update_thread.py`.
 
 **Hosted exact-head CI:**
 

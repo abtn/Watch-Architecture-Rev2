@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from threading import Barrier
+from types import SimpleNamespace
 from typing import Iterator
 from uuid import UUID, uuid4
 
@@ -15,10 +16,16 @@ import pytest
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
+import core.update_thread_worker as worker_module
 from core.generation import (
     GenerationCostQuote,
+    GenerationProviderError,
     GenerationResult,
     GenerationUsage,
+)
+from core.generation_cost import (
+    GenerationCostReservation,
+    TaskGenerationCostService,
 )
 from core.models import (
     Event,
@@ -42,6 +49,9 @@ from core.operator_application import (
 )
 from core.snapshot_store import SnapshotStore
 from core.task_runtime import (
+    AdmissionResult,
+    FailureObservation,
+    FailureResult,
     TaskNotEligible,
     TaskRuntime,
 )
@@ -919,6 +929,10 @@ def test_task_runtime_admission_rejects_tampered_update_thread_request(
         session.execute(
             update(Event).where(Event.id == event.id).values(payload=payload)
         )
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        task.status = "pending"
+        task.attempt_count = 0
 
     with pytest.raises(
         TaskNotEligible,
@@ -942,6 +956,86 @@ def test_task_runtime_admission_rejects_tampered_update_thread_request(
         assert starts == []
 
 
+class _FixedAdmissionRuntime(TaskRuntime):
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        snapshot_store: SnapshotStore,
+        admitted_monotonic: float,
+    ) -> None:
+        super().__init__(session_factory, snapshot_store)
+        self._admitted_monotonic = admitted_monotonic
+
+    def admit(self, task_id: UUID) -> AdmissionResult:
+        admission = super().admit(task_id)
+        return replace(
+            admission,
+            admitted_monotonic=self._admitted_monotonic,
+        )
+
+
+def test_retryable_provider_interruption_schedules_task_retry(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    class _InterruptedProvider(_FakeUpdateThreadProvider):
+        def generate_raw(
+            self,
+            *,
+            system_prompt: str,
+            user_prompt: str,
+            temperature: float = 0.1,
+            timeout_seconds: float | None = None,
+            deadline_monotonic: float | None = None,
+        ) -> GenerationResult:
+            self.calls += 1
+            raise GenerationProviderError(
+                "cloudflare_connection_or_timeout",
+                retryable=True,
+            )
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _InterruptedProvider('{"proposals":[]}')
+
+    with pytest.raises(
+        UpdateThreadWorkerError,
+        match="cloudflare_connection_or_timeout",
+    ):
+        UpdateThreadWorker(
+            session_factory,
+            snapshot_store,
+            provider,
+        ).run(created.task_id)
+
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        retry_events = set(
+            session.scalars(
+                select(Event.type).where(
+                    Event.task_id == created.task_id,
+                    Event.type.in_(
+                        ["task_attempt_failed", "task_retry_scheduled"]
+                    ),
+                )
+            )
+        )
+        assert task is not None
+        assert task.status == "pending"
+        assert task.attempt_count == 1
+        assert charge is not None and charge.status == "unknown"
+        assert retry_events == {
+            "task_attempt_failed",
+            "task_retry_scheduled",
+        }
+
+
 class _FakeUpdateThreadProvider:
     provider_name = "watch_test_fake"
     model = "watch-rw3-update-thread-fake"
@@ -949,6 +1043,8 @@ class _FakeUpdateThreadProvider:
     def __init__(self, raw_completion: str) -> None:
         self.raw_completion = raw_completion
         self.calls = 0
+        self.timeout_seconds: float | None = None
+        self.deadline_monotonic: float | None = None
 
     def maximum_request_cost(
         self, *, system_prompt: str, user_prompt: str
@@ -974,8 +1070,12 @@ class _FakeUpdateThreadProvider:
         system_prompt: str,
         user_prompt: str,
         temperature: float = 0.1,
+        timeout_seconds: float | None = None,
+        deadline_monotonic: float | None = None,
     ) -> GenerationResult:
         self.calls += 1
+        self.timeout_seconds = timeout_seconds
+        self.deadline_monotonic = deadline_monotonic
         return GenerationResult(
             content={},
             model=self.model,
@@ -988,6 +1088,849 @@ class _FakeUpdateThreadProvider:
             request_id="rw3-fake-request",
             raw_content=self.raw_completion,
         )
+
+
+def test_provider_timeout_at_task_deadline_is_terminal_and_keeps_charge_unknown(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
+    )
+
+    class _DeadlineTimeoutProvider(_FakeUpdateThreadProvider):
+        def generate_raw(
+            self,
+            *,
+            system_prompt: str,
+            user_prompt: str,
+            temperature: float = 0.1,
+            timeout_seconds: float | None = None,
+            deadline_monotonic: float | None = None,
+        ) -> GenerationResult:
+            self.calls += 1
+            self.timeout_seconds = timeout_seconds
+            self.deadline_monotonic = deadline_monotonic
+            assert deadline_monotonic is not None
+            clock["now"] = deadline_monotonic
+            raise GenerationProviderError(
+                "cloudflare_connection_or_timeout",
+                retryable=True,
+            )
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _DeadlineTimeoutProvider('{"proposals":[]}')
+
+    with pytest.raises(
+        UpdateThreadWorkerError,
+        match="update_thread_deadline_exceeded",
+    ):
+        UpdateThreadWorker(
+            session_factory,
+            snapshot_store,
+            provider,
+            runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+        ).run(created.task_id)
+
+    assert provider.calls == 1
+    assert provider.timeout_seconds == 30.0
+    assert provider.deadline_monotonic == 145.0
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        failed = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_failed",
+            )
+        )
+        terminal_attempt_failed = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_attempt_failed",
+            )
+        )
+        retry_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == created.task_id,
+                    Event.type == "task_retry_scheduled",
+                )
+            )
+        )
+        durable_generation_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == created.task_id,
+                    Event.type.in_(
+                        [
+                            RECEIPT_EVENT_TYPE,
+                            PROPOSALS_EVENT_TYPE,
+                            "update_thread_committed",
+                            "update_thread_rejected",
+                        ]
+                    ),
+                )
+            )
+        )
+        assert task is not None and task.status == "failed"
+        assert task.attempt_count == 1
+        assert charge is not None and charge.status == "unknown"
+        assert failed is not None
+        assert failed.payload["failure_reason"] == "update_thread_deadline_exceeded"
+        assert terminal_attempt_failed is not None
+        assert retry_events == []
+        assert durable_generation_events == []
+
+
+def test_update_thread_worker_caps_provider_timeout_at_thirty_seconds(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
+    )
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+
+    UpdateThreadWorker(
+        session_factory,
+        snapshot_store,
+        provider,
+        runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+    ).run(created.task_id)
+
+    assert provider.calls == 1
+    assert provider.timeout_seconds == 30.0
+    assert provider.deadline_monotonic == 145.0
+
+
+def test_update_thread_worker_provider_timeout_is_capped_by_remaining_deadline(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
+    )
+    _, created = _create_task(session_factory, rw3_fixture)
+
+    class _AdvancingCostService(TaskGenerationCostService):
+        def reserve(
+            self,
+            task_id: UUID,
+            quote: GenerationCostQuote,
+            *,
+            operation: str = "propose_strategy",
+        ) -> GenerationCostReservation:
+            reservation = super().reserve(
+                task_id, quote, operation=operation
+            )
+            clock["now"] = 137.0
+            return reservation
+
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(
+        session_factory,
+        snapshot_store,
+        provider,
+        runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+        cost_service=_AdvancingCostService(session_factory),
+    )
+
+    worker.run(created.task_id)
+
+    assert provider.calls == 1
+    assert provider.timeout_seconds == 8.0
+
+
+def test_update_thread_worker_does_not_invoke_provider_after_deadline(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
+    )
+    _, created = _create_task(session_factory, rw3_fixture)
+
+    class _ExpiredCostService(TaskGenerationCostService):
+        def reserve(
+            self,
+            task_id: UUID,
+            quote: GenerationCostQuote,
+            *,
+            operation: str = "propose_strategy",
+        ) -> GenerationCostReservation:
+            reservation = super().reserve(
+                task_id, quote, operation=operation
+            )
+            clock["now"] = 146.0
+            return reservation
+
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(
+        session_factory,
+        snapshot_store,
+        provider,
+        runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+        cost_service=_ExpiredCostService(session_factory),
+    )
+
+    with pytest.raises(
+        UpdateThreadWorkerError, match="update_thread_deadline_exceeded"
+    ):
+        worker.run(created.task_id)
+
+    assert provider.calls == 0
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        assert task is not None and task.status == "failed"
+        assert charge is not None and charge.status == "unknown"
+
+
+def test_update_thread_worker_discards_provider_result_returned_after_deadline(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
+    )
+
+    class _LateProvider(_FakeUpdateThreadProvider):
+        def generate_raw(
+            self,
+            *,
+            system_prompt: str,
+            user_prompt: str,
+            temperature: float = 0.1,
+            timeout_seconds: float | None = None,
+            deadline_monotonic: float | None = None,
+        ) -> GenerationResult:
+            result = super().generate_raw(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                timeout_seconds=timeout_seconds,
+            )
+            clock["now"] = 146.0
+            return result
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _LateProvider('{"proposals":[]}')
+    with pytest.raises(
+        UpdateThreadWorkerError, match="update_thread_deadline_exceeded"
+    ):
+        UpdateThreadWorker(
+            session_factory,
+            snapshot_store,
+            provider,
+            runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+        ).run(created.task_id)
+
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        proposals = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        marker = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        )
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        assert task is not None and task.status == "failed"
+        assert receipt is None
+        assert proposals is None
+        assert marker is None
+        assert charge is not None and charge.status == "unknown"
+
+
+def test_update_thread_worker_checks_deadline_after_parsing(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
+    )
+
+    original_parser = worker_module._parse_model_response
+
+    def late_parser(raw_completion: str):
+        parsed = original_parser(raw_completion)
+        clock["now"] = 146.0
+        return parsed
+
+    monkeypatch.setattr(worker_module, "_parse_model_response", late_parser)
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+
+    with pytest.raises(
+        UpdateThreadWorkerError, match="update_thread_deadline_exceeded"
+    ):
+        UpdateThreadWorker(
+            session_factory,
+            snapshot_store,
+            provider,
+            runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+        ).run(created.task_id)
+
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        proposals = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        assert task is not None and task.status == "failed"
+        assert proposals is None
+
+
+def test_update_thread_worker_rechecks_deadline_after_commit_lock(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
+    )
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(
+        session_factory,
+        snapshot_store,
+        provider,
+        runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+    )
+    original_check = worker._check_deadline
+    checks = {"count": 0}
+
+    def expire_at_commit_gate(deadline: float) -> None:
+        checks["count"] += 1
+        if checks["count"] == 12:
+            clock["now"] = 146.0
+        original_check(deadline)
+
+    monkeypatch.setattr(worker, "_check_deadline", expire_at_commit_gate)
+
+    with pytest.raises(
+        UpdateThreadProposalPersistencePending,
+        match="update_thread_deadline_commit_recovery_pending",
+    ):
+        worker.run(created.task_id)
+
+    assert provider.calls == 1
+    assert checks["count"] == 12
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        proposals = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        marker = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        )
+        assert task is not None and task.status == "running"
+        assert proposals is not None
+        assert marker is None
+
+
+def test_update_thread_worker_leaves_persisted_proposals_for_recovery_after_deadline(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
+    )
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+
+    worker = UpdateThreadWorker(
+        session_factory,
+        snapshot_store,
+        provider,
+        runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+    )
+    record_proposals = worker._record_proposals
+
+    def record_then_expire(*args: object, **kwargs: object):
+        result = record_proposals(*args, **kwargs)
+        clock["now"] = 146.0
+        return result
+
+    monkeypatch.setattr(worker, "_record_proposals", record_then_expire)
+
+    with pytest.raises(
+        UpdateThreadProposalPersistencePending,
+        match="update_thread_deadline_commit_recovery_pending",
+    ):
+        worker.run(created.task_id)
+
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        proposals = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        marker = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        )
+        assert task is not None and task.status == "running"
+        assert proposals is not None
+        assert marker is None
+
+
+@pytest.mark.parametrize(
+    "deadline_check",
+    [7, 8, 10],
+)
+def test_update_thread_worker_rechecks_deadline_during_proposal_persistence(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+    deadline_check: int,
+) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
+    )
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(
+        session_factory,
+        snapshot_store,
+        provider,
+        runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+    )
+    original_check = worker._check_deadline
+    checks = {"count": 0}
+
+    def expire_during_proposal_persistence(deadline: float) -> None:
+        checks["count"] += 1
+        if checks["count"] == deadline_check:
+            clock["now"] = 146.0
+        original_check(deadline)
+
+    monkeypatch.setattr(
+        worker, "_check_deadline", expire_during_proposal_persistence
+    )
+
+    with pytest.raises(
+        UpdateThreadWorkerError, match="update_thread_deadline_exceeded"
+    ):
+        worker.run(created.task_id)
+
+    assert checks["count"] == deadline_check
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        proposals = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        assert task is not None and task.status == "failed"
+        assert receipt is not None
+        assert proposals is None
+        assert charge is not None and charge.status == "reconciled"
+
+
+@pytest.mark.parametrize("proposal_seconds", [45, 46])
+def test_update_thread_recovery_rejects_proposal_event_persisted_at_or_after_deadline(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+    proposal_seconds: int,
+) -> None:
+    clock = {"now": 100.0}
+    monkeypatch.setattr(
+        worker_module, "time", SimpleNamespace(monotonic=lambda: clock["now"])
+    )
+    _, created = _create_task(session_factory, rw3_fixture)
+    proposal_values = [
+        {
+            "kind": "hypothesis_create",
+            "key": "late",
+            "hypothesis_id": str(uuid4()),
+            "statement": "A proposal persisted after the Task deadline.",
+            "confidence": "low",
+        }
+    ]
+    provider = _FakeUpdateThreadProvider(
+        json.dumps({"proposals": proposal_values}, separators=(",", ":"))
+    )
+    worker = UpdateThreadWorker(
+        session_factory,
+        snapshot_store,
+        provider,
+        runtime=_FixedAdmissionRuntime(session_factory, snapshot_store, 100.0),
+    )
+    record_proposals = worker._record_proposals
+
+    def record_then_expire(*args: object, **kwargs: object):
+        result = record_proposals(*args, **kwargs)
+        clock["now"] = 146.0
+        return result
+
+    monkeypatch.setattr(worker, "_record_proposals", record_then_expire)
+    with pytest.raises(
+        UpdateThreadProposalPersistencePending,
+        match="update_thread_deadline_commit_recovery_pending",
+    ):
+        worker.run(created.task_id)
+
+    with session_factory.begin() as session:
+        started = session.scalar(
+            select(Event.created_at).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_started",
+            )
+        )
+        proposal_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        assert started is not None
+        assert proposal_event is not None
+        proposal_event.created_at = started + timedelta(seconds=proposal_seconds)
+
+    recovered = TaskRuntime(
+        session_factory, snapshot_store
+    ).recover_interrupted(now=started + timedelta(seconds=61))
+
+    assert recovered.failed == (created.task_id,)
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None and task.status == "failed"
+        assert session.scalar(
+            select(Hypothesis.id).where(
+                Hypothesis.team_id == rw3_fixture.team_id
+            )
+        ) is None
+        assert session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        ) is None
+        assert session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type.in_(
+                    (
+                        "update_thread_proposal_accepted",
+                        "update_thread_proposal_rejected",
+                        "update_thread_committed",
+                        "update_thread_rejected",
+                    )
+                ),
+            )
+        ) is None
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "attempt_zero",
+        "attempt_negative",
+        "attempt_boolean",
+        "duplicate",
+        "malformed",
+        "future",
+    ],
+)
+def test_update_thread_receipt_history_validation_rejects_invalid_history(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    tamper: str,
+) -> None:
+    from core.world_memory import (
+        WorldMemoryError,
+        _validate_update_thread_receipt_history,
+    )
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    UpdateThreadWorker(
+        session_factory, snapshot_store, _FakeUpdateThreadProvider('{"proposals":[]}')
+    ).run(created.task_id)
+
+    with session_factory.begin() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        assert receipt is not None
+        payload = dict(receipt.payload)
+        if tamper == "attempt_zero":
+            payload["attempt"] = 0
+        elif tamper == "attempt_negative":
+            payload["attempt"] = -1
+        elif tamper == "attempt_boolean":
+            payload["attempt"] = True
+        elif tamper == "malformed":
+            payload.pop("raw_completion_text")
+        elif tamper == "future":
+            payload["attempt"] = task.attempt_count + 1
+        elif tamper == "duplicate":
+            session.add(
+                Event(
+                    id=uuid4(),
+                    task_id=created.task_id,
+                    type=RECEIPT_EVENT_TYPE,
+                    payload=payload,
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+        if tamper != "duplicate":
+            session.execute(
+                update(Event).where(Event.id == receipt.id).values(payload=payload)
+            )
+
+        with pytest.raises(WorldMemoryError):
+            _validate_update_thread_receipt_history(session, task)
+
+
+def test_update_thread_task_contract_keeps_two_cent_budget_and_three_starts() -> None:
+    assert TASK_BUDGET["max_cost_usd"] == 0.02
+    assert MAX_ATTEMPTS == 3
+
+
+def test_update_thread_worker_counts_reconciled_and_unknown_charges_before_next_call(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The production contract's $0.02 ceiling is intentionally non-binding
+    # under the three-start maximum quote. A smaller test-only ceiling makes
+    # the cumulative-exhaustion branch reachable without changing production
+    # policy or the accepted Task shape.
+    test_budget = {
+        **TASK_BUDGET,
+        "max_cost_usd": 0.0099,
+    }
+    monkeypatch.setattr("core.update_thread.TASK_BUDGET", test_budget)
+    _, created = _create_task(session_factory, rw3_fixture)
+    with session_factory.begin() as session:
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        task.budget = test_budget
+
+    class _RetryableRuntime(TaskRuntime):
+        def report_failure(self, failure: FailureObservation) -> FailureResult:
+            return super().report_failure(
+                FailureObservation(
+                    task_id=failure.task_id,
+                    attempt=failure.attempt,
+                    observed_at=failure.observed_at,
+                    reason=failure.reason,
+                    retryable=True,
+                )
+            )
+
+    class _CumulativeCostProvider(_FakeUpdateThreadProvider):
+        def maximum_request_cost(
+            self, *, system_prompt: str, user_prompt: str
+        ) -> GenerationCostQuote:
+            return GenerationCostQuote(
+                provider=self.provider_name,
+                model=self.model,
+                maximum_input_tokens=31_872,
+                maximum_output_tokens=128,
+                input_usd_per_million_tokens=Decimal("0.152"),
+                output_usd_per_million_tokens=Decimal("0.287"),
+                pricing_revision="watch-rw3-update-thread-fake-v1",
+            )
+
+        def generate_raw(
+            self,
+            *,
+            system_prompt: str,
+            user_prompt: str,
+            temperature: float = 0.1,
+            timeout_seconds: float | None = None,
+            deadline_monotonic: float | None = None,
+        ) -> GenerationResult:
+            self.calls += 1
+            if self.calls == 1:
+                return GenerationResult(
+                    content={},
+                    model=self.model,
+                    usage=GenerationUsage(
+                        input_tokens=31_872,
+                        output_tokens=128,
+                        estimated_cost_usd=Decimal("0"),
+                    ),
+                    elapsed_seconds=0.001,
+                    request_id="rw3-cost-reconciled",
+                    raw_content="not-json",
+                )
+            if self.calls == 2:
+                raise GenerationProviderError(
+                    "provider_temporarily_unavailable",
+                    retryable=True,
+                )
+            raise AssertionError("provider_invoked_after_budget_exhaustion")
+
+    provider = _CumulativeCostProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(
+        session_factory,
+        snapshot_store,
+        provider,
+        runtime=_RetryableRuntime(session_factory, snapshot_store),
+    )
+
+    with pytest.raises(
+        UpdateThreadWorkerError, match="update_thread_model_output_invalid"
+    ):
+        worker.run(created.task_id)
+    with pytest.raises(
+        UpdateThreadWorkerError, match="provider_temporarily_unavailable"
+    ):
+        worker.run(created.task_id)
+    with pytest.raises(
+        UpdateThreadWorkerError, match="task_generation_budget_exhausted"
+    ):
+        worker.run(created.task_id)
+
+    assert provider.calls == 2
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        charges = list(
+            session.scalars(
+                select(TaskGenerationCharge)
+                .where(TaskGenerationCharge.task_id == created.task_id)
+                .order_by(TaskGenerationCharge.attempt_count)
+            )
+        )
+        assert task is not None
+        assert task.status == "failed"
+        assert task.attempt_count == 3
+        assert len(charges) == 2
+        assert [charge.attempt_count for charge in charges] == [1, 2]
+        assert [charge.operation for charge in charges] == [
+            "update_thread",
+            "update_thread",
+        ]
+        assert charges[0].status == "reconciled"
+        assert charges[0].accounted_cost_usd == charges[0].reserved_cost_usd
+        assert charges[1].status == "unknown"
+        assert charges[1].accounted_cost_usd is None
+        assert charges[1].reserved_cost_usd == charges[0].reserved_cost_usd
+        cumulative_exposure = sum(
+            (
+                charge.accounted_cost_usd
+                if charge.accounted_cost_usd is not None
+                else charge.reserved_cost_usd
+                for charge in charges
+            ),
+            start=Decimal("0"),
+        )
+        next_reservation = charges[0].reserved_cost_usd
+        assert cumulative_exposure <= Decimal("0.0099")
+        assert cumulative_exposure + next_reservation > Decimal("0.0099")
+        assert session.scalar(
+            select(Hypothesis.id).where(Hypothesis.team_id == rw3_fixture.team_id)
+        ) is None
+        assert session.scalar(
+            select(EvidenceLink.id).where(
+                EvidenceLink.team_id == rw3_fixture.team_id
+            )
+        ) is None
+        assert session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        ) is None
+        assert session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        ) is None
+
+
 
 
 def test_update_thread_worker_records_context_identity_and_empty_proposal_set(
@@ -1128,8 +2071,11 @@ def test_interrupted_provider_call_marks_reserved_charge_unknown_before_retry(
             system_prompt: str,
             user_prompt: str,
             temperature: float = 0.1,
+            timeout_seconds: float | None = None,
+            deadline_monotonic: float | None = None,
         ) -> GenerationResult:
             self.calls += 1
+            self.timeout_seconds = timeout_seconds
             raise KeyboardInterrupt
 
     _, created = _create_task(session_factory, rw3_fixture)
@@ -1248,6 +2194,71 @@ def test_model_output_cannot_supply_actor_identity(
 
 
 @pytest.mark.parametrize(
+    ("location", "field"),
+    [
+        ("event_manifest", "attempt"),
+        ("event_manifest", "policy_version"),
+        ("event_manifest", "evidence_characters"),
+        ("snapshot_task", "attempt"),
+        ("snapshot_task", "policy_version"),
+        ("snapshot_policy", "version"),
+    ],
+)
+def test_update_thread_worker_never_calls_provider_for_boolean_context_fields(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    location: str,
+    field: str,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    _admit_fixture_task(session_factory, created.task_id)
+    assembler = UpdateThreadContextAssembler(session_factory, snapshot_store)
+    assembler.assemble(created.task_id, 1)
+
+    with session_factory.begin() as session:
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == CONTEXT_EVENT_TYPE,
+            )
+        )
+        assert event is not None
+        payload = dict(event.payload)
+        if location == "event_manifest":
+            payload["manifest"] = {**payload["manifest"], field: True}
+        else:
+            document = json.loads(snapshot_store.read(payload["snapshot_ref"]))
+            document_key = "task" if location == "snapshot_task" else "policy"
+            document[document_key][field] = True
+            snapshot_ref, content_hash = snapshot_store.put(
+                json.dumps(
+                    document,
+                    sort_keys=True,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ).encode("utf-8")
+            )
+            payload["snapshot_ref"] = snapshot_ref
+            payload["content_hash"] = content_hash
+        session.execute(
+            update(Event).where(Event.id == event.id).values(payload=payload)
+        )
+        task = session.get(Task, created.task_id)
+        assert task is not None
+        task.status = "pending"
+        task.attempt_count = 0
+
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    with pytest.raises(UpdateThreadWorkerError):
+        UpdateThreadWorker(session_factory, snapshot_store, provider).run(
+            created.task_id
+        )
+    assert provider.calls == 0
+
+
+@pytest.mark.parametrize(
     "tamper",
     ["boolean_manifest", "snapshot_hash", "duplicate_event", "future_attempt"],
 )
@@ -1329,10 +2340,12 @@ def test_update_thread_worker_never_calls_provider_for_invalid_context(
         assert charges == []
 
 
-def test_update_thread_worker_leaves_receipted_proposals_resumable_on_write_failure(
+@pytest.mark.parametrize("receipt_offset_seconds", [45, 46])
+def test_update_thread_worker_does_not_materialize_receipt_only_recovery_after_deadline(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
     rw3_fixture: Fixture,
+    receipt_offset_seconds: int,
 ) -> None:
     _, created = _create_task(session_factory, rw3_fixture)
     provider = _FakeUpdateThreadProvider('{"proposals":[]}')
@@ -1343,14 +2356,14 @@ def test_update_thread_worker_leaves_receipted_proposals_resumable_on_write_fail
     with session_factory.begin() as session:
         session.connection().exec_driver_sql(
             f"""
-            CREATE FUNCTION {function_name}() RETURNS trigger AS $$
+            CREATE FUNCTION {function_name}() RETURNS trigger AS $fn$
             BEGIN
                 IF NEW.type = '{PROPOSALS_EVENT_TYPE}' THEN
                     RAISE EXCEPTION 'injected proposal Event failure';
                 END IF;
                 RETURN NEW;
             END;
-            $$ LANGUAGE plpgsql
+            $fn$ LANGUAGE plpgsql
             """
         )
         session.connection().exec_driver_sql(
@@ -1396,18 +2409,10 @@ def test_update_thread_worker_leaves_receipted_proposals_resumable_on_write_fail
                 TaskGenerationCharge.task_id == created.task_id
             )
         )
-        assert task is not None
-        assert task.status == "running"
+        assert task is not None and task.status == "running"
         assert receipt is not None
         assert proposal_event is None
-        assert charge is not None
-        assert charge.status == "reconciled"
-        assert session.scalar(
-            select(Event).where(
-                Event.task_id == created.task_id,
-                Event.type == "task_failed",
-            )
-        ) is None
+        assert charge is not None and charge.status == "reconciled"
 
     with session_factory() as session:
         started = session.scalar(
@@ -1417,22 +2422,68 @@ def test_update_thread_worker_leaves_receipted_proposals_resumable_on_write_fail
             )
         )
     assert started is not None
+    receipt_timestamp = started + timedelta(seconds=receipt_offset_seconds)
+    with session_factory.begin() as session:
+        session.execute(
+            update(Event)
+            .where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+            .values(created_at=receipt_timestamp)
+        )
     recovered = TaskRuntime(
         session_factory, snapshot_store
     ).recover_interrupted(now=started + timedelta(seconds=61))
-    assert recovered.completed == (created.task_id,)
+
+    assert recovered.failed == (created.task_id,)
     assert provider.calls == 1
     with session_factory() as session:
         task = session.get(Task, created.task_id)
-        completed_event = session.scalar(
+        failed_event = session.scalar(
             select(Event).where(
                 Event.task_id == created.task_id,
-                Event.type == "task_completed",
+                Event.type == "task_failed",
             )
         )
-        assert task is not None and task.status == "done"
-        assert completed_event is not None
-        assert completed_event.payload["result_category"] == "success_no_change"
+        proposal_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        assert task is not None and task.status == "failed"
+        assert failed_event is not None
+        assert failed_event.payload["failure_reason"] == (
+            "update_thread_deadline_exceeded"
+        )
+        assert proposal_event is None
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        inconsistent_event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_recovery_inconsistent",
+            )
+        )
+        assert receipt is not None and receipt.created_at == receipt_timestamp
+        assert charge is not None and charge.status == "reconciled"
+        assert inconsistent_event is None
+        assert session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        ) is None
 
 
 def test_transient_model_commit_failure_rolls_back_and_recovers_same_proposals(
@@ -1879,6 +2930,8 @@ def test_update_thread_worker_rejects_live_provider_until_separately_authorized(
             system_prompt: str,
             user_prompt: str,
             temperature: float = 0.1,
+            timeout_seconds: float | None = None,
+            deadline_monotonic: float | None = None,
         ) -> GenerationResult:
             raise AssertionError("live provider must not be called")
 
@@ -2204,8 +3257,11 @@ def test_update_thread_worker_terminalizes_generation_cost_overrun_without_write
             system_prompt: str,
             user_prompt: str,
             temperature: float = 0.1,
+            timeout_seconds: float | None = None,
+            deadline_monotonic: float | None = None,
         ) -> GenerationResult:
             self.calls += 1
+            self.timeout_seconds = timeout_seconds
             return GenerationResult(
                 content={},
                 model=self.model,

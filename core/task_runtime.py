@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -176,6 +177,8 @@ class AdmissionResult:
     task_id: UUID
     attempt_count: int
     event_id: UUID
+    admitted_at: datetime
+    admitted_monotonic: float
     replayed: bool = False
 
 
@@ -583,12 +586,13 @@ class TaskRuntime:
             except InvalidPolicyError as error:
                 raise TaskNotEligible(str(error)) from error
 
-            admission_time: datetime | None = None
+            # Pair the durable UTC anchor with its process-local monotonic
+            # equivalent before the quota query. Recovery reads task_started;
+            # the live worker uses the paired monotonic value.
+            admission_time = datetime.now(timezone.utc)
+            admitted_monotonic = time.monotonic()
 
             if daily_limit is not None:
-                # Use one timestamp for both the quota window and this
-                # successful start Event, avoiding UTC-midnight boundary drift.
-                admission_time = datetime.now(timezone.utc)
                 day_start = admission_time.replace(
                     hour=0,
                     minute=0,
@@ -629,12 +633,17 @@ class TaskRuntime:
                 },
             )
 
-            if admission_time is not None:
-                event.created_at = admission_time
+            event.created_at = admission_time
 
             session.flush()
 
-            return AdmissionResult(task.id, task.attempt_count, event.id)
+            return AdmissionResult(
+                task.id,
+                task.attempt_count,
+                event.id,
+                admission_time,
+                admitted_monotonic,
+            )
 
     @staticmethod
     def _validate_operator_admission(
@@ -1558,7 +1567,7 @@ class TaskRuntime:
                     WorldMemoryCommitService(
                         self._session_factory, self._snapshot_store
                     ).resume_update_thread_in_session(
-                        session, task, task.attempt_count
+                        session, task, task.attempt_count, recovery_at=reference
                     )
                 )
             elif task.task_type == _OPERATOR_UPDATE_TASK_TYPE:

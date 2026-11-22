@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from threading import Barrier
+from types import SimpleNamespace
 from typing import Iterator
 from uuid import UUID, uuid4
 
@@ -231,6 +232,21 @@ def test_admission_transitions_and_audits(session_factory, pending_task) -> None
         }
 
 
+def test_admission_captures_monotonic_timestamp_used_by_worker(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory,
+    pending_task,
+) -> None:
+    monkeypatch.setattr(
+        "core.task_runtime.time.monotonic",
+        lambda: 1234.5,
+    )
+
+    result = TaskRuntime(session_factory).admit(pending_task)
+
+    assert result.admitted_monotonic == 1234.5
+
+
 @pytest.mark.parametrize("status", ["running", "done", "failed", "unknown"])
 def test_non_pending_task_cannot_be_admitted(
     session_factory, pending_task, status
@@ -392,6 +408,60 @@ def test_daily_task_quota_allows_admission_below_limit(
         assert task.status == "running"
         assert task.attempt_count == 1
         assert session.get(Event, result.event_id).type == "task_started"
+
+
+def test_daily_quota_query_preserves_paired_admission_deadline(
+    session_factory, pending_task, monkeypatch
+) -> None:
+    with session_factory.begin() as session:
+        task = session.get(Task, pending_task)
+        policy = session.scalar(
+            select(TeamPolicy).where(
+                TeamPolicy.team_id == task.team_id,
+                TeamPolicy.version == task.policy_version,
+            )
+        )
+        policy.rules = {"budgets": {"max_tasks_per_day": 2}}
+
+    original_scalar = Session.scalar
+    timeline: list[str] = []
+    quota_query_completed: list[datetime] = []
+
+    def monotonic_clock() -> float:
+        timeline.append("monotonic_sampled")
+        return 1234.5
+
+    def tracked_scalar(self, statement, *args, **kwargs):
+        if "count(events.id)" in str(statement).lower():
+            timeline.append("quota_query_started")
+            result = original_scalar(self, statement, *args, **kwargs)
+            quota_query_completed.append(datetime.now(timezone.utc))
+            timeline.append("quota_query_completed")
+            return result
+        return original_scalar(self, statement, *args, **kwargs)
+
+    # Replace the module's clock reference, not time.monotonic globally:
+    # SQLAlchemy and pytest may also use the shared time module.
+    monkeypatch.setattr(
+        "core.task_runtime.time",
+        SimpleNamespace(monotonic=monotonic_clock),
+    )
+    monkeypatch.setattr(Session, "scalar", tracked_scalar)
+    admission = TaskRuntime(session_factory).admit(pending_task)
+
+    assert timeline == [
+        "monotonic_sampled",
+        "quota_query_started",
+        "quota_query_completed",
+    ]
+    assert admission.admitted_monotonic == 1234.5
+    assert len(quota_query_completed) == 1
+    assert admission.admitted_at < quota_query_completed[0]
+    with session_factory() as session:
+        started = session.get(Event, admission.event_id)
+        assert started is not None
+        assert started.type == "task_started"
+        assert started.created_at == admission.admitted_at
 
 
 def test_daily_task_quota_rejects_without_partial_changes(

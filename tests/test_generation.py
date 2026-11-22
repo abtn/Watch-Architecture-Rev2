@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import time
+from contextlib import nullcontext
 from decimal import Decimal
-from urllib.error import HTTPError
+from http.client import IncompleteRead
+from threading import BoundedSemaphore, Event, Lock, Thread, current_thread
+from urllib.error import HTTPError, URLError
 from urllib.request import Request
 
 import pytest
@@ -11,8 +15,10 @@ import core.generation as generation
 from core.generation import (
     CloudflareWorkersAIConfig,
     CloudflareWorkersAIGenerationProvider,
+    GenerationCostQuote,
     GenerationProviderError,
 )
+from core.update_thread import MAX_ATTEMPTS, TASK_BUDGET
 
 
 class FakeHTTPResponse:
@@ -29,7 +35,9 @@ class FakeHTTPResponse:
         return self._body
 
 
-def _provider() -> CloudflareWorkersAIGenerationProvider:
+def _provider(
+    timeout_seconds: float = 12.0,
+) -> CloudflareWorkersAIGenerationProvider:
     return CloudflareWorkersAIGenerationProvider(
         CloudflareWorkersAIConfig(
             base_url=(
@@ -38,7 +46,7 @@ def _provider() -> CloudflareWorkersAIGenerationProvider:
             ),
             model="@cf/meta/llama-3.1-8b-instruct-fp8",
             api_key="test-token",
-            timeout_seconds=12,
+            timeout_seconds=timeout_seconds,
             max_output_tokens=512,
         )
     )
@@ -63,15 +71,15 @@ def test_generation_posts_once_and_returns_validated_json_and_usage(
 ) -> None:
     captured: dict[str, object] = {}
 
-    def fake_urlopen(request: Request, timeout: float) -> FakeHTTPResponse:
+    def fake_urlopen(request: Request, deadline: float) -> FakeHTTPResponse:
         captured["url"] = request.full_url
         captured["headers"] = request.headers
-        captured["timeout"] = timeout
+        captured["deadline"] = deadline
         assert request.data is not None
         captured["body"] = json.loads(request.data.decode("utf-8"))
         return FakeHTTPResponse(_response())
 
-    monkeypatch.setattr(generation, "urlopen", fake_urlopen)
+    monkeypatch.setattr(generation, "_open_with_deadline", fake_urlopen)
     result = _provider().generate_json(
         system_prompt="Return JSON.",
         user_prompt="Propose one item.",
@@ -97,12 +105,590 @@ def test_generation_posts_once_and_returns_validated_json_and_usage(
     assert result.request_id == "chatcmpl-test"
 
 
+def test_absolute_generation_deadline_bounds_slow_dns_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deadline_seconds = 0.2
+    deadline_tolerance = 0.2
+    dns_started = Event()
+    dns_release = Event()
+    dns_finished = Event()
+    caller_finished = Event()
+    dns_worker: list[Thread] = []
+    connection_holder: list[generation._DeadlineHTTPSConnection] = []
+    connection_started_at: list[float] = []
+    errors: list[BaseException] = []
+
+    def slow_dns(*_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+        dns_worker.append(current_thread())
+        dns_started.set()
+        dns_release.wait()
+        dns_finished.set()
+        return []
+
+    monkeypatch.setattr(generation.socket, "getaddrinfo", slow_dns)
+
+    def connect() -> None:
+        try:
+            connection_started_at.append(time.monotonic())
+            connection = generation._DeadlineHTTPSConnection(
+                "api.cloudflare.com",
+                timeout=1.0,
+                deadline=connection_started_at[0] + deadline_seconds,
+            )
+            connection_holder.append(connection)
+            connection.connect()
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            caller_finished.set()
+
+    caller = Thread(target=connect, daemon=True)
+
+    try:
+        caller.start()
+        assert dns_started.wait(timeout=0.5)
+        assert not caller_finished.is_set()
+        assert not dns_finished.is_set()
+        assert caller_finished.wait(timeout=deadline_seconds + deadline_tolerance)
+        assert len(errors) == 1
+        assert isinstance(errors[0], TimeoutError)
+        assert "generation_deadline_exceeded" in str(errors[0])
+        assert (
+            time.monotonic() - connection_started_at[0]
+            < deadline_seconds + deadline_tolerance
+        )
+        assert not dns_finished.is_set()
+    finally:
+        dns_release.set()
+        if dns_worker:
+            dns_finished.wait(timeout=0.5)
+            dns_worker[0].join(timeout=0.5)
+        caller.join(timeout=2.0)
+        if connection_holder:
+            connection_holder[0].cancel_deadline()
+        assert not caller.is_alive()
+        if dns_worker:
+            assert dns_finished.is_set()
+            assert not dns_worker[0].is_alive()
+
+
+def test_repeated_stalled_dns_resolution_is_process_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capacity = generation.DNS_RESOLVER_CONCURRENCY_LIMIT
+    monkeypatch.setattr(
+        generation,
+        "_DNS_RESOLVER_SLOTS",
+        BoundedSemaphore(capacity),
+    )
+    dns_release = Event()
+    capacity_reached = Event()
+    workers: list[Thread] = []
+    workers_lock = Lock()
+    active_workers = 0
+    maximum_active_workers = 0
+    errors: dict[int, BaseException] = {}
+    callers: dict[int, Thread] = {}
+    finished: dict[int, Event] = {}
+
+    def slow_dns(*_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+        nonlocal active_workers, maximum_active_workers
+        with workers_lock:
+            active_workers += 1
+            maximum_active_workers = max(maximum_active_workers, active_workers)
+            workers.append(current_thread())
+            if active_workers == capacity:
+                capacity_reached.set()
+        dns_release.wait()
+        with workers_lock:
+            active_workers -= 1
+        return []
+
+    monkeypatch.setattr(generation.socket, "getaddrinfo", slow_dns)
+
+    def connect(index: int) -> None:
+        connection = generation._DeadlineHTTPSConnection(
+            "api.cloudflare.com",
+            timeout=1.0,
+            deadline=time.monotonic() + 3.0,
+        )
+        try:
+            connection.connect()
+        except BaseException as error:
+            errors[index] = error
+        finally:
+            connection.cancel_deadline()
+            finished[index].set()
+
+    try:
+        for index in range(capacity):
+            finished[index] = Event()
+            callers[index] = Thread(target=connect, args=(index,), daemon=True)
+            callers[index].start()
+
+        assert capacity_reached.wait(timeout=2.0)
+        assert len(workers) == capacity
+        assert maximum_active_workers == capacity
+
+        for index in range(capacity, capacity + 8):
+            finished[index] = Event()
+            callers[index] = Thread(target=connect, args=(index,), daemon=True)
+            callers[index].start()
+
+        for index in range(capacity, capacity + 8):
+            assert finished[index].wait(timeout=1.5)
+            assert isinstance(errors[index], generation._DNSResolverCapacityError)
+
+        for index in range(capacity):
+            assert finished[index].wait(timeout=4.0)
+            assert isinstance(errors[index], TimeoutError)
+
+        # Timed-out callers must not release capacity while getaddrinfo is
+        # still blocked. Further requests remain rejected without new workers.
+        for index in range(capacity + 8, capacity + 16):
+            finished[index] = Event()
+            callers[index] = Thread(target=connect, args=(index,), daemon=True)
+            callers[index].start()
+            assert finished[index].wait(timeout=1.5)
+            assert isinstance(errors[index], generation._DNSResolverCapacityError)
+
+        assert len(workers) == capacity
+        assert maximum_active_workers == capacity
+        assert active_workers == capacity
+    finally:
+        dns_release.set()
+        for caller in callers.values():
+            caller.join(timeout=2.0)
+        for worker in workers:
+            worker.join(timeout=2.0)
+
+    assert all(not caller.is_alive() for caller in callers.values())
+    assert all(not worker.is_alive() for worker in workers)
+    assert active_workers == 0
+
+    # Capacity is reclaimed only after the resolver workers actually finish.
+    acquired = [
+        generation._DNS_RESOLVER_SLOTS.acquire(blocking=False)
+        for _ in range(capacity)
+    ]
+    assert all(acquired)
+    for _ in acquired:
+        generation._DNS_RESOLVER_SLOTS.release()
+
+
+
+def test_late_dns_result_after_deadline_never_opens_socket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capacity = generation.DNS_RESOLVER_CONCURRENCY_LIMIT
+    slots = BoundedSemaphore(capacity)
+    monkeypatch.setattr(generation, "_DNS_RESOLVER_SLOTS", slots)
+    dns_started = Event()
+    dns_release = Event()
+    dns_returning = Event()
+    caller_finished = Event()
+    dns_workers: list[Thread] = []
+    connection_holder: list[generation._DeadlineHTTPSConnection] = []
+    errors: list[BaseException] = []
+    socket_attempts: list[tuple[object, ...]] = []
+
+    def late_dns(*_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+        dns_workers.append(current_thread())
+        dns_started.set()
+        assert dns_release.wait(timeout=2.0)
+        dns_returning.set()
+        return [
+            (
+                generation.socket.AF_INET,
+                generation.socket.SOCK_STREAM,
+                generation.socket.IPPROTO_TCP,
+                "",
+                ("127.0.0.1", 443),
+            )
+        ]
+
+    def unexpected_socket(*args: object, **_kwargs: object) -> None:
+        socket_attempts.append(args)
+        raise AssertionError("late DNS result must not open a socket")
+
+    monkeypatch.setattr(generation.socket, "getaddrinfo", late_dns)
+    monkeypatch.setattr(generation.socket, "socket", unexpected_socket)
+
+    def connect() -> None:
+        connection = generation._DeadlineHTTPSConnection(
+            "api.cloudflare.com",
+            timeout=1.0,
+            deadline=time.monotonic() + 0.25,
+        )
+        connection_holder.append(connection)
+        try:
+            connection.connect()
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            connection.cancel_deadline()
+            caller_finished.set()
+
+    caller = Thread(target=connect, daemon=True)
+    reserved_slots = 0
+    try:
+        caller.start()
+        assert dns_started.wait(timeout=1.0)
+
+        # Hold the other slot so the second acquisition can only succeed when
+        # the late resolver worker releases its slot after returning.
+        assert slots.acquire(blocking=False)
+        reserved_slots = 1
+        assert caller_finished.wait(timeout=1.5)
+        assert len(errors) == 1
+        assert isinstance(errors[0], TimeoutError)
+        assert "generation_deadline_exceeded" in str(errors[0])
+
+        dns_release.set()
+        assert dns_returning.wait(timeout=1.0)
+        assert slots.acquire(timeout=2.0)
+        reserved_slots = 2
+        dns_workers[0].join(timeout=2.0)
+        assert not dns_workers[0].is_alive()
+        assert socket_attempts == []
+    finally:
+        dns_release.set()
+        caller.join(timeout=2.0)
+        if connection_holder:
+            connection_holder[0].cancel_deadline()
+        for _ in range(reserved_slots):
+            slots.release()
+
+    assert not caller.is_alive()
+    assert not dns_workers[0].is_alive()
+    assert socket_attempts == []
+
+
+def test_dns_resolver_thread_start_failure_releases_capacity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capacity = generation.DNS_RESOLVER_CONCURRENCY_LIMIT
+    slots = BoundedSemaphore(capacity)
+    monkeypatch.setattr(generation, "_DNS_RESOLVER_SLOTS", slots)
+    start_attempts = 0
+
+    def fail_start(_thread: Thread) -> None:
+        nonlocal start_attempts
+        start_attempts += 1
+        raise RuntimeError("controlled resolver thread start failure")
+
+    monkeypatch.setattr(generation.Thread, "start", fail_start)
+    connection = generation._DeadlineHTTPSConnection(
+        "api.cloudflare.com",
+        timeout=1.0,
+        deadline=time.monotonic() + 1.0,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="controlled resolver thread start failure",
+    ):
+        connection.connect()
+
+    assert start_attempts == 1
+    acquired = [slots.acquire(blocking=False) for _ in range(capacity)]
+    assert all(acquired)
+    for _ in acquired:
+        slots.release()
+    connection.cancel_deadline()
+
+
+def test_dns_resolver_exception_releases_capacity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capacity = generation.DNS_RESOLVER_CONCURRENCY_LIMIT
+    slots = BoundedSemaphore(capacity)
+    monkeypatch.setattr(generation, "_DNS_RESOLVER_SLOTS", slots)
+
+    def failed_dns(*_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+        raise generation.socket.gaierror("controlled resolver failure")
+
+    monkeypatch.setattr(generation.socket, "getaddrinfo", failed_dns)
+    connection = generation._DeadlineHTTPSConnection(
+        "api.cloudflare.com",
+        timeout=1.0,
+        deadline=time.monotonic() + 1.0,
+    )
+
+    with pytest.raises(generation.socket.gaierror, match="controlled resolver failure"):
+        connection.connect()
+
+    acquired = [slots.acquire(blocking=False) for _ in range(capacity)]
+    assert all(acquired)
+    for _ in acquired:
+        slots.release()
+    connection.cancel_deadline()
+
+
+def test_provider_preserves_dns_capacity_exhaustion_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_with_capacity_error(*_args: object, **_kwargs: object) -> None:
+        raise URLError(
+            generation._DNSResolverCapacityError(
+                "generation_dns_resolver_capacity_exhausted"
+            )
+        )
+
+    monkeypatch.setattr(generation, "_open_with_deadline", fail_with_capacity_error)
+
+    with pytest.raises(GenerationProviderError) as caught:
+        _provider().generate_raw(
+            system_prompt="Return JSON.",
+            user_prompt="Test DNS capacity exhaustion.",
+        )
+
+    assert caught.value.reason == "generation_dns_resolver_capacity_exhausted"
+    assert caught.value.retryable is True
+
+
+@pytest.mark.parametrize("blocked_phase", ["tcp", "tls"])
+def test_absolute_generation_deadline_interrupts_tcp_and_tls(
+    monkeypatch: pytest.MonkeyPatch,
+    blocked_phase: str,
+) -> None:
+    closed = Event()
+    tls_started = Event()
+
+    class BlockingSocket:
+        def settimeout(self, _timeout: float) -> None:
+            return None
+
+        def bind(self, _address: object) -> None:
+            return None
+
+        def connect(self, _address: object) -> None:
+            if blocked_phase == "tcp":
+                assert closed.wait(timeout=0.5)
+                raise OSError("socket closed at deadline")
+
+        def shutdown(self, _how: int) -> None:
+            closed.set()
+
+        def close(self) -> None:
+            closed.set()
+
+    connection_socket = BlockingSocket()
+
+    class BlockingTLSContext:
+        def wrap_socket(
+            self,
+            sock: BlockingSocket,
+            *,
+            server_hostname: str,
+        ) -> BlockingSocket:
+            assert server_hostname == "api.cloudflare.com"
+            tls_started.set()
+            assert closed.wait(timeout=0.5)
+            raise OSError("TLS socket closed at deadline")
+
+    monkeypatch.setattr(
+        generation.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (
+                generation.socket.AF_INET,
+                generation.socket.SOCK_STREAM,
+                0,
+                "",
+                ("127.0.0.1", 443),
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        generation.socket,
+        "socket",
+        lambda *_args, **_kwargs: connection_socket,
+    )
+    connection = generation._DeadlineHTTPSConnection(
+        "api.cloudflare.com",
+        timeout=1.0,
+        deadline=time.monotonic() + 0.12,
+    )
+    connection._context = BlockingTLSContext()  # type: ignore[assignment]
+    started = time.monotonic()
+
+    try:
+        with pytest.raises(TimeoutError, match="generation_deadline_exceeded"):
+            connection.connect()
+        assert time.monotonic() - started < 0.30
+        if blocked_phase == "tls":
+            assert tls_started.is_set()
+        assert closed.is_set()
+    finally:
+        connection.cancel_deadline()
+
+
+def test_absolute_deadline_rejects_send_after_expiry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeSocket:
+        def settimeout(self, _timeout: float) -> None:
+            return None
+
+    connection = generation._DeadlineHTTPSConnection(
+        "api.cloudflare.com",
+        timeout=1.0,
+        deadline=time.monotonic() - 0.001,
+    )
+    connection.sock = FakeSocket()  # type: ignore[assignment]
+
+    with pytest.raises(TimeoutError, match="generation_deadline_exceeded"):
+        connection.send(b"POST / HTTP/1.1\r\n")
+
+
+def test_absolute_deadline_closes_socket_during_response_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client_socket, peer_socket = generation.socket.socketpair()
+
+    class ConnectedSocket:
+        def settimeout(self, timeout: float) -> None:
+            client_socket.settimeout(timeout)
+
+        def connect(self, _address: object) -> None:
+            return None
+
+        def shutdown(self, how: int) -> None:
+            client_socket.shutdown(how)
+
+        def close(self) -> None:
+            client_socket.close()
+
+    class PassthroughTLSContext:
+        def wrap_socket(
+            self,
+            sock: ConnectedSocket,
+            *,
+            server_hostname: str,
+        ) -> ConnectedSocket:
+            assert server_hostname == "api.cloudflare.com"
+            return sock
+
+    monkeypatch.setattr(
+        generation.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (
+                generation.socket.AF_INET,
+                generation.socket.SOCK_STREAM,
+                0,
+                "",
+                ("127.0.0.1", 443),
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        generation.socket,
+        "socket",
+        lambda *_args, **_kwargs: ConnectedSocket(),
+    )
+    connection = generation._DeadlineHTTPSConnection(
+        "api.cloudflare.com",
+        timeout=1.0,
+        deadline=time.monotonic() + 0.05,
+    )
+    connection._context = PassthroughTLSContext()  # type: ignore[assignment]
+
+    try:
+        connection.connect()
+        peer_socket.settimeout(0.5)
+        assert peer_socket.recv(1) == b""
+    finally:
+        connection.cancel_deadline()
+        client_socket.close()
+        peer_socket.close()
+
+
+@pytest.mark.parametrize(
+    ("provider_timeout", "call_timeout", "task_deadline", "expected_deadline"),
+    [
+        (12.0, 30.0, 145.0, 112.0),
+        (60.0, 30.0, 145.0, 130.0),
+        (60.0, 30.0, 115.0, 115.0),
+    ],
+)
+def test_provider_uses_earliest_absolute_or_relative_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+    provider_timeout: float,
+    call_timeout: float,
+    task_deadline: float,
+    expected_deadline: float,
+) -> None:
+    captured: dict[str, float] = {}
+
+    def open_at_deadline(request: Request, deadline: float):
+        captured["deadline"] = deadline
+        return nullcontext(FakeHTTPResponse(_response()))
+
+    monkeypatch.setattr(generation, "_open_with_deadline", open_at_deadline)
+    monkeypatch.setattr(generation.time, "monotonic", lambda: 100.0)
+
+    _provider(timeout_seconds=provider_timeout).generate_raw(
+        system_prompt="Return JSON.",
+        user_prompt="Propose one item.",
+        timeout_seconds=call_timeout,
+        deadline_monotonic=task_deadline,
+    )
+
+    assert captured["deadline"] == expected_deadline
+
+
+def test_incomplete_http_response_is_a_retryable_provider_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class IncompleteResponse(FakeHTTPResponse):
+        def read(self) -> bytes:
+            raise IncompleteRead(b'{"choices":', 128)
+
+    monkeypatch.setattr(
+        generation,
+        "_open_with_deadline",
+        lambda *_args, **_kwargs: IncompleteResponse(_response()),
+    )
+
+    with pytest.raises(GenerationProviderError) as caught:
+        _provider().generate_raw(
+            system_prompt="Return JSON.",
+            user_prompt="Propose one item.",
+        )
+
+    assert caught.value.reason == "cloudflare_connection_or_timeout"
+    assert caught.value.retryable is True
+
+
+def test_generation_raw_uses_the_smaller_per_call_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request: Request, deadline: float) -> FakeHTTPResponse:
+        captured["remaining"] = deadline - time.monotonic()
+        return FakeHTTPResponse(_response())
+
+    monkeypatch.setattr(generation, "_open_with_deadline", fake_urlopen)
+    result = _provider().generate_raw(
+        system_prompt="Return JSON.",
+        user_prompt="Propose one item.",
+        timeout_seconds=4.0,
+    )
+
+    assert result.raw_content == '{"decision":"candidate"}'
+    assert 0 < captured["remaining"] <= 4.0
+
+
 def test_generation_fails_closed_when_usage_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         generation,
-        "urlopen",
+        "_open_with_deadline",
         lambda *_args, **_kwargs: FakeHTTPResponse(
             {
                 "model": generation.DEFAULT_MODEL,
@@ -122,7 +708,7 @@ def test_generation_rejects_non_json_completion(
 ) -> None:
     monkeypatch.setattr(
         generation,
-        "urlopen",
+        "_open_with_deadline",
         lambda *_args, **_kwargs: FakeHTTPResponse(_response("Not JSON.")),
     )
 
@@ -152,7 +738,7 @@ def test_http_errors_are_categorized_without_retrying(
             fp=None,
         )
 
-    monkeypatch.setattr(generation, "urlopen", fake_urlopen)
+    monkeypatch.setattr(generation, "_open_with_deadline", fake_urlopen)
     with pytest.raises(GenerationProviderError) as caught:
         _provider().generate_json(system_prompt="Return JSON.", user_prompt="Test.")
 
@@ -213,6 +799,32 @@ def test_initial_provider_quotes_conservative_maximum_without_a_request() -> Non
     assert quote.maximum_cost_usd == expected_cost
 
 
+def test_three_maximum_update_thread_reservations_fit_task_cost_ceiling() -> None:
+    quote = GenerationCostQuote(
+        provider="cloudflare_workers_ai",
+        model=generation.DEFAULT_MODEL,
+        maximum_input_tokens=30_976,
+        maximum_output_tokens=1_024,
+        input_usd_per_million_tokens=generation.INPUT_USD_PER_MILLION_TOKENS,
+        output_usd_per_million_tokens=generation.OUTPUT_USD_PER_MILLION_TOKENS,
+        pricing_revision=generation.CLOUDFLARE_PRICING_REVISION,
+    )
+
+    assert generation.CHAT_TOKEN_OVERHEAD_TOKENS == 128
+    assert generation.DEFAULT_MAX_OUTPUT_TOKENS == 1_024
+    assert (
+        quote.maximum_input_tokens + quote.maximum_output_tokens
+        == generation.MAX_MODEL_CONTEXT_TOKENS
+    )
+    assert quote.maximum_cost_usd == Decimal("0.00500224")
+    three_attempt_reservations = quote.maximum_cost_usd * 3
+    assert three_attempt_reservations == Decimal("0.01500672")
+    task_ceiling = Decimal(str(TASK_BUDGET["max_cost_usd"]))
+    assert task_ceiling == Decimal("0.02")
+    assert MAX_ATTEMPTS == 3
+    assert three_attempt_reservations < task_ceiling
+
+
 def test_initial_provider_rejects_a_model_without_a_pinned_price_card() -> None:
     with pytest.raises(ValueError, match="unsupported_generation_model"):
         CloudflareWorkersAIConfig(
@@ -230,7 +842,7 @@ def test_generation_fails_closed_when_provider_returns_a_different_model(
     document["model"] = "@cf/meta/different-model"
     monkeypatch.setattr(
         generation,
-        "urlopen",
+        "_open_with_deadline",
         lambda *_args, **_kwargs: FakeHTTPResponse(document),
     )
 
@@ -246,7 +858,7 @@ def test_generation_raw_returns_malformed_completion_with_validated_usage(
 ) -> None:
     monkeypatch.setattr(
         generation,
-        "urlopen",
+        "_open_with_deadline",
         lambda *_args, **_kwargs: FakeHTTPResponse(_response("Not JSON.")),
     )
 

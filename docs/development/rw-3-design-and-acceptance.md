@@ -386,6 +386,8 @@ TaskRuntime owns the Task row lock, attempt identity, retry decision, and termin
 
 The handoff is a narrow Task-type-specific branch in the existing TaskRuntime, not a generic recovery framework. The worker may expose a normal first-attempt execution method, but all interrupted/replayed execution must converge on this same in-session resume function.
 
+**RW3.4 deadline/recovery correction:** the 45-second Task deadline is one absolute monotonic deadline captured at real TaskRuntime admission. The provider transport deadline is the earliest of that Task deadline, the provider's configured timeout, and the worker-supplied timeout cap. Proposal persistence rechecks the deadline after acquiring the Task lock, before Event insertion, and after flush; if expiry is observed before transaction commit, the proposal transaction rolls back. Recovery may commit only an existing proposal Event whose timestamp is strictly before expiry. A receipt without a pre-deadline proposal Event is insufficient: receipt-only recovery after expiry terminalizes with `update_thread_deadline_exceeded` and does not create a proposal Event or reinvoke the provider. Late or exact-deadline proposal Events fail closed before the shared commit core. Pre-deadline durable proposals remain recoverable without provider reinvocation.
+
 ### 10.6 Typed actor, proposal Events, and terminal validators
 
 The shared commit core accepts a validated proposal envelope and a closed actor union; it does not accept an untyped actor dictionary or infer authority from Event payloads.
