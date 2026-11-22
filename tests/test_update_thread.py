@@ -3758,3 +3758,91 @@ def test_creator_rejects_resolved_thread_without_task_or_event(
                 Task.task_type == "update_thread",
             )
         ) is None
+
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "operator_id",
+        "actor_type",
+        "task_id",
+        "team_id",
+        "thread_id",
+        "policy_version",
+        "budget",
+        "charge_id",
+        "write_scope",
+        "authority",
+    ],
+)
+def test_model_proposal_rejects_forged_authority_fields(field: str) -> None:
+    proposal = _model_proposal(0)
+    proposal[field] = "forged"
+    with pytest.raises(ValidationError):
+        worker_module._parse_model_response(
+            json.dumps({"proposals": [proposal]})
+        )
+
+
+def test_creator_rejects_cross_team_thread_without_task_or_event(
+    session_factory: sessionmaker[Session],
+    rw3_fixture: Fixture,
+) -> None:
+    foreign_team_id, foreign_thread_id = uuid4(), uuid4()
+    with session_factory.begin() as session:
+        session.add(
+            Team(id=foreign_team_id, domain="foreign_rw3_test", status="active")
+        )
+        session.flush()
+        session.add(
+            TeamPolicy(
+                id=uuid4(),
+                team_id=foreign_team_id,
+                version=1,
+                schema_version=1,
+                rules={},
+            )
+        )
+        session.add(
+            Thread(
+                id=foreign_thread_id,
+                team_id=foreign_team_id,
+                domain="foreign_rw3_test",
+                title="Foreign Thread",
+                status="active",
+            )
+        )
+        session.flush()
+
+    request = UpdateThreadTaskRequest(foreign_thread_id, uuid4())
+    with pytest.raises(OperatorNotAuthorized):
+        OperatorApplicationAdapter(session_factory).create_update_thread_task(
+            _principal(rw3_fixture.team_id), request
+        )
+
+    with session_factory() as session:
+        assert session.scalar(
+            select(Task.id).where(
+                Task.team_id == foreign_team_id,
+                Task.task_type == "update_thread",
+            )
+        ) is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.type == REQUEST_EVENT_TYPE,
+                Event.task_id.in_(
+                    select(Task.id).where(
+                        Task.team_id == foreign_team_id,
+                        Task.task_type == "update_thread",
+                    )
+                ),
+            )
+        ) is None
+
+    with session_factory.begin() as session:
+        session.execute(delete(Thread).where(Thread.id == foreign_thread_id))
+        session.execute(
+            delete(TeamPolicy).where(TeamPolicy.team_id == foreign_team_id)
+        )
+        session.execute(delete(Team).where(Team.id == foreign_team_id))
