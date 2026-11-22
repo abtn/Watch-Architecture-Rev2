@@ -517,3 +517,45 @@ def test_reconciliation_event_failure_keeps_reservation_and_can_be_marked_unknow
         assert Decimal(
             unknown_event.payload["conservative_budget_charge_usd"]
         ) == quote.maximum_cost_usd
+
+
+@pytest.mark.parametrize(
+    ("task_type", "allowed_writes", "reason"),
+    [
+        (
+            "propose_strategy",
+            ["EvidenceLink", "Hypothesis", "ConfidenceChange"],
+            "generation_task_scope_violation",
+        ),
+        (
+            "update_thread",
+            ["Hypothesis"],
+            "generation_task_write_scope_violation",
+        ),
+        (
+            "update_thread",
+            ["EvidenceLink", "ConfidenceChange", "Hypothesis"],
+            "generation_task_write_scope_violation",
+        ),
+    ],
+)
+def test_update_thread_cost_operation_rejects_task_scope_mismatches(
+    session_factory: sessionmaker[Session],
+    cost_task: _CostTask,
+    task_type: str,
+    allowed_writes: list[str],
+    reason: str,
+) -> None:
+    with session_factory.begin() as session:
+        task = session.get(Task, cost_task.task_id)
+        assert task is not None
+        task.task_type = task_type
+        task.objective_id = None
+        task.allowed_writes = allowed_writes
+
+    with pytest.raises(TaskGenerationCostError, match=reason):
+        TaskGenerationCostService(session_factory).reserve(
+            cost_task.task_id,
+            _quote(),
+            operation="update_thread",
+        )
