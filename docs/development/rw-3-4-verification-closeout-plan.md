@@ -1,6 +1,6 @@
 # RW3.4 — Integrated Verification and Closeout Plan
 
-**Status:** RW3.4 implementation, deadline/cost behavior, recovery corrections, and prior proof follow-ups are merged. PR #167 is on `main` at `36da6a6f838d48b8709b5dcab252e35028c61899`; documentation reconciliation PR #168 is merged at `b00c6df93f224bca03168b7894ec3e154b2293ec`. This follow-up adds six negative empty-result Context-integrity cases and a bounded source audit of lifecycle authority. The 35-row ledger is updated only for the source-audited `RW-WK-01` row: **28 PASS / 7 PARTIAL / 0 OPEN**. Formal RW3.4 Operator acceptance remains pending; live provider authorization remains closed.
+**Status:** RW3.4 implementation, deadline/cost behavior, recovery corrections, and prior proof follow-ups are merged. PR #167 is on `main` at `36da6a6f838d48b8709b5dcab252e35028c61899`; documentation reconciliation PR #168 is merged at `b00c6df93f224bca03168b7894ec3e154b2293ec`. This follow-up adds six Context-tuple plus four duplicate/future receipt/proposal cases and a bounded source audit of lifecycle authority. The 35-row ledger is updated only for the source-audited `RW-WK-01` row: **28 PASS / 7 PARTIAL / 0 OPEN**. Formal RW3.4 Operator acceptance remains pending; live provider authorization remains closed.
 
 **Planning baseline:** `main` at `b00c6df93f224bca03168b7894ec3e154b2293ec` (2026-11-23), after merged PR #168.
 
@@ -164,7 +164,7 @@ The closeout report must explicitly account for these proof rows from the implem
 - Actor, commit, and retained state: `RW-ACT-01`, `RW-ACT-02`, `RW-AT-01`, `RW-RP-01`, `RW-RC-01`, `RW-LT-01`.
 - Scope, provider, and budget: `RW-TS-02`, `RW-POL-01`, `RW-GC-01`, `RW-GC-02`, `RW-GC-03`, `RW-GN-01`, `RW-GN-02`, `RW-DL-01`, `RW-PR-01`, `RW-PV-01`, `RW-PR-02`, `RW-NO-01`, `RW-PF-01`.
 
-The ledger below contains 35 RW-3 proof rows. The merged #165/#167 evidence baseline had **27 PASS, 8 PARTIAL, and 0 OPEN**. This follow-up closes `RW-WK-01` by bounded source audit, yielding **28 PASS, 7 PARTIAL, and 0 OPEN**; it also adds six negative empty-result Context-integrity cases without claiming to close `RW-CTX-06`. Exact follow-up test SHA and hosted verification are recorded in `docs/testing.md`. PASS/PARTIAL are evidence classifications only; they do not replace the explicit Operator acceptance gate.
+The ledger below contains 35 RW-3 proof rows. The merged #165/#167 evidence baseline had **27 PASS, 8 PARTIAL, and 0 OPEN**. This follow-up closes `RW-WK-01` by bounded source audit, yielding **28 PASS, 7 PARTIAL, and 0 OPEN**; it also adds six Context-tuple plus four duplicate/future receipt/proposal cases without claiming to close `RW-CTX-06`. Exact follow-up test SHA and hosted verification are recorded in `docs/testing.md`. PASS/PARTIAL are evidence classifications only; they do not replace the explicit Operator acceptance gate.
 
 For each row, record the exact test node(s), exact tested SHA, and outcome. A row with only design text, a generic unit test, or an earlier-slice CI result is not closed evidence.
 
@@ -220,7 +220,7 @@ Each row records the exact tree on which its cited test evidence was verified. T
 
 ### 4.6 Consolidated gaps requiring disposition
 
-The merged #165/#167 evidence baseline had eight PARTIAL rows. This follow-up closes `RW-WK-01` by source audit and adds six negative empty-result Context-integrity cases; seven PARTIAL rows remain. The remaining qualifications are intentionally not conflated.
+The merged #165/#167 evidence baseline had eight PARTIAL rows. This follow-up closes `RW-WK-01` by source audit and adds six Context-tuple plus four duplicate/future receipt/proposal cases; seven PARTIAL rows remain. The remaining qualifications are intentionally not conflated.
 
 1. **RESOLVED — `RW-CT-01`:** #163 adds a Context-assembler test for a linked Signal whose domain differs from the target Team. The assembler fails before writing a Context Event.
 2. **RESOLVED — `RW-CT-03`:** #163 traps `HybridKnowledgeRetriever.retrieve` and proves the `update_thread` worker never calls it; the persisted Context Snapshot also contains no Team Experience passage fields. This is scoped to the RW-3 worker path.
@@ -276,7 +276,7 @@ The order is deliberate. Do not skip ahead from green slice tests to acceptance.
 | Step | Work | Required output / gate |
 |---|---|---|
 | 0. Freeze baseline | Start from `main` at `b00c6df93f224bca03168b7894ec3e154b2293ec` (PR #167 merge). Record repo, branch, HEAD, clean worktree, origin, Python/uv versions, and current Alembic head. No reset/stash or destructive cleanup. | Current exact merge baseline and evidence-tree SHAs are recorded in this plan and `docs/testing.md`. |
-| 1. Build the evidence ledger | Map all RW3.1–RW3.4 proof rows to exact current test nodes, source locations, and exact tested SHAs. Separate source inspection, focused tests, local full verification, and hosted CI evidence. | The 35-row ledger is 28 PASS, 7 PARTIAL, 0 OPEN after the bounded source audit; six negative empty-result Context cases strengthen `RW-CTX-06` without closing it. Remaining qualifications are itemized in §4.6; formal Operator acceptance remains pending. |
+| 1. Build the evidence ledger | Map all RW3.1–RW3.4 proof rows to exact current test nodes, source locations, and exact tested SHAs. Separate source inspection, focused tests, local full verification, and hosted CI evidence. | The 35-row ledger is 28 PASS, 7 PARTIAL, 0 OPEN after the bounded source audit; six Context-tuple plus four duplicate/future receipt/proposal cases strengthen `RW-CTX-06` without closing it. Remaining qualifications are itemized in §4.6; formal Operator acceptance remains pending. |
 | 2. Audit integration seams | Inspect the Task creator → TaskRuntime admission → Context verifier → cost reservation → generation adapter → receipt/proposal persistence → shared commit core → TaskRuntime finalization/recovery path. Check the exact Context tuple at every handoff. Recheck RW-2 Operator compatibility. | Reviewed sequence diagram or concise call-path record; no guessed identity substitution or parallel authority path. |
 | 3. Resolve blockers | PR #152 delivered deadline/recovery, bounded DNS resolver, timeout, and cumulative-cost corrections. PR #163 added recovery-finalization ordering correction and proof packets from #157–#162. PR #167 corrected post-commit inconsistent-recovery finalization and expanded its regression through TaskRuntime recovery. | All implementation corrections are merged; source PRs #157–#162 are closed as superseded with branches preserved. No further production-code scope is inferred. |
 | 4. Run focused integrated proofs | The pre-#163 integrated implementation had 155 focused tests on `20cfc252d21bdecc6153c1d8daa8369e1f331ff2`. #165 added parser/recovery/Context proofs; #167 expanded committed-marker Context corruption through full TaskRuntime recovery. | Exact #167 head `d2139c41ec3450f7198e61bdd1169edbeff13e01` and its hosted/local evidence are recorded in `docs/testing.md`. |
@@ -328,7 +328,7 @@ This documentation reconciliation records the merged #152 implementation stack, 
 - [ ] Exact pre-run and post-run database URL environment-variable values are explicitly compared in the captured #167 local verification record.
 - [x] Hosted CI passes on the exact tested #167 PR head `d2139c41ec3450f7198e61bdd1169edbeff13e01`; source SHA and merge commit are recorded.
 - [x] Independent review of the #163 integrated head and #167 recovery correction found no unresolved blocking correctness issue.
-- [x] `PLAN.md`, proof matrix, `docs/testing.md`, Task/architecture docs, and CHANGE_MAP agree on the merged implementation baseline, exact #167 evidence, six new empty-result Context-integrity cases, 28 PASS / 7 PARTIAL / 0 OPEN ledger, and pending formal Operator acceptance.
+- [x] `PLAN.md`, proof matrix, `docs/testing.md`, Task/architecture docs, and CHANGE_MAP agree on the merged implementation baseline, exact #167 evidence, six Context-tuple plus four duplicate/future receipt/proposal cases, 28 PASS / 7 PARTIAL / 0 OPEN ledger, and pending formal Operator acceptance.
 - [ ] Explicit Operator acceptance is recorded before RW3.4 is marked complete.
 
 ## 9. Non-authorizations
