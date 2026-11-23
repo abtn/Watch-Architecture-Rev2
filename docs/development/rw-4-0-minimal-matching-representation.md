@@ -61,7 +61,7 @@ The matcher constructs two bounded, ephemeral read models. They are not ORM enti
 | `chunking_version` | KnowledgeChunk rows | one supported version, matches Task pin |
 | `chunks` | KnowledgeChunk rows | ordered by chunk index; each row matches current Signal Snapshot/hash |
 
-The incoming Signal must have a Team association through an `ingest_source` Task Event of type `signal_ingested` or `fetch_no_change`. The Event's Task must belong to the requested Team and identify the same Signal. Missing or inconsistent association fails closed.
+The incoming Signal must have a Team association through an `ingest_source` Task Event of type `signal_ingested` or `fetch_no_change`. The Event's Task must belong to the requested Team, and its payload's Signal ID, Snapshot reference, and content hash must match the canonical Signal. Missing or inconsistent association fails closed.
 
 The Task creator must find and validate a current Signal projection before admitting the Task, then pin its `embedding_space_key` and `chunking_version` in the immutable request. If no valid projection exists at admission, do not create the Task; return a host-side admission failure so indexing can complete first. If the pinned projection becomes stale or unavailable after Task creation, the Task records `deferred` with a precise reason. The matcher never calls an embedding provider or substitutes a different model space.
 
