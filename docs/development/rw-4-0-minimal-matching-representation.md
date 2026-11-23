@@ -86,7 +86,7 @@ For every contributing Signal, validate that its Domain matches the Team and tha
 
 - If `snapshot_ref` and `snapshot_hash` are both present, they must exactly match the referenced Signal's canonical Snapshot reference and content hash.
 - If both are absent, the EvidenceLink is not eligible for semantic matching in this first slice. Do not silently substitute the Signal's current Snapshot as though the EvidenceLink had cited it.
-- A partial pair or a pair that disagrees with the Signal is invalid evidence. Exclude that evidence from the candidate profile and record a precise integrity reason; if the remaining evidence cannot support a valid bounded assessment, return `deferred`.
+- A partial pair (which the current database check should reject) or a pair that disagrees with the Signal is an integrity failure. Do not merely omit the corrupt link and continue ranking a potentially incomplete Thread profile: return `deferred` for the assessment with a precise integrity reason. The absent-pair case is different and is excluded deterministically.
 
 This check is necessary because the EvidenceLink model permits both snapshot fields to be absent and only enforces pair consistency when they are present; it does not itself guarantee that the pair matches the referenced Signal. The matcher must not erase that provenance distinction.
 
