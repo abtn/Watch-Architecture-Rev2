@@ -165,7 +165,7 @@ Experiment A is not a substitute for RW3.4 formal acceptance. RW3.4's seven PART
 
 Because Experiment A is a separate, isolated research run over frozen fixtures, its protocol preparation and offline readiness work can proceed without changing RW3.4's acceptance state. Actual provider execution still requires its own explicit authorization and must not be presented as evidence that the production RW3.4 runtime or external host integration is formally accepted.
 
-Proposed foundation-exit rule: before the foundation exit gate, Experiment A must have either (a) a completed, accepted report whose limitations are carried forward, or (b) an explicit Operator decision that the result is inconclusive/not required for the selected RW-4 representation, with the residual uncertainty recorded. It should not silently disappear from the gate, but it should not block unrelated RW-4 triage or RW-5 decay work.
+Accepted foundation-exit disposition: before the foundation exit gate, Experiment A must have either (a) a completed, accepted report whose limitations are carried forward, or (b) an explicit Operator decision that the result is inconclusive/not required for the selected RW-4 representation, with the residual uncertainty recorded. It must not silently disappear from the gate, but it does not block unrelated RW-4 triage or RW-5 decay work.
 
 RWN-01 remains a separate newsroom value-harness experiment. Its 10 matched control/treatment pairs, retained-experience snapshot, claim-level attribution, independent review, and three acceptance gates are not Experiment A's protocol and must not be merged with it.
 
