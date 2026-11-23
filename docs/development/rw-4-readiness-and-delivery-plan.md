@@ -47,28 +47,25 @@ Do not build an exhaustive Cartesian recovery matrix or reopen merged production
 
 RW4-0 closes only after D1–D6 are reconciled, evidence-backed, and explicitly accepted. PR #174 and #176 preserve proposals; neither substitutes for this gate.
 
-#### D1 — Invocation, identity, and authority
+#### D1 — Trusted host invocation and authority
 
 Freeze an explicit trusted host-invoked operation for one Signal and one Team. Define trusted principal fields and the exact Team/action grant checked by Watch. The caller cannot select a Team from untrusted payload data. Every caller is independently authorized, including a caller resolving an existing Task.
 
-Use one canonical Task identity for `(signal_id, team_id)`, with database-enforced uniqueness, atomic Task/request-Event creation, immutable request fingerprint, same-request replay, and conflicting-request behavior. The losing concurrent request loads and validates the winning Task/Event; it does not create a second Event. Requester identity is provenance, not semantic equivalence, as recorded in the PR #174 correction.
-
 No automatic `ingest_source → triage_signal` Task creation, scheduler, or TaskDispatcher expansion in the first slice. The production host composition/authentication boundary remains external; Watch-side grant validation is not proof of deployed host authentication.
 
-#### D2 — SignalDisposition persistence and lifecycle
+### D2 — Canonical Task and disposition identity
 
-Freeze one canonical disposition per Signal/Team pair, its exact reference combinations, Task attribution, reason, timestamps, uniqueness, and Event semantics.
+Freeze one canonical triage Task identity for `(signal_id, team_id)`, with database-enforced uniqueness, atomic Task/request-Event creation, immutable request fingerprint, same-request replay, and conflicting-request behavior. The losing concurrent request loads and validates the winning Task/Event; it does not create a second Event. Requester identity is provenance, not semantic equivalence, as recorded in the PR #174 correction.
 
-The merged PR #176 first-slice proposal is:
-- `matched`: one existing same-Team/domain Thread;
-- `duplicate`: one canonical exact-content duplicate in the same Team's intake history;
-- `deferred`: explicit reason and terminal in this release.
+Separately freeze SignalDisposition uniqueness for `(signal_id, team_id)`, its canonical persisted identity, Task attribution, reason, timestamp fields, and database constraints. The existing `update_thread` idempotency namespace is precedent for transaction/replay shape only; it must not be reused as triage identity.
 
-`new_thread` is disabled because no safe canonical title source exists. Automatic `noise` is disabled because no deterministic source-backed classifier exists. Near-duplicate classification is excluded.
+### D3 — Deferred lifecycle and Task write-scope reconciliation
 
-**Unresolved reconciliation:** `docs/architecture.md` still describes `deferred → matched/new_thread/noise/duplicate` through `update_thread` or `operator_update`, and the Task matrix still grants those Task types SignalDisposition writes. That conflicts with the proposed terminal-deferred first slice and RW-3's explicit exclusion. Before implementation, update the lifecycle table, F1 narrative, Task prose, and write-scope matrix consistently. Do not implement against a contradictory contract. The decision to make deferred terminal must be explicitly accepted; this plan does not silently accept it.
+The proposed first release makes `deferred` terminal. The current architecture lifecycle table still permits `deferred → matched/new_thread/noise/duplicate` through `update_thread` or `operator_update`, and the Task matrix still grants those Task types SignalDisposition writes. This is a real contract conflict, not a documentation detail.
 
-#### D3 — Minimal matching representation and evidence
+If terminal deferred is accepted, reconcile the architecture lifecycle table, F1 narrative, Task specification, and Task/write-scope matrix together: remove deferred-refinement transitions and the corresponding SignalDisposition write permission from `update_thread` and `operator_update`; define triage's exact SignalDisposition and permitted Thread effects. Do not implement against contradictory authority documents. This plan does not silently accept terminal deferred.
+
+### D4 — Minimal matching representation and evidence
 
 Use the PR #176 representation as the bounded experimental candidate:
 - derive Thread evidence profiles at read time through Team-scoped EvidenceLink → Hypothesis → Thread;
@@ -85,7 +82,31 @@ Required offline fixtures: same-origin replay; cross-origin exact bytes within o
 
 Labels must be independent of the matcher. Report false positives and false negatives by case, lifecycle state, and profile size. Measure eligible candidate/evidence cardinalities, bounded overflow detection, query plan, and cost on a disposable PostgreSQL fixture database. Never rank a truncated set as complete. If acceptable false-positive tolerance or query cost cannot be demonstrated, keep matching deferred or narrow the first slice; do not tune by intuition.
 
-#### D4 — Assessment receipt and recovery
+### D5 — Disposition vocabulary and Thread-creation eligibility
+
+The PR #176 first-slice proposal is:
+- `matched`: one existing same-Team/domain Thread;
+- `duplicate`: one canonical exact-content duplicate in the same Team's intake history;
+- `deferred`: explicit reason and terminal in this release.
+
+`new_thread` is disabled because no safe canonical title source exists. Automatic `noise` is disabled because no deterministic source-backed classifier exists. Near-duplicate classification is excluded. The exact duplicate canonical-winner rule, intake-history scope, and valid reference combinations still require explicit acceptance.
+
+Freeze every disposition/reference combination and its Task-attributed Event semantics. No disposition may mutate Hypothesis, EvidenceLink, ConfidenceChange, TeamPolicy, or enqueue follow-up Tasks. If a later release wants `new_thread` or `noise`, it needs a separate source-backed rule and design decision.
+
+### D6 — Dormant Thread reactivation and RW-5 contract
+
+Agree before RW4 reactivation implementation:
+- whether matching/reactivation changes a Thread-level timestamp;
+- which timestamp is authoritative, if any;
+- whether a reactivated Thread can immediately become dormant under unchanged Hypothesis touch times;
+- exact rows/records locked by triage and decay;
+- common lock order and under-lock revalidation;
+- decay-first and triage-first outcomes;
+- replay behavior and at-most-one reactivation Event.
+
+Decay uses Hypothesis `last_touched_at`; accepted evidence is the only operation that updates it. Decay does not update it. Triage must not use it as a proxy for Thread activity. RW-5 implementation itself remains independent; the shared contract is required before RW4 implements reactivation and before integrated proof.
+
+### Cross-cutting gate — Assessment receipt and recovery
 
 Freeze the PR #176 C1 contract before code:
 - one canonical assessment receipt per Task, identity derived from Task plus fixed assessment kind/version;
@@ -100,20 +121,7 @@ Freeze the PR #176 C1 contract before code:
 
 Define the exact Event schema, unique identity, Task type/write scope, Kernel path, transaction ownership, and recovery proofs. A shared receipt/business transaction is not equivalent to durable-before-business ordering.
 
-#### D5 — Dormant Thread and RW-5 contract
-
-Agree before RW4 reactivation implementation:
-- whether matching/reactivation changes a Thread-level timestamp;
-- which timestamp is authoritative, if any;
-- whether a reactivated Thread can immediately become dormant under unchanged Hypothesis touch times;
-- exact rows/records locked by triage and decay;
-- common lock order and under-lock revalidation;
-- decay-first and triage-first outcomes;
-- replay behavior and at-most-one reactivation Event.
-
-Decay uses Hypothesis `last_touched_at`; accepted evidence is the only operation that updates it. Decay does not update it. Triage must not use it as a proxy for Thread activity. RW-5 implementation itself remains independent; the shared contract is required before RW4 reactivation and integrated proof.
-
-#### D6 — Context consumer and representation boundary
+### Cross-cutting gate — Later Task Context consumer and representation
 
 Name the later Task type that consumes world-memory Context and the existing assembler to extend. Define Team/Thread scope, eligible active Hypotheses and EvidenceLinks, source/Snapshot/hash/quote validation, interaction with Domain Knowledge and Team Experience, deterministic order, count/character/token bounds, overflow behavior, immutable Context Snapshot/manifest Event/hash, and replay.
 
@@ -139,10 +147,10 @@ At minimum map:
 **RW-4 implementation authorization requires all of:**
 1. RW3.4 formal acceptance or explicit sequencing exception.
 2. D1–D6 reconciled and explicitly accepted.
-3. D3 fixture results and query-cost evidence accepted, or matching narrowed to a source-backed deterministic subset that the Operator explicitly accepts.
+3. D4 fixture results and query-cost evidence accepted, or matching narrowed to a source-backed deterministic subset that the Operator explicitly accepts.
 4. Deferred lifecycle and Task/write-scope matrix reconciled.
-5. D5/RW-5 timestamp and lock/revalidation contract frozen.
-6. D6 Context consumer and bounds specified.
+5. D6/RW-5 timestamp and lock/revalidation contract frozen.
+6. Later Task Context consumer and bounds specified.
 7. Receipt transaction/recovery contract frozen.
 8. Requirement-to-test matrix independently reviewed.
 9. Explicit Operator authorization for the first bounded implementation slice.
@@ -244,11 +252,12 @@ Reconsider only when a concrete scenario and evidence justify a separate design 
 
 - [ ] RW3.4 accepted, or explicit sequencing exception recorded with residuals retained.
 - [ ] D1 trusted invocation, identity, authorization, replay, and race behavior accepted.
-- [ ] D2 disposition persistence/reference/lifecycle contract accepted.
-- [ ] D3 matching and duplicate representation supported by independent fixtures and measured query cost.
-- [ ] D4 canonical assessment receipt, DB uniqueness, separate transaction, and recovery contract accepted.
-- [ ] D5 shared decay/reactivation timestamp, lock order, and race outcomes accepted.
-- [ ] D6 later Context consumer, source eligibility, bounds, and replay contract accepted.
+- [ ] D2 canonical Task identity, disposition uniqueness, and replay contract accepted.
+- [ ] D3 terminal-deferred lifecycle and Task/write-scope reconciliation accepted.
+- [ ] D4 matching and duplicate representation supported by independent fixtures and measured query cost.
+- [ ] D5 disposition vocabulary/reference matrix and new-Thread/noise exclusions accepted.
+- [ ] D6 shared decay/reactivation timestamp, lock order, and race outcomes accepted.
+- [ ] Assessment receipt transaction/recovery and later Task Context consumer/bounds contracts accepted.
 - [ ] Architecture lifecycle and Task/write-scope matrix reconciled.
 - [ ] Requirement-to-test matrix independently reviewed.
 - [ ] First bounded implementation PR explicitly authorized.
