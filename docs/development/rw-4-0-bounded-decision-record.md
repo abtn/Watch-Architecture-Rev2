@@ -39,16 +39,17 @@ Each item is a proposal, not an accepted project decision.
 Keep these identities distinct:
 
 1. **Business identity:** the canonical pair `(signal_id, team_id)`; this scopes the single first-release disposition.
-2. **Task identity:** one deterministic Task identity derived from the canonical Team, Signal, and `triage_signal` operation (using a dedicated, versioned identity namespace/domain tag). This prevents concurrent callers with different transport retries from creating multiple Tasks for the same pair.
-3. **Request provenance:** one immutable, Task-attributed request Event binds the requester, Signal, Team, pinned matching-policy identity/version, and a canonical request fingerprint. The raw host idempotency key, if supplied, is not persisted; persist only its hash where needed for replay/audit.
+2. **Task identity:** one deterministic canonical Task identity derived from the canonical Team, Signal, and `triage_signal` operation, using a dedicated, versioned identity namespace/domain tag. This identity is distinct from the Task's ordinary database primary key unless the implementation deliberately uses the canonical identity as that primary key.
+3. **Request provenance:** one immutable, Task-attributed request Event binds the first authorized requester, Signal, Team, pinned matching-policy identity/version, and a canonical request fingerprint. The requester is provenance, not part of semantic request equivalence. A later authorized caller with the same canonical request resolves the existing Task without replacing the original requester attribution. A different policy pin or other immutable request content conflicts.
 4. **Execution replay:** TaskRuntime owns attempts and lifecycle. Kernel business commit uses the canonical Task identity/Event evidence to recognize a prior disposition/Thread/Event commit and never repeats those writes.
 
 Request behavior:
 
 - The first authorized request creates the canonical Task and its request Event atomically.
-- A concurrent or repeated semantically identical request resolves to that same Task after validating its immutable request Event and fingerprint; it does not create a second Task or request Event.
-- A request for the same pair with a different requester, policy pin, or other immutable request content conflicts without creating another Task, disposition, Thread, or business Event. It does not silently replace the original request.
-- A unique constraint enforces one canonical SignalDisposition per Signal/Team pair. The Task identity and request Event contract are separate protections; disposition uniqueness alone is not Task idempotency.
+- **Database-enforced uniqueness is mandatory for the canonical Task identity.** Enforce it with a unique constraint/index on a persisted canonical-identity key, or use that identity as the Task primary key so the database primary-key constraint enforces it. A deterministic calculation or application-level pre-check without database uniqueness is insufficient under concurrency.
+- Task insertion and its immutable request Event are one transaction. On a uniqueness conflict, the losing request loads the winning Task and request Event, validates the canonical identity and immutable request fingerprint, and returns that Task only if the request is semantically identical. It must not create a second request Event.
+- Each incoming caller is independently authorized before resolving an existing Task. A later authorized caller with the same canonical pair and policy pin resolves the canonical Task; the original request Event retains the first requester's provenance. Requester identity alone does not create a conflict or rewrite provenance. A different policy pin or other immutable request content conflicts without creating another Task, disposition, Thread, or business Event.
+- A unique constraint separately enforces one canonical SignalDisposition per Signal/Team pair. Task uniqueness and request Event/fingerprint validation are distinct protections; disposition uniqueness alone is not Task idempotency.
 - The immutable Task request binds the canonical identifiers and the accepted matching-policy identity/version. If the matching policy is not yet defined, Task creation is not implementation-ready.
 - All Task lifecycle writes remain TaskRuntime-owned; business writes go through the existing Kernel commit boundary.
 
