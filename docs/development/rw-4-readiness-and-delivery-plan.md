@@ -200,9 +200,9 @@ Keep TaskDispatcher unchanged. Do not add automatic post-ingestion enqueueing.
 
 ### RW4-3 — Deterministic triage and commit
 
-Implement only the evidence-approved duplicate/matching rules: bounded candidate/evidence retrieval; same-Team ingestion and Snapshot provenance; deterministic result/reason; canonical durable assessment receipt; separate receipt transaction; Kernel-authorized business commit; atomic disposition and permitted Thread transition/Event; matched-only dormant reactivation under the accepted D6 contract.
+Implement only the evidence-approved duplicate/matching rules: bounded candidate/evidence retrieval; same-Team ingestion and Snapshot provenance; deterministic result/reason; canonical durable assessment receipt; separate receipt transaction; Kernel-authorized business commit; and atomic disposition/Event commit. Matched active-Thread handling may proceed under the accepted D4/C1/D5 contracts. **Dormant-Thread reactivation is a separately gated addition:** until D6 is accepted, dormant candidates must not be reactivated or receive a `matched` disposition that implies reactivation; resolve them only through the accepted terminal `deferred` disposition with an explicit D5-approved reason. Do not change Thread status/activity timestamps or emit a reactivation Event in this variant.
 
-Proof: positive/negative fixtures, threshold/tie/overflow, duplicate and concurrent request replay, receipt recovery across the two transactions, rollback, decay-first/triage-first races, at most one reactivation Event, no Hypothesis/EvidenceLink/ConfidenceChange mutation, no automatic `update_thread` Task.
+Proof for the non-reactivation slice: positive/negative fixtures, threshold/tie/overflow, duplicate and concurrent request replay, receipt recovery across the two transactions, rollback, no Hypothesis/EvidenceLink/ConfidenceChange mutation, and no automatic `update_thread` Task. Add decay-first/triage-first races, under-lock revalidation, and at-most-one reactivation Event only in the separately authorized D6 reactivation slice.
 
 ### RW4-4 — World-memory Context retrieval
 
@@ -244,12 +244,12 @@ Reconsider only when a concrete scenario and evidence justify a separate design 
 ## 7. Brief execution sequence
 
 1. **Reconcile docs and evidence:** bring PR #175 findings onto current main; update architecture, Task matrix, PLAN, README, CHANGE_MAP, and historical labels.
-2. **Settle RW3.4:** complete bounded residual proof; formally accept or record explicit sequencing exception.
-3. **Close RW4-0:** accept D1–D6; complete matching fixtures/query-cost evidence; reconcile terminal deferred and write scopes; freeze receipt and Context contracts.
-4. **Advance RW-5 independently:** implement decay and prove its invariants; deliver the D6 shared timestamp/lock contract before RW4-3 reactivation.
-5. **Authorize by slice:** freeze the relevant proof-matrix subset and authorize only the first slice whose dependencies are met.
-6. **Implement in slices:** RW4-1 persistence → RW4-2 Task boundary → RW4-3 matching/commit → RW4-4 Context.
-7. **Integrate and accept:** RW4-5 with RW-5 races and post-decay retrieval; decide RW4-KU; complete foundation-exit evidence.
+2. **Settle the overall RW3.4 gate:** complete bounded residual proof and formally accept RW3.4, or record an explicit sequencing exception with all seven PARTIAL rows and external integration boundaries retained. This gate applies before any RW-4 production slice.
+3. **Advance RW-5 independently:** design/implement decay and prove its invariants. The shared D6 timestamp/lock/revalidation contract is required before RW4 dormant-Thread reactivation, but does not block unrelated RW-4 slices.
+4. **Authorize and implement ready slices:** freeze and independently review each slice's proof-matrix subset, then obtain explicit authorization for that slice. RW4-1 persistence requires its D3/D5 gate; RW4-2 Task boundary requires D1/D2 and a stable RW4-1 schema. These slices may proceed while umbrella RW4-0 remains open.
+5. **Close umbrella RW4-0:** reconcile and explicitly accept all D1–D6 and cross-cutting contracts, including matching evidence/query cost, receipt/recovery, and Context representation. This is a separate design-closure milestone; it does not retroactively authorize implementation.
+6. **Implement RW4-3 and RW4-4 when their own gates are met:** RW4-3 matching/commit requires D4 and C1; dormant reactivation is a separately gated addition requiring D6. RW4-4 requires its named Context consumer/contracts and an accepted Experiment A result or explicit Operator disposition before representation freeze.
+7. **Integrate and accept:** complete RW4-5 with RW-5 race and post-decay retrieval proofs; decide RW4-KU; complete foundation-exit evidence and explicit acceptance.
 
 ## 8. Readiness checklist
 
