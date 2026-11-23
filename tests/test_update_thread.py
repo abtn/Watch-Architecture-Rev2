@@ -5336,8 +5336,10 @@ def _seed_interrupted_rejected_marker(
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
     rw3_fixture: Fixture,
+    marker_type: str = "update_thread_rejected",
 ) -> tuple[UUID, _FakeUpdateThreadProvider, datetime]:
     _, created = _create_task(session_factory, rw3_fixture)
+    confidence = "low" if marker_type == "update_thread_committed" else "moderate"
     provider = _FakeUpdateThreadProvider(
         json.dumps(
             {
@@ -5347,7 +5349,7 @@ def _seed_interrupted_rejected_marker(
                         "key": "all-invalid",
                         "hypothesis_id": str(uuid4()),
                         "statement": "A domain-invalid proposal.",
-                        "confidence": "moderate",
+                        "confidence": confidence,
                     }
                 ]
             },
@@ -5361,7 +5363,7 @@ def _seed_interrupted_rejected_marker(
         marker = session.scalar(
             select(Event).where(
                 Event.task_id == created.task_id,
-                Event.type == "update_thread_rejected",
+                Event.type == marker_type,
             )
         )
         started = session.scalar(
@@ -5371,8 +5373,13 @@ def _seed_interrupted_rejected_marker(
             )
         )
         assert marker is not None
-        assert marker.payload["accepted_proposal_keys"] == []
-        assert marker.payload["rejected_proposal_keys"] == ["all-invalid"]
+        assert marker.type == marker_type
+        assert marker.payload["accepted_proposal_keys"] == (
+            ["all-invalid"] if marker_type == "update_thread_committed" else []
+        )
+        assert marker.payload["rejected_proposal_keys"] == (
+            [] if marker_type == "update_thread_committed" else ["all-invalid"]
+        )
         assert started is not None
     return created.task_id, provider, started
 
@@ -5438,13 +5445,13 @@ def test_recovery_rejects_duplicate_or_future_terminal_marker(
     mutation: str,
 ) -> None:
     task_id, provider, started = _seed_interrupted_rejected_marker(
-        monkeypatch, session_factory, snapshot_store, rw3_fixture
+        monkeypatch, session_factory, snapshot_store, rw3_fixture, marker_type
     )
     with session_factory.begin() as session:
         marker = session.scalar(
             select(Event).where(
                 Event.task_id == task_id,
-                Event.type == "update_thread_rejected",
+                Event.type == marker_type,
             )
         )
         assert marker is not None
