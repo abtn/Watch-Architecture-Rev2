@@ -2,7 +2,7 @@
 
 This file identifies the active source for each concern. It is an index, not a second specification. Read only the rows relevant to the task.
 
-**RW-3 status pointer:** RW3.1–RW3.3 are accepted and merged. RW3.4 implementation, recovery-finalization correction, and integrated evidence proofs are merged through PR #163. Test-only PR #165 has green exact-head CI and Programmer-local Windows verification on its exact candidate tree (1,286 tests); the candidate ledger is 27 PASS / 8 PARTIAL / 0 OPEN. Formal Operator acceptance remains pending; live provider authorization remains closed. Current status and authorization are governed by [PLAN.md](PLAN.md).
+**RW-3 status pointer:** RW3.1–RW3.3 are accepted and merged. RW3.4 implementation and recovery/evidence proofs are merged through PRs #152, #163, and #165; documentation reconciliation PR #164 is also merged. The 35-row ledger is 27 PASS / 8 PARTIAL / 0 OPEN. Hosted and Programmer-local verification passed on the PR #165 candidate source tree (1,286 tests). Formal Operator acceptance remains pending; live provider authorization remains closed. Current status and authorization are governed by [PLAN.md](PLAN.md).
 
 | Concern | Authoritative source | Boundary |
 |---|---|---|
