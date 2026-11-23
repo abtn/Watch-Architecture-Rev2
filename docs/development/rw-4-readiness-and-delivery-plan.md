@@ -28,7 +28,9 @@ Do not make all of RW-5 a prerequisite to starting RW-4. RW-5 can proceed indepe
 - **Experiment A** informs RW4-4 representation only. Its canonical fixtures are offline artifacts; the experiment has not been executed. It does not block RW4-0 through RW4-3 or RW-5.
 - **RWN-01** is a separate newsroom value-harness package and is not a substitute for matching fixtures or Experiment A.
 
-## 3. Mandatory gates before RW-4 production implementation
+## 3. Staged readiness gates and authorization
+
+RW4-0 is the umbrella design-closure milestone: it closes only when D1–D6 and the cross-cutting contracts are reconciled, evidence-backed, and explicitly accepted. **That does not mean every D1–D6 deliverable blocks every implementation slice.** A slice may begin under its own narrower gate while RW4-0 remains open, provided the overall RW3.4 gate and that slice's prerequisites have been satisfied and the Operator explicitly authorizes that slice.
 
 ### Gate A — RW3.4 formal disposition
 
@@ -45,7 +47,7 @@ Do not build an exhaustive Cartesian recovery matrix or reopen merged production
 
 ### Gate B — RW4-0 decision closure
 
-RW4-0 closes only after D1–D6 are reconciled, evidence-backed, and explicitly accepted. PR #174 and #176 preserve proposals; neither substitutes for this gate.
+RW4-0 closes only after D1–D6 are reconciled, evidence-backed, and explicitly accepted. PR #174 and #176 preserve proposals; neither substitutes for this gate. The staged slice gates below allow bounded implementation to proceed before umbrella RW4-0 closure only where explicitly stated; they do not imply that the remaining decisions are accepted.
 
 #### D1 — Trusted host invocation and authority
 
@@ -55,9 +57,9 @@ No automatic `ingest_source → triage_signal` Task creation, scheduler, or Task
 
 ### D2 — Canonical Task and disposition identity
 
-Freeze one canonical triage Task identity for `(signal_id, team_id)`, with database-enforced uniqueness, atomic Task/request-Event creation, immutable request fingerprint, same-request replay, and conflicting-request behavior. The losing concurrent request loads and validates the winning Task/Event; it does not create a second Event. Requester identity is provenance, not semantic equivalence, as recorded in the PR #174 correction.
+Keep three identities distinct: (a) business identity `(signal_id, team_id)`; (b) one deterministic Task identity derived from canonical Team, Signal, and `triage_signal` operation under a dedicated, versioned identity namespace/domain tag (database-enforced uniqueness, unless that canonical identity is deliberately the Task primary key); and (c) immutable request provenance/fingerprint. Freeze atomic Task/request-Event creation, same-request replay, and conflicting-request behavior. The losing concurrent request loads and validates the winning Task/Event; it does not create a second Event. Requester identity is provenance, not semantic equivalence, as recorded in the PR #174 correction.
 
-Separately freeze SignalDisposition uniqueness for `(signal_id, team_id)`, its canonical persisted identity, Task attribution, reason, timestamp fields, and database constraints. The existing `update_thread` idempotency namespace is precedent for transaction/replay shape only; it must not be reused as triage identity.
+Separately freeze SignalDisposition uniqueness for `(signal_id, team_id)`, its canonical persisted identity, Task attribution, reason, timestamp fields, and database constraints. The immutable Task request must pin Team ID, Signal ID, canonical Signal Snapshot reference and hash, TeamPolicy version, matcher identifier/version, embedding-space key, and chunking version. Same-request replay requires the complete immutable fingerprint to match; a changed pin or other immutable request content conflicts. The existing `update_thread` idempotency namespace is precedent for transaction/replay shape only; it must not be reused as triage identity.
 
 ### D3 — Deferred lifecycle and Task write-scope reconciliation
 
@@ -109,8 +111,8 @@ Decay uses Hypothesis `last_touched_at`; accepted evidence is the only operation
 ### Cross-cutting gate — Assessment receipt and recovery
 
 Freeze the PR #176 C1 contract before code:
-- one canonical assessment receipt per Task, identity derived from Task plus fixed assessment kind/version;
-- database-enforced uniqueness, not application pre-check only;
+- one canonical assessment receipt per Task, identity derived from Task plus fixed assessment kind/version and explicitly **independent of Task attempt** (retries/attempts reuse the same receipt identity);
+- database-enforced uniqueness on the canonical `(task_id, assessment_kind, assessment_version)` identity, not application pre-check only;
 - concurrent losing attempts load and validate the winning receipt;
 - request/schema/assessment fingerprints are validated;
 - receipt and identity commit in a transaction that completes **before** the distinct Kernel business-commit transaction begins;
@@ -144,18 +146,19 @@ At minimum map:
 - no direct Task lifecycle writes, unapproved follow-up Task creation, or dispatcher expansion;
 - disposable-PostgreSQL migration/constraint proofs.
 
-**RW-4 implementation authorization requires all of:**
-1. RW3.4 formal acceptance or explicit sequencing exception.
-2. D1–D6 reconciled and explicitly accepted.
-3. D4 fixture results and query-cost evidence accepted, or matching narrowed to a source-backed deterministic subset that the Operator explicitly accepts.
-4. Deferred lifecycle and Task/write-scope matrix reconciled.
-5. D6/RW-5 timestamp and lock/revalidation contract frozen.
-6. Later Task Context consumer and bounds specified.
-7. Receipt transaction/recovery contract frozen.
-8. Requirement-to-test matrix independently reviewed.
-9. Explicit Operator authorization for the first bounded implementation slice.
+**Overall project gate before any RW-4 production implementation:** RW3.4 formal acceptance or an explicit sequencing exception, with residuals retained.
 
-Passing this gate authorizes only the first named implementation slice, not all of RW-4.
+**Staged slice gates (each also requires a reviewed requirement-to-test subset and explicit Operator authorization):**
+
+| Slice | Required decisions/evidence before that slice |
+|---|---|
+| **RW4-1 — persistence** | D3 terminal-deferred lifecycle and Task/write-scope reconciliation accepted; D5 disposition vocabulary, reference matrix, uniqueness scope, and physical constraints accepted. No matching algorithm, D6 decay contract, receipt, or Context decision is required for this persistence-only slice. |
+| **RW4-2 — Task boundary** | D1 trusted host invocation/authority boundary and D2 versioned canonical Task identity, immutable request pins, DB uniqueness, request Event, concurrency/replay/conflict contract accepted; TaskRuntime envelope and write scope reconciled. RW4-1 schema contract must be stable. |
+| **RW4-3 — matching and commit** | D4 matching/duplicate evidence and measured query cost accepted, or a narrower deterministic subset explicitly accepted; C1 receipt/recovery contract accepted; D6 shared decay/reactivation timestamp, lock order, and revalidation contract accepted before any reactivation implementation. If reactivation is explicitly deferred from the slice, the D6 gate applies before adding it, not to unrelated matching/commit work. |
+| **RW4-4 — Context** | Named later Task consumer, existing assembler, eligible records, provenance, bounds, overflow, snapshot/manifest and replay contract accepted; Experiment A result or explicit Operator disposition recorded before representation freeze. |
+| **RW4-5 — integration** | RW4-1 through RW4-4 accepted as applicable, RW-5 decay implementation available, and integrated race/post-decay retrieval proof completed. |
+
+RW4-0 umbrella closure remains a separate milestone requiring D1–D6 and cross-cutting contracts to be fully reconciled and accepted. A staged implementation does not close RW4-0 by implication.
 
 ## 4. Parallel work that does not block RW4-0..2
 
@@ -244,22 +247,23 @@ Reconsider only when a concrete scenario and evidence justify a separate design 
 2. **Settle RW3.4:** complete bounded residual proof; formally accept or record explicit sequencing exception.
 3. **Close RW4-0:** accept D1–D6; complete matching fixtures/query-cost evidence; reconcile terminal deferred and write scopes; freeze receipt and Context contracts.
 4. **Advance RW-5 independently:** implement decay and prove its invariants; deliver D5 shared timestamp/lock contract before RW4-3 reactivation.
-5. **Authorize RW-4:** freeze the proof matrix and authorize RW4-1 only.
+5. **Authorize by slice:** freeze the relevant proof-matrix subset and authorize only the first slice whose dependencies are met.
 6. **Implement in slices:** RW4-1 persistence → RW4-2 Task boundary → RW4-3 matching/commit → RW4-4 Context.
 7. **Integrate and accept:** RW4-5 with RW-5 races and post-decay retrieval; decide RW4-KU; complete foundation-exit evidence.
 
 ## 8. Readiness checklist
 
 - [ ] RW3.4 accepted, or explicit sequencing exception recorded with residuals retained.
-- [ ] D1 trusted invocation, identity, authorization, replay, and race behavior accepted.
-- [ ] D2 canonical Task identity, disposition uniqueness, and replay contract accepted.
+- [ ] D1 trusted invocation/authority accepted before RW4-2.
+- [ ] D2 versioned canonical Task identity, complete immutable request pins, DB uniqueness, and replay/conflict contract accepted before RW4-2.
 - [ ] D3 terminal-deferred lifecycle and Task/write-scope reconciliation accepted.
-- [ ] D4 matching and duplicate representation supported by independent fixtures and measured query cost.
+- [ ] D4 matching and duplicate representation supported by independent fixtures and measured query cost before RW4-3.
 - [ ] D5 disposition vocabulary/reference matrix and new-Thread/noise exclusions accepted.
-- [ ] D6 shared decay/reactivation timestamp, lock order, and race outcomes accepted.
-- [ ] Assessment receipt transaction/recovery and later Task Context consumer/bounds contracts accepted.
+- [ ] D6 shared decay/reactivation timestamp, lock order, and race outcomes accepted before reactivation and integrated proof.
+- [ ] Assessment receipt transaction/recovery accepted before RW4-3; later Task Context consumer/bounds accepted before RW4-4.
 - [ ] Architecture lifecycle and Task/write-scope matrix reconciled.
 - [ ] Requirement-to-test matrix independently reviewed.
+- [ ] Slice-specific prerequisite checklist and proof-matrix subset reviewed before each implementation PR.
 - [ ] First bounded implementation PR explicitly authorized.
 
 No R8 date is assigned here. R8 remains TBD until RW-0 through RW-5 and the formal foundation exit gate are complete and accepted.
