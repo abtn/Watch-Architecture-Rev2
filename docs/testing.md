@@ -25,7 +25,51 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 
 ## Current RW-3 status
 
-RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery was formally accepted and squash-merged by PR #138 on 2026-11-20. RW3.4 implementation and corrective recovery/evidence integration are merged through PR [#163](https://github.com/abtn/Watch-Architecture-Rev2/pull/163) at `6cbef27cd4fb39b1d1c860de8bf419046f35d5ae`; hosted CI passed on exact PR head `a256a7da8682747581e44cc9381bba4646c822da` (run [#45064469109](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45064469109), 1,274 tests). Formal RW3.4 Operator acceptance remains pending. Live provider authorization remains closed; only deterministic fake providers are permitted.
+RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery was formally accepted and squash-merged by PR #138 on 2026-11-20. RW3.4 implementation and corrective recovery/evidence integration are merged through PR [#163](https://github.com/abtn/Watch-Architecture-Rev2/pull/163) at `6cbef27cd4fb39b1d1c860de8bf419046f35d5ae`; its hosted CI passed 1,274 tests on exact PR head `a256a7da8682747581e44cc9381bba4646c822da`. The supplemental test-only follow-up [PR #165](https://github.com/abtn/Watch-Architecture-Rev2/pull/165) is open and stacked on PR #164; its exact test commit `a3e1d15b4ea4a7954e3b3b01d2852af80351eb45` passed hosted CI run [#45070550411](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45070550411): 1,286 tests, PostgreSQL migration/head checks, Ruff, Mypy, and `git diff --check`. The candidate 35-row ledger is 27 PASS / 8 PARTIAL / 0 OPEN. PRs #164 and #165 are not yet merged. Formal RW3.4 Operator acceptance remains pending. Live provider authorization remains closed; only deterministic fake providers are permitted.
+
+## RW3.4 test-only proof follow-up — PR #165 — 2026-11-23
+
+**Status:** [PR #165](https://github.com/abtn/Watch-Architecture-Rev2/pull/165) is open and stacked on the documentation reconciliation in PR #164. This is test-only: no production code, schema, migration, provider authorization, host composition, or TeamPolicy publisher was changed.
+
+- Exact test commit: `a3e1d15b4ea4a7954e3b3b01d2852af80351eb45`.
+- Hosted exact-head CI: [run #45070550411](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45070550411) completed successfully.
+- Full suite: **1,286 passed, 130 existing Alembic `path_separator` deprecation warnings**.
+- Fresh PostgreSQL migration and current/single-head checks passed; Ruff, Mypy, and `git diff --check` passed.
+
+**Proof additions:**
+
+- `test_empty_proposal_recovery_finalizes_success_no_change` leaves a durable empty receipt/proposal set with finalization suppressed, then recovers it through TaskRuntime. It asserts `success_no_change`, reconciled charge, exactly one receipt and proposal Event, no business writes, one provider call, and a second recovery no-op.
+- The existing `test_interrupted_provider_call_marks_reserved_charge_unknown_before_retry` was strengthened to assert that no receipt, proposal Event, proposal disposition, commit marker, or business row is created when recovery sees a reserved charge without a receipt.
+- `test_committed_marker_context_substitution_fails_closed_without_reapplying` varies the committed marker's Context Event ID, Snapshot reference, and content hash. The in-session recovery seam writes an inconsistency marker and preserves the already-committed business state; the test checks no additional business Event or Hypothesis is applied.
+- `test_update_thread_worker_persists_valid_usage_before_parser_failure` now exercises malformed/duplicate/non-standard JSON, unknown and forged fields, invalid UUID/source reference, unsupported proposal kind, and excessive proposal count through the worker/TaskRuntime integration. It asserts terminal parser failure, reconciled usage, and no proposal disposition or business writes.
+- `test_context_uses_task_pinned_policy_after_policy_advancement` creates a Task pinned to policy v1, appends policy v2, and proves Context assembly still embeds v1 with the expected active Hypothesis/EvidenceLink membership.
+
+**Ledger effect:** `RW-CTX-04`, `RW-PR-01`, and `RW-PF-01` move from PARTIAL to PASS. The candidate 35-row ledger is **27 PASS / 8 PARTIAL / 0 OPEN**. P1 was existing coverage and was strengthened, not duplicated. Recovery/replay cross-product rows remain PARTIAL; host composition/authentication and production TeamPolicy publisher/lock serialization remain unimplemented boundaries. Programmer-local Windows verification passed on the exact PR #165 candidate commit `9f41d9eb87c175b5070f4154f600d1c6bb85a47e`: 1,286 tests, disposable PostgreSQL migration/current/single-head checks to `0019_rw1_world_memory`, Ruff, Mypy (42 source files), and `git diff --check`; cleanup, environment restoration, exact HEAD, and clean worktree checks passed. The exact local run is detailed below. Formal RW3.4 Operator acceptance remains pending; live provider authorization remains closed and tests use deterministic fakes only.
+
+## RW3.4 Programmer-local Windows verification — PR #165 candidate — 2026-11-23
+
+**Exact tested branch:** `rw3-4-pr165-local-verify-20261123`
+
+**Exact tested commit:** `9f41d9eb87c175b5070f4154f600d1c6bb85a47e`
+
+**PR candidate:** [#165](https://github.com/abtn/Watch-Architecture-Rev2/pull/165).
+
+The programmer ran the guarded sync-and-test script after fetching and verifying the exact PR head. The script confirmed the expected branch and SHA, a clean worktree, and an already-up-to-date fast-forward state.
+
+**Results:**
+- `uv sync --locked`: passed.
+- Fresh disposable PostgreSQL container on dynamically assigned loopback port: created successfully.
+- `uv run alembic upgrade head`, `alembic heads`, and `alembic current`: passed; one head, `0019_rw1_world_memory`.
+- `uv run ruff check core tests migrations`: passed.
+- `uv run mypy core`: passed, 42 source files.
+- `git diff c56b553a1761a4730a0921185d84dec304a2225f...HEAD --check`: passed.
+- `uv run pytest -q`: **1,286 passed, 130 warnings** in 371.36s (6:11).
+- Warnings were existing Alembic `path_separator` deprecation warnings in migration tests; no test failed.
+- Disposable PostgreSQL container cleanup succeeded. The script's final checks retained the exact branch and HEAD and a clean worktree; database URL environment variables were restored.
+
+**Hosted exact-head CI:** PR #165 run [#45071241347](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45071241347) completed successfully on the same exact commit.
+
+This is programmer-reported local verification of the PR #165 candidate source tree. It does not constitute formal RW3.4 Operator acceptance or authorize live-provider calls.
 
 ## RW3.4 recovery and evidence integration — PR #163 — 2026-11-23
 
@@ -61,34 +105,9 @@ RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2
 - Strict model parsing rejects representative unsupported proposal shapes and invalid UUID/source references; these are not an exhaustive combinatorial malformed-input matrix.
 - The Context identity tampering parameterization now covers receipt and Context Event Task, Team, Thread, attempt, policy, Snapshot reference, and content-hash substitutions in addition to the proposal/receipt Context identity fields.
 
-**Local verification qualification:** The earlier local result of 1,213 tests remains evidence for its earlier exact implementation SHA only. A subsequent Programmer-local Windows run on the PR #165 candidate tree is recorded below; it is not retroactively attributed to #163.
+**Local verification qualification:** The earlier local result of 1,213 tests remains evidence for its earlier exact implementation SHA only. The subsequent PR #165 candidate-tree local verification is recorded below and is not retroactively attributed to #163.
 
 **Boundary retained:** PR #163 introduces no schema/migration or provider change. The hosted run used deterministic fake providers; no live Cloudflare call occurred. Formal RW3.4 Operator acceptance remains pending. The host composition root and production TeamPolicy publisher remain absent and are not made PASS by fixture-based tests.
-
-## RW3.4 Programmer-local Windows verification — PR #165 candidate — 2026-11-23
-
-**Exact tested branch:** `rw3-4-pr165-local-verify-20261123`
-
-**Exact HEAD:** `9f41d9eb87c175b5070f4154f600d1c6bb85a47e`
-
-**PR:** [#165](https://github.com/abtn/Watch-Architecture-Rev2/pull/165), stacked on documentation PR #164 at its then-current base `c56b553a1761a4730a0921185d84dec304a2225f`.
-
-The programmer ran the guarded sync-and-test script after fetching and verifying the exact PR head. The script confirmed the expected branch and SHA, a clean worktree, and an already-up-to-date fast-forward state.
-
-**Results:**
-- `uv sync --locked`: passed.
-- Fresh disposable PostgreSQL container on a dynamically assigned loopback port: created successfully.
-- `uv run alembic upgrade head`, `alembic heads`, and `alembic current`: passed; one head, `0019_rw1_world_memory`.
-- `uv run ruff check core tests migrations`: passed.
-- `uv run mypy core`: passed, 42 source files.
-- `git diff c56b553a1761a4730a0921185d84dec304a2225f...HEAD --check`: passed.
-- `uv run pytest -q`: **1,286 passed, 130 warnings** in 371.36s (6:11).
-- Warnings were existing Alembic `path_separator` deprecation warnings in migration tests; no test failed.
-- Disposable PostgreSQL container cleanup succeeded. The script's final checks retained the exact branch and HEAD and a clean worktree; database URL environment variables were restored.
-
-**Hosted exact-head CI:** PR #165 run [#45071241347](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45071241347) completed successfully on the same exact HEAD.
-
-This is programmer-reported local verification of the exact PR #165 candidate tree. It does not constitute formal RW3.4 Operator acceptance or authorize live-provider calls.
 
 ## RW3.4 consolidated integration branch — exact-head verification — 2026-11-22
 
