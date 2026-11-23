@@ -107,9 +107,20 @@ Keep RW-4-KU separately named and separately gated. Before authorizing it, confi
 
 ### 4.6 Experiment A and R8
 
-Experiment A's canonical fixtures are an offline research artifact, not an executed experiment. Its execution remains a distinct planned work item. The exact dependency and acceptance relationship among Experiment A, RW-4, RW-5, the foundation exit gate, and R8 is unresolved. Do not silently omit it, treat fixture tests as execution, or make RW-4 completion contingent on it without an explicit dependency decision.
+Experiment A's canonical fixtures are an offline research artifact, not an executed experiment. Its model execution remains a distinct planned work item and requires the separate authorization defined in the [Experiment A execution plan](experiment-a-execution-plan.md).
 
-R8 remains unscheduled. Its start date is TBD until RW-4/RW-5 estimates, Experiment A's relationship, newsroom package readiness, and the foundation exit forecast are evidence-based and accepted.
+The Operator has accepted the following dependency rule:
+
+- Experiment A informs the RW4-4 model-facing evidence-representation decision. Its result should inform the choice before that representation is frozen.
+- RW4-4 may proceed without a usable Experiment A result only if the selected representation, rationale, and residual uncertainty are explicitly recorded as an Operator disposition before the representation is frozen.
+- Experiment A does not block RW4-0 through RW4-3, and does not block RW-5 planning or implementation.
+- Experiment A does not prove multi-Thread retrieval, RW-4 Context safety, RW-5 decay, or the integrated RW-4/RW-5 behavior. Those retain separate proof obligations.
+- Before foundation exit/R8, the Experiment A result must have an accepted report and limitations, or an explicit Operator disposition that the result is inconclusive or not required for the selected RW4-4 representation, with residual uncertainty carried forward.
+- RWN-01 remains a separate newsroom retained-experience experiment.
+
+This dependency decision does not authorize Experiment A provider execution, RW-4/RW-5 implementation, or R8.
+
+R8 remains unscheduled. Its start date is TBD until RW-4/RW-5 estimates, the Experiment A disposition, newsroom package readiness, and the foundation exit forecast are evidence-based and accepted.
 
 ## 5. Proposed implementation sequence
 
