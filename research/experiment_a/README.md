@@ -1,5 +1,7 @@
 # Experiment A canonical fixtures (offline only)
 
+**Execution status:** the fixture package is merged; the model experiment has not been executed. See the [Experiment A execution plan](../../docs/development/experiment-a-execution-plan.md) for the planning protocol and accepted dependency on RW4-4. The plan is not execution authorization; provider execution still requires separate explicit approval.
+
 This package defines the first three canonical sample fixtures and their JSON
 renderers. It is isolated from Watch application code: no core imports, network
 calls, provider calls, database access, or production edits.

@@ -214,7 +214,7 @@ To run the offline checks:
 uv run pytest tests/test_experiment_a_fixtures.py tests/test_experiment_a_json_schemas.py -q
 ```
 
-For implementation details and the exact limits of the current fixture contract, see the [Experiment A README](research/experiment_a/README.md). The [RW implementation plan and proof matrix](docs/development/rw-implementation-plan.md) and [newsroom value harness](docs/development/rw-value-harness.md) describe separate work and evaluation tracks; neither should be confused with completed Experiment A model runs.
+For implementation details and the exact limits of the current fixture contract, see the [Experiment A README](research/experiment_a/README.md) and the [Experiment A execution plan](docs/development/experiment-a-execution-plan.md). The [RW implementation plan and proof matrix](docs/development/rw-implementation-plan.md) and [newsroom value harness](docs/development/rw-value-harness.md) describe separate work and evaluation tracks; neither should be confused with completed Experiment A model runs.
 
 ## Further reading
 
