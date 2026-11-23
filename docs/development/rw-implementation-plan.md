@@ -142,21 +142,19 @@ The Context assembler accepts only a running Task/current attempt, validates the
 
 **RW-3 implementation exit (separate future gate):** the model can affect world memory only through the same application validation and commit path as `operator_update`; all RW-3 acceptance criteria and exact-head verification pass. This exit does not authorize RW-4 or RW-5.
 
-### RW-4 — minimal triage and Domain Knowledge read path
+### RW-4 — Signal triage and world-memory retrieval
 
-**Purpose:** connect ingested Signals to the world model and make accepted active Hypotheses available to later Task Context.
+**Design authority:** [RW-4 design and acceptance plan](rw-4-design-and-acceptance.md). **Status:** documentation/design proposal only; no implementation authorization.
 
-**Proposed scope:**
-- Implement deterministic triage_signal with the smallest matching/dedup behavior required by the frozen newsroom scenario.
-- Keep ambiguous cases explicit as deferred; never silently discard a Signal or infer a Thread without the deterministic rule required by the Task contract.
-- Use explicit same-Team Thread fixtures for RW-2/RW-3 commit-path proofs. The current `operator_update` contract does not create Threads; canonical Thread creation remains in `triage_signal` (RW-4) unless a separate Task contract is explicitly approved. Do not widen `operator_update` scope implicitly.
-- Add a bounded, same-Team read path for active Hypotheses and verified evidence in Task Context.
-- Preserve the accepted Task write-scope matrix and Event (K) limits. Triage does not create or enqueue `update_thread` Tasks. Any future application-authored follow-up operation must be specified and authorized separately, with its own actor, authorization, attribution, request-Event, idempotency, and replay contract.
-- Do not expand domain-pack machinery beyond the frozen scenario's demonstrated need.
+**Purpose:** connect canonical ingested Signals to Team-specific Threads through deterministic triage and expose accepted active Hypotheses plus verified EvidenceLinks to a later Task Context.
 
-**Required proof:** one disposition per (Signal, Team), legal deferred refinement, duplicate/noise/matched/new-thread behavior as included in the frozen scope, dormant Thread reactivation if implemented, same-Team Context filtering, and proof that triage creates no `update_thread` Task or other unapproved follow-up Task.
+**Current source gaps:** SignalDisposition, triage service/commit path, triage Task creator/executor, and Thread matching are absent. Signal embeddings exist only as KnowledgeChunk projections; Thread embeddings and summaries are not implemented. Domain match_heuristics/dedup_policy ownership is unresolved. The current TaskDispatcher remains ingest_source-only. See the design plan's source audit; do not treat specification fields or Event allow-list strings as implementation.
 
-**Exit:** the newsroom scenario can move from source material to a durable Thread/Hypothesis state and retrieve that state in a later Task without bypassing validation.
+**Proposed sequence:** RW4-0 design freeze → RW4-1 accepted SignalDisposition physical design/persistence → RW4-2 triage Task identity and TaskRuntime boundary → RW4-3 deterministic matching/dedup and atomic disposition/Thread commit → RW4-4 bounded same-Team world-memory Context retrieval → separately gated RW4-KU minimum claim-level attribution → integrated verification and explicit acceptance.
+
+**Hard boundaries:** preserve RW-D16 Thread-creation authority; no update_thread Task creation/enqueue; no implicit widening of RW-2/RW-3 write scopes to refine SignalDisposition; no second runtime/scheduler; no speculative Domain or Thread projection subsystem; no silent evidence truncation. RW-5 requires the approved dormant-Thread reactivation path. Experiment A informs RW4-4 only; it does not block RW4-0 through RW4-3 or RW-5. Apply the accepted result-or-Operator-disposition rule before RW4-4 representation freeze and the accepted report-or-explicit-inconclusive/not-required disposition before foundation exit/R8. RW-4 implementation requires its own explicit Operator authorization and must respect the deferred RW3.4 acceptance gate.
+
+**Exit:** the accepted newsroom path reaches a durable Team-scoped Thread/disposition from a canonical Signal and makes only eligible active world-memory records available in a later Task Context, with exact provenance, replay, Team-isolation, and bounds proofs.
 
 ### RW-5 — deterministic decay
 
