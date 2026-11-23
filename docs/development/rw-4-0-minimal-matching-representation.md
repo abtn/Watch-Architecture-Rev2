@@ -308,14 +308,26 @@ Explicitly excluded: entity extraction/alias tables, Thread embeddings, new Doma
 
 No implementation or schema work begins until the representation, narrowed outcomes, fixture results, Task envelope, assessment receipt, D3 reconciliation, D6/RW-5 contract, and RW3.4 sequencing gate are reviewed and explicitly accepted.
 
-## 11. Operator decision requested
+## 11. Selected design options for the next review
 
-Please review these specific choices:
+The Operator selected the following options for this proposal. These selections settle the direction of the design document; they do not freeze a production algorithm or authorize implementation.
 
-1. Accept a Thread's matching representation as the set of its existing Team-scoped Signal-backed EvidenceLinks, with no persisted Thread embedding.
-2. Accept exact-content-hash duplicate detection only; defer near-duplicate detection.
-3. Decide whether same-space Signal chunk similarity is worth evaluating as an experimental candidate heuristic; max-pairwise scoring is not accepted as the final matching rule until outlier/profile-size fixtures establish an acceptable false-positive tolerance.
-4. Narrow first-release outcomes to `matched`, `duplicate`, and terminal `deferred`; disable `new_thread` and automatic `noise`.
-5. Keep D6 reactivation blocked on RW-5's timestamp and lock-order contract.
+### A1 — Hypothesis lifecycle evidence
 
-This document is a design proposal only. It does not accept D4/D5/D6, close RW4-0, or authorize application code, tests, schema, migrations, database operations, provider calls, or scored experiments.
+Use active, superseded, and rejected Hypotheses as the **experimental baseline** for the Thread evidence profile. Preserve lifecycle state and EvidenceLink stance in the assessment evidence, and report matching outcomes separately by lifecycle state. The fixture set must reveal both beneficial historical evidence and false matches caused by stale or rejected evidence. Do not assume the three states are equally reliable. Their eventual production eligibility remains subject to fixture results and explicit Operator acceptance.
+
+### B1 — Maximum pairwise similarity
+
+Retain maximum pairwise chunk cosine similarity as the **experimental baseline heuristic only**. Evaluate high-scoring outlier chunks, Thread profile-size bias, multiple Hypotheses/subtopics, and false-positive/false-negative rates. It is not an accepted final scoring rule. If the evidence does not establish an acceptable false-positive tolerance, reject the heuristic or keep matching deferred.
+
+### C1 — Assessment receipt durability
+
+Use a separately committed assessment-receipt transaction before the distinct Kernel business-commit transaction. Receipt uniqueness is database-enforced and canonical per Task; retries reuse and validate the durable receipt. The implementation must prove recovery across the boundary between those transactions. A shared receipt/business transaction is not an equivalent substitute for this guarantee.
+
+### D1 — Documentation scope
+
+Keep this PR limited to the matching-representation proposal. Reconcile the architecture implementation-state table's stale EvidenceLink description in a separate, small documentation change after this proposal is reviewed. Do not expand this PR to include that unrelated correction.
+
+### Preserved boundaries
+
+These selections do not accept D4/D5/D6, close RW4-0, settle numeric thresholds or scan budgets, resolve D3 or D6/RW-5, satisfy the RW3.4 sequencing gate, or authorize application code, tests, schema, migrations, database operations, provider calls, or scored experiments.
