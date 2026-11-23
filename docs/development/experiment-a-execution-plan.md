@@ -133,14 +133,16 @@ Experiment A is relevant to only one part of RW-4: how evidence and Hypotheses a
 
 It does not test the other RW-4 responsibilities: Team-scoped Signal triage, SignalDisposition, deterministic matching/deduplication, Thread creation/reactivation, Task identity/admission, or retrieval authorization and bounds.
 
-Proposed dependency:
+Accepted dependency rule:
 
 - RW4-0 design reconciliation and RW4-1 through RW4-3 (disposition persistence, Task boundary, deterministic triage/Thread commit) can be designed and, after their own authorization, implemented independently of Experiment A's result.
 - RW4-4 must define its model-facing representation and explicit allowlisted projection. Experiment A's result should inform that choice, but its two single-Thread fixtures do not validate multi-Thread retrieval or the complete RW-4 Context path.
-- Therefore, make Experiment A execution a decision input / conditional gate for freezing the RW-4 evidence-rendering choice, not a blanket prerequisite for all RW-4 work. If RW4-4 proceeds without a usable Experiment A result, the design must record the chosen representation, rationale, and residual uncertainty explicitly.
+- Experiment A is a decision input for freezing the RW4-4 evidence-representation choice, not a blanket prerequisite for all RW-4 work. If RW4-4 proceeds without a usable Experiment A result, the selected representation, rationale, and residual uncertainty must be explicitly recorded as an Operator disposition before the representation is frozen.
+- Experiment A does not block RW-5 planning or implementation. RW-5 remains integrated with RW-4 through the dormant-Thread reactivation and post-decay retrieval proofs; those are independent of Experiment A.
+- Before foundation exit/R8, the Experiment A result must have an accepted report with limitations carried forward, or an explicit Operator disposition that the result is inconclusive/not required for the selected RW4-4 representation, with residual uncertainty recorded.
 - Do not claim that Experiment A has selected the correct RW-4 representation for multi-Thread retrieval. A separate RW-4 Context proof matrix must cover ownership, active status, evidence verification, deterministic ordering, bounds, and replay.
 
-This proposal does not authorize any RW-4 implementation.
+This dependency decision does not authorize Experiment A provider execution or RW-4/RW-5 implementation.
 
 ## 7. Relationship to RW-5
 
