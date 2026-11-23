@@ -5196,4 +5196,3 @@ def test_empty_proposal_recovery_context_substitution_fails_closed(
                 )
             )
         ) == 1
-
