@@ -189,8 +189,6 @@ RWN-01 remains a separate newsroom value-harness experiment. Its 10 matched cont
 2. Approve or replace the proposed five matched pairs per primary fixture (20 outputs total).
 3. Select the one model/provider configuration and approve its use, cost ceiling, and data-handling boundary.
 4. Approve the evaluation rubric and any human-adjudication role.
-5. Decide whether Experiment A's result is required before RW4-4 representation freeze, or whether RW4-4 may proceed with an explicit residual-risk record.
-6. Confirm the proposed foundation-exit disposition rule in §8.
-7. Confirm that protocol preparation may proceed while RW3.4 formal acceptance remains deferred, with no implication that the experiment accepts RW3.4.
+5. Confirm that protocol preparation may proceed while RW3.4 formal acceptance remains deferred, with no implication that the experiment accepts RW3.4.
 
 Until these decisions are recorded, the plan remains a proposal. No model/provider calls, database operations, production changes, migrations, RW-4/RW-5 implementation, or RWN-01 scored runs are authorized by this document.
