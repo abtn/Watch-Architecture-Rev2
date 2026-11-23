@@ -10,6 +10,8 @@ Watch separates temporary intelligence from persistent experience. Models and pe
 
 For a non-technical introduction to the overall idea, see [Watch in plain language](docs/simple-explain.md).
 
+For the current milestone gates and implementation sequence, see [PLAN.md](PLAN.md). The active RW-4 prerequisite checklist and delivery sequence is the [RW-4 Readiness and Delivery Plan](docs/development/rw-4-readiness-and-delivery-plan.md); it is planning documentation, not implementation authorization.
+
 ## What Watch is designed to do
 
 Watch treats an AI-assisted team as a persistent organization rather than a collection of independent conversations.
