@@ -128,6 +128,8 @@ No recency bonus is proposed initially. `Thread.last_updated_at` is not currentl
 
 **Important limitation:** maximum pairwise chunk similarity is intentionally a small candidate heuristic, not proof that two Signals describe the same event. It is also biased toward Threads with larger evidence profiles because they offer more chunk pairs. Its threshold and margin must be calibrated against labeled positive and hard-negative newsroom fixtures that vary Thread profile size. If that evidence does not support acceptable precision, the matcher must remain deferred or the representation must be reconsidered; it must not be made more permissive by intuition.
 
+**Performance limitation:** migration `0010_knowledge_chunk_projection` creates the embedding-space/Signal B-tree index and lexical GIN index, but no pgvector ANN index. The existing vector retrieval orders by cosine distance; the source does not prove its latency at realistic Team evidence volumes. Before D4 closes, measure the eligible evidence-chunk cardinality and inspect the query plan on a disposable fixture database. The first version must have a hard evidence-scan bound and defer when that bound is exceeded. Do not add HNSW/IVFFlat or another index speculatively; require measured need and a separate schema decision.
+
 ### 4.3 New Thread eligibility
 
 Not supported in this first slice.
@@ -234,8 +236,10 @@ At minimum include:
 16. Candidate/evidence scan exceeds its bound (defer; never choose from a truncated set).
 17. Scores exactly at threshold and winner-margin boundaries.
 18. One-candidate case (threshold applies; no runner-up margin).
+19. Small and large Thread evidence profiles (measure max-score size bias and query cost).
+20. Evidence profile at and above the scan bound (above bound defers).
 
-The fixture must label the intended Thread or duplicate identity independently of the matcher. Report false-positive and false-negative cases, not just aggregate accuracy. Numeric threshold, margin, candidate bound, and score precision are not accepted until this evidence is reviewed. If no defensible threshold exists, D4 remains open.
+The fixture must label the intended Thread or duplicate identity independently of the matcher. Report false-positive and false-negative cases, not just aggregate accuracy. Numeric threshold, margin, candidate bound, score precision, and acceptable query cost are not accepted until this evidence is reviewed. If no defensible threshold exists, D4 remains open.
 
 ## 9. Consequences and explicit non-goals
 
