@@ -67,8 +67,10 @@ RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2
 
 ## RW3.4 Programmer-local Windows verification — PR #165 candidate — 2026-11-23
 
-**Exact tested branch:** `rw3-4-pr165-local-verify-20261123`  
-**Exact HEAD:** `9f41d9eb87c175b5070f4154f600d1c6bb85a47e`  
+**Exact tested branch:** `rw3-4-pr165-local-verify-20261123`
+
+**Exact HEAD:** `9f41d9eb87c175b5070f4154f600d1c6bb85a47e`
+
 **PR:** [#165](https://github.com/abtn/Watch-Architecture-Rev2/pull/165), stacked on documentation PR #164 at its then-current base `c56b553a1761a4730a0921185d84dec304a2225f`.
 
 The programmer ran the guarded sync-and-test script after fetching and verifying the exact PR head. The script confirmed the expected branch and SHA, a clean worktree, and an already-up-to-date fast-forward state.
