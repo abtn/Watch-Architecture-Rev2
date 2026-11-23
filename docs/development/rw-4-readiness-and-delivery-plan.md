@@ -169,7 +169,7 @@ RW-5 design and implementation may proceed independently of RW4-0, RW4-1, and RW
 5. Thread dormancy when all active Hypotheses meet the accepted low-confidence/window condition;
 6. boundary-time, repeated-run idempotency, concurrency, and recovery proofs.
 
-The shared D5 timestamp/lock contract must be delivered before RW4 implements reactivation. RW-5 must not invent a second runtime or scheduler.
+The shared D6 timestamp/lock contract must be delivered before RW4 implements reactivation. RW-5 must not invent a second runtime or scheduler.
 
 ### Experiment A
 
@@ -197,7 +197,7 @@ Keep TaskDispatcher unchanged. Do not add automatic post-ingestion enqueueing.
 
 ### RW4-3 — Deterministic triage and commit
 
-Implement only the evidence-approved duplicate/matching rules: bounded candidate/evidence retrieval; same-Team ingestion and Snapshot provenance; deterministic result/reason; canonical durable assessment receipt; separate receipt transaction; Kernel-authorized business commit; atomic disposition and permitted Thread transition/Event; matched-only dormant reactivation under the accepted D5 contract.
+Implement only the evidence-approved duplicate/matching rules: bounded candidate/evidence retrieval; same-Team ingestion and Snapshot provenance; deterministic result/reason; canonical durable assessment receipt; separate receipt transaction; Kernel-authorized business commit; atomic disposition and permitted Thread transition/Event; matched-only dormant reactivation under the accepted D6 contract.
 
 Proof: positive/negative fixtures, threshold/tie/overflow, duplicate and concurrent request replay, receipt recovery across the two transactions, rollback, decay-first/triage-first races, at most one reactivation Event, no Hypothesis/EvidenceLink/ConfidenceChange mutation, no automatic `update_thread` Task.
 
