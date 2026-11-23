@@ -63,7 +63,7 @@ The matcher constructs two bounded, ephemeral read models. They are not ORM enti
 
 The incoming Signal must have a Team association through an `ingest_source` Task Event of type `signal_ingested` or `fetch_no_change`. The Event's Task must belong to the requested Team and identify the same Signal. Missing or inconsistent association fails closed.
 
-The matcher does not call an embedding provider. If the Signal is not indexed, its projection is stale, or the pinned embedding space is unavailable, the result is `deferred` with a precise reason. It must not silently invoke a provider or substitute a different model space.
+The Task creator must find and validate a current Signal projection before admitting the Task, then pin its `embedding_space_key` and `chunking_version` in the immutable request. If no valid projection exists at admission, do not create the Task; return a host-side admission failure so indexing can complete first. If the pinned projection becomes stale or unavailable after Task creation, the Task records `deferred` with a precise reason. The matcher never calls an embedding provider or substitutes a different model space.
 
 ### 3.2 Thread evidence profile
 
@@ -79,7 +79,7 @@ For one Team, derive candidate Threads from:
 - `Thread.domain = Team.domain`
 - `Thread.status IN ('active', 'dormant')`
 
-Include Signal-backed EvidenceLinks across Hypothesis lifecycle states. An accepted EvidenceLink remains part of the Thread's evidence history even if its Hypothesis is later superseded or rejected. Do not include Outcome-backed EvidenceLinks in this Signal-to-Signal matcher.
+Include Signal-backed EvidenceLinks across Hypothesis lifecycle states. A committed EvidenceLink remains part of the Thread's evidence history even if its Hypothesis is later superseded or rejected. Do not include Outcome-backed EvidenceLinks in this Signal-to-Signal matcher.
 
 For every contributing Signal, validate that its Domain matches the Team and that its chunk projection still points to its canonical Snapshot/hash. Only chunks with the incoming Signal's exact `embedding_space_key` and supported `chunking_version` are comparable.
 
@@ -225,7 +225,7 @@ At minimum include:
 8. A dormant Thread with strong matching evidence (candidate only; reactivation remains gated by D6).
 9. A resolved Thread with otherwise strong evidence (excluded).
 10. Thread with no Signal-backed EvidenceLinks (unmatchable; must not cause new Thread creation).
-11. Missing/stale KnowledgeChunk projection.
+11. No valid KnowledgeChunk projection at Task admission (Task creator rejects without creating Task), and a projection that becomes stale after admission (Task defers).
 12. Mismatched embedding-space key or chunking version.
 13. Corrupt or mismatched Snapshot/hash.
 14. Domain mismatch and cross-Team evidence attempts.
