@@ -1,6 +1,8 @@
 # RW4-0 — Bounded triage decision record
 
 **Status:** Operator review requested; proposals below are not accepted decisions.
+
+> **Current reconciliation (2026-11-23):** This record preserves the bounded D1–D6 proposals from PR #174. PR #176 subsequently narrowed the matching proposal: `new_thread` and automatic `noise` are disabled; exact-hash same-Team duplicate and terminal `deferred` are proposed; maximum-pairwise similarity remains experimental only. These later proposals do not close D1–D6 or authorize implementation. Follow the [RW-4 Readiness and Delivery Plan](rw-4-readiness-and-delivery-plan.md) for the consolidated open gates.
 **Scope:** First, narrow `triage_signal` slice only. No implementation is authorized by this record.
 **Baseline:** main after PR #173, merge commit `126063199c919a9576e20f4909781f0776d1ca87` (2026-11-23).
 **Authority:** `PLAN.md` remains authoritative for milestone status and implementation authorization. Existing accepted ADRs, Task contracts, and write-scope matrix remain binding unless explicitly amended.
