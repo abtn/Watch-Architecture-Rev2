@@ -5337,8 +5337,9 @@ def _seed_interrupted_rejected_marker(
     snapshot_store: SnapshotStore,
     rw3_fixture: Fixture,
     marker_type: str = "update_thread_rejected",
-) -> tuple[UUID, _FakeUpdateThreadProvider, datetime]:
+) -> tuple[UUID, _FakeUpdateThreadProvider, datetime, UUID]:
     _, created = _create_task(session_factory, rw3_fixture)
+    hypothesis_id = uuid4()
     confidence = "low" if marker_type == "update_thread_committed" else "moderate"
     provider = _FakeUpdateThreadProvider(
         json.dumps(
@@ -5347,7 +5348,7 @@ def _seed_interrupted_rejected_marker(
                     {
                         "kind": "hypothesis_create",
                         "key": "all-invalid",
-                        "hypothesis_id": str(uuid4()),
+                        "hypothesis_id": str(hypothesis_id),
                         "statement": "A domain-invalid proposal.",
                         "confidence": confidence,
                     }
@@ -5381,7 +5382,7 @@ def _seed_interrupted_rejected_marker(
             [] if marker_type == "update_thread_committed" else ["all-invalid"]
         )
         assert started is not None
-    return created.task_id, provider, started
+    return created.task_id, provider, started, hypothesis_id
 
 
 @pytest.mark.parametrize(
@@ -5400,7 +5401,7 @@ def test_rejected_marker_context_substitution_fails_closed_during_recovery(
     field: str,
     replacement: str,
 ) -> None:
-    task_id, provider, started = _seed_interrupted_rejected_marker(
+    task_id, provider, started, _ = _seed_interrupted_rejected_marker(
         monkeypatch, session_factory, snapshot_store, rw3_fixture
     )
     with session_factory.begin() as session:
@@ -5446,7 +5447,7 @@ def test_recovery_rejects_duplicate_or_future_terminal_marker(
     marker_type: str,
     mutation: str,
 ) -> None:
-    task_id, provider, started = _seed_interrupted_rejected_marker(
+    task_id, provider, started, hypothesis_id = _seed_interrupted_rejected_marker(
         monkeypatch, session_factory, snapshot_store, rw3_fixture, marker_type
     )
     with session_factory.begin() as session:
@@ -5491,3 +5492,12 @@ def test_recovery_rejects_duplicate_or_future_terminal_marker(
                 Outcome.outcome_type == "task_execution",
             )
         ))) == 1
+        assert len(list(session.scalars(
+            select(Hypothesis).where(Hypothesis.id == hypothesis_id)
+        ))) == (1 if marker_type == "update_thread_committed" else 0)
+        assert len(list(session.scalars(
+            select(Event.id).where(
+                Event.task_id == task_id,
+                Event.type == "hypothesis_created",
+            )
+        ))) == (1 if marker_type == "update_thread_committed" else 0)
