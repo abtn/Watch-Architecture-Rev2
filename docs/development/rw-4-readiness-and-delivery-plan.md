@@ -7,11 +7,11 @@
 
 ## 1. Executive decision
 
-RW-4 is **not ready for production implementation**. RW4-0 remains open. PR #176 is a merged design proposal, not acceptance of its experimental matcher or closure of D1–D6. PR #175 remains an open audit branch based on an obsolete main SHA; its findings are reconciled here, so do not treat that branch as the current baseline without rebasing and review.
+No RW-4 slice is currently authorized. RW4-0 remains open. PR #176 is a merged design proposal, not acceptance of its experimental matcher or closure of D1–D6. Readiness is staged: a slice may become eligible while RW4-0 remains open once the overall RW3.4 gate and that slice's own prerequisites, reviewed proof subset, and explicit Operator authorization are satisfied. PR #175 remains an open audit branch based on an obsolete main SHA; its findings are reconciled here, so do not treat that branch as the current baseline without rebasing and review.
 
 The delivery path has four work classes:
 
-1. **Mandatory pre-implementation gates:** RW3.4 disposition, RW4-0 decisions, matching evidence, Task/write-scope reconciliation, shared decay/reactivation contract, Context-consumer definition, and a requirement-to-test matrix.
+1. **Mandatory overall and slice-specific pre-implementation gates:** the overall RW3.4 disposition gate applies to every RW-4 production slice; each slice must also satisfy only its applicable D decisions, evidence, Task/write-scope reconciliation, Context-consumer requirements, and independently reviewed requirement-to-test subset. RW4-0 umbrella closure is a separate design milestone, not a universal prerequisite for every slice.
 2. **Independent parallel work:** RW-5 decay design/implementation and Experiment A preparation within their accepted boundaries.
 3. **RW-4 implementation:** persistence, Task boundary, deterministic triage/commit, and world-memory Context retrieval.
 4. **Foundation exit:** RW4/RW5 integration, RW4-KU disposition, Experiment A disposition/report, RWN-01 readiness, and explicit acceptance before R8.
