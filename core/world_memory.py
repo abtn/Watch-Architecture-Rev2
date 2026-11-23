@@ -1604,9 +1604,40 @@ def validate_model_update_thread_terminal(
             or observation.observed_at != marker.created_at
         ):
             raise WorldMemoryError("update_thread_inconsistent_result_invalid")
-        WorldMemoryCommitService._assert_model_empty_set_has_no_writes(
-            session, task
-        )
+        prior_markers = [
+            item
+            for item in markers
+            if item.type in (MODEL_COMMITTED_EVENT_TYPE, MODEL_REJECTED_EVENT_TYPE)
+        ]
+        if len(prior_markers) > 1:
+            raise WorldMemoryError("update_thread_commit_marker_count_invalid")
+        if prior_markers:
+            # The original commit/rejection marker was written atomically with
+            # its transaction. Its presence proves this attempt crossed the
+            # commit boundary even when the marker's Context tuple is corrupt.
+            # Preserve those durable writes and terminalize the integrity
+            # failure; never require an already-committed set to be empty.
+            prior = prior_markers[0]
+            payload = prior.payload
+            if (
+                prior.task_id != task.id
+                or not isinstance(payload, dict)
+                or payload.get("task_id") != str(task.id)
+                or payload.get("team_id") != str(task.team_id)
+                or type(payload.get("attempt")) is not int
+                or payload.get("attempt") != attempt
+                or payload.get("actor_type") != "model_worker"
+            ):
+                raise WorldMemoryError(
+                    "update_thread_inconsistent_prior_marker_invalid"
+                )
+        else:
+            # Before the commit boundary, an inconsistency may be finalized
+            # only after proving that no business rows or commit dispositions
+            # were written for this Task.
+            WorldMemoryCommitService._assert_model_empty_set_has_no_writes(
+                session, task
+            )
         return
     # A valid inconsistency marker is the terminal evidence for corrupt state;
     # receipt-history validation must not prevent that failure from finalizing.

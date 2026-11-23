@@ -3071,8 +3071,6 @@ def test_committed_marker_context_substitution_fails_closed_without_reapplying(
     field: str,
     replacement: str,
 ) -> None:
-    from core.world_memory import WorldMemoryCommitService
-
     _, created = _create_task(session_factory, rw3_fixture)
     hypothesis_id = uuid4()
     provider = _FakeUpdateThreadProvider(
@@ -3092,9 +3090,20 @@ def test_committed_marker_context_substitution_fails_closed_without_reapplying(
         )
     )
     worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+    # Simulate a process interruption after the business transaction commits
+    # but before TaskRuntime records its terminal Outcome/Event.
     monkeypatch.setattr(worker._runtime, "finalize", lambda observation: None)
     worker.run(created.task_id)
 
+    business_event_types = (
+        "update_thread_proposal_accepted",
+        "update_thread_proposal_rejected",
+        "hypothesis_created",
+        "evidence_link_added",
+        "confidence_changed",
+        "hypothesis_rejected",
+        "hypothesis_superseded",
+    )
     with session_factory.begin() as session:
         task = session.scalar(
             select(Task).where(Task.id == created.task_id).with_for_update()
@@ -3121,15 +3130,6 @@ def test_committed_marker_context_substitution_fails_closed_without_reapplying(
                 )
             )
         )
-        business_event_types = (
-            "update_thread_proposal_accepted",
-            "update_thread_proposal_rejected",
-            "hypothesis_created",
-            "evidence_link_added",
-            "confidence_changed",
-            "hypothesis_rejected",
-            "hypothesis_superseded",
-        )
         before_business_event_ids = set(
             session.scalars(
                 select(Event.id).where(
@@ -3144,25 +3144,38 @@ def test_committed_marker_context_substitution_fails_closed_without_reapplying(
         }
         session.flush()
 
-        observation = WorldMemoryCommitService(
-            session_factory, snapshot_store
-        ).resume_update_thread_in_session(
-            session,
-            task,
-            task.attempt_count,
-            recovery_at=started + timedelta(seconds=61),
-        )
+    recovered = TaskRuntime(
+        session_factory, snapshot_store
+    ).recover_interrupted(now=started + timedelta(seconds=61))
+    assert recovered.failed == (created.task_id,)
+    assert provider.calls == 1
 
-        assert observation is not None
-        assert observation.result_category == "terminal_failure"
-        assert observation.failure_reason == "update_thread_recovery_inconsistent"
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
         inconsistent = session.scalar(
             select(Event).where(
                 Event.task_id == created.task_id,
                 Event.type == "update_thread_recovery_inconsistent",
             )
         )
+        failed = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_failed",
+            )
+        )
+        outcomes = list(
+            session.scalars(
+                select(Outcome).where(
+                    Outcome.recorded_by_task_id == created.task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+        )
+        assert task is not None and task.status == "failed"
         assert inconsistent is not None
+        assert failed is not None
+        assert len(outcomes) == 1
         assert set(
             session.scalars(
                 select(Hypothesis.id).where(
@@ -3179,7 +3192,34 @@ def test_committed_marker_context_substitution_fails_closed_without_reapplying(
             )
         ) == before_business_event_ids
 
+    repeated = TaskRuntime(
+        session_factory, snapshot_store
+    ).recover_interrupted(now=started + timedelta(seconds=122))
+    assert repeated.failed == ()
+    assert repeated.completed == ()
+    assert repeated.retried == ()
     assert provider.calls == 1
+    with session_factory() as session:
+        assert len(
+            list(
+                session.scalars(
+                    select(Outcome).where(
+                        Outcome.recorded_by_task_id == created.task_id,
+                        Outcome.outcome_type == "task_execution",
+                    )
+                )
+            )
+        ) == 1
+        assert len(
+            list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == created.task_id,
+                        Event.type == "task_failed",
+                    )
+                )
+            )
+        ) == 1
 
 
 @pytest.mark.parametrize(
