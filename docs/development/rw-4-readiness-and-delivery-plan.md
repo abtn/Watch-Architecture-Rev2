@@ -131,7 +131,7 @@ Do not broaden RW-3's target-Thread Context or create a parallel Context subsyst
 
 ### Gate C — Requirement-to-test matrix and implementation authorization
 
-Before any production RW-4 code, freeze a requirement-to-test matrix with exact obligations and, once implementation begins, exact test node IDs and tested SHAs.
+Before each production RW-4 slice, freeze and independently review that slice's requirement-to-test subset. Maintain the complete RW-4 matrix as the umbrella proof plan; exact test node IDs and tested SHAs are added as each slice is implemented. The complete integration matrix must be frozen before RW4-5.
 
 At minimum map:
 - host authority, Team grant, canonical Task identity, race, replay, conflict;
@@ -246,7 +246,7 @@ Reconsider only when a concrete scenario and evidence justify a separate design 
 1. **Reconcile docs and evidence:** bring PR #175 findings onto current main; update architecture, Task matrix, PLAN, README, CHANGE_MAP, and historical labels.
 2. **Settle RW3.4:** complete bounded residual proof; formally accept or record explicit sequencing exception.
 3. **Close RW4-0:** accept D1–D6; complete matching fixtures/query-cost evidence; reconcile terminal deferred and write scopes; freeze receipt and Context contracts.
-4. **Advance RW-5 independently:** implement decay and prove its invariants; deliver D5 shared timestamp/lock contract before RW4-3 reactivation.
+4. **Advance RW-5 independently:** implement decay and prove its invariants; deliver the D6 shared timestamp/lock contract before RW4-3 reactivation.
 5. **Authorize by slice:** freeze the relevant proof-matrix subset and authorize only the first slice whose dependencies are met.
 6. **Implement in slices:** RW4-1 persistence → RW4-2 Task boundary → RW4-3 matching/commit → RW4-4 Context.
 7. **Integrate and accept:** RW4-5 with RW-5 races and post-decay retrieval; decide RW4-KU; complete foundation-exit evidence.
