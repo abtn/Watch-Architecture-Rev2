@@ -236,7 +236,7 @@ PR #163 corrected recovery-finalization ordering and added direct recovery, Cont
 
 The #152 bounded process-wide resolver implementation addresses the DNS-resolver concern. PR #163 adds the recovery-finalization ordering correction and closes five proof rows; merged PR #165 adds test-only evidence that closes three more (`RW-CTX-04`, `RW-PR-01`, and `RW-PF-01`). PR #167 strengthens committed-marker recovery finalization without changing the ledger totals. These changes do not authorize live-provider use: the deterministic fake-provider gate remains mandatory. The repository still has no production host composition root or TeamPolicy publisher, so end-to-end host authentication and production publisher integration remain unproven.
 
-**Disposition:** the implementation and integrated verification evidence are merged through #152 and #163. Formal RW3.4 Operator acceptance remains pending and must be recorded explicitly before the milestone is marked complete. Green CI or merge alone is not acceptance.
+**Disposition:** The implementation and integrated verification evidence are merged through #152, #163, #165, and #167. The exact #167 head passed hosted and Programmer-local verification; the evidence ledger remains 27 PASS / 8 PARTIAL / 0 OPEN. Formal RW3.4 Operator acceptance remains pending and must be recorded explicitly before the milestone is marked complete. Green CI or merge alone is not acceptance.
 
 ## 4.1 RW-1 physical design preparation
 
