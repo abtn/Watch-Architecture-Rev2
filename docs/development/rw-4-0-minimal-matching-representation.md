@@ -82,7 +82,7 @@ For one Team, derive candidate Threads from:
 
 Include supporting/challenging Signal-backed EvidenceLinks across Hypothesis lifecycle states. A committed EvidenceLink remains part of the Thread's evidence history even if its Hypothesis is later superseded or rejected. Exclude `mentions` links from the first profile because a mention alone is too weak to establish Thread identity. Do not include Outcome-backed EvidenceLinks in this Signal-to-Signal matcher.
 
-For every contributing Signal, validate that its Domain matches the Team and that its chunk projection still points to its canonical Snapshot/hash. In addition, validate the provenance recorded on each contributing EvidenceLink:
+For every contributing Signal, validate a same-Team intake association, not just Domain equality: there must be an `ingest_source` Task Event of type `signal_ingested` or `fetch_no_change` whose Task belongs to this exact Team and whose payload identifies this exact Signal and its canonical Snapshot reference/content hash. This matters because `Signal` itself is not Team-owned and the current EvidenceLink foreign key to Signal does not enforce that the EvidenceLink's Team matches the Team that ingested the Signal. A matching Domain is insufficient: reject cross-Team evidence even when both Teams share the same Domain. Also validate that the Signal's chunk projection still points to its canonical Snapshot/hash. In addition, validate the provenance recorded on each contributing EvidenceLink:
 
 - If `snapshot_ref` and `snapshot_hash` are both present, they must exactly match the referenced Signal's canonical Snapshot reference and content hash.
 - If both are absent, the EvidenceLink is not eligible for semantic matching in this first slice. Do not silently substitute the Signal's current Snapshot as though the EvidenceLink had cited it.
@@ -218,7 +218,7 @@ The existing Kernel commit boundary remains responsible for atomically committin
 At commit, validate again:
 
 - Task and immutable request fingerprint;
-- Signal/Snapshot/hash and Team association;
+- Signal/Snapshot/hash and same-Team ingestion Event association for the incoming Signal and every contributing evidence Signal;
 - for every selected evidence link, EvidenceLink snapshot pair exactly matches its canonical Signal Snapshot/hash; absent or mismatched provenance is not silently repaired;
 - Team active status and exact Domain equality;
 - disposition uniqueness for `(signal_id, team_id)`;
@@ -249,8 +249,8 @@ At minimum include:
 11. Thread with no eligible Signal-backed EvidenceLinks (unmatchable; must not cause new Thread creation).
 12. No valid KnowledgeChunk projection at Task admission (Task creator rejects without creating Task), and a projection that becomes stale after admission (Task defers).
 13. Mismatched embedding-space key or chunking version.
-14. Corrupt or mismatched Snapshot/hash.
-15. Domain mismatch and cross-Team evidence attempts.
+14. Corrupt or mismatched Signal Snapshot/hash.
+15. Domain mismatch and cross-Team evidence attempts, including an EvidenceLink owned by Team A that references a Signal ingested only by Team B with the same Domain.
 16. Candidate/evidence scan exceeds its bound (defer; never choose from a truncated set).
 17. Scores exactly at threshold and winner-margin boundaries.
 18. One-candidate case (threshold applies; no runner-up margin).
@@ -259,7 +259,7 @@ At minimum include:
 21. One high-scoring outlier chunk among otherwise unrelated incoming chunks (must expose whether max-pairwise scoring produces a false match).
 22. Several distinct Hypotheses/subtopics represented in one Thread, with evidence spread across different numbers of Signals.
 23. The same relevant evidence distributed across differently sized profiles, to measure profile-size bias.
-24. EvidenceLinks whose snapshot pair is absent, partially present, disagrees with the canonical Signal Snapshot, or matches it exactly; only the explicitly eligible case may contribute to matching.
+24. EvidenceLinks whose snapshot pair is absent, disagrees with the canonical Signal Snapshot, or matches it exactly; only the exact-match case may contribute. Separately verify that the database rejects a partially populated snapshot pair.
 25. Supporting and challenging links attached to active, superseded, and rejected Hypotheses, with independent labels to determine whether historical lifecycle states improve or degrade Thread identity.
 
 The fixture must label the intended Thread or duplicate identity independently of the matcher. Report false-positive and false-negative cases, not just aggregate accuracy. Report the max-score outlier cases and stratify results by evidence-profile size and Hypothesis lifecycle state. Numeric threshold, margin, candidate bound, score precision, and acceptable query cost are not accepted until this evidence is reviewed. If no defensible threshold exists, D4 remains open.
@@ -294,14 +294,14 @@ Explicitly excluded: entity extraction/alias tables, Thread embeddings, new Doma
 |---|---|---|
 | D4 representation | Reuse EvidenceLink-derived Thread evidence profile + Signal KnowledgeChunk vectors | Operator acceptance of this representation |
 | D4 exact dedup | Team-scoped exact content hash only | Confirm canonical Team-association Event query and fixture proof |
-| D4 semantic match | Max pairwise chunk cosine score; unique threshold + margin | Labeled fixture, numeric calibration, bounded candidate query |
+| D4 semantic match | Max pairwise chunk cosine score is an experimental candidate heuristic only | Labeled fixture, outlier/profile-size evaluation, numeric calibration, bounded candidate query, and Operator acceptance |
 | D4 near duplicate | Exclude from first slice | Explicitly accept the reduced coverage |
 | D5 new Thread | Disable | Separate title-source/eligibility proposal if later required |
 | D5 noise | Disable automatic classification | Separate deterministic rule if later required |
 | D3 deferred | Terminal | Reconcile architecture lifecycle and Task write-scope matrix |
 | D6 reactivation | Matching may identify dormant Thread only | RW-5 timestamp and shared lock-order decision |
 | Task/recovery | Pin matcher + projection identity; persist assessment receipt | Exact Event schema, canonical one-per-Task identity, database uniqueness, transaction boundary, bounds, and recovery tests |
-| Evidence provenance | Require EvidenceLink snapshot pair to match canonical Signal | Fixtures and explicit handling of absent/mismatched pairs |
+| Evidence provenance | Require same-Team Signal intake association and matching EvidenceLink snapshot pair | Cross-Team same-Domain and absent/mismatched-pair fixtures |
 | Scoring heuristic | Max pairwise score remains experimental only | Outlier, profile-size, lifecycle-state fixtures and accepted false-positive tolerance |
 | Query bounds | Bound Thread, Signal, and chunk scans separately | Bounded overflow detection, query plan, and measured cost |
 | RW3.4 gate | Formal acceptance still deferred | Acceptance or explicit sequencing exception before RW4 implementation |
