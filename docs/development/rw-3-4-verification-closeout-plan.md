@@ -1,6 +1,6 @@
 # RW3.4 — Integrated Verification and Closeout Plan
 
-**Status:** RW3.4 implementation, deadline/cost behavior, recovery corrections, and proof follow-ups are merged through PR #169. PR #169 merge commit: `2190c6362b4884286d55d1d24d94c3e176969d72`; exact tested head: `02154e8a7070981ebd39efc7eb1fb3e40e18cbf6`. The 35-row ledger is **28 PASS / 7 PARTIAL / 0 OPEN** after closing `RW-WK-01` by bounded source audit. Formal RW3.4 Operator acceptance remains pending; live provider authorization remains closed.
+**Status:** RW3.4 implementation, deadline/cost behavior, recovery corrections, and proof follow-ups are merged through PR #169; documentation rebaseline PR #170 is merged. The 35-row ledger is **28 PASS / 7 PARTIAL / 0 OPEN** after closing `RW-WK-01` by bounded source audit. **Operator disposition (2026-11-23): formal acceptance DEFERRED.** Implementation-complete does not mean milestone-accepted. The seven PARTIAL rows remain outstanding; live provider authorization remains closed.
 
 **Planning baseline:** `main` at `2190c6362b4884286d55d1d24d94c3e176969d72` (2026-11-23), after merged PR #169.
 
@@ -339,7 +339,7 @@ This documentation reconciliation records the merged #152 implementation stack, 
 - [x] Hosted CI passes on the exact tested #167 PR head `d2139c41ec3450f7198e61bdd1169edbeff13e01`; source SHA and merge commit are recorded.
 - [x] Independent review of the #163 integrated head and #167 recovery correction found no unresolved blocking correctness issue.
 - [x] `PLAN.md`, proof matrix, `docs/testing.md`, Task/architecture docs, and CHANGE_MAP agree on the merged implementation baseline, exact #167 evidence, six Context-tuple plus four duplicate/future receipt/proposal cases, 28 PASS / 7 PARTIAL / 0 OPEN ledger, and pending formal Operator acceptance.
-- [ ] Explicit Operator acceptance is recorded before RW3.4 is marked complete.
+- [ ] Explicit Operator acceptance is recorded before RW3.4 is marked complete. Formal acceptance is explicitly deferred by the 2026-11-23 Operator disposition in §10.
 
 ## 9. Non-authorizations
 
@@ -352,3 +352,20 @@ Completing this plan or merging its documentation-only PR does not authorize:
 - RW-4, RW-5, R7-C, RW-4-KU, R8, or scored newsroom execution.
 
 Those require their own scope, review, and explicit authorization.
+
+
+## 10. Formal Operator disposition — 2026-11-23
+
+**Disposition: DEFER FORMAL ACCEPTANCE.** The Operator selected the defer option after review of the seven remaining PARTIAL proof rows. RW3.4 remains implementation-complete and merged; it is not formally accepted or closed. The 35-row ledger remains **28 PASS / 7 PARTIAL / 0 OPEN**. PASS/PARTIAL/OPEN are evidence classifications, not a substitute for the milestone gate.
+
+The bounded pre-acceptance work is:
+
+1. Resolve the remaining Context identity tuple/recovery-state coverage gap, or present it explicitly for a documented residual-risk decision.
+2. Add targeted duplicate/future commit-marker and rejection-marker tests only where existing integrity guards require them; do not create an exhaustive Cartesian matrix.
+3. Resolve whether mismatched in-session attempts have a supported production path or are excluded by the runtime contract, and document the evidence.
+
+RW-REQ-01 and RW-POL-01 remain external integration boundaries: production host authentication composition and production TeamPolicy publishing/lock serialization are absent. They are not to be fabricated as part of RW3.4. RW-WK-01 is PASS only for the bounded source audit of the inspected tree. No production-code change is authorized by this disposition; any demonstrated defect or additional implementation requires a separately scoped proposal and explicit authorization.
+
+The #169 Programmer-local run passed Ruff, Mypy, 163 focused tests, 1,296 full-suite tests, and both independent disposable PostgreSQL phases on exact head 02154e8a7070981ebd39efc7eb1fb3e40e18cbf6. Its final environment-restoration assertion failed, and the original variable states were not captured; exact restoration is therefore not claimed. Do not rerun the full suite solely to revisit this script defect.
+
+Formal acceptance may be requested only after the bounded work above is completed or the remaining technical residuals are explicitly presented for Operator disposition. Live provider authorization remains closed. This disposition does not authorize RW-4, RW-5, R7-C, R8, persistent-database access, or scored newsroom execution.
