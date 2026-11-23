@@ -5458,15 +5458,17 @@ def test_recovery_rejects_duplicate_or_future_terminal_marker(
         payload = dict(marker.payload)
         if mutation == "future_attempt":
             payload["attempt"] = 2
-        session.add(
-            Event(
-                id=uuid4(),
-                task_id=task_id,
-                type=marker_type,
-                payload=payload,
-                created_at=datetime.now(timezone.utc),
+            marker.payload = payload
+        else:
+            session.add(
+                Event(
+                    id=uuid4(),
+                    task_id=task_id,
+                    type=marker_type,
+                    payload=payload,
+                    created_at=datetime.now(timezone.utc),
+                )
             )
-        )
 
     runtime = TaskRuntime(session_factory, snapshot_store)
     recovered = runtime.recover_interrupted(now=started + timedelta(seconds=61))
