@@ -22,7 +22,7 @@ The following are existing constraints, not new decisions in this document:
 - RW-D21: preserve the shared EvidenceLink model and existing Evaluation/distillation behavior. Do not add automatic Hypothesis-to-Evaluation linkage or new distillation behavior without a demonstrated scenario requirement.
 - RW-D134: every implementation slice needs an explicit requirement-to-test proof matrix, exact-head verification, and disposable-PostgreSQL evidence where applicable.
 - RW-D135: documentation closeout and decision approval do not authorize implementation or scored execution.
-- RW-5 depends on the RW-4 triage path to reactivate a dormant Thread when a Signal is deterministically matched. RW-4 must therefore define and prove the reactivation transition; the exact matching conditions must be frozen before coding.
+- RW-5's integrated behavior depends on the RW-4 triage path to reactivate a dormant Thread when a Signal is deterministically matched. RW-4 must therefore define and prove the reactivation transition; the exact matching conditions must be frozen before coding. This RW-4/RW-5 integration dependency is separate from Experiment A: RW-5 has no Experiment A dependency and can be planned/implemented independently.
 - The RW-3 update_thread Task creator remains the host-authorized Operator operation. Triage must not create or enqueue update_thread Tasks. Any future application-authored follow-up creator requires a separate actor, authorization, attribution, request-Event, idempotency, and replay design and explicit approval.
 - The existing TaskRuntime remains the sole Task lifecycle authority. The current TaskDispatcher remains limited to configured-source ingest_source work unless a separate dispatcher change is designed and authorized.
 
