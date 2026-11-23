@@ -114,6 +114,27 @@ For scripts using cleanup, keep the complete `try/catch/finally` structure in th
 7. **Avoid continuation backticks.** Prefer argument arrays or splatting. A trailing PowerShell backtick is easy to lose in a copied terminal block and can silently change command parsing.
 
 
+## Test phases must use independent fresh databases — mandatory
+
+Do not run a focused database-backed test selection and then run the full test suite against the same database unless the test fixtures explicitly guarantee complete isolation and reset all state used by the full suite.
+
+A test run can leave valid rows behind even when its own tests pass. Fixtures may clean only records created by their own unique identifiers, while other tests may assert global table counts or assume an initially empty database. Reusing the focused-test database can therefore produce misleading failures in an unrelated test module. For example, a focused run can leave one `Signal` row; ingestion tests that assert the global `Signal` count then fail by exactly one. That is test-environment contamination, not evidence by itself of an application regression.
+
+Required procedure for a verification script that runs both focused tests and the full suite:
+
+1. Create a fresh disposable PostgreSQL container/database for the focused test phase.
+2. Apply migrations and run the focused tests against that database.
+3. Stop and remove only that phase's exact disposable container.
+4. Create a second, independently fresh disposable PostgreSQL container/database for the full-suite phase.
+5. Apply migrations again and run the full suite against that clean database.
+6. Report the focused and full-suite results separately. Do not describe a full-suite run against a database previously used by focused tests as a clean full-suite result.
+
+Running the full suite first on a fresh database and focused tests later on a separate fresh database is also valid. The essential requirement is database independence, not test ordering.
+
+Do not solve contamination by weakening global-count assertions, adding broad table truncation, or silently deleting rows between phases. Preserve the tests' isolation contract and make the database boundary explicit. If a test suite is intentionally designed to share a database, document and verify that contract before relying on it.
+
+A database-backed test phase must have a clear database identity in its logs (container name and dynamically assigned loopback port are sufficient). The script must never reuse a connection URL from a previous phase.
+
 ## Keep local and remote Git references distinct
 
 A local verification branch is not necessarily a branch on GitHub. Never derive a remote ref from the current local branch name unless the task explicitly establishes that they are identical.
@@ -331,6 +352,7 @@ If the expected database state is a single head, separately parse `alembic heads
 - Indented here-string terminators.
 - Cleanup that can match containers or volumes not created by the current script.
 - A success message that can run after a failed native command.
+- Reusing one disposable database for focused tests and the full suite; earlier tests may leave rows that invalidate global-count assumptions in later tests. Give each independent test phase a fresh database.
 
 ## Pre-send checklist
 
@@ -350,6 +372,7 @@ Before presenting a generated script, verify each item:
 - [ ] The complete script is parser-checked and invoked as a whole, not executed section-by-section.
 - [ ] No destructive Git command is used unless explicitly requested and authorized.
 - [ ] Database-backed checks use a disposable database and narrowly scoped cleanup.
+- [ ] Focused tests and the full suite use separate fresh disposable databases; migrations are applied independently and no test phase inherits rows from another.
 - [ ] Repository-root comparisons normalize slash direction and use a case-insensitive Windows comparison.
 - [ ] Git fetch refspecs use safe string construction without backtick escaping.
 - [ ] GitHub HTTPS origin validation parses the URL and validates scheme, host, and normalized repository path, accepting optional `.git` and trailing slash.
