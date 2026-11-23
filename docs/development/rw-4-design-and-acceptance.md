@@ -1,7 +1,7 @@
 # RW-4 — Signal Triage and World-Memory Retrieval Design
 
 **Status:** documentation/design proposal only; RW-4 implementation is not authorized.
-**Planning baseline:** main at 792f7fcecf75e285aad3d15eb8ba17d67cef2569 (2026-11-23).
+**Planning baseline:** main after PR #172, merge commit `5e8a8bfa1dd0bbda37d0eab77c301b5713f2bffa` (2026-11-23).
 **Authority:** PLAN.md owns current milestone status and authorization. Accepted RW decisions and the Task/write-scope matrix remain binding.
 
 ## 1. Purpose
@@ -22,7 +22,7 @@ The following are existing constraints, not new decisions in this document:
 - RW-D21: preserve the shared EvidenceLink model and existing Evaluation/distillation behavior. Do not add automatic Hypothesis-to-Evaluation linkage or new distillation behavior without a demonstrated scenario requirement.
 - RW-D134: every implementation slice needs an explicit requirement-to-test proof matrix, exact-head verification, and disposable-PostgreSQL evidence where applicable.
 - RW-D135: documentation closeout and decision approval do not authorize implementation or scored execution.
-- RW-5's integrated behavior depends on the RW-4 triage path to reactivate a dormant Thread when a Signal is deterministically matched. RW-4 must therefore define and prove the reactivation transition; the exact matching conditions must be frozen before coding. This RW-4/RW-5 integration dependency is separate from Experiment A: RW-5 has no Experiment A dependency and can be planned/implemented independently.
+- RW-5 decay is an independently implementable slice: its design, implementation, and unit-level decay proofs do not wait for RW-4 triage or Experiment A. The integration boundary is narrower: the combined RW-4/RW-5 proof must exercise a deterministically matched Signal reactivating the selected dormant Thread and then verify decay behavior and retrieval against the resulting post-decay state. RW-4 must define and prove the reactivation transition and freeze its matching conditions before RW-4 coding; that freeze is not a prerequisite for independent RW-5 implementation. Experiment A informs RW4-4 representation only and does not block RW-5 planning or implementation.
 - The RW-3 update_thread Task creator remains the host-authorized Operator operation. Triage must not create or enqueue update_thread Tasks. Any future application-authored follow-up creator requires a separate actor, authorization, attribution, request-Event, idempotency, and replay design and explicit approval.
 - The existing TaskRuntime remains the sole Task lifecycle authority. The current TaskDispatcher remains limited to configured-source ingest_source work unless a separate dispatcher change is designed and authorized.
 
