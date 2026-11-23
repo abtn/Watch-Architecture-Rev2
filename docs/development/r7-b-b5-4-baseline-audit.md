@@ -1,3 +1,5 @@
+> **HISTORICAL AUDIT RECORD — B5.4.0 was a completed read-only baseline audit for the subsequent B5.4 implementation.** Its pre-implementation wording is historical; B5.4 and B6 are now complete. Preserve this file as evidence, not as a current gate. Current status is governed by `PLAN.md`.
+
 # R7-B B5.4.0 — Baseline and Coverage Audit
 
 **Audit date:** 2026-11-14
