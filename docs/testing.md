@@ -29,7 +29,7 @@ RW3.2 was accepted and merged
 
 ## RW3.4 test-only proof follow-up — PR #165 — 2026-11-23
 
-**Status:** [PR #165](https://github.com/abtn/Watch-Architecture-Rev2/pull/165) is open and stacked on the documentation reconciliation in PR #164. This is test-only: no production code, schema, migration, provider authorization, host composition, or TeamPolicy publisher was changed.
+**Status:** [PR #165](https://github.com/abtn/Watch-Architecture-Rev2/pull/165) merged to `main` at `864ff905f4fd70f36eea9d0505dfa1d9b61e35fc`, following documentation reconciliation PR #164 at `1165897898cad9ab4f208c5e430ccbb88f1c558a`. The rebased PR head `0837989d97fb66c7118d2269dfcb0f0428aacce8` passed hosted CI run [#45137574333](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45137574333). This was test-only: no production code, schema, migration, provider authorization, host composition, or TeamPolicy publisher was changed.
 
 - Exact test commit: `a3e1d15b4ea4a7954e3b3b01d2852af80351eb45`.
 - Hosted exact-head CI: [run #45070550411](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45070550411) completed successfully.
