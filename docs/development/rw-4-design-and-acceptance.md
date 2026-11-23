@@ -1,7 +1,7 @@
 # RW-4 — Signal Triage and World-Memory Retrieval Design
 
 **Status:** documentation/design proposal only; RW-4 implementation is not authorized.
-**Planning baseline:** main after PR #172, merge commit `5e8a8bfa1dd0bbda37d0eab77c301b5713f2bffa` (2026-11-23).
+**Planning baseline:** main after PR #173, merge commit `126063199c919a9576e20f4909781f0776d1ca87` (2026-11-23).
 **Authority:** PLAN.md owns current milestone status and authorization. Accepted RW decisions and the Task/write-scope matrix remain binding.
 
 ## 1. Purpose
@@ -187,6 +187,8 @@ RW-4 may be requested for acceptance only when:
 This design PR does not authorize RW-4 implementation, a migration, a test-only follow-up, dispatcher expansion, live provider calls, persistent-database access, R7-C as a separate milestone, scored RWN-01 execution, RW-5, or R8. Those remain separately gated.
 
 ## 8. Operator decisions still required
+
+The bounded first-slice proposals are collected in [RW4-0 bounded decision record](rw-4-0-bounded-decision-record.md). That record is pending Operator review and does not authorize implementation.
 
 Before RW4-0 can close, review and decide:
 
