@@ -522,7 +522,7 @@ Transitions not listed are forbidden. Every transition emits an Event (INV-13).
 
 ### SignalDisposition
 
-> **Legacy target lifecycle — not an accepted RW-4 contract.** This table predates PR #176 and conflicts with its proposed terminal-deferred first slice. D2/D3 remain open; neither this table nor PR #176 is implementation authority. Reconcile this table and the Task matrix together after explicit Operator acceptance.
+> **Legacy target lifecycle — not an accepted RW-4 contract.** This table predates PR #176 and conflicts with its proposed terminal-deferred first slice. D3 remains open; neither this table nor PR #176 is implementation authority. Reconcile this table and the Task matrix together after explicit Operator acceptance.
 
 | From | Event | To |
 |---|---|---|
