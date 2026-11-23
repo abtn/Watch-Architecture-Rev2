@@ -83,9 +83,9 @@ Humans enter the loop through three channels, all of which pass the same validat
 
 These sketches are narrative. **Migrations are the authoritative schema**; when this section and a migration disagree, the migration wins and this section is a bug.
 
-### RW implementation state — post-B6 source audit
+### RW implementation state — historical post-B6 source audit
 
-The following markers describe source at post-B6 `main` commit **91169b4931e48cb7b2803ed2066ec365f563a0ea**. B6 PR #124 changed only `tests/test_experience_distiller.py` and `tests/test_learning_history.py`; the subsequent B6 closeout PR #125 is documentation-only. This is a static source audit, not runtime verification: no tests, Alembic commands, migrations, or provider calls were executed for this audit. The migration files present at this commit end at `0018_r7b_lifecycle_review_date`; this is not a runtime `alembic heads/current` result.
+> **Historical baseline only:** this table describes the static source audit at post-B6 commit `91169b4931e48cb7b2803ed2066ec365f563a0ea`. It predates RW-1 through RW-3 implementation and must not be read as current implementation status. Current milestone status is in `PLAN.md`; the current RW-4 readiness baseline is [the RW-4 readiness and delivery plan](development/rw-4-readiness-and-delivery-plan.md). The original audit did not run tests or Alembic commands.
 
 | Entity / flow | Implementation state | Evidence boundary |
 |---|---|---|
@@ -93,7 +93,7 @@ The following markers describe source at post-B6 `main` commit **91169b4931e48cb
 | SignalDisposition | **Specified; not implemented** | No ORM model, triage service, or commit path in the audited source tree. |
 | Thread | **Specified; not implemented** | No ORM model, repository/service, or worker in the audited source tree. |
 | Hypothesis | **Specified; not implemented** | No ORM model in the audited baseline. |
-| EvidenceLink | **Partial** | ORM is Evaluation-subject only and supports Signal/Outcome sources. The current model constrains subjects to Evaluation and sources to Signal/Outcome; Hypothesis subjects and Artifact/Consultation sources required by ADR-0007/ADR-0020 are absent. |
+| EvidenceLink | **Partial — historical audit** | This audit's Evaluation-only description is obsolete. RW-1 added typed Evaluation/Hypothesis subject references and Task provenance; Signal/Outcome are usable sources, while Artifact/Consultation remain staged until their canonical entities and validation paths exist. See `docs/tasks.md` and current migrations/models. |
 | ConfidenceChange | **Specified; not implemented** | No ORM model in the audited baseline. |
 | Artifact | **Specified; not implemented** | No ORM entity or rendering worker/path in the audited source tree. |
 | Consultation | **Specified; not implemented** | Accepted ADR/specification exists; no ORM entity or request/answer Task path in the audited source tree. |
@@ -174,9 +174,11 @@ Signal
     embedding_model: str        # model name/version for coherent regeneration
 ```
 
-Immutable. Uniqueness on `(origin_url, content_hash)`: an identical re-fetch from the same origin creates no new Signal. Syndicated near-duplicates from *different* origins are handled at triage (dedup policy), not at ingestion.
+Immutable. Uniqueness on `(origin_url, content_hash)`: an identical re-fetch from the same origin creates no new Signal. Cross-origin near-duplicate classification is not implemented and is explicitly excluded from the current RW-4 first-release proposal. PR #176 proposes exact raw-content-hash duplicate detection only within the same Team's intake history; that proposal still requires fixture evidence and explicit acceptance. Near-duplicate handling must not be inferred from this conceptual architecture.
 
 ### `SignalDisposition`
+
+> **Conceptual target only; not implemented.** The field sketch below predates the narrowed PR #176 proposal and is not an accepted schema. In particular, its `new_thread` vocabulary and `updated_at` field must not be treated as frozen. See the [RW-4 readiness and delivery plan](development/rw-4-readiness-and-delivery-plan.md).
 
 ```python
 SignalDisposition
@@ -192,7 +194,7 @@ SignalDisposition
     updated_at: datetime
 ```
 
-One row per `(signal_id, team_id)`. Makes triage explicit and queryable (INV-09), including the multi-Team case: the same Signal may be matched by one Team and dismissed as noise by another.
+Proposed uniqueness is one row per `(signal_id, team_id)`. This is not implemented. The current PR #176 first-release proposal includes `matched`, exact-hash `duplicate`, and terminal `deferred`; `new_thread`, automatic `noise`, and near-duplicate outcomes are excluded pending separate evidence and acceptance. The multi-Team identity principle remains: the same Signal may receive separate Team-scoped decisions.
 
 ### `Thread`
 
@@ -205,14 +207,16 @@ Thread
     status: str                 # "active" | "dormant" | "resolved"
     created_at: datetime
     last_updated_at: datetime
-    summary: str                # projection
-    summary_basis: JSON         # hypothesis IDs the summary was produced from
-    entities: JSON              # domain-vocabulary entities
-    embedding: vector
-    embedding_model: str
+    # The following are obsolete conceptual target fields, not implemented
+    # canonical Thread columns or an approved RW-4 prerequisite:
+    summary: str                # unimplemented projection concept
+    summary_basis: JSON         # unimplemented projection concept
+    entities: JSON              # unimplemented projection concept
+    embedding: vector           # unimplemented projection concept
+    embedding_model: str        # unimplemented projection concept
 ```
 
-`summary` and `embedding` are Projections, never authoritative (INV-11).
+`summary`, `summary_basis`, `entities`, `embedding`, and `embedding_model` above are historical conceptual target fields only; the current Thread model does not implement these projections. PR #176 and the current RW-4 proposal do not authorize adding them. Reconsider only after a source-backed requirement and separate design decision. The implemented Thread fields are the canonical fields actually present in `core/models.py`.
 
 ### `Hypothesis`
 
@@ -520,12 +524,13 @@ Transitions not listed are forbidden. Every transition emits an Event (INV-13).
 
 ### SignalDisposition
 
+> **Legacy target lifecycle — not an accepted RW-4 contract.** This table predates PR #176 and conflicts with its proposed terminal-deferred first slice. D3 remains open; neither this table nor PR #176 is implementation authority. Reconcile this table and the Task matrix together after explicit Operator acceptance.
+
 | From | Event | To |
 |---|---|---|
-| — | triage commit | `matched` / `new_thread` / `noise` / `duplicate` / `deferred` |
-| `deferred` | update or operator_update commit decides | `matched` / `new_thread` / `noise` / `duplicate` |
+| — | triage commit | legacy target vocabulary: `matched` / `new_thread` / `noise` / `duplicate` / `deferred` |
+| `deferred` | legacy update/operator_update refinement | legacy target outcomes only; not authorized for RW-4 |
 
-All dispositions except `deferred` are terminal.
 
 ### Artifact
 
@@ -590,16 +595,15 @@ All dispositions except `deferred` are terminal.
 
 Flow numbers (F1–F8) are cited from `docs/tasks.md` and the walkthrough.
 
-### F1 — Ingestion and triage
+### F1 — Ingestion and planned triage
 
-1. Scheduler creates an `ingest_source` Task for a configured source (or an Operator submits via `manual_signal_ingest`).
-2. Connector fetches; content is hashed. Identical hash at the same origin → fetch-no-change Event, Task done, no new Signal.
-3. New content → Snapshot stored first, then Signal row committed atomically (INV-03).
-4. A `triage_signal` Task runs domain `match_heuristics` and embedding similarity against the Team's Threads and recent Signals.
-5. Dispositions are written: `duplicate` (near-duplicate of a recent Signal per the domain dedup policy), `noise`, `matched` (existing Thread), `deferred` (ambiguous; remains deferred without creating an update Task), or `new_thread` (strong deterministic match; Thread created in the same commit). Triage does not create or enqueue `update_thread` Tasks; any future application-authored follow-up creator requires a separate contract and authorization.
-6. A disposition matching a dormant Thread reactivates it.
+1. The implemented ingestion path creates an `ingest_source` Task for a configured source and commits a canonical Signal/Snapshot, or records fetch-no-change for an identical same-origin fetch. This does not create a triage Task.
+2. `triage_signal`, SignalDisposition persistence, matching, and Thread reactivation are **not implemented**.
+3. The current RW-4 proposal is narrower than this document's former target: exact-hash same-Team duplicates, an experimental EvidenceLink/Hypothesis-derived Thread candidate profile using KnowledgeChunk projections, and `matched` / `duplicate` / terminal `deferred`; `new_thread`, automatic `noise`, and near-duplicate classification are disabled in the proposal.
+4. Same-Team ingestion provenance, canonical Signal Snapshot/hash, EvidenceLink Snapshot provenance, pinned projection identity, bounded candidate/evidence scans, and assessment-receipt recovery are prerequisites, not inferred from a similarity score.
+5. Dormant reactivation remains blocked on the shared RW-5 timestamp/locking contract. Triage must not create or enqueue `update_thread` Tasks.
 
-**Commit-time validation:** snapshot stored before Signal commit; hash match; unique `(signal, team)` disposition; task scope.
+**Status and authority:** this is a target-flow summary, not implementation evidence or acceptance of D1–D6. See [the RW-4 readiness and delivery plan](development/rw-4-readiness-and-delivery-plan.md).
 
 ### F2 — Update
 

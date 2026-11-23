@@ -1,3 +1,5 @@
+> **HISTORICAL CLOSEOUT RECORD — B4.4 was formally closed on 2026-11-13.** This audit preserves its completed proof and acceptance evidence; its remaining-closeout language is historical. Current status is governed by `PLAN.md`.
+
 # R7-B B4.4 — Integrated Regression Audit
 **Status: B4.4 FORMALLY CLOSED — G1–G6 regression proofs complete; technical review passed; Operator acceptance recorded 2026-11-13.**
 **Baseline:** exact merged main commit 5f37927ff33d9e740c0ff56512d261dace36ab67.

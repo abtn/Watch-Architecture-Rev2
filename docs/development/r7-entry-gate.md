@@ -1,5 +1,7 @@
 # R7-0 — Knowledge Quality and Lifecycle: Architecture and Entry Gate
 
+> **HISTORICAL ENTRY-GATE RECORD:** R7-0, R7-A, and R7-B are complete. This document preserves the original R7 entry architecture and phase-gate history; it is not a current authorization or active implementation plan. Current status and residual qualifications are governed by [PLAN.md](../../PLAN.md).
+
 ## Status and authority
 
 **R7-0: COMPLETE — 2026-11-04. R7-A: COMPLETE — merged 2026-11-04. R7-B: B0 complete; B1 merged; B2 formally closed with accepted residual verification gaps; B3 COMPLETE and formally closed 2026-11-10. B3.2–B3.6 are implemented and merged, B3.7's matrix is fully mapped, B3.8 exact-head verification passed with the documented Markdown diff-check qualification, and B3.9 documentation closeout/Operator exit acceptance are recorded in `PLAN.md` and `docs/testing.md`.**

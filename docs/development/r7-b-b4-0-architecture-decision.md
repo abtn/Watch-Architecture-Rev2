@@ -1,3 +1,5 @@
+> **HISTORICAL DECISION RECORD — R7-B B4.0 is complete.** This accepted architecture decision is preserved as the authority used for B4 implementation; its statement that B4.1 is the current slice is historical, not current work authorization. Current project status is governed by `PLAN.md`.
+
 # R7-B B4.0 — Revise and Revalidate Architecture Decision
 
 **Decision date:** 2026-11-10  

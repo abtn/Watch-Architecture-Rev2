@@ -4,6 +4,8 @@
 **Planning baseline:** main after PR #173, merge commit `126063199c919a9576e20f4909781f0776d1ca87` (2026-11-23).
 **Authority:** PLAN.md owns current milestone status and authorization. Accepted RW decisions and the Task/write-scope matrix remain binding.
 
+> **Reconciliation note (2026-11-23):** This document is the earlier broad RW-4 design proposal. Its original `new_thread`, `noise`, matching, and deferred-refinement language is not the current narrowed proposal where it conflicts with PR #176. Use the [RW-4 Readiness and Delivery Plan](rw-4-readiness-and-delivery-plan.md) for the reconciled prerequisite gates and delivery sequence. PR #176 remains a proposal; D1–D6 are not accepted and implementation is not authorized.
+
 ## 1. Purpose
 
 RW-4 connects an ingested canonical Signal to a Team-specific world-memory Thread through deterministic triage, then makes accepted active Hypotheses and verified evidence available to a later Task through the existing bounded Context path.

@@ -3,17 +3,17 @@ Every durable write in Watch is performed by a Task. This document is the spec f
 
 ## RW implementation status and evidence contract
 
-This is the current implementation-status summary. RW3.1–RW3.3 are accepted and merged. RW3.4 implementation and integrated recovery/evidence corrections are merged through PRs #152, #163, #165, #167, and #169; the ledger is 28 PASS / 7 PARTIAL / 0 OPEN. Formal RW3.4 acceptance was explicitly deferred by PR #171 (merge commit `792f7fcecf75e285aad3d15eb8ba17d67cef2569`); the seven PARTIAL rows remain outstanding. RW-4 is in documentation/design planning only; no implementation is authorized. Live provider authorization remains closed. `PLAN.md` is the sole authority for milestone status and authorization; exact verification evidence is recorded in `docs/testing.md`.
+This is the current implementation-status summary. RW3.1–RW3.3 are accepted and merged. RW3.4 implementation and integrated recovery/evidence corrections are merged; the ledger remains 28 PASS / 7 PARTIAL / 0 OPEN and formal acceptance is deferred. RW-4 remains documentation/design planning only; no implementation is authorized. The authoritative RW-4 readiness sequence is [the RW-4 Readiness and Delivery Plan](development/rw-4-readiness-and-delivery-plan.md). Live provider authorization remains closed. `PLAN.md` is the sole authority for milestone status and authorization; exact verification evidence is recorded in `docs/testing.md`.
 
 | Task / entity | Current implementation state |
 |---|---|
 | ingest_source | Implemented for the existing deterministic Signal-ingestion path. This does not include triage. |
-| triage_signal | Specified; not implemented. RW-4 design planning only; no implementation authorization. See [RW-4 design plan](development/rw-4-design-and-acceptance.md). |
+| triage_signal | Specified; not implemented. RW-4 design planning only; no implementation authorization. See the [RW-4 readiness plan](development/rw-4-readiness-and-delivery-plan.md). |
 | update_thread | RW3.1–RW3.3 are accepted; RW3.4 implementation and recovery/evidence proofs are merged. The 35-row ledger is 28 PASS / 7 PARTIAL / 0 OPEN. Formal RW3.4 acceptance is deferred by PR #171; see [PLAN.md](../PLAN.md) and [RW3.4 closeout plan](development/rw-3-4-verification-closeout-plan.md). Deterministic fake providers only; live provider authorization remains closed. |
 | operator_update | Deterministic host-invoked Operator path implemented and formally accepted in RW-2; PR #134 merged to main. |
 | apply_decay | Specified; not implemented. Planned for RW-5. |
 | Thread / Hypothesis / ConfidenceChange | ORM persistence implemented in RW-1; deterministic Operator commit path implemented and accepted in RW-2. |
-| SignalDisposition | Deferred to RW-4 with signal triage; not implemented. |
+| SignalDisposition | Not implemented. RW-4 persistence, lifecycle, and Task write authority remain unaccepted design decisions; see the [RW-4 readiness plan](development/rw-4-readiness-and-delivery-plan.md). |
 | EvidenceLink | RW-1 persistence and RW-2 commit path support the accepted Hypothesis/Evaluation subjects and currently usable Signal/Outcome sources; Artifact/Consultation source rows remain staged and unusable until their canonical entities exist. |
 
 The Event-scope allow-list in `core/ingestion.py` contains future Task type names so bounded Task-attributed Events can be recorded; an allow-list entry alone is not implementation. The current `core/dispatcher.py` remains narrow and supports the configured-source `ingest_source` worker. This status summary does not authorize dispatcher expansion.
@@ -156,14 +156,13 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 ### `triage_signal` — deterministic
 
 **Implementation status:** Specified; not implemented. Planned for RW-4. This Task remains outside the RW3.4 `update_thread` implementation and its acceptance boundary.
-- **Purpose:** disposition a Signal for the Team. Triage records the deterministic disposition; it does not create or enqueue `update_thread` Tasks.
-- **Reads:** Signal (+embedding), Domain `match_heuristics` and `dedup_policy`, Team's Threads (+embeddings), recent dispositions.
-- **Writes:** SignalDisposition; Thread creation (`new_thread`); Thread reactivation (`dormant → active`); Event.
-- **Flow:** F1 steps 4–6.
-- **Validation:** one disposition per `(signal, team)`; embedding similarity uses the recorded `embedding_model`; `new_thread` requires a strong deterministic heuristic match (per-domain threshold).
-- **Failure:** heuristics error → disposition `deferred` with reason; never silent (INV-09).
+- **Purpose:** record a deterministic Team-specific disposition for one canonical Signal.
+- **Current design proposal:** PR #176 proposes `matched`, exact-hash same-Team `duplicate`, and terminal `deferred`; it disables `new_thread`, automatic `noise`, and near-duplicate classification. This is not an accepted production contract. D1–D6 remain open.
+- **Reads under the proposal:** canonical Signal and Snapshot; same-Team ingestion provenance; Team-scoped EvidenceLink → Hypothesis → Thread evidence; current KnowledgeChunk projections with pinned embedding-space and chunking identities.
+- **Proposed writes:** SignalDisposition and Task-attributed Event; a matched dormant Thread transition only after the shared RW-5 timestamp/locking contract is accepted. Exact Task authority, persistence constraints, receipt, and commit semantics remain open.
+- **Failure:** missing/corrupt provenance, stale projection, ambiguous/weak match, or scan overflow must fail closed to an explicit deferred result or admission rejection according to the accepted boundary.
 
-**RW-4 design note:** the reads/configuration above are target specification, not current implementation evidence. The current Signal embedding is represented by KnowledgeChunk projections; Thread embeddings and the documented Domain matching/dedup configuration are not present in the inspected source. Task creator, matching inputs, disposition transition ownership, and Context consumer are open design decisions. See [RW-4 design and acceptance plan](development/rw-4-design-and-acceptance.md).
+**RW-4 authority note:** the older generic target description (Thread embeddings, Domain matching configuration, new Thread creation, and deferred refinement) is not implementation evidence and is superseded as a planning direction by the narrower PR #176 proposal. Neither proposal is accepted yet. Reconcile the Task definition and §4 write-scope matrix by staged gate rather than waiting for umbrella RW4-0 closure: accept D3 terminal-deferred lifecycle and reconcile the corresponding SignalDisposition write cells before RW4-1; accept D5 vocabulary/reference combinations before RW4-1; accept D1/D2 authority, canonical Task identity, immutable pins, and replay/conflict rules before RW4-2; accept D4/C1 matching and receipt contracts before RW4-3; accept D6 before adding dormant-Thread reactivation; and accept the Context consumer, provenance, bounds, and representation contract before RW4-4. The remaining D1–D6 decisions still must be reconciled and accepted for umbrella RW4-0 closure. See the [RW-4 readiness and delivery plan](development/rw-4-readiness-and-delivery-plan.md).
 ### `update_thread` — model worker
 
 **Implementation status:** RW3.1–RW3.3 are formally accepted. RW3.4 implementation and corrective evidence are merged through PRs #152, #163, #165, #167, and #169; the 35-row ledger is 28 PASS / 7 PARTIAL / 0 OPEN. Formal RW3.4 acceptance was explicitly deferred by PR #171; RW3.4 is not formally accepted or closed. Deterministic fake providers only; live provider authorization remains closed. See PLAN.md for current status and docs/testing.md for exact verification evidence.
@@ -613,7 +612,7 @@ The `operator_update` row remains identical to `update_thread` as the
 shared target contract — this is INV-15 expressed as a table. The RW-2
 implementation is the first bounded slice of that contract: it writes
 Hypothesis, EvidenceLink, and ConfidenceChange only. Deferred SignalDisposition
-and projection cells are not implemented by RW-2.
+and projection cells are not implemented by RW-2. **RW-4 reconciliation warning:** the legacy W³ SignalDisposition cells for `update_thread` and `operator_update` conflict with the PR #176 proposal that deferred is terminal. Do not treat those cells as RW-4 authority or implement either path until D3 is accepted and this matrix is revised.
 ## 5. Budget defaults
 Starting points, tuned during M2; per-Task values may override downward, never upward past policy ceilings (`budgets` rule group). The `update_thread` row is the approved fixed RW-3 design budget, not a generic starting point. Operator task types (`operator_update`, `answer_consultation`, `create_team`, `activate_team`, plus the other manual types) incur no model cost and have no enforced deadline (—).
 | Task type | max_tool_calls | max_cost_usd | deadline_s |

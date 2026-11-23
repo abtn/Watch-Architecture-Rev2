@@ -1,3 +1,5 @@
+> **HISTORICAL CLOSEOUT RECORD — B5.3 was formally accepted and closed in PR #120.** This audit preserves the completed baseline, implementation, and verification evidence; it is not an active implementation instruction. Current status is governed by `PLAN.md`.
+
 # R7-B B5.3.0 — Baseline and Code-Path Audit
 
 **Audit date:** 2026-11-14
