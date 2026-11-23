@@ -328,7 +328,7 @@ This documentation reconciliation records the merged #152 implementation stack, 
 - [ ] Exact pre-run and post-run database URL environment-variable values are explicitly compared in the captured #167 local verification record.
 - [x] Hosted CI passes on the exact tested #167 PR head `d2139c41ec3450f7198e61bdd1169edbeff13e01`; source SHA and merge commit are recorded.
 - [x] Independent review of the #163 integrated head and #167 recovery correction found no unresolved blocking correctness issue.
-- [ ] `PLAN.md`, proof matrix, `docs/testing.md`, Task/architecture docs, and CHANGE_MAP agree.
+- [x] `PLAN.md`, proof matrix, `docs/testing.md`, Task/architecture docs, and CHANGE_MAP agree on the merged implementation baseline, exact #167 evidence, 27 PASS / 8 PARTIAL / 0 OPEN ledger, and pending formal Operator acceptance.
 - [ ] Explicit Operator acceptance is recorded before RW3.4 is marked complete.
 
 ## 9. Non-authorizations
