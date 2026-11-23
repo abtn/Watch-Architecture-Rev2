@@ -174,7 +174,7 @@ Signal
     embedding_model: str        # model name/version for coherent regeneration
 ```
 
-Immutable. Uniqueness on `(origin_url, content_hash)`: an identical re-fetch from the same origin creates no new Signal. Syndicated near-duplicates from *different* origins are handled at triage (dedup policy), not at ingestion.
+Immutable. Uniqueness on `(origin_url, content_hash)`: an identical re-fetch from the same origin creates no new Signal. Cross-origin near-duplicate classification is not implemented and is explicitly excluded from the current RW-4 first-release proposal. PR #176 proposes exact raw-content-hash duplicate detection only within the same Team's intake history; that proposal still requires fixture evidence and explicit acceptance. Near-duplicate handling must not be inferred from this conceptual architecture.
 
 ### `SignalDisposition`
 
@@ -194,7 +194,7 @@ SignalDisposition
     updated_at: datetime
 ```
 
-One row per `(signal_id, team_id)`. Makes triage explicit and queryable (INV-09), including the multi-Team case: the same Signal may be matched by one Team and dismissed as noise by another.
+Proposed uniqueness is one row per `(signal_id, team_id)`. This is not implemented. The current PR #176 first-release proposal includes `matched`, exact-hash `duplicate`, and terminal `deferred`; `new_thread`, automatic `noise`, and near-duplicate outcomes are excluded pending separate evidence and acceptance. The multi-Team identity principle remains: the same Signal may receive separate Team-scoped decisions.
 
 ### `Thread`
 
@@ -207,14 +207,16 @@ Thread
     status: str                 # "active" | "dormant" | "resolved"
     created_at: datetime
     last_updated_at: datetime
-    summary: str                # projection
-    summary_basis: JSON         # hypothesis IDs the summary was produced from
-    entities: JSON              # domain-vocabulary entities
-    embedding: vector
-    embedding_model: str
+    # The following are obsolete conceptual target fields, not implemented
+    # canonical Thread columns or an approved RW-4 prerequisite:
+    summary: str                # unimplemented projection concept
+    summary_basis: JSON         # unimplemented projection concept
+    entities: JSON              # unimplemented projection concept
+    embedding: vector           # unimplemented projection concept
+    embedding_model: str        # unimplemented projection concept
 ```
 
-`summary` and `embedding` are Projections, never authoritative (INV-11).
+`summary`, `summary_basis`, `entities`, `embedding`, and `embedding_model` above are historical conceptual target fields only; the current Thread model does not implement these projections. PR #176 and the current RW-4 proposal do not authorize adding them. Reconsider only after a source-backed requirement and separate design decision. The implemented Thread fields are the canonical fields actually present in `core/models.py`.
 
 ### `Hypothesis`
 
