@@ -5439,7 +5439,7 @@ def test_rejected_marker_context_substitution_fails_closed_during_recovery(
 @pytest.mark.parametrize(
     "marker_type", ["update_thread_committed", "update_thread_rejected"]
 )
-def test_recovery_rejects_duplicate_or_future_terminal_marker(
+def test_recovery_refuses_terminalization_for_duplicate_or_future_terminal_marker(
     monkeypatch: pytest.MonkeyPatch,
     session_factory: sessionmaker[Session],
     snapshot_store: SnapshotStore,
@@ -5474,24 +5474,38 @@ def test_recovery_rejects_duplicate_or_future_terminal_marker(
             )
 
     runtime = TaskRuntime(session_factory, snapshot_store)
-    recovered = runtime.recover_interrupted(now=started + timedelta(seconds=61))
-    assert recovered.failed == (task_id,)
+    expected_reason = (
+        "update_thread_commit_marker_count_invalid"
+        if mutation == "duplicate"
+        else "update_thread_inconsistent_prior_marker_invalid"
+    )
+    # The integrity validator records the inconsistency, but deliberately
+    # refuses terminalization when marker cardinality/attempt identity cannot
+    # prove which business-commit boundary is authoritative.
+    with pytest.raises(TaskNotFinalizable, match=expected_reason):
+        runtime.recover_interrupted(now=started + timedelta(seconds=61))
     assert provider.calls == 1
     with session_factory() as session:
         task = session.get(Task, task_id)
-        assert task is not None and task.status == "failed"
-        assert session.scalar(
+        assert task is not None and task.status == "running"
+        assert len(list(session.scalars(
             select(Event.id).where(
                 Event.task_id == task_id,
                 Event.type == "update_thread_recovery_inconsistent",
             )
-        ) is not None
+        ))) == 1
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == task_id,
+                Event.type == "task_failed",
+            )
+        ) is None
         assert len(list(session.scalars(
             select(Outcome).where(
                 Outcome.recorded_by_task_id == task_id,
                 Outcome.outcome_type == "task_execution",
             )
-        ))) == 1
+        ))) == 0
         assert len(list(session.scalars(
             select(Hypothesis).where(Hypothesis.id == hypothesis_id)
         ))) == (1 if marker_type == "update_thread_committed" else 0)
@@ -5501,3 +5515,22 @@ def test_recovery_rejects_duplicate_or_future_terminal_marker(
                 Event.type == "hypothesis_created",
             )
         ))) == (1 if marker_type == "update_thread_committed" else 0)
+
+    # Repeated recovery remains fail-closed and does not add another marker,
+    # Outcome, business write, or provider invocation.
+    with pytest.raises(TaskNotFinalizable, match=expected_reason):
+        runtime.recover_interrupted(now=started + timedelta(seconds=122))
+    assert provider.calls == 1
+    with session_factory() as session:
+        assert len(list(session.scalars(
+            select(Event.id).where(
+                Event.task_id == task_id,
+                Event.type == "update_thread_recovery_inconsistent",
+            )
+        ))) == 1
+        assert len(list(session.scalars(
+            select(Outcome).where(
+                Outcome.recorded_by_task_id == task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ))) == 0
