@@ -84,6 +84,7 @@ docs/testing.md is the evidence archive and testing reference. Its historical en
 - Keep README.md public-facing and concise.
 - Keep CONTEXT.md short enough to orient a new session quickly.
 - Keep one canonical delivery plan per active phase. B6 uses docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md; R8 uses docs/development/r8-delivery-plan.md. Historical schedules are not active plans.
+- RW-4 readiness and slice sequencing are governed by `docs/development/rw-4-readiness-and-delivery-plan.md`; the older RW-4 design/decision documents remain supporting proposals and must be reconciled to it. RW-4 production implementation is not authorized.
 - Keep accepted ADRs and meaningful historical verification records. Prefer labelling and linking over deleting.
 - When a phase closes, update PLAN.md first, then reconcile only the summaries and active plans that need to reflect the new state.
 - When recording test results, include the exact commit/PR head, command or workflow, result, and known limitations. Never transfer a test count from one SHA to another.
