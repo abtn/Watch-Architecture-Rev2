@@ -61,9 +61,32 @@ RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2
 - Strict model parsing rejects representative unsupported proposal shapes and invalid UUID/source references; these are not an exhaustive combinatorial malformed-input matrix.
 - The Context identity tampering parameterization now covers receipt and Context Event Task, Team, Thread, attempt, policy, Snapshot reference, and content-hash substitutions in addition to the proposal/receipt Context identity fields.
 
-**Local verification qualification:** Programmer-local Windows verification has not yet been recorded on the post-#163 tree. The earlier local result of 1,213 tests remains evidence for its earlier exact implementation SHA only and is not relabeled as a local pass for #163.
+**Local verification qualification:** The earlier local result of 1,213 tests remains evidence for its earlier exact implementation SHA only. A subsequent Programmer-local Windows run on the PR #165 candidate tree is recorded below; it is not retroactively attributed to #163.
 
 **Boundary retained:** PR #163 introduces no schema/migration or provider change. The hosted run used deterministic fake providers; no live Cloudflare call occurred. Formal RW3.4 Operator acceptance remains pending. The host composition root and production TeamPolicy publisher remain absent and are not made PASS by fixture-based tests.
+
+## RW3.4 Programmer-local Windows verification — PR #165 candidate — 2026-11-23
+
+**Exact tested branch:** `rw3-4-pr165-local-verify-20261123`  
+**Exact HEAD:** `9f41d9eb87c175b5070f4154f600d1c6bb85a47e`  
+**PR:** [#165](https://github.com/abtn/Watch-Architecture-Rev2/pull/165), stacked on documentation PR #164 at its then-current base `c56b553a1761a4730a0921185d84dec304a2225f`.
+
+The programmer ran the guarded sync-and-test script after fetching and verifying the exact PR head. The script confirmed the expected branch and SHA, a clean worktree, and an already-up-to-date fast-forward state.
+
+**Results:**
+- `uv sync --locked`: passed.
+- Fresh disposable PostgreSQL container on a dynamically assigned loopback port: created successfully.
+- `uv run alembic upgrade head`, `alembic heads`, and `alembic current`: passed; one head, `0019_rw1_world_memory`.
+- `uv run ruff check core tests migrations`: passed.
+- `uv run mypy core`: passed, 42 source files.
+- `git diff c56b553a1761a4730a0921185d84dec304a2225f...HEAD --check`: passed.
+- `uv run pytest -q`: **1,286 passed, 130 warnings** in 371.36s (6:11).
+- Warnings were existing Alembic `path_separator` deprecation warnings in migration tests; no test failed.
+- Disposable PostgreSQL container cleanup succeeded. The script's final checks retained the exact branch and HEAD and a clean worktree; database URL environment variables were restored.
+
+**Hosted exact-head CI:** PR #165 run [#45071241347](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45071241347) completed successfully on the same exact HEAD.
+
+This is programmer-reported local verification of the exact PR #165 candidate tree. It does not constitute formal RW3.4 Operator acceptance or authorize live-provider calls.
 
 ## RW3.4 consolidated integration branch — exact-head verification — 2026-11-22
 
