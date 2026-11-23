@@ -25,7 +25,20 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 
 ## Current RW-3 status
 
-RW3.2 was accepted and merged
+RW3.1–RW3.3 are formally accepted and merged. RW3.4 implementation and corrective recovery behavior are merged through PRs #152, #163, #165, and #167. The current main baseline is `36da6a6f838d48b8709b5dcab252e35028c61899`. The 35-row evidence ledger remains 27 PASS / 8 PARTIAL / 0 OPEN; formal RW3.4 Operator acceptance is pending. Live provider authorization remains closed; deterministic fake providers only. Current milestone status and authorization are owned by [PLAN.md](../PLAN.md).
+
+## RW3.4 committed-recovery finalization correction — PR #167 — 2026-11-23
+
+**Status:** [PR #167](https://github.com/abtn/Watch-Architecture-Rev2/pull/167) was squash-merged to `main` at `36da6a6f838d48b8709b5dcab252e35028c61899`. Its exact PR head `d2139c41ec3450f7198e61bdd1169edbeff13e01` passed hosted CI [run #45147241723](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45147241723): **1,286 passed**, fresh PostgreSQL migration and Alembic head/current checks, Ruff, Mypy, and `git diff --check` all passed. No schema or migration changed; the migration head remains `0019_rw1_world_memory`. This is a narrowly scoped production recovery-finalization correction plus a strengthened regression test.
+
+**Correction:** When a durable inconsistency marker follows a commit/rejection marker whose Context identity tuple is corrupted, recovery must preserve already-committed business writes and still terminalize the Task. The validator distinguishes pre-commit from post-commit integrity failure: before the commit boundary it retains the empty-business-write assertion; after a valid prior commit/rejection marker it validates stable Task/Team/attempt/model-worker identity and does not incorrectly require committed writes to be absent. It never replays or reapplies the business transaction.
+
+**Regression proof:** `test_committed_marker_context_substitution_fails_closed_without_reapplying` now corrupts each of the three committed-marker Context fields and drives the case through `TaskRuntime.recover_interrupted()`. It asserts Task status `failed`, exactly one Task execution Outcome and `task_failed` Event, no additional Hypothesis/business Events, no provider reinvocation, and a second recovery no-op. This is full lifecycle/recovery evidence, not merely an in-session recovery seam. It does not enumerate every Context-tuple/state combination or add a rejected-marker-specific regression.
+
+**Programmer-local Windows verification:** passed on exact PR #167 head `d2139c41ec3450f7198e61bdd1169edbeff13e01`: `uv sync --locked`, Ruff, Mypy (42 source files), focused `tests/test_update_thread.py` (**153 passed**), full suite (**1,286 passed, 130 existing Alembic `path_separator` deprecation warnings**), disposable PostgreSQL migration/current/single-head checks, and `git diff --check`. The disposable database/container was removed and the original branch/worktree was preserved. Local Python was 3.14.7; hosted CI used Python 3.12, so hosted CI is the runtime-parity evidence.
+
+**Disposition boundary:** PR #167 changes neither the 27 PASS / 8 PARTIAL / 0 OPEN ledger totals nor formal acceptance state. It strengthens evidence mapped to `RW-CTX-06`, `RW-REPLAY-01`, `RW-RT-02`, `RW-REC-01`, and `RW-RP-01`; their remaining qualifications stay open. It does not authorize live-provider calls or implement production host authentication/TeamPolicy publishing.
+
 
 ## RW3.4 test-only proof follow-up — PR #165 — 2026-11-23
 
