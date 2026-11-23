@@ -5049,3 +5049,151 @@ def test_model_worker_accepted_evidence_touches_preexisting_hypothesis_at_commit
         assert accepted is not None
         assert hypothesis.last_touched_at == marker.created_at
         assert hypothesis.last_touched_at > original_touch
+
+@pytest.mark.parametrize(
+    ("event_type", "field", "replacement"),
+    [
+        (RECEIPT_EVENT_TYPE, "context_event_id", str(UUID(int=9001))),
+        (RECEIPT_EVENT_TYPE, "context_snapshot_ref", "sha256:" + "b" * 64),
+        (RECEIPT_EVENT_TYPE, "context_content_hash", "sha256:" + "c" * 64),
+        (PROPOSALS_EVENT_TYPE, "context_event_id", str(UUID(int=9002))),
+        (PROPOSALS_EVENT_TYPE, "context_snapshot_ref", "sha256:" + "d" * 64),
+        (PROPOSALS_EVENT_TYPE, "context_content_hash", "sha256:" + "e" * 64),
+    ],
+)
+def test_empty_proposal_recovery_context_substitution_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    event_type: str,
+    field: str,
+    replacement: str,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+    monkeypatch.setattr(worker._runtime, "finalize", lambda observation: None)
+
+    result = worker.run(created.task_id)
+
+    assert result.proposals == ()
+    assert result.reconciliation.status == "reconciled"
+    assert provider.calls == 1
+    with session_factory.begin() as session:
+        event = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == event_type,
+            )
+        )
+        started = session.scalar(
+            select(Event.created_at).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_started",
+            )
+        )
+        assert event is not None and started is not None
+        event.payload = {**event.payload, field: replacement}
+
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    recovered = runtime.recover_interrupted(
+        now=started + timedelta(seconds=61)
+    )
+    assert recovered.failed == (created.task_id,)
+    assert recovered.completed == ()
+    assert provider.calls == 1
+
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        inconsistent = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == created.task_id,
+                    Event.type == "update_thread_recovery_inconsistent",
+                )
+            )
+        )
+        failed = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == created.task_id,
+                    Event.type == "task_failed",
+                )
+            )
+        )
+        outcomes = list(
+            session.scalars(
+                select(Outcome).where(
+                    Outcome.recorded_by_task_id == created.task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+        )
+        assert task is not None and task.status == "failed"
+        assert len(inconsistent) == 1
+        assert len(failed) == 1
+        assert len(outcomes) == 1
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type.in_(
+                    (
+                        "update_thread_proposal_accepted",
+                        "update_thread_proposal_rejected",
+                        "update_thread_committed",
+                        "update_thread_rejected",
+                        "hypothesis_created",
+                        "evidence_link_added",
+                        "confidence_changed",
+                        "hypothesis_rejected",
+                        "hypothesis_superseded",
+                    )
+                ),
+            )
+        ) is None
+        assert session.scalar(
+            select(Hypothesis.id).where(
+                Hypothesis.team_id == rw3_fixture.team_id
+            )
+        ) is None
+        assert session.scalar(
+            select(EvidenceLink.id).where(
+                EvidenceLink.originating_task_id == created.task_id
+            )
+        ) is None
+        assert session.scalar(
+            select(ConfidenceChange.id).where(
+                ConfidenceChange.created_by_task_id == created.task_id
+            )
+        ) is None
+
+    repeated = runtime.recover_interrupted(
+        now=started + timedelta(seconds=122)
+    )
+    assert repeated.failed == ()
+    assert repeated.completed == ()
+    assert repeated.retried == ()
+    assert provider.calls == 1
+    with session_factory() as session:
+        assert len(
+            list(
+                session.scalars(
+                    select(Outcome).where(
+                        Outcome.recorded_by_task_id == created.task_id,
+                        Outcome.outcome_type == "task_execution",
+                    )
+                )
+            )
+        ) == 1
+        assert len(
+            list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == created.task_id,
+                        Event.type == "task_failed",
+                    )
+                )
+            )
+        ) == 1
+
