@@ -25,7 +25,7 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 
 ## Current RW-3 status
 
-RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery was formally accepted and squash-merged by PR #138 on 2026-11-20. RW3.4 implementation and corrective recovery/evidence integration are merged through PR [#163](https://github.com/abtn/Watch-Architecture-Rev2/pull/163) at `6cbef27cd4fb39b1d1c860de8bf419046f35d5ae`; its hosted CI passed 1,274 tests on exact PR head `a256a7da8682747581e44cc9381bba4646c822da`. The supplemental test-only follow-up [PR #165](https://github.com/abtn/Watch-Architecture-Rev2/pull/165) is open and stacked on PR #164; its exact test commit `a3e1d15b4ea4a7954e3b3b01d2852af80351eb45` passed hosted CI run [#45070550411](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45070550411): 1,286 tests, PostgreSQL migration/head checks, Ruff, Mypy, and `git diff --check`. The candidate 35-row ledger is 27 PASS / 8 PARTIAL / 0 OPEN. PRs #164 and #165 are not yet merged. Formal RW3.4 Operator acceptance remains pending. Live provider authorization remains closed; only deterministic fake providers are permitted.
+RW3.2 was accepted and merged
 
 ## RW3.4 test-only proof follow-up — PR #165 — 2026-11-23
 
