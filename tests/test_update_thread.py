@@ -5329,3 +5329,154 @@ def test_empty_result_recovery_rejects_duplicate_or_future_attempt_evidence(
     assert repeated.completed == ()
     assert repeated.retried == ()
     assert provider.calls == 1
+
+
+def _seed_interrupted_rejected_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> tuple[UUID, _FakeUpdateThreadProvider, datetime]:
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider(
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "hypothesis_create",
+                        "key": "all-invalid",
+                        "hypothesis_id": str(uuid4()),
+                        "statement": "A domain-invalid proposal.",
+                        "confidence": "moderate",
+                    }
+                ]
+            },
+            separators=(",", ":"),
+        )
+    )
+    worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+    monkeypatch.setattr(worker._runtime, "finalize", lambda observation: None)
+    worker.run(created.task_id)
+    with session_factory() as session:
+        marker = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_rejected",
+            )
+        )
+        started = session.scalar(
+            select(Event.created_at).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_started",
+            )
+        )
+        assert marker is not None
+        assert marker.payload["accepted_proposal_keys"] == []
+        assert marker.payload["rejected_proposal_keys"] == ["all-invalid"]
+        assert started is not None
+    return created.task_id, provider, started
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("context_event_id", str(UUID(int=9101))),
+        ("context_snapshot_ref", "sha256:" + "f" * 64),
+        ("context_content_hash", "sha256:" + "a" * 64),
+    ],
+)
+def test_rejected_marker_context_substitution_fails_closed_during_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    field: str,
+    replacement: str,
+) -> None:
+    task_id, provider, started = _seed_interrupted_rejected_marker(
+        monkeypatch, session_factory, snapshot_store, rw3_fixture
+    )
+    with session_factory.begin() as session:
+        marker = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "update_thread_rejected",
+            )
+        )
+        assert marker is not None
+        marker.payload = {**marker.payload, field: replacement}
+
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    recovered = runtime.recover_interrupted(now=started + timedelta(seconds=61))
+    assert recovered.failed == (task_id,)
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, task_id)
+        assert task is not None and task.status == "failed"
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == task_id,
+                Event.type == "update_thread_recovery_inconsistent",
+            )
+        ) is not None
+        assert len(list(session.scalars(
+            select(Outcome).where(
+                Outcome.recorded_by_task_id == task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ))) == 1
+
+
+@pytest.mark.parametrize("mutation", ["duplicate", "future_attempt"])
+@pytest.mark.parametrize("marker_type", ["update_thread_committed", "update_thread_rejected"])
+def test_recovery_rejects_duplicate_or_future_terminal_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    marker_type: str,
+    mutation: str,
+) -> None:
+    task_id, provider, started = _seed_interrupted_rejected_marker(
+        monkeypatch, session_factory, snapshot_store, rw3_fixture
+    )
+    with session_factory.begin() as session:
+        marker = session.scalar(
+            select(Event).where(
+                Event.task_id == task_id,
+                Event.type == "update_thread_rejected",
+            )
+        )
+        assert marker is not None
+        payload = dict(marker.payload)
+        if mutation == "future_attempt":
+            payload["attempt"] = 2
+        session.add(
+            Event(
+                id=uuid4(),
+                task_id=task_id,
+                type=marker_type,
+                payload=payload,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    recovered = runtime.recover_interrupted(now=started + timedelta(seconds=61))
+    assert recovered.failed == (task_id,)
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, task_id)
+        assert task is not None and task.status == "failed"
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == task_id,
+                Event.type == "update_thread_recovery_inconsistent",
+            )
+        ) is not None
+        assert len(list(session.scalars(
+            select(Outcome).where(
+                Outcome.recorded_by_task_id == task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        ))) == 1
