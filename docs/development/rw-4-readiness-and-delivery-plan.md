@@ -1,0 +1,256 @@
+# RW-4 Readiness and Delivery Plan
+
+**Status:** Active planning baseline; documentation only. RW-4 production implementation is not authorized.
+**Planning baseline:** `main` at `de0528bd2db1da0f172e4b629963dea08ea52889` (PR #176 merge).
+**Status authority:** `PLAN.md` remains the only authority for milestone status and authorization. This document owns the dependency-aware RW-4 readiness checklist and delivery sequence.
+**Scope:** Reconcile the evidence audit in PR #175, the bounded RW4-0 proposal in PR #174, the minimal matching proposal in PR #176, the RW-4 design plan, Task specifications, and architecture.
+
+## 1. Executive decision
+
+RW-4 is **not ready for production implementation**. RW4-0 remains open. PR #176 is a merged design proposal, not acceptance of its experimental matcher or closure of D1–D6. PR #175 remains an open audit branch based on an obsolete main SHA; its findings are reconciled here, so do not treat that branch as the current baseline without rebasing and review.
+
+The delivery path has four work classes:
+
+1. **Mandatory pre-implementation gates:** RW3.4 disposition, RW4-0 decisions, matching evidence, Task/write-scope reconciliation, shared decay/reactivation contract, Context-consumer definition, and a requirement-to-test matrix.
+2. **Independent parallel work:** RW-5 decay design/implementation and Experiment A preparation within their accepted boundaries.
+3. **RW-4 implementation:** persistence, Task boundary, deterministic triage/commit, and world-memory Context retrieval.
+4. **Foundation exit:** RW4/RW5 integration, RW4-KU disposition, Experiment A disposition/report, RWN-01 readiness, and explicit acceptance before R8.
+
+Do not make all of RW-5 a prerequisite to starting RW-4. RW-5 can proceed independently. The shared timestamp, revalidation, and concurrency contract is required before RW4 implements dormant-Thread reactivation; both slices are required for integrated proof.
+
+## 2. Current evidence baseline
+
+- **PR #174** records bounded D1–D6 proposals; it did not close RW4-0 or authorize implementation.
+- **PR #175** found: D1 host-invoked Task-creator precedent but no production host composition/authentication; D2 canonical Task identity needs DB uniqueness and is not the existing `update_thread` identity; D3 conflict between deferred-refinement prose and the proposed terminal-deferred contract; D4 matching inputs are not source-ready; D5 no safe canonical Signal title for Thread creation; D6 no shared RW-5 timestamp/lock contract.
+- **PR #176** proposes a minimal representation: derive Thread evidence from EvidenceLink → Hypothesis → Thread; require same-Team ingestion provenance and matching Snapshot provenance; exact-hash duplicate detection within one Team; reuse KnowledgeChunk projections; keep maximum-pairwise cosine experimental only; first-slice outcomes `matched`, `duplicate`, `deferred`; disable `new_thread` and automatic `noise`; and require a separately committed canonical assessment receipt before the Kernel business commit.
+- **RW3.4** implementation and corrective proofs are merged, but formal acceptance is deferred. The ledger remains 28 PASS / 7 PARTIAL / 0 OPEN. The bounded residual proof work and external integration limitations remain as recorded in `PLAN.md`.
+- **RW-5** is independently implementable. Its integration with triage is blocked on D6 timestamp and concurrency decisions, not on all RW-5 work.
+- **Experiment A** informs RW4-4 representation only. Its canonical fixtures are offline artifacts; the experiment has not been executed. It does not block RW4-0 through RW4-3 or RW-5.
+- **RWN-01** is a separate newsroom value-harness package and is not a substitute for matching fixtures or Experiment A.
+
+## 3. Mandatory gates before RW-4 production implementation
+
+### Gate A — RW3.4 formal disposition
+
+Current disposition: **deferred**, not accepted.
+
+Complete only the bounded work already identified:
+1. Resolve the Context identity tuple/recovery-state coverage gap, or present an explicit residual-risk decision.
+2. Add targeted duplicate/future commit and rejection-marker tests only where existing guards require them.
+3. Resolve the mismatched in-session attempt question against the supported runtime contract.
+
+Do not build an exhaustive Cartesian recovery matrix or reopen merged production code without a demonstrated defect. Keep all seven PARTIAL rows visible. `RW-REQ-01` (production host authentication/composition) and `RW-POL-01` (production TeamPolicy publisher/lock serialization) remain external integration boundaries; do not fabricate either integration. The local PR #169 environment-restoration assertion failure remains a qualification; do not rerun the 1,296-test suite solely for that script defect.
+
+**Exit:** either formal RW3.4 acceptance, or an explicit Operator sequencing exception that retains the deferred status and all residual qualifications. This is a hard gate before RW-4 production implementation, not a requirement to redo RW3.4.
+
+### Gate B — RW4-0 decision closure
+
+RW4-0 closes only after D1–D6 are reconciled, evidence-backed, and explicitly accepted. PR #174 and #176 preserve proposals; neither substitutes for this gate.
+
+#### D1 — Invocation, identity, and authority
+
+Freeze an explicit trusted host-invoked operation for one Signal and one Team. Define trusted principal fields and the exact Team/action grant checked by Watch. The caller cannot select a Team from untrusted payload data. Every caller is independently authorized, including a caller resolving an existing Task.
+
+Use one canonical Task identity for `(signal_id, team_id)`, with database-enforced uniqueness, atomic Task/request-Event creation, immutable request fingerprint, same-request replay, and conflicting-request behavior. The losing concurrent request loads and validates the winning Task/Event; it does not create a second Event. Requester identity is provenance, not semantic equivalence, as recorded in the PR #174 correction.
+
+No automatic `ingest_source → triage_signal` Task creation, scheduler, or TaskDispatcher expansion in the first slice. The production host composition/authentication boundary remains external; Watch-side grant validation is not proof of deployed host authentication.
+
+#### D2 — SignalDisposition persistence and lifecycle
+
+Freeze one canonical disposition per Signal/Team pair, its exact reference combinations, Task attribution, reason, timestamps, uniqueness, and Event semantics.
+
+The merged PR #176 first-slice proposal is:
+- `matched`: one existing same-Team/domain Thread;
+- `duplicate`: one canonical exact-content duplicate in the same Team's intake history;
+- `deferred`: explicit reason and terminal in this release.
+
+`new_thread` is disabled because no safe canonical title source exists. Automatic `noise` is disabled because no deterministic source-backed classifier exists. Near-duplicate classification is excluded.
+
+**Unresolved reconciliation:** `docs/architecture.md` still describes `deferred → matched/new_thread/noise/duplicate` through `update_thread` or `operator_update`, and the Task matrix still grants those Task types SignalDisposition writes. That conflicts with the proposed terminal-deferred first slice and RW-3's explicit exclusion. Before implementation, update the lifecycle table, F1 narrative, Task prose, and write-scope matrix consistently. Do not implement against a contradictory contract. The decision to make deferred terminal must be explicitly accepted; this plan does not silently accept it.
+
+#### D3 — Minimal matching representation and evidence
+
+Use the PR #176 representation as the bounded experimental candidate:
+- derive Thread evidence profiles at read time through Team-scoped EvidenceLink → Hypothesis → Thread;
+- preserve Hypothesis lifecycle state and EvidenceLink stance for analysis;
+- validate every incoming and historical Signal's same-Team ingestion Event and exact Signal/Snapshot/hash association;
+- validate EvidenceLink Snapshot reference/hash against its canonical Signal Snapshot; absent provenance is excluded, partial/corrupt/conflicting provenance fails closed;
+- detect exact raw content-hash duplicates only within the Team's own intake history, with a deterministic canonical winner;
+- use current KnowledgeChunk projections with pinned embedding-space and chunking identities;
+- do not introduce Thread embeddings, summary projections, entity/alias tables, or a general Domain subsystem.
+
+Maximum pairwise chunk cosine similarity is an **experimental heuristic only**. It is vulnerable to high-scoring outlier chunks and larger-profile bias. Do not accept a numeric threshold or margin without labeled fixture evidence.
+
+Required offline fixtures: same-origin replay; cross-origin exact bytes within one Team; same hash across Teams; near-duplicate syndicated copy; clear match; broad-topic hard negative; multiple candidates/ties; dormant and resolved Threads; mentions-only and no-evidence Threads; active/superseded/rejected Hypotheses; supporting/challenging stances; missing/stale/mismatched/corrupt projections and Snapshots; same-Domain cross-Team provenance; candidate/evidence scan overflow; threshold/margin boundaries; high-scoring outlier chunks; multiple Hypotheses/subtopics; and differently sized evidence profiles.
+
+Labels must be independent of the matcher. Report false positives and false negatives by case, lifecycle state, and profile size. Measure eligible candidate/evidence cardinalities, bounded overflow detection, query plan, and cost on a disposable PostgreSQL fixture database. Never rank a truncated set as complete. If acceptable false-positive tolerance or query cost cannot be demonstrated, keep matching deferred or narrow the first slice; do not tune by intuition.
+
+#### D4 — Assessment receipt and recovery
+
+Freeze the PR #176 C1 contract before code:
+- one canonical assessment receipt per Task, identity derived from Task plus fixed assessment kind/version;
+- database-enforced uniqueness, not application pre-check only;
+- concurrent losing attempts load and validate the winning receipt;
+- request/schema/assessment fingerprints are validated;
+- receipt and identity commit in a transaction that completes **before** the distinct Kernel business-commit transaction begins;
+- TaskRuntime remains the only attempt, retry, interruption, and recovery authority;
+- valid receipt replays exactly without rerunning matching;
+- absent receipt follows existing retry/recovery policy; corrupt, duplicate, or mismatched receipt fails closed;
+- committed business result replays without a second disposition, Thread transition, or Event.
+
+Define the exact Event schema, unique identity, Task type/write scope, Kernel path, transaction ownership, and recovery proofs. A shared receipt/business transaction is not equivalent to durable-before-business ordering.
+
+#### D5 — Dormant Thread and RW-5 contract
+
+Agree before RW4 reactivation implementation:
+- whether matching/reactivation changes a Thread-level timestamp;
+- which timestamp is authoritative, if any;
+- whether a reactivated Thread can immediately become dormant under unchanged Hypothesis touch times;
+- exact rows/records locked by triage and decay;
+- common lock order and under-lock revalidation;
+- decay-first and triage-first outcomes;
+- replay behavior and at-most-one reactivation Event.
+
+Decay uses Hypothesis `last_touched_at`; accepted evidence is the only operation that updates it. Decay does not update it. Triage must not use it as a proxy for Thread activity. RW-5 implementation itself remains independent; the shared contract is required before RW4 reactivation and integrated proof.
+
+#### D6 — Context consumer and representation boundary
+
+Name the later Task type that consumes world-memory Context and the existing assembler to extend. Define Team/Thread scope, eligible active Hypotheses and EvidenceLinks, source/Snapshot/hash/quote validation, interaction with Domain Knowledge and Team Experience, deterministic order, count/character/token bounds, overflow behavior, immutable Context Snapshot/manifest Event/hash, and replay.
+
+Do not broaden RW-3's target-Thread Context or create a parallel Context subsystem. Experiment A informs only the RW4-4 model-facing evidence representation. Before RW4-4 freezes it, use an accepted result or an explicit Operator disposition with rationale and residual uncertainty.
+
+### Gate C — Requirement-to-test matrix and implementation authorization
+
+Before any production RW-4 code, freeze a requirement-to-test matrix with exact obligations and, once implementation begins, exact test node IDs and tested SHAs.
+
+At minimum map:
+- host authority, Team grant, canonical Task identity, race, replay, conflict;
+- Signal/Team ownership and disposition uniqueness;
+- Signal and EvidenceLink Snapshot/hash provenance;
+- each allowed and prohibited disposition/reference combination;
+- duplicate canonicalization and matching thresholds/ties/overflow;
+- receipt uniqueness, separate transaction durability, and recovery;
+- atomic disposition/Thread/Event commit and rollback;
+- dormant reactivation and decay races;
+- Context membership, provenance, ordering, bounds, and replay;
+- no direct Task lifecycle writes, unapproved follow-up Task creation, or dispatcher expansion;
+- disposable-PostgreSQL migration/constraint proofs.
+
+**RW-4 implementation authorization requires all of:**
+1. RW3.4 formal acceptance or explicit sequencing exception.
+2. D1–D6 reconciled and explicitly accepted.
+3. D3 fixture results and query-cost evidence accepted, or matching narrowed to a source-backed deterministic subset that the Operator explicitly accepts.
+4. Deferred lifecycle and Task/write-scope matrix reconciled.
+5. D5/RW-5 timestamp and lock/revalidation contract frozen.
+6. D6 Context consumer and bounds specified.
+7. Receipt transaction/recovery contract frozen.
+8. Requirement-to-test matrix independently reviewed.
+9. Explicit Operator authorization for the first bounded implementation slice.
+
+Passing this gate authorizes only the first named implementation slice, not all of RW-4.
+
+## 4. Parallel work that does not block RW4-0..2
+
+### RW-5 — deterministic decay
+
+RW-5 design and implementation may proceed independently of RW4-0, RW4-1, and RW4-2. Its planned work is:
+1. deterministic `apply_decay` Task through existing TaskRuntime;
+2. effective Team/Domain decay-policy selection;
+3. confidence reduction with exactly one valid decay Task cause;
+4. never reject Hypotheses and never mutate `last_touched_at`;
+5. Thread dormancy when all active Hypotheses meet the accepted low-confidence/window condition;
+6. boundary-time, repeated-run idempotency, concurrency, and recovery proofs.
+
+The shared D5 timestamp/lock contract must be delivered before RW4 implements reactivation. RW-5 must not invent a second runtime or scheduler.
+
+### Experiment A
+
+Preparation and offline protocol work may proceed independently. Its scope is limited to informing RW4-4 representation. The merged canonical fixture package is not an executed experiment. Provider/model execution requires separate explicit authorization. Before RW4-4 representation freeze, record either the accepted experiment result or an explicit Operator rationale and residual uncertainty. Before foundation exit/R8, retain an accepted report or explicit inconclusive/not-required disposition with limitations.
+
+### RWN-01
+
+RWN-01 is the separate newsroom value-harness scenario. Freeze publisher PDF and Supplementary Material review, corpus manifest, task brief, answer key, independent outcome set, scoring examples, reviewer calibration, and execution configuration before scored runs. It is not a prerequisite to starting RW-4 and is not a substitute for matching fixtures or Experiment A.
+
+## 5. RW-4 implementation sequence
+
+Each stage has its own reviewed scope, acceptance evidence, and explicit authorization.
+
+### RW4-1 — SignalDisposition persistence
+
+Implement the accepted physical representation only: ORM, migration, one row per Signal/Team, Team-isolation and reference constraints, Task attribution, reason, timestamps, indexes.
+
+Proof: fresh disposable PostgreSQL migration; uniqueness/FK/check violations; cross-Team/domain rejection; all valid/invalid reference combinations; upgrade compatibility; no unapproved changes to Signal, Thread, or EvidenceLink semantics.
+
+### RW4-2 — Triage Task boundary
+
+Implement the explicit trusted host-invoked creator and TaskRuntime-owned execution boundary: canonical Task identity, immutable request, Team/Signal validation, policy pin, atomic Task/request Event, DB uniqueness/race behavior, fingerprint/replay/conflict rules, exact Task envelope and write scope, admission/failure/recovery.
+
+Keep TaskDispatcher unchanged. Do not add automatic post-ingestion enqueueing.
+
+### RW4-3 — Deterministic triage and commit
+
+Implement only the evidence-approved duplicate/matching rules: bounded candidate/evidence retrieval; same-Team ingestion and Snapshot provenance; deterministic result/reason; canonical durable assessment receipt; separate receipt transaction; Kernel-authorized business commit; atomic disposition and permitted Thread transition/Event; matched-only dormant reactivation under the accepted D5 contract.
+
+Proof: positive/negative fixtures, threshold/tie/overflow, duplicate and concurrent request replay, receipt recovery across the two transactions, rollback, decay-first/triage-first races, at most one reactivation Event, no Hypothesis/EvidenceLink/ConfidenceChange mutation, no automatic `update_thread` Task.
+
+### RW4-4 — World-memory Context retrieval
+
+Extend the selected existing Task Context path. Implement same-Team active Hypothesis and eligible EvidenceLink selection, canonical source/Snapshot/hash/quote validation, deterministic serialization/order, explicit bounds and fail-closed overflow, immutable Context Snapshot/manifest Event/hash, exact replay, and stale-reference rejection.
+
+Experiment A result or explicit Operator disposition is required before representation freeze. Prove only eligible verified current records reach the model and existing retrieval behavior remains intact.
+
+### RW4-KU — claim-level attribution (separate gate)
+
+Keep immutable application-written `TaskKnowledgeReference` and typed application-validated `KnowledgeUseAssessment` separately gated. Decide whether required for RW-4 acceptance or only the foundation/value-harness gate. Do not broaden into a general learning/evaluation subsystem.
+
+### RW4-5 — integrated verification and acceptance
+
+Prove the full path:
+
+`canonical Signal → authorized Team triage → durable disposition/Thread → later Task Context`
+
+Include RW-5 integration: matched Signal reactivates the correct dormant Thread; decay and triage cannot overwrite stale decisions; retrieval sees canonical post-decay state; only eligible active Hypotheses and verified EvidenceLinks reach the later Task.
+
+Close with exact-head local verification, exact-head hosted CI, disposable PostgreSQL evidence, requirement-to-test matrix, docs/CHANGE_MAP reconciliation, residual-risk ledger, and explicit Operator acceptance.
+
+## 6. Explicit non-goals
+
+Do not build these merely to unblock RW-4:
+- Thread embeddings or summaries;
+- new Domain ORM/configuration subsystem;
+- entity extraction/alias infrastructure;
+- near-duplicate detection without validated rules;
+- model-based triage or model-generated Thread titles;
+- automatic noise classification;
+- automatic triage after ingestion;
+- second scheduler/runtime or TaskDispatcher expansion;
+- deferred refinement through RW-2/RW-3 Task types without an accepted scope change;
+- parallel Context subsystem;
+- live provider calls or scored newsroom runs.
+
+Reconsider only when a concrete scenario and evidence justify a separate design and authorization.
+
+## 7. Brief execution sequence
+
+1. **Reconcile docs and evidence:** bring PR #175 findings onto current main; update architecture, Task matrix, PLAN, README, CHANGE_MAP, and historical labels.
+2. **Settle RW3.4:** complete bounded residual proof; formally accept or record explicit sequencing exception.
+3. **Close RW4-0:** accept D1–D6; complete matching fixtures/query-cost evidence; reconcile terminal deferred and write scopes; freeze receipt and Context contracts.
+4. **Advance RW-5 independently:** implement decay and prove its invariants; deliver D5 shared timestamp/lock contract before RW4-3 reactivation.
+5. **Authorize RW-4:** freeze the proof matrix and authorize RW4-1 only.
+6. **Implement in slices:** RW4-1 persistence → RW4-2 Task boundary → RW4-3 matching/commit → RW4-4 Context.
+7. **Integrate and accept:** RW4-5 with RW-5 races and post-decay retrieval; decide RW4-KU; complete foundation-exit evidence.
+
+## 8. Readiness checklist
+
+- [ ] RW3.4 accepted, or explicit sequencing exception recorded with residuals retained.
+- [ ] D1 trusted invocation, identity, authorization, replay, and race behavior accepted.
+- [ ] D2 disposition persistence/reference/lifecycle contract accepted.
+- [ ] D3 matching and duplicate representation supported by independent fixtures and measured query cost.
+- [ ] D4 canonical assessment receipt, DB uniqueness, separate transaction, and recovery contract accepted.
+- [ ] D5 shared decay/reactivation timestamp, lock order, and race outcomes accepted.
+- [ ] D6 later Context consumer, source eligibility, bounds, and replay contract accepted.
+- [ ] Architecture lifecycle and Task/write-scope matrix reconciled.
+- [ ] Requirement-to-test matrix independently reviewed.
+- [ ] First bounded implementation PR explicitly authorized.
+
+No R8 date is assigned here. R8 remains TBD until RW-0 through RW-5 and the formal foundation exit gate are complete and accepted.
