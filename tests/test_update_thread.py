@@ -5435,7 +5435,9 @@ def test_rejected_marker_context_substitution_fails_closed_during_recovery(
 
 
 @pytest.mark.parametrize("mutation", ["duplicate", "future_attempt"])
-@pytest.mark.parametrize("marker_type", ["update_thread_committed", "update_thread_rejected"])
+@pytest.mark.parametrize(
+    "marker_type", ["update_thread_committed", "update_thread_rejected"]
+)
 def test_recovery_rejects_duplicate_or_future_terminal_marker(
     monkeypatch: pytest.MonkeyPatch,
     session_factory: sessionmaker[Session],
