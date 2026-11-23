@@ -169,7 +169,7 @@ Accepted foundation-exit disposition: before the foundation exit gate, Experimen
 
 RWN-01 remains a separate newsroom value-harness experiment. Its 10 matched control/treatment pairs, retained-experience snapshot, claim-level attribution, independent review, and three acceptance gates are not Experiment A's protocol and must not be merged with it.
 
-## 9. Proposed dependency graph
+## 9. Accepted dependency graph
 
 | Work item | Experiment A dependency | Rationale |
 |---|---|---|
