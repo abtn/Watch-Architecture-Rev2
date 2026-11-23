@@ -1,6 +1,6 @@
 # RW4-0 — Minimal Signal/Thread matching representation
 
-**Status:** Design proposal for Operator review. This document does not accept D4/D5/D6, close RW4-0, or authorize implementation.
+**Status:** Revised design proposal for Operator review after independent review. This document does not accept D4/D5/D6, close RW4-0, or authorize implementation.
 
 **Baseline:** PR #174 merge `0d1e262c77bc79af7edf93c5f4c116cdb01475c2`.
 
@@ -82,7 +82,13 @@ For one Team, derive candidate Threads from:
 
 Include supporting/challenging Signal-backed EvidenceLinks across Hypothesis lifecycle states. A committed EvidenceLink remains part of the Thread's evidence history even if its Hypothesis is later superseded or rejected. Exclude `mentions` links from the first profile because a mention alone is too weak to establish Thread identity. Do not include Outcome-backed EvidenceLinks in this Signal-to-Signal matcher.
 
-For every contributing Signal, validate that its Domain matches the Team and that its chunk projection still points to its canonical Snapshot/hash. Only chunks with the incoming Signal's exact `embedding_space_key` and supported `chunking_version` are comparable.
+For every contributing Signal, validate that its Domain matches the Team and that its chunk projection still points to its canonical Snapshot/hash. In addition, validate the provenance recorded on each contributing EvidenceLink:
+
+- If `snapshot_ref` and `snapshot_hash` are both present, they must exactly match the referenced Signal's canonical Snapshot reference and content hash.
+- If both are absent, the EvidenceLink is not eligible for semantic matching in this first slice. Do not silently substitute the Signal's current Snapshot as though the EvidenceLink had cited it.
+- A partial pair or a pair that disagrees with the Signal is invalid evidence. Exclude that evidence from the candidate profile and record a precise integrity reason; if the remaining evidence cannot support a valid bounded assessment, return `deferred`.
+
+This check is necessary because the EvidenceLink model permits both snapshot fields to be absent and only enforces pair consistency when they are present; it does not itself guarantee that the pair matches the referenced Signal. The matcher must not erase that provenance distinction.
 
 A Thread with no eligible Signal-backed EvidenceLink, no compatible chunk projection, or no common embedding space has no usable profile in this matcher. It is **unmatchable**, not evidence that a new Thread should be created.
 
@@ -126,7 +132,7 @@ If no candidate reaches the threshold, multiple Threads tie, the best/second-bes
 
 No recency bonus is proposed initially. `Thread.last_updated_at` is not currently established as a matching clock, and adding it without a lifecycle contract would make the score depend on an unproven timestamp meaning.
 
-**Important limitation:** maximum pairwise chunk similarity is intentionally a small candidate heuristic, not proof that two Signals describe the same event. It is also biased toward Threads with larger evidence profiles because they offer more chunk pairs. Its threshold and margin must be calibrated against labeled positive and hard-negative newsroom fixtures that vary Thread profile size. If that evidence does not support acceptable precision, the matcher must remain deferred or the representation must be reconsidered; it must not be made more permissive by intuition.
+**Important limitation:** maximum pairwise chunk similarity is an experimental candidate heuristic, not an accepted matching rule and not proof that two Signals describe the same event. A single highly similar chunk can dominate even when the rest of the incoming Signal is unrelated. It is also biased toward Threads with larger evidence profiles because they offer more chunk pairs. Its threshold and margin must be calibrated against labeled positive and hard-negative newsroom fixtures that vary Thread profile size. If that evidence does not support an explicitly accepted false-positive tolerance, reject this heuristic or keep the matcher deferred; do not lower the threshold or add complexity by intuition. The fixture report must expose per-case false positives and false negatives, not only aggregate accuracy.
 
 **Performance limitation:** migration `0010_knowledge_chunk_projection` creates the embedding-space/Signal B-tree index and lexical GIN index, but no pgvector ANN index. The existing vector retrieval orders by cosine distance; the source does not prove its latency at realistic Team evidence volumes. Before D4 closes, measure the eligible evidence-chunk cardinality and inspect the query plan on a disposable fixture database. The first version must have a hard evidence-scan bound and defer when that bound is exceeded. Do not add HNSW/IVFFlat or another index speculatively; require measured need and a separate schema decision.
 
@@ -188,7 +194,18 @@ Before the business commit, persist one immutable, versioned Task-attributed mat
 
 Persist scores as canonical decimal strings with a specified precision/rounding rule. Candidate bounds and payload size must be frozen before implementation.
 
-The assessment Event is the recovery receipt. If a Task crashes after assessment but before business commit, recovery reuses that exact assessment and does not rerun similarity against a potentially rebuilt projection. Commit still revalidates canonical Signal/Team/Thread references and the current Thread state. If that revalidation fails, fail closed; do not silently select a different Thread during replay.
+#### Assessment receipt identity and recovery contract
+
+The assessment Event is an immutable, versioned recovery receipt, not merely an informational log entry. Before implementation, freeze all of the following:
+
+1. **One receipt per Task.** The first slice produces at most one canonical assessment for a triage Task. The receipt identity is derived from the Task ID and a fixed assessment kind/version; it is not keyed only by attempt number. Retries of the same immutable Task must resolve the same receipt.
+2. **Database-enforced uniqueness.** Enforce uniqueness for that canonical identity in the database. An application-side existence check is not sufficient under concurrent attempts. If two attempts race, the losing transaction loads the winning receipt and verifies its Task ID, request fingerprint, schema version, and canonical assessment fingerprint. It may reuse the winner only when those values agree; a mismatch is an integrity failure, never an invitation to overwrite or append a second competing receipt.
+3. **Atomic receipt write.** Receipt insertion and its canonical identity must be committed atomically. The implementation must state whether receipt creation is its own committed transaction before business commit or shares a transaction with the business mutation. The selected boundary must preserve the recovery guarantee: after a receipt is durable, a crash before business commit must leave enough state for exact replay. Do not describe an uncommitted Event as a durable recovery receipt.
+4. **Kernel authorization.** Define the exact Task type / Kernel write scope and the single authorized Kernel path for this Event. Do not widen a generic Event allow-list without an explicit scope decision. TaskRuntime continues to own attempts, interruption, recovery, and terminal outcomes.
+5. **Recovery states.** No receipt means assessment has not durably completed and recovery follows the Task's existing retry/recovery policy. One valid receipt means replay that exact assessment without rerunning similarity. A corrupt receipt, multiple receipts, or a receipt whose request/fingerprint does not match the immutable Task is an integrity failure and must fail closed. A receipt already committed to a business disposition returns the original result without a second disposition, Thread transition, or business Event.
+6. **No attempt-specific semantic drift.** A new Task attempt cannot change matcher version, projection identity, or candidate result. Those are pinned by the immutable request and receipt. If canonical references are no longer valid at commit, fail closed; do not rerun matching or choose a replacement candidate.
+
+The document does not prescribe a particular Event table migration or invent a generic idempotency framework. The exact Event type, schema version, unique key representation, transaction boundary, and recovery tests are implementation prerequisites and remain open for review.
 
 The matcher must not store vectors or copy full source text into Event payloads. Snapshot references, hashes, chunk identities, and scores provide bounded provenance.
 
@@ -202,6 +219,7 @@ At commit, validate again:
 
 - Task and immutable request fingerprint;
 - Signal/Snapshot/hash and Team association;
+- for every selected evidence link, EvidenceLink snapshot pair exactly matches its canonical Signal Snapshot/hash; absent or mismatched provenance is not silently repaired;
 - Team active status and exact Domain equality;
 - disposition uniqueness for `(signal_id, team_id)`;
 - selected Thread belongs to the same Team and Domain and is not resolved;
@@ -238,8 +256,15 @@ At minimum include:
 18. One-candidate case (threshold applies; no runner-up margin).
 19. Small and large Thread evidence profiles (measure max-score size bias and query cost).
 20. Evidence profile at and above the scan bound (above bound defers).
+21. One high-scoring outlier chunk among otherwise unrelated incoming chunks (must expose whether max-pairwise scoring produces a false match).
+22. Several distinct Hypotheses/subtopics represented in one Thread, with evidence spread across different numbers of Signals.
+23. The same relevant evidence distributed across differently sized profiles, to measure profile-size bias.
+24. EvidenceLinks whose snapshot pair is absent, partially present, disagrees with the canonical Signal Snapshot, or matches it exactly; only the explicitly eligible case may contribute to matching.
+25. Supporting and challenging links attached to active, superseded, and rejected Hypotheses, with independent labels to determine whether historical lifecycle states improve or degrade Thread identity.
 
-The fixture must label the intended Thread or duplicate identity independently of the matcher. Report false-positive and false-negative cases, not just aggregate accuracy. Numeric threshold, margin, candidate bound, score precision, and acceptable query cost are not accepted until this evidence is reviewed. If no defensible threshold exists, D4 remains open.
+The fixture must label the intended Thread or duplicate identity independently of the matcher. Report false-positive and false-negative cases, not just aggregate accuracy. Report the max-score outlier cases and stratify results by evidence-profile size and Hypothesis lifecycle state. Numeric threshold, margin, candidate bound, score precision, and acceptable query cost are not accepted until this evidence is reviewed. If no defensible threshold exists, D4 remains open.
+
+The operational scan bound must be defined separately for candidate Threads, evidence Signals, and evidence chunks. Specify how the query detects that a bound is exceeded without first loading an unbounded eligible set; document the relevant query plan and measured cardinalities on a disposable fixture database. The matcher must never rank a truncated candidate set as though it were complete. If the bound cannot be checked within the accepted query-cost budget, defer rather than scan or select from a partial result.
 
 ## 9. Consequences and explicit non-goals
 
@@ -275,7 +300,10 @@ Explicitly excluded: entity extraction/alias tables, Thread embeddings, new Doma
 | D5 noise | Disable automatic classification | Separate deterministic rule if later required |
 | D3 deferred | Terminal | Reconcile architecture lifecycle and Task write-scope matrix |
 | D6 reactivation | Matching may identify dormant Thread only | RW-5 timestamp and shared lock-order decision |
-| Task/recovery | Pin matcher + projection identity; persist assessment receipt | Exact Event schema, bounds, uniqueness, and recovery tests |
+| Task/recovery | Pin matcher + projection identity; persist assessment receipt | Exact Event schema, canonical one-per-Task identity, database uniqueness, transaction boundary, bounds, and recovery tests |
+| Evidence provenance | Require EvidenceLink snapshot pair to match canonical Signal | Fixtures and explicit handling of absent/mismatched pairs |
+| Scoring heuristic | Max pairwise score remains experimental only | Outlier, profile-size, lifecycle-state fixtures and accepted false-positive tolerance |
+| Query bounds | Bound Thread, Signal, and chunk scans separately | Bounded overflow detection, query plan, and measured cost |
 | RW3.4 gate | Formal acceptance still deferred | Acceptance or explicit sequencing exception before RW4 implementation |
 
 No implementation or schema work begins until the representation, narrowed outcomes, fixture results, Task envelope, assessment receipt, D3 reconciliation, D6/RW-5 contract, and RW3.4 sequencing gate are reviewed and explicitly accepted.
@@ -286,7 +314,7 @@ Please review these specific choices:
 
 1. Accept a Thread's matching representation as the set of its existing Team-scoped Signal-backed EvidenceLinks, with no persisted Thread embedding.
 2. Accept exact-content-hash duplicate detection only; defer near-duplicate detection.
-3. Accept same-space Signal chunk similarity as a candidate heuristic, with numeric threshold and winner margin left open until fixture evidence.
+3. Decide whether same-space Signal chunk similarity is worth evaluating as an experimental candidate heuristic; max-pairwise scoring is not accepted as the final matching rule until outlier/profile-size fixtures establish an acceptable false-positive tolerance.
 4. Narrow first-release outcomes to `matched`, `duplicate`, and terminal `deferred`; disable `new_thread` and automatic `noise`.
 5. Keep D6 reactivation blocked on RW-5's timestamp and lock-order contract.
 
