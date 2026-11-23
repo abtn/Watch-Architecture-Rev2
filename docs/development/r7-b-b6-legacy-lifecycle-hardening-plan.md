@@ -1,3 +1,5 @@
+> **HISTORICAL IMPLEMENTATION PLAN — R7-B B6 was completed and Operator-accepted on 2026-11-16; PR #124 is merged.** The original implementation sequence below is preserved as execution history, not current authorization. Current status is governed by `PLAN.md`.
+
 # R7-B B6 — Legacy Lifecycle Hardening Delivery Plan
 
 **Status:** COMPLETE — Operator accepted 2026-11-16; PR #124 merged.
