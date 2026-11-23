@@ -1,10 +1,20 @@
 # RW3.4 — Integrated Verification and Closeout Plan
 
-**Status:** RW3.4 implementation, deadline/cost behavior, recovery corrections, and prior proof follow-ups are merged. PR #167 is on `main` at `36da6a6f838d48b8709b5dcab252e35028c61899`; documentation reconciliation PR #168 is merged at `b00c6df93f224bca03168b7894ec3e154b2293ec`. This follow-up adds six Context-tuple plus four duplicate/future receipt/proposal cases and a bounded source audit of lifecycle authority. The 35-row ledger is updated only for the source-audited `RW-WK-01` row: **28 PASS / 7 PARTIAL / 0 OPEN**. Formal RW3.4 Operator acceptance remains pending; live provider authorization remains closed.
+**Status:** RW3.4 implementation, deadline/cost behavior, recovery corrections, and proof follow-ups are merged through PR #169. PR #169 merge commit: `2190c6362b4884286d55d1d24d94c3e176969d72`; exact tested head: `02154e8a7070981ebd39efc7eb1fb3e40e18cbf6`. The 35-row ledger is **28 PASS / 7 PARTIAL / 0 OPEN** after closing `RW-WK-01` by bounded source audit. Formal RW3.4 Operator acceptance remains pending; live provider authorization remains closed.
 
-**Planning baseline:** `main` at `b00c6df93f224bca03168b7894ec3e154b2293ec` (2026-11-23), after merged PR #168.
+**Planning baseline:** `main` at `2190c6362b4884286d55d1d24d94c3e176969d72` (2026-11-23), after merged PR #169.
 
 **Milestone authority:** `PLAN.md` owns current status and authorization. This plan owns the RW3.4 closeout sequence and evidence checklist. The [RW-3 design and acceptance plan](rw-3-design-and-acceptance.md) remains normative for protocol and recovery semantics; [the implementation plan and proof matrix](rw-implementation-plan.md) remains normative for proof IDs; [Task specifications](../tasks.md) remain normative for Task shape, write scope, and budget; [testing records](../testing.md) own exact verification results.
+
+## PR #169 — bounded recovery-proof follow-up (merged 2026-11-23)
+
+- Six empty-result Context-tuple corruption cases cover `context_event_id`, `context_snapshot_ref`, and `context_content_hash` independently in the generation receipt and empty proposal Event.
+- Four duplicate/future-attempt cases cover generation receipt and proposal Events.
+- The full `TaskRuntime.recover_interrupted()` path is exercised; tests assert fail-closed terminalization, one terminal Outcome/Event, no business writes, no provider reinvocation, and repeated-recovery no-op.
+- A bounded source audit closes `RW-WK-01` for the inspected tree: one TaskRuntime lifecycle authority, narrow adapters delegating to it, and TaskDispatcher limited to `ingest_source`.
+- Hosted CI run [#45171335421](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45171335421) passed on exact head `02154e8a7070981ebd39efc7eb1fb3e40e18cbf6` with 1,296 tests, fresh PostgreSQL migration/head checks, Ruff, Mypy, and patch-whitespace validation.
+- Programmer-local Windows verification on that exact head passed Ruff, Mypy (42 files), 163 focused tests, 1,296 full-suite tests, and two independent disposable PostgreSQL migration/test phases. Both containers were removed; branch/HEAD and clean worktree checks passed. The script's final environment-restoration assertion failed. The original process-variable states were not captured independently, so exact restoration is not claimed.
+- Residuals remain: full Context tuple/state cross-product, duplicate/future commit/rejection marker coverage, mismatched in-session attempts, and the external host-authentication/TeamPolicy-publisher boundaries. Ledger: **28 PASS / 7 PARTIAL / 0 OPEN**. This merge does not constitute formal RW3.4 Operator acceptance.
 
 ## 1. Purpose and closeout boundary
 
