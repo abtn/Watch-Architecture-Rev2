@@ -25,7 +25,70 @@ Use commands supported by `pyproject.toml` and the current repository environmen
 
 ## Current RW-3 status
 
-RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery was formally accepted by the Operator on 2026-11-20 and squash-merged by PR #138; its exact implementation, corrective, local, and hosted verification evidence is recorded below. RW3.4 implementation and integrated verification are merged through PR #152; formal Operator acceptance remains pending. Live provider authorization remains closed; only deterministic fake providers are permitted.
+RW3.2 was accepted and merged by PR #137 at `ee2f7002c8710e27589ab2a7f004bf3adb2c1dd7`. RW3.3 shared commit/recovery was formally accepted and squash-merged by PR #138 on 2026-11-20. RW3.4 implementation and corrective recovery/evidence integration are merged through PR [#163](https://github.com/abtn/Watch-Architecture-Rev2/pull/163) at `6cbef27cd4fb39b1d1c860de8bf419046f35d5ae`; hosted CI passed on exact PR head `a256a7da8682747581e44cc9381bba4646c822da` (run [#45064469109](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45064469109), 1,274 tests). Formal RW3.4 Operator acceptance remains pending. Live provider authorization remains closed; only deterministic fake providers are permitted.
+
+## RW3.4 recovery and evidence integration — PR #163 — 2026-11-23
+
+**Consolidated PR:** [#163](https://github.com/abtn/Watch-Architecture-Rev2/pull/163), merged to `main` at `6cbef27cd4fb39b1d1c860de8bf419046f35d5ae`.
+
+- Integration branch: `rw3-4-integrated-evidence-20261122`.
+- Exact PR head: `a256a7da8682747581e44cc9381bba4646c822da`.
+- Base before integration: `dd73740e4393fc69838bb1a6345e8f9c6e3c4707`.
+- Source PRs #157–#162 were consolidated into #163 and then closed as superseded, unmerged PRs. Their source branches were preserved.
+- Changed files: `core/world_memory.py`, `tests/test_update_thread.py`, `tests/test_world_memory.py`, and `tests/test_generation_cost.py`. No schema or migration files changed.
+
+**Hosted exact-head CI:**
+
+- [GitHub Actions run #45064469109](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45064469109) completed successfully on exact PR head `a256a7da8682747581e44cc9381bba4646c822da`.
+- Full suite: **1,274 passed**.
+- Fresh PostgreSQL migration and single Alembic head/current checks passed; the migration head remains `0019_rw1_world_memory`.
+- Ruff, Mypy, and `git diff --check` passed.
+
+**Integrated recovery correction:**
+
+- `validate_model_update_thread_terminal` now validates a valid `update_thread_recovery_inconsistent` marker before validating receipt history. The marker is sufficient terminal evidence for the inconsistent-recovery failure path; corrupt receipt history must not prevent that already-recorded failure from terminalizing.
+- The ordinary terminal path still validates receipt history. The new negative regression proves that a malformed receipt without an inconsistency marker blocks finalization and leaves the Task running.
+- Proposal-only recovery is directly exercised by removing the receipt after proposal persistence: recovery fails the Task, records the inconsistency marker, does not reinvoke the provider, and produces no business writes.
+- The transient-commit recovery test now invokes recovery twice and proves that the second pass returns no additional completion/failure, the provider is called once, the proposal fingerprint is preserved, and the expected business state remains.
+
+**Additional direct proofs introduced by #163:**
+
+- Context assembly rejects an EvidenceLink whose Signal domain differs from the target Team domain before persisting a Context Event.
+- The `update_thread` worker does not invoke `HybridKnowledgeRetriever.retrieve`; its Context Snapshot contains no Team Experience passage fields.
+- Model terminal validation rejects an Operator marker, and Operator terminal validation rejects a model marker.
+- An accepted model-worker EvidenceLink advances a pre-existing Hypothesis `last_touched_at` to the model commit marker timestamp.
+- Generation-cost reservation rejects mismatched operation/Task-type and write-scope combinations for the strategy, distillation, and update-thread operations.
+- Strict model parsing rejects representative unsupported proposal shapes and invalid UUID/source references; these are not an exhaustive combinatorial malformed-input matrix.
+- The Context identity tampering parameterization now covers receipt and Context Event Task, Team, Thread, attempt, policy, Snapshot reference, and content-hash substitutions in addition to the proposal/receipt Context identity fields.
+
+**Local verification qualification:** The earlier local result of 1,213 tests remains evidence for its earlier exact implementation SHA only. A subsequent Programmer-local Windows run on the PR #165 candidate tree is recorded below; it is not retroactively attributed to #163.
+
+**Boundary retained:** PR #163 introduces no schema/migration or provider change. The hosted run used deterministic fake providers; no live Cloudflare call occurred. Formal RW3.4 Operator acceptance remains pending. The host composition root and production TeamPolicy publisher remain absent and are not made PASS by fixture-based tests.
+
+## RW3.4 Programmer-local Windows verification — PR #165 candidate — 2026-11-23
+
+**Exact tested branch:** `rw3-4-pr165-local-verify-20261123`
+
+**Exact HEAD:** `9f41d9eb87c175b5070f4154f600d1c6bb85a47e`
+
+**PR:** [#165](https://github.com/abtn/Watch-Architecture-Rev2/pull/165), stacked on documentation PR #164 at its then-current base `c56b553a1761a4730a0921185d84dec304a2225f`.
+
+The programmer ran the guarded sync-and-test script after fetching and verifying the exact PR head. The script confirmed the expected branch and SHA, a clean worktree, and an already-up-to-date fast-forward state.
+
+**Results:**
+- `uv sync --locked`: passed.
+- Fresh disposable PostgreSQL container on a dynamically assigned loopback port: created successfully.
+- `uv run alembic upgrade head`, `alembic heads`, and `alembic current`: passed; one head, `0019_rw1_world_memory`.
+- `uv run ruff check core tests migrations`: passed.
+- `uv run mypy core`: passed, 42 source files.
+- `git diff c56b553a1761a4730a0921185d84dec304a2225f...HEAD --check`: passed.
+- `uv run pytest -q`: **1,286 passed, 130 warnings** in 371.36s (6:11).
+- Warnings were existing Alembic `path_separator` deprecation warnings in migration tests; no test failed.
+- Disposable PostgreSQL container cleanup succeeded. The script's final checks retained the exact branch and HEAD and a clean worktree; database URL environment variables were restored.
+
+**Hosted exact-head CI:** PR #165 run [#45071241347](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45071241347) completed successfully on the same exact HEAD.
+
+This is programmer-reported local verification of the exact PR #165 candidate tree. It does not constitute formal RW3.4 Operator acceptance or authorize live-provider calls.
 
 ## RW3.4 consolidated integration branch — exact-head verification — 2026-11-22
 
@@ -61,7 +124,7 @@ The earlier PR #146 exact-head verification recorded below remains historical ev
 
 ## RW3.4 integrated implementation-stack verification — 2026-11-22
 
-**Historical disposition (PR #146 exact head only):** At the time of this earlier verification, the component stack (#140, #142, #144, #145, and #146) was open and in draft status. Those PRs were later closed without individual merges after their contributions were consolidated into #152. The #146 result remains historical evidence for its exact head only; the consolidated #152 verification above is the current integrated evidence. Neither result by itself constitutes formal RW3.4 acceptance or live-provider authorization.
+**Historical disposition (PR #146 exact head only):** At the time of this earlier verification, the component stack (#140, #142, #144, #145, and #146) was open and in draft status. Those PRs were later closed without individual merges after their contributions were consolidated into #152. The #146 result remains historical evidence for its exact head only. PR #152 remains the integrated deadline/cost implementation baseline; the later corrective recovery and supplemental proof integration is PR #163, documented above. Neither merge nor its CI result constitutes formal RW3.4 acceptance or live-provider authorization.
 
 **Stack and scope at the verified head:**
 
