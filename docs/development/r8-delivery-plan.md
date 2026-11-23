@@ -61,7 +61,7 @@ Freeze and record:
 - Cross-domain transfer restrictions.
 - Explicit exclusions and unresolved non-critical risks.
 
-**Entry rule:** all foundational exit criteria must pass before the first R8 scenario is run. The start date remains TBD until RW-4/RW-5 estimates, the Experiment A dependency and acceptance relationship, newsroom package readiness, and the foundation exit forecast are evidence-based. No date grants permission to start with incomplete foundations.
+**Entry rule:** all foundational exit criteria must pass before the first R8 scenario is run. The start date remains TBD until RW-4/RW-5 estimates, the accepted Experiment A result/residual-risk disposition, newsroom package readiness, and the foundation exit forecast are evidence-based. No date grants permission to start with incomplete foundations.
 
 ## 4. R8 pressure-test domains
 
