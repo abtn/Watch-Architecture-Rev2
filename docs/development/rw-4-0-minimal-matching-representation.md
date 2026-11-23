@@ -72,6 +72,7 @@ For one Team, derive candidate Threads from:
 - `EvidenceLink.team_id = Team.id`
 - `EvidenceLink.subject_kind = 'hypothesis'`
 - `EvidenceLink.source_kind = 'signal'`
+- `EvidenceLink.stance IN ('supports', 'challenges')`
 - `EvidenceLink.hypothesis_id → Hypothesis.id`
 - `Hypothesis.team_id = Team.id`
 - `Hypothesis.thread_id → Thread.id`
@@ -79,7 +80,7 @@ For one Team, derive candidate Threads from:
 - `Thread.domain = Team.domain`
 - `Thread.status IN ('active', 'dormant')`
 
-Include Signal-backed EvidenceLinks across Hypothesis lifecycle states. A committed EvidenceLink remains part of the Thread's evidence history even if its Hypothesis is later superseded or rejected. Do not include Outcome-backed EvidenceLinks in this Signal-to-Signal matcher.
+Include supporting/challenging Signal-backed EvidenceLinks across Hypothesis lifecycle states. A committed EvidenceLink remains part of the Thread's evidence history even if its Hypothesis is later superseded or rejected. Exclude `mentions` links from the first profile because a mention alone is too weak to establish Thread identity. Do not include Outcome-backed EvidenceLinks in this Signal-to-Signal matcher.
 
 For every contributing Signal, validate that its Domain matches the Team and that its chunk projection still points to its canonical Snapshot/hash. Only chunks with the incoming Signal's exact `embedding_space_key` and supported `chunking_version` are comparable.
 
@@ -121,11 +122,11 @@ A Thread is selected only if:
 2. it is the unique best candidate by the frozen winner-margin rule; and
 3. its Team, Domain, and current status are revalidated at commit.
 
-If no candidate reaches the threshold, multiple Threads tie, the best/second-best margin is insufficient, required evidence is missing, or candidate ranking is ambiguous, return `deferred`. UUID ordering may stabilize evidence serialization but must never break a semantic score tie.
+If no candidate reaches the threshold, multiple Threads tie, the best/second-best margin is insufficient, required evidence is missing, or candidate ranking is ambiguous, return `deferred`. With exactly one eligible candidate, the minimum threshold is sufficient; apply the winner-margin rule only when a runner-up exists. If the bounded candidate/evidence scan would truncate the eligible set, return `deferred` rather than selecting from a partial set. UUID ordering may stabilize evidence serialization but must never break a semantic score tie.
 
 No recency bonus is proposed initially. `Thread.last_updated_at` is not currently established as a matching clock, and adding it without a lifecycle contract would make the score depend on an unproven timestamp meaning.
 
-**Important limitation:** maximum pairwise chunk similarity is intentionally a small candidate heuristic, not proof that two Signals describe the same event. Its threshold and margin must be calibrated against labeled positive and hard-negative newsroom fixtures. If that evidence does not support acceptable precision, the matcher must remain deferred or the representation must be reconsidered; it must not be made more permissive by intuition.
+**Important limitation:** maximum pairwise chunk similarity is intentionally a small candidate heuristic, not proof that two Signals describe the same event. It is also biased toward Threads with larger evidence profiles because they offer more chunk pairs. Its threshold and margin must be calibrated against labeled positive and hard-negative newsroom fixtures that vary Thread profile size. If that evidence does not support acceptable precision, the matcher must remain deferred or the representation must be reconsidered; it must not be made more permissive by intuition.
 
 ### 4.3 New Thread eligibility
 
@@ -222,14 +223,17 @@ At minimum include:
 5. A clear update to one existing Thread with multiple historical evidence Signals.
 6. Two unrelated Threads sharing broad topic vocabulary (hard negative).
 7. One Signal with two plausible Thread candidates (must defer unless calibrated winner margin is met).
-8. A dormant Thread with strong matching evidence (candidate only; reactivation remains gated by D6).
-9. A resolved Thread with otherwise strong evidence (excluded).
-10. Thread with no Signal-backed EvidenceLinks (unmatchable; must not cause new Thread creation).
-11. No valid KnowledgeChunk projection at Task admission (Task creator rejects without creating Task), and a projection that becomes stale after admission (Task defers).
-12. Mismatched embedding-space key or chunking version.
-13. Corrupt or mismatched Snapshot/hash.
-14. Domain mismatch and cross-Team evidence attempts.
-15. Scores exactly at threshold and winner-margin boundaries.
+8. A dormant Thread with strong supporting/challenging matching evidence (candidate only; reactivation remains gated by D6).
+9. A Thread represented only by `mentions` EvidenceLinks (not a candidate in v1).
+10. A resolved Thread with otherwise strong evidence (excluded).
+11. Thread with no eligible Signal-backed EvidenceLinks (unmatchable; must not cause new Thread creation).
+12. No valid KnowledgeChunk projection at Task admission (Task creator rejects without creating Task), and a projection that becomes stale after admission (Task defers).
+13. Mismatched embedding-space key or chunking version.
+14. Corrupt or mismatched Snapshot/hash.
+15. Domain mismatch and cross-Team evidence attempts.
+16. Candidate/evidence scan exceeds its bound (defer; never choose from a truncated set).
+17. Scores exactly at threshold and winner-margin boundaries.
+18. One-candidate case (threshold applies; no runner-up margin).
 
 The fixture must label the intended Thread or duplicate identity independently of the matcher. Report false-positive and false-negative cases, not just aggregate accuracy. Numeric threshold, margin, candidate bound, and score precision are not accepted until this evidence is reviewed. If no defensible threshold exists, D4 remains open.
 
