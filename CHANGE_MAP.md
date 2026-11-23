@@ -2,7 +2,7 @@
 
 This file identifies the active source for each concern. It is an index, not a second specification. Read only the rows relevant to the task.
 
-**RW-3 status pointer:** RW3.1–RW3.3 are accepted and merged. RW3.4 implementation and recovery/evidence proofs are merged through PRs #152, #163, #165, and #167; documentation reconciliation PR #168 is merged at `b00c6df93f224bca03168b7894ec3e154b2293ec`. Current `main` remains at `b00c6df93f224bca03168b7894ec3e154b2293ec` with the 27 PASS / 8 PARTIAL / 0 OPEN ledger. Open test/documentation-only PR #169 proposes six empty-result Context-integrity regressions and a bounded lifecycle-authority source audit; its candidate ledger is 28 PASS / 7 PARTIAL / 0 OPEN, with hosted CI pending. Formal Operator acceptance remains pending; live provider authorization remains closed. Current status and authorization are governed by [PLAN.md](PLAN.md).
+**RW-3 status pointer:** RW3.1–RW3.3 are accepted and merged. RW3.4 implementation and recovery/evidence proofs are merged through PRs #152, #163, #165, and #167; documentation reconciliation PR #168 is merged at `b00c6df93f224bca03168b7894ec3e154b2293ec`. Current `main` remains at `b00c6df93f224bca03168b7894ec3e154b2293ec` with the 27 PASS / 8 PARTIAL / 0 OPEN ledger. Open test/documentation-only PR #169 proposes six Context-tuple plus four duplicate/future receipt/proposal regressions and a bounded lifecycle-authority source audit; its candidate ledger is 28 PASS / 7 PARTIAL / 0 OPEN, with hosted CI pending. Formal Operator acceptance remains pending; live provider authorization remains closed. Current status and authorization are governed by [PLAN.md](PLAN.md).
 
 | Concern | Authoritative source | Boundary |
 |---|---|---|
