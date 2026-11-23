@@ -177,7 +177,7 @@ RWN-01 remains a separate newsroom value-harness experiment. Its 10 matched cont
 | RW4-1 disposition persistence | None | Physical schema and Team-isolation proofs do not depend on flat/structured model context. |
 | RW4-2 triage Task boundary | None | Trusted creator, immutable request, admission, and TaskRuntime behavior are independent. |
 | RW4-3 deterministic triage and Thread commit | None | Matching, deduplication, disposition, creation/reactivation, and atomic commit are deterministic application behavior. |
-| RW4-4 Context representation | Experiment result should inform/freeze choice, or record an explicit exception | This is the only direct technical relationship; current fixtures are not multi-Thread retrieval tests. |
+| RW4-4 Context representation | Experiment A result informs the choice; absent a usable result, an explicit Operator-approved rationale and residual-risk record is required before freeze | This is the only direct technical relationship; current fixtures are not multi-Thread retrieval tests. |
 | RW-5 confidence decay | None | Deterministic decay does not depend on the model-facing representation experiment. |
 | RW-4/RW-5 integrated exit | Result disposition required | Ensure the experiment is not omitted and cross-check retrieval after decay/reactivation. |
 | RW foundation exit / R8 | Accepted Experiment A disposition required | Carry the result or explicit residual-risk decision into the foundation evidence package. |
