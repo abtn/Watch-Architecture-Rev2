@@ -29,6 +29,7 @@ from core.generation_cost import (
     TaskGenerationCostService,
 )
 from core.models import (
+    ConfidenceChange,
     Event,
     EvidenceLink,
     Hypothesis,
@@ -697,6 +698,46 @@ def test_request_task_identity_is_stable_and_team_scoped(
     other_team = task_id_for_request(uuid4(), key)
     assert first == second
     assert first != other_team
+
+
+def test_context_uses_task_pinned_policy_after_policy_advancement(
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    _admit_fixture_task(session_factory, created.task_id)
+    hypothesis_id, evidence_id = _seed_hypothesis_and_link(
+        session_factory, rw3_fixture
+    )
+    with session_factory.begin() as session:
+        session.add(
+            TeamPolicy(
+                id=uuid4(),
+                team_id=rw3_fixture.team_id,
+                version=2,
+                schema_version=2,
+                rules={"policy_revision": "newer"},
+            )
+        )
+
+    context = UpdateThreadContextAssembler(
+        session_factory, snapshot_store
+    ).assemble(created.task_id, 1)
+
+    assert context.document["task"]["policy_version"] == 1
+    assert context.document["policy"] == {
+        "version": 1,
+        "schema_version": 1,
+        "rules": {},
+    }
+    assert context.manifest["policy_version"] == 1
+    assert [item["id"] for item in context.document["hypotheses"]] == [
+        str(hypothesis_id)
+    ]
+    assert [item["id"] for item in context.document["evidence_links"]] == [
+        str(evidence_id)
+    ]
 
 
 def test_replay_keeps_original_policy_after_policy_advancement(
@@ -2014,9 +2055,233 @@ def test_update_thread_worker_records_context_identity_and_empty_proposal_set(
         ) is None
 
 
+def test_empty_proposal_recovery_finalizes_success_no_change(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+) -> None:
+    _, created = _create_task(session_factory, rw3_fixture)
+    provider = _FakeUpdateThreadProvider('{"proposals":[]}')
+    worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+    monkeypatch.setattr(worker._runtime, "finalize", lambda observation: None)
+
+    result = worker.run(created.task_id)
+
+    assert result.proposals == ()
+    assert result.reconciliation.status == "reconciled"
+    assert provider.calls == 1
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        receipt = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == RECEIPT_EVENT_TYPE,
+            )
+        )
+        proposals = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        )
+        started = session.scalar(
+            select(Event.created_at).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_started",
+            )
+        )
+        assert task is not None and task.status == "running"
+        assert charge is not None and charge.status == "reconciled"
+        assert receipt is not None
+        assert proposals is not None and proposals.payload["proposals"] == []
+        assert started is not None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type.in_(
+                    (
+                        "update_thread_proposal_accepted",
+                        "update_thread_proposal_rejected",
+                        "update_thread_committed",
+                        "update_thread_rejected",
+                        "update_thread_recovery_inconsistent",
+                    )
+                ),
+            )
+        ) is None
+
+    runtime = TaskRuntime(session_factory, snapshot_store)
+    recovered = runtime.recover_interrupted(
+        now=started + timedelta(seconds=61)
+    )
+    assert recovered.completed == (created.task_id,)
+    assert recovered.failed == ()
+    replayed = runtime.recover_interrupted(
+        now=started + timedelta(seconds=61)
+    )
+    assert replayed.completed == ()
+    assert replayed.failed == ()
+    assert replayed.retried == ()
+    assert provider.calls == 1
+
+    with session_factory() as session:
+        task = session.get(Task, created.task_id)
+        charge = session.scalar(
+            select(TaskGenerationCharge).where(
+                TaskGenerationCharge.task_id == created.task_id
+            )
+        )
+        receipt_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == created.task_id,
+                    Event.type == RECEIPT_EVENT_TYPE,
+                )
+            )
+        )
+        proposal_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == created.task_id,
+                    Event.type == PROPOSALS_EVENT_TYPE,
+                )
+            )
+        )
+        completed = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_completed",
+            )
+        )
+        outcome = session.scalar(
+            select(Outcome).where(
+                Outcome.recorded_by_task_id == created.task_id,
+                Outcome.outcome_type == "task_execution",
+            )
+        )
+        assert task is not None and task.status == "done"
+        assert charge is not None and charge.status == "reconciled"
+        assert len(receipt_events) == 1
+        assert len(proposal_events) == 1
+        assert completed is not None
+        assert completed.payload["result_category"] == "success_no_change"
+        assert outcome is not None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type.in_(
+                    (
+                        "update_thread_proposal_accepted",
+                        "update_thread_proposal_rejected",
+                        "update_thread_committed",
+                        "update_thread_rejected",
+                        "update_thread_recovery_inconsistent",
+                        "hypothesis_created",
+                        "evidence_link_added",
+                        "confidence_changed",
+                        "hypothesis_rejected",
+                        "hypothesis_superseded",
+                    )
+                ),
+            )
+        ) is None
+        assert session.scalar(
+            select(Hypothesis.id).where(
+                Hypothesis.team_id == rw3_fixture.team_id
+            )
+        ) is None
+        assert session.scalar(
+            select(EvidenceLink.id).where(
+                EvidenceLink.originating_task_id == created.task_id
+            )
+        ) is None
+        assert session.scalar(
+            select(ConfidenceChange.id).where(
+                ConfidenceChange.created_by_task_id == created.task_id
+            )
+        ) is None
+
+
 @pytest.mark.parametrize(
     "raw_completion",
-    ["not-json", '{"proposals":[],"proposals":[]}'],
+    [
+        "not-json",
+        '{"proposals":[],"proposals":[]}',
+        '{"proposals":[],"extra":NaN}',
+        json.dumps({"proposals": [], "operator_id": "forged"}),
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "hypothesis_create",
+                        "key": "invalid-reference",
+                        "hypothesis_id": "not-a-uuid",
+                        "statement": "Malformed references must not pass parsing.",
+                        "confidence": "low",
+                    }
+                ]
+            }
+        ),
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "evidence_link_add",
+                        "key": "missing-source-reference",
+                        "hypothesis_id": str(UUID(int=1)),
+                        "source_kind": "signal",
+                        "signal_id": None,
+                        "outcome_id": None,
+                        "stance": "supports",
+                    }
+                ]
+            }
+        ),
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "unsupported_proposal_kind",
+                        "key": "unsupported-kind",
+                    }
+                ]
+            }
+        ),
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "hypothesis_create",
+                        "key": "forged-authority",
+                        "hypothesis_id": str(UUID(int=2)),
+                        "statement": "A proposal cannot supply Operator authority.",
+                        "confidence": "low",
+                        "operator_id": "forged-operator",
+                    }
+                ]
+            }
+        ),
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "hypothesis_create",
+                        "key": f"too-many-{index}",
+                        "hypothesis_id": str(UUID(int=index + 10)),
+                        "statement": f"Hypothesis {index}",
+                        "confidence": "low",
+                    }
+                    for index in range(9)
+                ]
+            }
+        ),
+    ],
 )
 def test_update_thread_worker_persists_valid_usage_before_parser_failure(
     session_factory: sessionmaker[Session],
@@ -2063,6 +2328,40 @@ def test_update_thread_worker_persists_valid_usage_before_parser_failure(
         assert charge.status == "reconciled"
         assert task is not None
         assert task.status == "failed"
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type.in_(
+                    (
+                        "update_thread_proposal_accepted",
+                        "update_thread_proposal_rejected",
+                        "update_thread_committed",
+                        "update_thread_rejected",
+                        "update_thread_recovery_inconsistent",
+                        "hypothesis_created",
+                        "evidence_link_added",
+                        "confidence_changed",
+                        "hypothesis_rejected",
+                        "hypothesis_superseded",
+                    )
+                ),
+            )
+        ) is None
+        assert session.scalar(
+            select(Hypothesis.id).where(
+                Hypothesis.team_id == rw3_fixture.team_id
+            )
+        ) is None
+        assert session.scalar(
+            select(EvidenceLink.id).where(
+                EvidenceLink.originating_task_id == created.task_id
+            )
+        ) is None
+        assert session.scalar(
+            select(ConfidenceChange.id).where(
+                ConfidenceChange.created_by_task_id == created.task_id
+            )
+        ) is None
 
 
 def test_interrupted_provider_call_marks_reserved_charge_unknown_before_retry(
@@ -2136,6 +2435,46 @@ def test_interrupted_provider_call_marks_reserved_charge_unknown_before_retry(
         assert charge is not None and charge.status == "unknown"
         assert unknown_event is not None
         assert receipt is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type == PROPOSALS_EVENT_TYPE,
+            )
+        ) is None
+        assert session.scalar(
+            select(Event.id).where(
+                Event.task_id == created.task_id,
+                Event.type.in_(
+                    (
+                        "update_thread_proposal_accepted",
+                        "update_thread_proposal_rejected",
+                        "update_thread_committed",
+                        "update_thread_rejected",
+                        "update_thread_recovery_inconsistent",
+                        "hypothesis_created",
+                        "evidence_link_added",
+                        "confidence_changed",
+                        "hypothesis_rejected",
+                        "hypothesis_superseded",
+                    )
+                ),
+            )
+        ) is None
+        assert session.scalar(
+            select(Hypothesis.id).where(
+                Hypothesis.team_id == rw3_fixture.team_id
+            )
+        ) is None
+        assert session.scalar(
+            select(EvidenceLink.id).where(
+                EvidenceLink.originating_task_id == created.task_id
+            )
+        ) is None
+        assert session.scalar(
+            select(ConfidenceChange.id).where(
+                ConfidenceChange.created_by_task_id == created.task_id
+            )
+        ) is None
 
 
 @pytest.mark.parametrize(
@@ -2714,6 +3053,133 @@ def test_marker_recovery_reconstructs_terminal_result_without_reapplying(
                 )
             )
         ) == 1
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("context_event_id", str(UUID(int=9001))),
+        ("context_snapshot_ref", "sha256:" + "b" * 64),
+        ("context_content_hash", "sha256:" + "c" * 64),
+    ],
+)
+def test_committed_marker_context_substitution_fails_closed_without_reapplying(
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+    snapshot_store: SnapshotStore,
+    rw3_fixture: Fixture,
+    field: str,
+    replacement: str,
+) -> None:
+    from core.world_memory import WorldMemoryCommitService
+
+    _, created = _create_task(session_factory, rw3_fixture)
+    hypothesis_id = uuid4()
+    provider = _FakeUpdateThreadProvider(
+        json.dumps(
+            {
+                "proposals": [
+                    {
+                        "kind": "hypothesis_create",
+                        "key": "committed-marker-context",
+                        "hypothesis_id": str(hypothesis_id),
+                        "statement": "A corrupted marker cannot authorize replay.",
+                        "confidence": "low",
+                    }
+                ]
+            },
+            separators=(",", ":"),
+        )
+    )
+    worker = UpdateThreadWorker(session_factory, snapshot_store, provider)
+    monkeypatch.setattr(worker._runtime, "finalize", lambda observation: None)
+    worker.run(created.task_id)
+
+    with session_factory.begin() as session:
+        task = session.scalar(
+            select(Task).where(Task.id == created.task_id).with_for_update()
+        )
+        marker = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_committed",
+            )
+        )
+        started = session.scalar(
+            select(Event.created_at).where(
+                Event.task_id == created.task_id,
+                Event.type == "task_started",
+            )
+        )
+        assert task is not None and task.status == "running"
+        assert marker is not None
+        assert started is not None
+        before_hypothesis_ids = set(
+            session.scalars(
+                select(Hypothesis.id).where(
+                    Hypothesis.team_id == rw3_fixture.team_id
+                )
+            )
+        )
+        business_event_types = (
+            "update_thread_proposal_accepted",
+            "update_thread_proposal_rejected",
+            "hypothesis_created",
+            "evidence_link_added",
+            "confidence_changed",
+            "hypothesis_rejected",
+            "hypothesis_superseded",
+        )
+        before_business_event_ids = set(
+            session.scalars(
+                select(Event.id).where(
+                    Event.task_id == created.task_id,
+                    Event.type.in_(business_event_types),
+                )
+            )
+        )
+        marker.payload = {
+            **marker.payload,
+            field: replacement,
+        }
+        session.flush()
+
+        observation = WorldMemoryCommitService(
+            session_factory, snapshot_store
+        ).resume_update_thread_in_session(
+            session,
+            task,
+            task.attempt_count,
+            recovery_at=started + timedelta(seconds=61),
+        )
+
+        assert observation is not None
+        assert observation.result_category == "terminal_failure"
+        assert observation.failure_reason == "update_thread_recovery_inconsistent"
+        inconsistent = session.scalar(
+            select(Event).where(
+                Event.task_id == created.task_id,
+                Event.type == "update_thread_recovery_inconsistent",
+            )
+        )
+        assert inconsistent is not None
+        assert set(
+            session.scalars(
+                select(Hypothesis.id).where(
+                    Hypothesis.team_id == rw3_fixture.team_id
+                )
+            )
+        ) == before_hypothesis_ids
+        assert set(
+            session.scalars(
+                select(Event.id).where(
+                    Event.task_id == created.task_id,
+                    Event.type.in_(business_event_types),
+                )
+            )
+        ) == before_business_event_ids
+
+    assert provider.calls == 1
 
 
 @pytest.mark.parametrize(
