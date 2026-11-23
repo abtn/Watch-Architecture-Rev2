@@ -8,7 +8,7 @@ This is the current implementation-status summary. RW3.1–RW3.3 are accepted an
 | Task / entity | Current implementation state |
 |---|---|
 | ingest_source | Implemented for the existing deterministic Signal-ingestion path. This does not include triage. |
-| triage_signal | Specified; not implemented. RW-4 design planning only; no implementation authorization. See [RW-4 design plan](development/rw-4-design-and-acceptance.md). |
+| triage_signal | Specified; not implemented. RW-4 design planning only; no implementation authorization. See the [RW-4 readiness plan](development/rw-4-readiness-and-delivery-plan.md). |
 | update_thread | RW3.1–RW3.3 are accepted; RW3.4 implementation and recovery/evidence proofs are merged. The 35-row ledger is 28 PASS / 7 PARTIAL / 0 OPEN. Formal RW3.4 acceptance is deferred by PR #171; see [PLAN.md](../PLAN.md) and [RW3.4 closeout plan](development/rw-3-4-verification-closeout-plan.md). Deterministic fake providers only; live provider authorization remains closed. |
 | operator_update | Deterministic host-invoked Operator path implemented and formally accepted in RW-2; PR #134 merged to main. |
 | apply_decay | Specified; not implemented. Planned for RW-5. |
@@ -612,7 +612,7 @@ The `operator_update` row remains identical to `update_thread` as the
 shared target contract — this is INV-15 expressed as a table. The RW-2
 implementation is the first bounded slice of that contract: it writes
 Hypothesis, EvidenceLink, and ConfidenceChange only. Deferred SignalDisposition
-and projection cells are not implemented by RW-2. **RW-4 reconciliation warning:** the legacy W³ SignalDisposition cells for `update_thread` and `operator_update` conflict with the PR #176 proposal that deferred is terminal. Do not treat those cells as RW-4 authority or implement either path until D2/D3 are accepted and this matrix is revised.
+and projection cells are not implemented by RW-2. **RW-4 reconciliation warning:** the legacy W³ SignalDisposition cells for `update_thread` and `operator_update` conflict with the PR #176 proposal that deferred is terminal. Do not treat those cells as RW-4 authority or implement either path until D3 is accepted and this matrix is revised.
 ## 5. Budget defaults
 Starting points, tuned during M2; per-Task values may override downward, never upward past policy ceilings (`budgets` rule group). The `update_thread` row is the approved fixed RW-3 design budget, not a generic starting point. Operator task types (`operator_update`, `answer_consultation`, `create_team`, `activate_team`, plus the other manual types) incur no model cost and have no enforced deadline (—).
 | Task type | max_tool_calls | max_cost_usd | deadline_s |
