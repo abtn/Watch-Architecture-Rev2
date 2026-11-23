@@ -110,7 +110,7 @@ Do not let a model grade its own improvement without independent checks. Report 
 
 ## 7. Completion and acceptance
 
-R8 has no preassigned completion date. Its completion gate is defined by evidence, not by the November 23 start date.
+R8 has neither a scheduled start nor a preassigned completion date. Its start and completion gates are defined by evidence, not by the withdrawn November 23 target.
 
 Acceptance requires:
 
