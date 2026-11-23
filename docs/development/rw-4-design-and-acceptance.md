@@ -196,7 +196,7 @@ Before RW4-0 can close, review and decide:
 4. The exact new-Thread title/source rule and the dormant-Thread reactivation condition.
 5. The later Task type(s), Context assembler, and justified bounds for world-memory retrieval.
 6. Whether RW4-KU is an RW-4 acceptance prerequisite or a separately accepted sub-slice before the foundation exit gate.
-7. The explicit Experiment A dependency and acceptance relationship to RW-4/RW-5/foundation exit/R8.
+7. The accepted Experiment A dependency rule is fixed as described in §4.6. Separately, approve the remaining Experiment A protocol decisions in its execution plan before EA-0 closes; those protocol decisions do not reopen the accepted RW4-4/RW-5 dependency mapping.
 8. Whether RW-4 implementation waits for RW3.4 formal acceptance or proceeds only under an explicit sequencing exception.
 
 No implementation stage should begin by treating an unresolved item above as an implicit default.
