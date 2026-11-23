@@ -182,7 +182,7 @@ This matrix identifies proof obligations, not existing tests or implementation e
 |---|---|
 | Host authority and Team scope | Missing/untrusted principal, absent/wrong Team grant, wrong operation grant, inactive/missing Team, and Signal-domain mismatch all fail before Task creation; request Event records the trusted requester. |
 | Canonical Task identity | Concurrent same-pair requests create exactly one Task and one request Event; the loser resolves the winner after fingerprint validation. |
-| Request replay/conflict | Same immutable request resolves to the same Task with no extra Event; changed requester, policy pin, or request content conflicts without mutation. |
+| Request replay/conflict | Each caller is independently authorized; the same canonical request resolves to the same Task without replacing first-requester provenance; changed policy pin or other immutable request content conflicts without mutation. |
 | Disposition uniqueness | Concurrent commits for one Signal/Team pair produce one disposition; another Team remains an independent scope. |
 | Duplicate Signal | Same-scope duplicate resolves to the canonical Signal; cross-Team/domain or invalid references reject; duplicate never creates/reactivates a Thread. |
 | Existing Thread match | Unique valid match selects exactly one same-Team/domain Thread; tied, ambiguous, weak, stale, or incompatible candidates defer; incidental row/vector ordering cannot decide. |
