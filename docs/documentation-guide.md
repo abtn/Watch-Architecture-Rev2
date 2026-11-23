@@ -35,9 +35,10 @@ Use CONTEXT.md and README.md for orientation, not as additional authorities. Do 
 - CHANGE_MAP.md — concept-to-authority map.
 - AGENTS.md — repository operating contract.
 - docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md — canonical B6 audit, scope-freeze, implementation, verification, and acceptance sequence.
-- docs/development/r8-delivery-plan.md — canonical R8 scope and acceptance criteria; November 23, 2026 is the planned start date, not a completion deadline. B6 and the RW foundation exit gate precede it.
+- docs/development/r8-delivery-plan.md — canonical R8 scope and acceptance criteria; the former November 23, 2026 start target was withdrawn and the replacement date is TBD. B6 and the RW foundation exit gate precede it.
 - docs/development/rw-0-decision-record.md — records Operator-confirmed RW decisions, accepted ADR constraints, and unresolved RW-0 questions. It does not authorize implementation.
-- docs/development/rw-implementation-plan.md — proposed RW-1–RW-5 slice boundaries, proof matrix, stop conditions, and foundation exit gate.
+- docs/development/rw-implementation-plan.md — RW-1–RW-5 slice boundaries, proof matrix, stop conditions, and foundation exit gate.
+- docs/development/rw-4-design-and-acceptance.md — RW-4 signal-triage/retrieval design proposal, source audit, open decisions, proposed implementation sequence, and proof obligations; documentation only, not implementation authorization.
 - docs/development/powershell-local-sync-test-script-guide.md — required paste-safe construction, preflight, native-command error handling, environment restoration, and disposable-database rules for generated PowerShell scripts.
 - docs/development/rw-value-harness.md — proposed newsroom-first value measurement contract; exact scenario and thresholds are frozen during RW-0.
 - docs/documentation-guide.md — this navigation and maintenance policy.
