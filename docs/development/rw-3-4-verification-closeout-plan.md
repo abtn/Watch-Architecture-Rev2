@@ -1,10 +1,16 @@
 # RW3.4 — Integrated Verification and Closeout Plan
 
-**Status:** RW3.4 implementation, deadline/cost behavior, recovery corrections, and proof follow-ups are merged through PR #169; documentation rebaseline PR #170 is merged. The 35-row ledger remains **28 PASS / 7 PARTIAL / 0 OPEN** after closing `RW-WK-01` by bounded source audit. **Operator disposition (2026-11-23): formal acceptance DEFERRED.** Implementation-complete does not mean milestone-accepted. The seven PARTIAL rows remain outstanding; live provider authorization remains closed.
+**Status:** RW3.4 implementation, deadline/cost behavior, recovery corrections, and bounded proof follow-ups are merged through PR #178; documentation rebaseline PRs #170 and #180 are merged. The 35-row ledger remains **28 PASS / 7 PARTIAL / 0 OPEN** after closing `RW-WK-01` by bounded source audit. **Operator disposition (2026-11-23): formal acceptance DEFERRED.** The 2026-11-24 sequencing exception permits individually gated RW-4/RW-5 work to proceed without changing this status. Implementation-complete does not mean milestone-accepted. The seven PARTIAL rows remain outstanding; live provider authorization remains closed.
 
-**Planning baseline:** `main` at `df572e6b90c5bb416546c7f86733c16eefd6f606` (2026-11-23), after merged PR #177. The PR #169 merge SHA remains historical evidence, not the current source baseline.
+**Planning baseline:** `main` at `d9589fbcf4f720212ef398cae0d850e5854fdb91` (2026-11-24), after PR #180. PR #178 remains the latest bounded recovery-proof implementation; PR #180 reconciled the six current project documents. PR #179 remains an unmerged, superseded closeout-document branch; this file's current baseline is maintained on the active mainline.
 
 **Milestone authority:** `PLAN.md` owns current status and authorization. This plan owns the RW3.4 closeout sequence and evidence checklist. The [RW-3 design and acceptance plan](rw-3-design-and-acceptance.md) remains normative for protocol and recovery semantics; [the implementation plan and proof matrix](rw-implementation-plan.md) remains normative for proof IDs; [Task specifications](../tasks.md) remain normative for Task shape, write scope, and budget; [testing records](../testing.md) own exact verification results.
+
+## Sequencing disposition (2026-11-24)
+
+The Operator approved a sequencing exception for RW-4 and RW-5. RW3.4 formal acceptance remains deferred; all seven PARTIAL rows and the 28 PASS / 7 PARTIAL / 0 OPEN ledger are preserved. This exception is not RW3.4 acceptance and does not close any residual. A residual may be incorporated into an RW-4/RW-5 implementation PR when that PR changes or depends on the same contract; unrelated residuals remain separately tracked. `RW-REQ-01` and `RW-POL-01` remain external integration boundaries.
+
+The agreed delivery order starts with the RW-5 shared timestamp/decay/locking contract. RW4-1 and RW4-2 may proceed once their own D3/D5 and D1/D2 gates, reviewed proof subsets, and explicit slice authorizations are satisfied; they need not wait for all of RW-5. RW4-3 initially excludes dormant-Thread reactivation. D6 is required before reactivation and RW4-5 integrated race/post-decay retrieval proof. No live provider calls or persistent-database operations are authorized by this sequencing exception.
 
 ## PR #169 — bounded recovery-proof follow-up (merged 2026-11-23)
 
