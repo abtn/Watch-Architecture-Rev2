@@ -131,7 +131,7 @@ No login, token verifier, user store, RBAC framework, deployed Watch API/CLI, au
 
 ### 4.2 Canonical Task ID
 
-**Recommendation:** use the deterministic UUIDv5 as `Task.id` itself, and separately require persisted identity components and a database unique constraint on `(team_id, signal_id, identity_version)`. The Task primary key arbitrates duplicate UUIDs; the tuple constraint prevents a second writer from assigning a different UUID to the same Team/Signal pair within the same identity generation. The current schema audit found no `signal_id` or `identity_version` fields on Task and no such unique constraint (see §4.9), so this requires a Task-schema migration. The Operator's risk disposition must explicitly account for that migration cost.
+**Recommendation:** use the deterministic UUIDv5 as `Task.id` itself, and separately require persisted identity components and a database unique constraint on `(team_id, signal_id, identity_version)`. The Task primary key arbitrates duplicate UUIDs; the tuple constraint prevents a second writer from assigning a different UUID to the same Team/Signal pair within the same identity generation. The current schema audit found no `signal_id` or `identity_version` fields on Task and no such unique constraint (see §4.9), so this requires a Task-schema migration. The Operator accepted this migration cost on 2026-11-24.
 
 The UUIDv5 namespace must be dedicated to RW4 triage and versioned in source/documentation. Proposed frozen namespace UUID: `383bbdde-37be-4895-8fb7-1afa196b5cf7` (UUIDv4 generated for this contract; once accepted, never regenerate or derive it). The canonical name must unambiguously encode, using canonical lowercase UUID text and a fixed documented delimiter/field order:
 
@@ -217,19 +217,19 @@ The implementation uses `INSERT ... ON CONFLICT (id) DO NOTHING RETURNING id` as
 
 RW4-2 does not create SignalDisposition. RW4-1 must separately enforce one disposition per `(signal_id, team_id)`. A disposition uniqueness constraint does not replace canonical Task uniqueness, and Task uniqueness does not replace disposition uniqueness.
 
-## 4.7 Canonical-identity uniqueness — pending Operator risk disposition
+## 4.7 Canonical-identity uniqueness — Task-schema migration accepted (2026-11-24)
 
 **Status: pending Operator disposition — minimal v1 guarantee recommended.**
 
-**Risk:** the current Task primary key guarantees uniqueness only for the UUID value inserted. It does not enforce one row for a canonical `(team_id, signal_id, identity_version)` tuple if another writer supplies a different UUID. The existing source audit found no persisted `signal_id`/`identity_version` fields on Task and no pair-level unique constraint (see §4.9).
+**Operator decision (2026-11-24): ACCEPT.** The Operator explicitly accepted the Task-schema migration and database composite unique constraint. The current Task primary key guarantees uniqueness only for the UUID value inserted; the additional composite constraint prevents a writer supplying a different UUID from creating another row for the same canonical `(team_id, signal_id, identity_version)` tuple. The existing source audit found no persisted `signal_id`/`identity_version` fields on Task and no pair-level unique constraint (see §4.9).
 
-**Minimal v1 guarantee recommended:** retain one narrow supported creator, but do not rely on its check-then-insert behavior for uniqueness. Persist the identity components on Task and enforce a database unique constraint on `(team_id, signal_id, identity_version)`, with a check requiring those components for `task_type = 'triage_signal'`. Keep the deterministic UUIDv5 Task ID, recompute-on-load validation, and one narrow creator; callers cannot supply or override the identity components. Because the audit found no existing equivalent constraint or column, this minimal v1 guarantee **requires a Task-schema migration**. It is not a zero-migration option on current evidence.
+**Accepted v1 guarantee:** retain one narrow Control Room creator, but do not rely on its check-then-insert behavior for uniqueness. Persist `signal_id` and `identity_version` on Task and enforce a database unique constraint on `(team_id, signal_id, identity_version)`, with a database/application validation requiring these identity components for `task_type = 'triage_signal'`. Keep the deterministic UUIDv5 Task ID, recompute-on-load validation, and one narrow creator; callers cannot supply or override the identity components. This requires a Task-schema migration and the Operator has accepted that migration cost. Migration implementation, backfill/preflight strategy, and compatibility proof remain part of the separately authorized implementation work.
 
 **Operator disposition required before Stage B:**
 - Approve minimal v1 with the required canonical-identity uniqueness migration, explicitly accepting its migration/preflight/test cost; or
 - Do not accept that risk/constraint design and direct a different database-enforced identity representation for review.
 
-A "no-schema-change" approval is not supported by the current audit. It may be reconsidered only if new source/schema evidence demonstrates an existing equivalent database uniqueness constraint. This is a risk acceptance, not a design decision for the spec author or independent reviewer. Status remains pending until the Operator records the disposition. The UUIDv5 namespace, name, golden vector, and v1 identity semantics remain unchanged.
+A "no-schema-change" alternative is not selected. The Task-schema migration and composite constraint are accepted. The UUIDv5 namespace, name, golden vector, and v1 identity semantics remain proposals until the separate canonical-identity decision is accepted; acceptance of the migration alone does not accept those constants or other D2 choices.
 
 ## 4.8 Request-Event exact-one cardinality — pending Operator risk disposition
 
@@ -369,13 +369,13 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 | Decision | Recommendation | Status |
 |---|---|---|
 | D1 Task-creation authority and trusted invocation | Control Room is the sole application Task-creation authority; typed principal and exact Team/`triage_signal` grant; only `active` Teams; host authentication required before production use and scheduled after R8 test; URL normalization deferred until after R8 test (exact matching meanwhile); greatest-version TeamPolicy under Team lock, fail closed | Accepted 2026-11-24 |
-| D2 canonical Task identity | UUIDv5 Task primary key over Team + Signal + operation + `triage_identity_v1`, dedicated namespace; persisted `signal_id` and `identity_version` with database unique constraint on `(team_id, signal_id, identity_version)`; recompute-on-load and golden test | Proposed; not accepted |
+| D2 Task-schema uniqueness migration | Persist `signal_id` and `identity_version` on triage Tasks; require them for `triage_signal`; database unique constraint on `(team_id, signal_id, identity_version)` | **Accepted — 2026-11-24** |
 | D2 requester semantics | Requester is immutable first-request provenance, excluded from semantic request fingerprint; every replay caller independently authorized | Proposed; not accepted |
 | D2 disposition uniqueness | Separate unique `(signal_id, team_id)` constraint in RW4-1 | Deferred to RW4-1 |
 | D2 matching-pin shape / D4a | Freeze strict schema-v1 object and canonical content hash; all four values are code-owned in the first release; TeamPolicy remains unchanged | Shape and ownership proposed; actual values deferred to D4b |
 | D2 re-triage | One identity generation only; terminal failure and pin change do not create a replacement; later generations require a separately approved identity version | Proposed; not accepted |
 | D2 execution watermark | Capture the immutable Task-creation Team revision watermark under the canonical Team lock; RW4-3 separately captures/revalidates the current watermark under the execution lock chain without overwriting the creation cutoff | Proposed; RW4-3 dependency |
-| Risk acceptance — canonical Task identity uniqueness | Minimal v1 recommendation: narrow creator plus persisted `signal_id`/`identity_version` and database unique constraint on `(team_id, signal_id, identity_version)`; audited schema requires Task migration | **Pending Operator disposition; migration cost explicit** |
+| Risk acceptance — canonical Task identity uniqueness migration | Persisted `signal_id`/`identity_version` and database unique constraint on `(team_id, signal_id, identity_version)`; audited schema requires Task migration | **Accepted — 2026-11-24; implementation still gated** |
 | Risk acceptance — request Event exact-one cardinality | Minimal v1 recommendation: transactional winner-only write, replay validation, source audit, and required PostgreSQL two-session CI test; alternative is partial unique index plus migration | **Pending Operator disposition** |
 | RW4-2 implementation | Requires accepted D1/D2, reviewed proof subset, lock-order compatibility, and explicit authorization | Not authorized |
 
