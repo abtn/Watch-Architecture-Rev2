@@ -190,7 +190,7 @@ RW-5 first release means: typed idempotent Task creation; database-captured immu
 Prefer the existing Thread, Hypothesis, ConfidenceChange, Task, and Event records. In particular:
 
 - Do not add a dedicated `decay_task_id` column merely to duplicate the generic Task attribution already present on ConfidenceChange.
-- Do not add a new age/streak column if `last_touched_at` plus deterministic per-window keys prove correct reset, catch-up, and replay behavior.
+- Do not use `last_touched_at` as historical authority. Avoid a new age/streak column only if accepted EvidenceLink and ConfidenceChange history reconstructs the exact baseline and streak under property/replay tests, while `last_touched_at` is verified as a cache. Add a dedicated touch-version/reference field if those proofs fail.
 - Expect a minimal partial unique index for cross-Task decay-step idempotency unless an equally strong database-enforced alternative is demonstrated; the current Task-scoped unique constraint is not sufficient by itself.
 - Use the existing Task UUID primary key for deterministic Task-creation identity if golden-vector and concurrent-creation tests validate the proposed UUIDv5 scheme; add no generic idempotency column by default.
 - Do not add Thread embeddings, new Domain policy subsystems, or a scheduler/runtime as part of RW-5.
@@ -225,7 +225,7 @@ It must define schedule cadence/time zone, missed-run behavior, per-Team fan-out
 
 This proposal is ready for independent review and Operator disposition. Until accepted:
 
-- the clock, lock order, age algorithm, dormancy condition, and failure/bounds rules remain proposed;
+- the clock, lock order, history-reconstruction algorithm, confidence-window semantics, atomicity, and failure/bounds rules remain proposed; dormancy is explicitly excluded from RW-5 first release;
 - no RW-5 production implementation is authorized;
 - no RW4-1 or RW4-2 implementation is authorized by this document;
 - RW4-1 and RW4-2 remain sequential, not parallel;
