@@ -121,7 +121,7 @@ No login, token verifier, user store, RBAC framework, deployed Watch API/CLI, au
 
 ### 4.2 Canonical Task ID
 
-**Recommendation:** use the deterministic UUIDv5 as `Task.id` itself. The Task primary-key constraint then provides database-enforced uniqueness without adding a redundant identity column or secondary unique index.
+**Recommendation:** use the deterministic UUIDv5 as `Task.id` itself, and separately require a database unique constraint on the persisted canonical identity key derived from Team, Signal, operation, and identity version. The Task primary key arbitrates duplicate UUIDs; it does not by itself prevent a second writer from assigning a different UUID to the same business pair. The current schema audit found no persisted triage canonical-identity key or pair-level unique constraint (see §4.9), so this additional constraint requires a migration unless a later audit identifies an existing equivalent. The Operator's risk disposition must explicitly account for that migration cost.
 
 The UUIDv5 namespace must be dedicated to RW4 triage and versioned in source/documentation. Proposed frozen namespace UUID: `383bbdde-37be-4895-8fb7-1afa196b5cf7` (UUIDv4 generated for this contract; once accepted, never regenerate or derive it). The canonical name must unambiguously encode, using canonical lowercase UUID text and a fixed documented delimiter/field order:
 
@@ -207,22 +207,49 @@ The implementation uses `INSERT ... ON CONFLICT (id) DO NOTHING RETURNING id` as
 
 RW4-2 does not create SignalDisposition. RW4-1 must separately enforce one disposition per `(signal_id, team_id)`. A disposition uniqueness constraint does not replace canonical Task uniqueness, and Task uniqueness does not replace disposition uniqueness.
 
-## 4.7 Canonical-pair uniqueness boundary — explicit residual decision
+## 4.7 Canonical-identity uniqueness — pending Operator risk disposition
 
-The UUIDv5 Task primary key guarantees that two inserts using the correct canonical UUID cannot create two rows. It does **not** independently prevent a different internal writer from inserting a `triage_signal` Task with a different UUID for the same `(signal_id, team_id)`, because the current Task schema has no persisted Signal/identity-version columns or pair-level unique constraint. The v1 application guarantee therefore depends on one narrow creator being the only supported `triage_signal` Task writer, with every creation path routed through it and every load recomputing the canonical UUID.
+**Status: pending Operator disposition — minimal v1 guarantee recommended.**
 
-Before implementation authorization, the Operator must explicitly choose one of these boundaries:
+**Risk:** the current Task primary key guarantees uniqueness only for the UUID value inserted. It does not enforce the mapping from one canonical `(team_id, signal_id, identity_version)` identity to exactly one Task if another writer supplies a different UUID. The existing source audit found no persisted canonical-identity key or pair-level unique constraint (see §4.9).
 
-- **Single-creator v1 (recommended minimal scope):** accept the application-level single-writer invariant, prohibit alternate Task insertion paths, and test/source-audit that all `triage_signal` creation uses the canonical creator. No Task schema migration is added.
-- **Database-enforced pair uniqueness:** add a persisted canonical identity representation and a unique database constraint for `(team_id, signal_id, identity_version)` (or an equivalent dedicated identity table/FK). This requires a migration and changes the current no-migration assumption; do not implement without explicit scope approval.
+**Minimal v1 guarantee recommended:** retain one narrow supported creator, but do not rely on its check-then-insert behavior for uniqueness. Persist the deterministic canonical identity key (for example, the exact versioned canonical name already specified in §4.2) and enforce a database unique constraint/index on that key. The creator derives the key; callers cannot supply it. Keep recompute-on-load validation and prohibit alternate triage creation paths. Because the audit found no existing equivalent constraint or column, this minimal v1 guarantee **requires a Task-schema migration**. It is not a zero-migration option on current evidence.
 
-Do not describe the Task primary key as enforcing arbitrary pair-level uniqueness. The choice does not change the UUIDv5 namespace, name, golden vector, or v1 identity semantics.
+**Operator disposition required before Stage B:**
+- Approve minimal v1 with the required canonical-identity uniqueness migration, explicitly accepting its migration/preflight/test cost; or
+- Do not accept that risk/constraint design and direct a different database-enforced identity representation for review.
 
-## 4.8 Request-Event exact-one enforcement — explicit residual decision
+A "no-schema-change" approval is not supported by the current audit. It may be reconsidered only if new source/schema evidence demonstrates an existing equivalent database uniqueness constraint. This is a risk acceptance, not a design decision for the spec author or independent reviewer. Status remains pending until the Operator records the disposition. The UUIDv5 namespace, name, golden vector, and v1 identity semantics remain unchanged.
 
-The current Event schema has no unique constraint for one `triage_signal_requested` Event per Task. The transaction protocol writes the Event only in the transaction that wins Task insertion, and replay validates exactly one Event; this is an application/transaction guarantee, not a database-enforced cardinality guarantee.
+## 4.8 Request-Event exact-one cardinality — pending Operator risk disposition
 
-Before implementation authorization, the Operator must decide whether that bounded single-creator transaction guarantee is sufficient, or whether to add a PostgreSQL partial unique index on `Event.task_id` for `type = 'triage_signal_requested'` (with the corresponding migration and duplicate-history preflight). Do not claim database-enforced exact-one Event semantics unless that constraint is added and tested. This decision does not alter Task identity.
+**Status: pending Operator disposition — minimal v1 guarantee recommended.**
+
+**Risk:** the current Event schema has no unique constraint for one `triage_signal_requested` Event per Task. The transaction protocol can write the Event only in the Task-winning transaction and replay can validate exactly one Event, but those are application/transaction guarantees; the current database schema does not independently enforce the cardinality.
+
+**Minimal v1 guarantee recommended:** accept the bounded transactional invariant only if all Task/Event creation remains in one transaction, the winner-only Event write is covered by the required two-session PostgreSQL race test, replay rejects missing/duplicate/malformed evidence, and the source audit confirms there is one supported writer. This recommendation does not claim database-enforced Event cardinality.
+
+**Operator disposition required before Stage B:**
+- Accept the transactional exact-one risk with the stated auditable controls; or
+- Require a PostgreSQL partial unique index on `events(task_id)` for `type = 'triage_signal_requested'`, including migration, duplicate-history preflight, and PostgreSQL tests.
+
+If the unique index is selected, its migration cost must be explicitly accepted. This is a risk acceptance, not a design decision for the spec author or independent reviewer. Status remains pending until the Operator records the disposition. This choice does not alter Task identity.
+
+## 4.9 Recorded source/schema audit — evidence for Operator disposition
+
+**Audit scope:** current `main` source/schema at the PR preparation baseline; inspected ORM declarations, matching/index implementation, and existing projection migrations. Findings are evidence for the two risk dispositions and the matching-pin ownership question, not proof of future implementation behavior.
+
+| Area | Inspected source | Recorded finding |
+|---|---|---|
+| Task canonical identity | `core/models.py`, `Task` model, lines 153–214; `tasks` table | `Task.id` is the primary key; existing unique constraints are `uq_tasks_plan_action` and `uq_tasks_id_team`. Task has no `signal_id`, `identity_version`, or canonical-identity column and no unique constraint over a triage pair/key. **No existing database constraint enforces one Task per canonical Team/Signal identity.** |
+| Request Event cardinality | `core/models.py`, `Event` model, lines 240–254; `events` table | `uq_events_id_task` is uniqueness of Event ID/Task attribution, while `ix_events_task_id_type` is a non-unique index. There is no unique or partial unique constraint for `(task_id, type='triage_signal_requested')`. **No existing database constraint enforces exactly one triage request Event per Task.** |
+| Signal index configuration | `core/knowledge_index.py`, `CHUNKING_VERSION` and `SignalIndexer.index_signal` | Chunking version is a code constant; the embedding space is obtained from `EmbeddingProvider.current_space()`. The indexer validates the active space during indexing, but this is not a durable single authoritative source-index configuration record used to pin Task creation. |
+| Projection metadata | `core/models.py`, `KnowledgeChunk` (line 423 onward); `migrations/versions/0010_knowledge_chunk_projection.py`; `TeamExperienceChunk` (line 491 onward); `migrations/versions/0013_team_experience_projection.py` | Projection rows persist per-row `chunking_version`, `embedding_space_key`, and embedding configuration/provider metadata, with per-projection uniqueness. These are projection facts, not one authoritative immutable source-index configuration record. |
+| Team Experience index state | `core/models.py`, `TeamExperienceIndexState` (line 587 onward); migration `0013_team_experience_projection` | The state row tracks publication status and an optional `embedding_space_key`; it does not establish a single authoritative record for both embedding-space and chunking-version ownership. |
+
+**Audit conclusion:** no existing canonical Task identity uniqueness constraint; no existing exact-one triage request Event constraint; and no authoritative source-index configuration record jointly owning the embedding/chunking pins. The expected finding for the latter is therefore "no existing authoritative record", not an inferred future capability. The four matching-pin values remain code-owned for the proposed first release as already stated in §7, pending D4b actual-value acceptance.
+
+**Evidence required to close this audit for Stage B:** preserve these source references in the implementation PR, re-run the schema/source audit against that PR's base and head, record any changed findings, and make the Operator disposition depend on that recorded result. A changed schema or new authoritative index record reopens the corresponding disposition; it must not be silently treated as already accepted.
 
 ## 5. Proposed Task envelope
 
@@ -305,14 +332,15 @@ Exact test node IDs are to be added after the implementation plan is reviewed. T
 | RW42-REQ-02 | Replay integrity | Exact one valid Event; verify all immutable fields and fingerprint |
 | RW42-REQ-03 | Requester provenance | Different authorized requester replays without rewriting first requester |
 | RW42-REQ-04 | Immutable pin conflict | Changed policy/matcher/embedding/chunking pin conflicts |
-| RW42-RACE-01 | Concurrent same-pair requests | Real PostgreSQL race yields one Task, one request Event, valid replay for loser |
+| RW42-RACE-01 | Concurrent same-pair requests | Two independent PostgreSQL sessions/connections race the same canonical pair; assert one canonical identity row/Task and exactly one request Event, with the loser validating the winner; include alternate-UUID/same-canonical-key collision coverage |
 | RW42-RACE-02 | Different pairs | Different Team/Signal pairs produce distinct Task IDs |
 | RW42-RUNTIME-01 | Lifecycle ownership | Creator leaves Task pending; no direct start/finalization/Outcome |
 | RW42-DISPATCH-01 | Unsupported Task kind remains queued and ignored | With only a pending `triage_signal` Task, `find_eligible_task()` returns `None`; direct dispatch raises `TaskNotDispatchable` before admission; Task remains pending with zero attempts and no lifecycle Events; dispatcher does not crash or loop |
-| RW42-DB-01 | Explicit uniqueness-enforcement choice | If the Operator accepts the single-creator v1 invariant, Alembic head is unchanged and all triage Task writes are source-audited through the canonical creator. If database-enforced pair/Event cardinality is selected, add and test the explicitly authorized migration/constraints before implementation; do not claim no-migration in that variant |
+| RW42-DB-01 | Canonical identity uniqueness | PostgreSQL unique constraint/index on the persisted canonical identity key arbitrates same-identity inserts even if a writer supplies a different Task UUID; migration required on current audited schema |
+| RW42-DB-02 | Request Event cardinality disposition | Either prove the accepted transactional exact-one guarantee with the required two-session PostgreSQL test and replay validation, or add/test the Operator-approved partial unique index and migration |
 | RW42-SCOPE-02 | No adjacent feature expansion | No dispatcher, scheduler, model worker/provider, disposition persistence, or Thread mutation in RW4-2. A uniqueness migration is permitted only if separately selected under §§4.7–4.8 and explicitly authorized; otherwise no migration |
 
-Tests must include tampered/missing/duplicate Event evidence and rollback/crash-safe transaction outcomes. SQLite-only tests are insufficient for uniqueness-race and PostgreSQL lock claims.
+Tests must include tampered/missing/duplicate Event evidence and rollback/crash-safe transaction outcomes. SQLite-only tests are insufficient for uniqueness-race and PostgreSQL lock claims. The two-session race test is a required, non-optional CI check in the implementation PR, not an optional/manual job or a path-filtered/skipped job. It must use two real PostgreSQL sessions/connections against the supported PostgreSQL version. The implementation PR must record the exact tested head SHA, workflow run ID, required check name, and successful result. A green docs-only CI run, a local-only test, or a test present but not gating CI does not satisfy this requirement. Repository branch protection must require that check before merge. The current draft CI is documentation-only and does not claim to have executed this future concurrency proof.
 
 ## 10. Implementation sequence after decision acceptance
 
