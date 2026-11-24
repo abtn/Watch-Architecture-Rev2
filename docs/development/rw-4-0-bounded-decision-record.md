@@ -1,8 +1,8 @@
 # RW4-0 — Bounded triage decision record
 
-**Status:** D1 accepted on 2026-11-24. all six D2 decisions are accepted; D3–D6 remain separate proposals/open decisions. No implementation is authorized by this record.
+**Status:** D1 and all six D2 decisions accepted on 2026-11-24. D3–D6 remain separate proposals/open decisions. No implementation is authorized by this record.
 
-> **Current reconciliation (2026-11-24):** PR #176's narrowed matching proposal remains unchanged: `new_thread` and automatic `noise` are disabled; exact-hash same-Team duplicate and terminal `deferred` are proposed; maximum-pairwise similarity remains experimental only. D1 and the two accepted D2 identity decisions are accepted by explicit Operator decision; D3–D6 and implementation authorization remain open/separate. Follow the [RW-4 Readiness and Delivery Plan](rw-4-readiness-and-delivery-plan.md) for the consolidated gates.
+> **Current reconciliation (2026-11-24):** PR #176's narrowed matching proposal remains unchanged: `new_thread` and automatic `noise` are disabled; exact-hash same-Team duplicate and terminal `deferred` are proposed; maximum-pairwise similarity remains experimental only. D1 and all six D2 decisions are accepted by explicit Operator decision; D3–D6 and implementation authorization remain open/separate. Follow the [RW-4 Readiness and Delivery Plan](rw-4-readiness-and-delivery-plan.md) for the consolidated gates.
 ## RW4-2 D2 Operator decision — canonical Task identity (2026-11-24)
 
 **ACCEPTED:** use UUIDv5 directly as `Task.id` for `triage_signal`, with identity version `triage_identity_v1`. Frozen namespace: `383bbdde-37be-4895-8fb7-1afa196b5cf7`. Exact canonical name: `triage_identity_v1|triage_signal|team:<team-uuid>|signal:<signal-uuid>`, using lowercase canonical UUID text and no whitespace. Accepted golden vector: Team `00000000-0000-4000-8000-000000000001`, Signal `00000000-0000-4000-8000-000000000002`, expected Task ID `5b45ed53-a50f-51e8-ba81-ce52512aa922`.
@@ -25,7 +25,7 @@ The model is not involved in triage. Triage does not create or enqueue `update_t
 
 ## 2. Proposed decisions for Operator review
 
-D1 is accepted as recorded below. The D2 Task-schema migration and composite logical-identity uniqueness requirement were accepted on 2026-11-24; all other D2 choices and D3–D6 remain proposals and require separate Operator decisions.
+D1 and all six D2 decisions are accepted as recorded below. D3–D6 remain separate proposals and require separate Operator decisions.
 
 ### D1 — Control Room is the single Task-creation authority
 
