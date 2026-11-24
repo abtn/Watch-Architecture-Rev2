@@ -37,6 +37,20 @@ These are slice touchpoints, not blanket blockers. Carry a row into a slice's pr
 | RW-RP-01 — repeated recovery idempotency | RW4-2 creator replay; RW4-3 receipt and business-result replay; RW-5 decay replay/supersession | Assert repeated calls are no-ops for each new path; broad historical outcome matrix remains PARTIAL. |
 
 
+### Per-slice implementation and review discipline
+
+Apply this sequence to every production slice:
+
+1. Write a one- or two-page slice spec: goal, non-goals, files/surfaces, migration yes/no, focused and regression tests, and applicable RW3.4 residual rows. Reference the accepted threat model and shared contracts; do not reopen them without a named blocker.
+2. Run one bounded spec review against the invariant/blocker rubric.
+3. Obtain explicit written Operator authorization for that exact slice and scope.
+4. Implement test-first as a thin vertical slice. Before pushing, run the focused tests, full suite, Ruff, Mypy, and required disposable-PostgreSQL checks locally; record exact branch and HEAD, cleanup, environment restoration, and worktree state.
+5. Obtain one bounded PR review from a named reviewer who did not author the implementation. Review only regressions, factual contradictions, or demonstrated supported-path invariant failures. Any third round requires explicit Operator authorization and a named blocker.
+6. Generate the PR verification/description section from the completed CI run and exact tested commit. Do not hand-edit test counts, statuses, or verification claims.
+7. Merge only after local and hosted evidence agree; then update PLAN.md and the relevant proof matrix. Move out-of-rubric concerns to the residual register with a concrete trigger.
+
+The RW-5 contract's final bounded regression review was performed by the editing agent, not an independent code reviewer. That was accepted as a documentation-contract review under the Operator's stated rubric; it is not a precedent for implementation PRs. Code PRs require the independent named reviewer above.
+
 ## 2. Current evidence baseline
 
 - **PR #174** records bounded D1–D6 proposals; it did not close RW4-0 or authorize implementation.
