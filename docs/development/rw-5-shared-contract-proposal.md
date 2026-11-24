@@ -93,6 +93,8 @@ This makes a Task replay a reconstruction of the original decision, not a new de
 **Decision proposed:** reconstruct evidence age from immutable accepted evidence history. `Hypothesis.last_touched_at` is a mutable current-state cache/prefilter, not the authority for a past decay decision.
 
 - Accepted supporting or challenging EvidenceLinks are the authoritative evidence-touch records. An accepted touch resets the evidence-age baseline even if confidence does not change.
+
+**Important timestamp qualification:** the current EvidenceLink and ConfidenceChange `created_at` defaults use PostgreSQL `now()`, which is the transaction-start time. A transaction can begin, wait for the Team lock, and only then commit its evidence/confidence change; its `created_at` can therefore predate the actual serialized acceptance. Do not assume the current `created_at` values establish the correct order relative to the Task's `as_of`. For every new accepted evidence touch and confidence transition, persist an immutable database-captured acceptance/transition instant obtained with `clock_timestamp()` after acquiring the Team lock. Determine whether the existing timestamp columns can be safely populated explicitly after the lock, or whether a minimal dedicated immutable timestamp is required. The Event/audit record must carry the same canonical instant. Legacy rows whose true post-lock acceptance instant cannot be reconstructed need an explicit conservative migration/cutover rule; do not silently treat transaction-start timestamps as exact acceptance times.
 - Mentions-only links, rejected proposals, retrieval, and decay do not reset the baseline.
 - A duplicate/replayed EvidenceLink is not a new touch. Canonical EvidenceLink identity—not timestamp equality alone—distinguishes new accepted evidence from replay.
 - `last_touched_at` may narrow candidate queries, but before mutation the worker reconstructs the latest eligible touch from history and verifies the cache agrees with that history. A mismatch is an integrity failure/defer, not permission to trust the cache.
@@ -190,7 +192,7 @@ RW-5 first release means: typed idempotent Task creation; database-captured immu
 Prefer the existing Thread, Hypothesis, ConfidenceChange, Task, and Event records. In particular:
 
 - Do not add a dedicated `decay_task_id` column merely to duplicate the generic Task attribution already present on ConfidenceChange.
-- Do not use `last_touched_at` as historical authority. Avoid a new age/streak column only if accepted EvidenceLink and ConfidenceChange history reconstructs the exact baseline and streak under property/replay tests, while `last_touched_at` is verified as a cache. Add a dedicated touch-version/reference field if those proofs fail.
+- Do not use `last_touched_at` as historical authority. Avoid a new age/streak column only if accepted EvidenceLink and ConfidenceChange history—with database-captured post-Team-lock acceptance/transition instants—reconstructs the exact baseline and streak under property/replay tests, while `last_touched_at` is verified as a cache. Add the smallest immutable timestamp/touch identity field if existing records cannot safely carry that information.
 - Expect a minimal partial unique index for cross-Task decay-step idempotency unless an equally strong database-enforced alternative is demonstrated; the current Task-scoped unique constraint is not sufficient by itself.
 - Use the existing Task UUID primary key for deterministic Task-creation identity if golden-vector and concurrent-creation tests validate the proposed UUIDv5 scheme; add no generic idempotency column by default.
 - Do not add Thread embeddings, new Domain policy subsystems, or a scheduler/runtime as part of RW-5.
@@ -202,7 +204,7 @@ Prefer the existing Thread, Hypothesis, ConfidenceChange, Task, and Event record
 |---|---|
 | Clock | Task creation pins one database UTC instant; retry/recovery reuses it; caller-supplied timestamps are rejected/ignored. |
 | Boundaries | Before, exactly at, and after each decay-window boundary; timezone/DST-independent UTC behavior. |
-| Evidence reset | Supporting/challenging evidence resets age even without confidence change; mentions/rejection/decay do not; old decay keys cannot suppress a new baseline. |
+| Evidence reset | Supporting/challenging evidence resets age even without confidence change; mentions/rejection/decay do not; post-Team-lock database acceptance instants are ordered correctly against Task `as_of`; legacy rows have an explicit conservative rule; old decay keys cannot suppress a new baseline. |
 | Catch-up | Multiple elapsed windows produce the defined sequence once; low-band floor creates no no-op writes. |
 | Attribution | Every decay ConfidenceChange has exactly one valid decay Task cause; no EvidenceLink cause; cross-Team/wrong-Task attribution rejected. |
 | Dormancy | Excluded from RW-5 first release. D6 plus a durable RW-4 reactivation/recovery path and separate authorization must precede any `active → dormant` transition; prove recovery/reconsideration and at-most-one lifecycle Event in that later slice. |
