@@ -159,21 +159,21 @@ The Context assembler accepts only a running Task/current attempt, validates the
 
 ### RW-5 — deterministic decay
 
-**Purpose:** implement the F3 lifecycle behavior for stale Hypotheses and dormant Threads.
+**Purpose:** implement deterministic confidence decay for stale Hypotheses. Thread dormancy is excluded from the first release and remains gated by D6 plus a durable reactivation/recovery path.
 
-**Shared contract:** the [RW-5 shared clock, decay, and locking proposal](rw-5-shared-contract-proposal.md) records the proposed as-of clock, evidence-age/idempotency model, common lock order, race outcomes, Task production split, recovery boundary, and RW3.4 residual mapping. These choices remain proposed until explicit Operator disposition. Freeze this contract before RW-5 implementation and before RW4 dormant-Thread reactivation.
+**Shared contract:** the [RW-5 shared clock, decay, and locking proposal](rw-5-shared-contract-proposal.md) records the proposed database-captured immutable request `as_of`, history-authoritative evidence-age reconstruction, database-enforced identity/immutability/concurrency, common lock order, atomicity proof, RW5-P scheduler boundary, D6 dormancy exclusion, and RW3.4 residual mapping. These choices remain proposed until explicit Operator disposition. Freeze this contract before RW-5 implementation and before RW4 dormant-Thread reactivation.
 
 **Proposed scope:**
 - Implement a typed, idempotent `apply_decay` Task-creation boundary and deterministic execution under the existing TaskRuntime/Kernel path.
 - Keep periodic scheduler/host invocation as a separately gated RW5-P integration; no Watch-owned scheduler or TaskDispatcher expansion.
 - Record decay-caused ConfidenceChanges with exactly one decay Task cause.
 - Decay lowers confidence only according to the accepted domain/team decay policy; it never rejects a Hypothesis and never changes last_touched_at.
-- A Thread becomes dormant only under the specified condition; a matched Signal may reactivate a dormant Thread through triage.
-- No new scheduler or runtime.
+- RW-5 does not change Thread status or lifecycle/activity timestamps and emits no dormancy Event. Dormancy is excluded until D6, a durable RW-4 reactivation/recovery path, and separate authorization exist.
+- RW-5 core uses a typed idempotent Task creator; periodic host/scheduler invocation remains separately gated as RW5-P. No TaskDispatcher expansion or second runtime.
 
-**Required proof:** decay boundary/time tests, cause pairing, no rejection, no `last_touched_at` mutation, repeated-run idempotency, under-lock revalidation, both race orders, and concurrent/replay safety. RW-5 implementation uses the existing TaskRuntime and commit path; no second scheduler or lifecycle authority.
+**Required proof:** database-captured immutable request time and replay; historical EvidenceLink/ConfidenceChange reconstruction; exact boundary and catch-up tests; cause pairing; no rejection or `last_touched_at` mutation; cross-Task unique-index races; immutable-record guards; shared lock-order instrumentation; both decay/triage race orders; atomic business-write/Event/Outcome/Task-finalization fault injection; bounded scans/transactions; and concurrent replay safety. Prove TaskRuntime-owned single-transaction orchestration rather than assuming the current separate commit/finalize APIs are atomic. RW-5 implementation uses the existing TaskRuntime and Kernel authority; no second scheduler or lifecycle authority.
 
-**Exit:** decay is deterministic, auditable, idempotent, and cannot erase or reject a Hypothesis.
+**Exit:** confidence decay is deterministic, history-reconstructable, database-enforced, auditable, bounded, and idempotent; it cannot erase/reject a Hypothesis or transition a Thread to dormant. Periodic operation remains unclaimed until RW5-P is separately accepted.
 
 ## 4. Requirement-to-test proof matrix
 
