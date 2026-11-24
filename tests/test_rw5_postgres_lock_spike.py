@@ -411,7 +411,7 @@ def test_clock_health_incident_latch_precedes_participant_without_lock_cycle(
     spike_schema: str,
     participant_kind: str,
 ) -> None:
-    """A monitor holding only the singleton lets Team-first participants proceed after latch."""
+    """Monitor-only singleton locking lets Team-first participants proceed."""
     with database_engine.begin() as setup:
         setup.execute(
             text(
