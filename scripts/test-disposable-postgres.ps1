@@ -78,7 +78,7 @@ finally {
     try {
         foreach ($name in $trackedVariables) {
             $saved = $originalEnvironment[$name]
-            $environmentPath = "Env:\\$name"
+            $environmentPath = "Env:\$name"
             if ($saved.WasSet) {
                 Set-Item -LiteralPath $environmentPath -Value $saved.Value -ErrorAction Stop
             }
