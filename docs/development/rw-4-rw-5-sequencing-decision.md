@@ -1,7 +1,7 @@
 # RW-4 / RW-5 Sequencing Decision
 
-**Decision date:** 2026-11-24  
-**Decision authority:** Operator  
+**Decision date:** 2026-11-24
+**Decision authority:** Operator
 **Status:** Approved sequencing exception; individual implementation slices remain separately gated.
 
 ## 1. Decision
