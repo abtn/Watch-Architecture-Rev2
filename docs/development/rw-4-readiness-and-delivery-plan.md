@@ -102,8 +102,9 @@ Agree before RW4 reactivation implementation:
 - which timestamp is authoritative, if any;
 - whether a reactivated Thread can immediately become dormant under unchanged Hypothesis touch times;
 - the durable recovery/reconsideration behavior for every lifecycle transition that can make a Thread unavailable to triage; dormancy must not ship before this path exists;
-- exact rows/records locked by triage and decay;
-- common lock order and under-lock revalidation;
+- exact rows/records locked by triage and decay, including Task FKs on both Hypothesis EvidenceLink and ConfidenceChange writes;
+- database-captured non-decreasing time, Team revision watermark, epoch/cutover baseline, and per-Hypothesis history-watermark semantics;
+- exact lock modes (Task `FOR UPDATE`; Team/Thread/Hypothesis `FOR NO KEY UPDATE`), canonical one-at-a-time sorted lock helper, new-path session guard, and under-lock revalidation;
 - decay-first and triage-first outcomes;
 - replay behavior and at-most-one reactivation Event.
 
