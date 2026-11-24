@@ -23,9 +23,9 @@ Each item is a proposal, not an accepted project decision.
 
 ### D1 — Control Room is the single Task-creation authority
 
-**<badge>ACCEPTED — 2026-11-24</badge>**
+**ACCEPTED — 2026-11-24**
 
-**Operator decision:** The application Control Room is the single authority allowed to create and persist Tasks. Every host-facing adapter or feature-specific entrypoint must delegate Task creation to a named Control Room operation. Workers, models, ingestion code, and feature modules must not create Tasks directly or introduce parallel Task factories. Existing supported Task-creation paths are to be represented as Control Room operations; this decision does not itself authorize refactoring existing RW-3 code.
+**Operator decision:** The application Control Room is the single authority allowed to create and persist Tasks. Control Room is the logical application boundary/owner in this decision; this wording does not claim that a dedicated Control Room module or service already exists in the repository. Every host-facing adapter or feature-specific entrypoint must delegate Task creation to a named Control Room operation. Workers, models, ingestion code, and feature modules must not create Tasks directly or introduce parallel Task factories. Existing supported Task-creation paths are to be represented as Control Room operations; this decision does not itself authorize refactoring existing RW-3 code.
 
 The accepted `triage_signal` operation has these boundaries:
 
