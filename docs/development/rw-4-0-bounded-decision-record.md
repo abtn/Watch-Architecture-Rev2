@@ -4,7 +4,7 @@
 
 > **Current reconciliation (2026-11-24):** PR #176's narrowed matching proposal remains unchanged: `new_thread` and automatic `noise` are disabled; exact-hash same-Team duplicate and terminal `deferred` are proposed; maximum-pairwise similarity remains experimental only. D1 is now accepted by explicit Operator decision; D2–D6 and implementation authorization remain open/separate. Follow the [RW-4 Readiness and Delivery Plan](rw-4-readiness-and-delivery-plan.md) for the consolidated gates.
 **Scope:** First, narrow `triage_signal` slice only. No implementation is authorized by this record.
-**Baseline:** main after PR #173, merge commit `126063199c919a9576e20f4909781f0776d1ca87` (2026-11-23).
+**Current reconciliation baseline:** main after PR #184 squash merge `3fd27167e7e77eeed2110d9a2028a9ecaa005bc3` (2026-11-24). Historical proposal origins remain PRs #174 and #176.
 **Authority:** `PLAN.md` remains authoritative for milestone status and implementation authorization. Existing accepted ADRs, Task contracts, and write-scope matrix remain binding unless explicitly amended.
 
 ## 1. Purpose and non-goal
@@ -19,7 +19,7 @@ The model is not involved in triage. Triage does not create or enqueue `update_t
 
 ## 2. Proposed decisions for Operator review
 
-Each item is a proposal, not an accepted project decision.
+D1 is accepted as recorded below. D2–D6 remain proposals and require their own explicit Operator decisions.
 
 ### D1 — Control Room is the single Task-creation authority
 
