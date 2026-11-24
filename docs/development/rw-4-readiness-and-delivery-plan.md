@@ -292,7 +292,7 @@ Reconsider only when a concrete scenario and evidence justify a separate design 
 ## 8. Readiness checklist
 
 - [x] RW3.4 sequencing exception recorded with all seven PARTIAL qualifications retained; formal acceptance remains deferred.
-- [ ] D1 trusted invocation/authority accepted before RW4-2.
+- [x] D1 trusted invocation/authority accepted before RW4-2.
 - [x] D2 canonical UUIDv5 Task identity and Task-schema logical-pair uniqueness requirement accepted; immutable request pins, Event cardinality, and replay/conflict decisions remain open.
 - [ ] D3 terminal-deferred lifecycle and Task/write-scope reconciliation accepted.
 - [ ] D4 matching and duplicate representation supported by independent fixtures and measured query cost before RW4-3.
