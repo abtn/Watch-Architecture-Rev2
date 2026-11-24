@@ -205,7 +205,7 @@ Prefer the existing Thread, Hypothesis, ConfidenceChange, Task, and Event record
 | Evidence reset | Supporting/challenging evidence resets age even without confidence change; mentions/rejection/decay do not; old decay keys cannot suppress a new baseline. |
 | Catch-up | Multiple elapsed windows produce the defined sequence once; low-band floor creates no no-op writes. |
 | Attribution | Every decay ConfidenceChange has exactly one valid decay Task cause; no EvidenceLink cause; cross-Team/wrong-Task attribution rejected. |
-| Dormancy | Non-empty active set requirement; exact threshold; no vacuous truth; one lifecycle Event; no automatic reactivation. |
+| Dormancy | Excluded from RW-5 first release. D6 plus a durable RW-4 reactivation/recovery path and separate authorization must precede any `active → dormant` transition; prove recovery/reconsideration and at-most-one lifecycle Event in that later slice. |
 | Locking | Task → Team → sorted Thread → sorted Hypothesis; PostgreSQL concurrent tests and lock-order review. |
 | Race | Triage-first and decay-first outcomes; under-lock revalidation; no stale evidence overwrite. |
 | Replay/recovery | Repeated Task execution/recovery produces no duplicate changes or Events; terminal marker ambiguity remains fail-closed if a marker path is ever accepted. |
