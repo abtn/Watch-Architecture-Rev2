@@ -226,7 +226,7 @@ Before implementation authorization, the Operator must decide whether that bound
 
 ## 5. Proposed Task envelope
 
-The following is a draft contract, not a frozen implementation instruction. The Task creator captures the applicable Team revision watermark while holding the canonical RW-5 Team lock, and stores it with the immutable Task request basis as required by the accepted Task envelope. RW4-3 must reacquire the same canonical lock chain and revalidate current Team, policy, Signal, and candidate state before matching/commit; it must not treat the creation-time watermark as proof that later state is unchanged.
+The following is a draft contract, not a frozen implementation instruction. The Task creator captures the applicable Team revision watermark while holding the canonical RW-5 Team lock. The creation-time `as_of` and `team_revision_watermark` are persisted in the immutable `triage_signal_requested` Event payload as the Task's request basis; they are not new columns on the current Task ORM row. This preserves the no-Task-schema-change path unless one of the separately identified database-enforcement decisions requires a migration. RW4-3 must reacquire the same canonical lock chain and revalidate current Team, policy, Signal, and candidate state before matching/commit; it must not treat the creation-time watermark as proof that later state is unchanged.
 
 - `task_type = "triage_signal"`
 - `team_id`: Team derived from the trusted grant and canonical Signal/Team validation
@@ -236,8 +236,7 @@ The following is a draft contract, not a frozen implementation instruction. The 
 - `max_attempts`: use the existing ordinary Task default unless a specific RW4 proof justifies a different value
 - `allowed_writes = []`: the Task has no model/worker business-write grant. Its later SignalDisposition effect, if accepted, is a narrowly specified Kernel-managed effect and is never added to worker `allowed_writes`.
 - `budget`: zero model/tool cost for this deterministic application operation; no provider call is part of RW4-2
-- `as_of`: PostgreSQL `SELECT clock_timestamp()` result captured after acquiring the canonical Team lock
-- `team_revision_watermark`: current Team revision captured under the same lock and pinned in the immutable Task request basis
+- `as_of` and `team_revision_watermark`: captured under the canonical Team lock and stored in the immutable request Event payload; do not add Task ORM columns for these values in the no-migration variant
 - Task creation and request Event are application-managed; subsequent lifecycle remains exclusively TaskRuntime-owned
 
 The creator does not transition the Task to running, create an Outcome, execute matching, write SignalDisposition, or mutate a Thread.
