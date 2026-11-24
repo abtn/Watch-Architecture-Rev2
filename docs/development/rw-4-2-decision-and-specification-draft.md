@@ -35,7 +35,7 @@ The model is not involved in Task creation, identity selection, authorization, o
 
 - SignalDisposition ORM/table, migration, uniqueness constraint, or lifecycle (RW4-1).
 - Matching, duplicate classification, Thread selection/creation, or disposition commit (RW4-3).
-- Dormant Thread reactivation and RW-5 locking/decay implementation.
+- Dormant Thread reactivation and RW-5 decay implementation. RW4-2 Task-creator implementation depends on the separately authorized canonical RW-5 lock-helper implementation; this draft does not authorize or implement that helper.
 - New scheduler, TaskDispatcher expansion, ingestion-triggered Task creation, routes, CLI, public API, or general-purpose Task factory.
 - Production host authentication/composition root; the repository currently has no production host composition root.
 - Model/provider invocation, embeddings, new projections, or matching configuration infrastructure.
@@ -152,6 +152,8 @@ Proposed payload fields (exact schema and canonical serialization to be frozen b
 - `signal_id`
 - `signal_snapshot_ref`
 - `signal_content_hash`
+- `as_of` (raw database timestamp captured under the canonical Team lock)
+- `team_revision_watermark` (captured under that same lock)
 - `policy_version`
 - `matcher_id`
 - `matcher_version`
@@ -164,7 +166,7 @@ Proposed payload fields (exact schema and canonical serialization to be frozen b
 
 The Event envelope supplies Event ID, Task ID attribution, type, and creation timestamp. Avoid duplicating envelope fields in payload unless the existing Event convention requires them; if duplicated, validate exact equality.
 
-The request fingerprint is SHA-256 over canonical compact UTF-8 JSON with a fixed domain tag and schema version. It binds all immutable request pins (including the complete `matching_pins` object and its content hash) and canonical Team/Signal/Task identity. It excludes the fingerprint field itself and excludes requester identity: requester identity is provenance, not semantic equivalence. The raw principal credential/token must never be stored. The matcher/embedding/chunking pins are explicitly not inputs to Task identity; they affect replay equivalence only.
+The request fingerprint is SHA-256 over canonical compact UTF-8 JSON with a fixed domain tag and schema version. It binds canonical Team/Signal/Task identity, raw database `as_of`, the Team revision watermark, selected policy version, and all immutable matching pins (including the complete `matching_pins` object and its content hash). It excludes the fingerprint field itself and excludes requester identity: requester identity is provenance, not semantic equivalence. The raw principal credential/token must never be stored. The matcher/embedding/chunking pins are explicitly not inputs to Task identity; they affect replay equivalence only.
 
 The Event is immutable after creation. A later authorized caller with the same canonical pair and identical immutable pins resolves the same Task; it does not replace the first requester's provenance or append another request Event.
 
@@ -172,15 +174,16 @@ The Event is immutable after creation. A later authorized caller with the same c
 
 Proposed transaction behavior:
 
-1. Validate the typed request and principal.
-2. Resolve the exact Team grant and canonical Signal/Team relationship.
-3. Resolve the canonical TeamPolicy version and immutable matcher-related pins.
-4. Derive the canonical Task UUID.
-5. Attempt to insert the pending Task with exact Task envelope and no Objective/Plan/PlanAction links.
-6. Only the transaction that wins Task insertion writes `triage_signal_requested`.
-7. Commit Task and Event atomically.
-8. On deterministic Task-PK conflict, load the winning Task and exactly one request Event; validate Task type, Team, policy pin, Event schema, Signal/Snapshot/hash, all immutable pins, and fingerprint.
-9. Return replay only if the immutable request is identical. Missing, duplicate, malformed, cross-Team, or mismatched evidence fails closed. The losing transaction never writes another request Event.
+1. Validate the typed request and principal, then resolve the exact Team grant and canonical Signal/Team identifiers. These preliminary reads do not establish the policy/pin snapshot and must be revalidated under lock.
+2. Begin the transaction and acquire the Team row with `FOR NO KEY UPDATE` through the canonical RW-5 lock helper. No Task row exists yet, so Team is the first lock; do not acquire child locks because Task creation does not mutate Thread/Hypothesis rows.
+3. Under the Team lock, reload and revalidate Team status/domain, Signal source eligibility, the selected immutable TeamPolicy, and the code-owned immutable matching-pin declaration. Fail closed if any value is missing, malformed, or no longer eligible.
+4. Capture raw database `as_of` and the current Team revision watermark under that same lock. These are immutable Task/request-basis values, not values to be fabricated later by RW4-3.
+5. Derive the canonical Task UUID and complete immutable Task/request fingerprint from the validated identity, policy, `as_of`, Team revision watermark, and matching pins.
+6. Attempt to insert the pending Task with the exact Task envelope and no Objective/Plan/PlanAction links.
+7. Only the transaction that wins Task insertion writes `triage_signal_requested`.
+8. Commit Task and Event atomically.
+9. On deterministic Task-PK conflict, load the winning Task and exactly one request Event; validate Task type, Team, policy pin, `as_of`, Team revision watermark, Event schema, Signal/Snapshot/hash, all immutable pins, and fingerprint.
+10. Return replay only if the immutable request is identical. Missing, duplicate, malformed, cross-Team, or mismatched evidence fails closed. The losing transaction never writes another request Event.
 
 The implementation must use a PostgreSQL-safe conflict/race strategy that leaves the transaction usable for loading and validating the winner. The specified first choice is `INSERT ... ON CONFLICT (id) DO NOTHING RETURNING id`; if no row is returned, issue a subsequent `SELECT` for the canonical Task and validate the winning Task/Event. Use a transaction isolation level where that subsequent statement can observe the committed winner (the normal PostgreSQL `READ COMMITTED` behavior); if the repository transaction uses a different isolation level, use a savepoint/retry strategy instead. Only the transaction that actually inserts the Task may insert the request Event. Cover two-session races on real PostgreSQL; SQLite-only tests are insufficient.
 
@@ -205,25 +208,29 @@ RW4-2 does not create SignalDisposition. RW4-1 must separately enforce one dispo
 
 ## 5. Proposed Task envelope
 
-The following is a draft contract, not a frozen implementation instruction. The Team revision watermark from RW-5 does not exist at Task creation and must not be fabricated or pinned here. RW4-3 captures the applicable Team revision at execution time while holding the accepted RW-5 Team lock, then carries that value in the execution/decision manifest used for matching and commit.
+The following is a draft contract, not a frozen implementation instruction. The Task creator captures the applicable Team revision watermark while holding the canonical RW-5 Team lock, and stores it with the immutable Task request basis as required by the accepted Task envelope. RW4-3 must reacquire the same canonical lock chain and revalidate current Team, policy, Signal, and candidate state before matching/commit; it must not treat the creation-time watermark as proof that later state is unchanged.
 
 - `task_type = "triage_signal"`
 - `team_id`: Team derived from the trusted grant and canonical Signal/Team validation
-- `policy_version`: one validated TeamPolicy version for that Team, pinned immutably
+- `policy_version`: one validated TeamPolicy version for that Team, selected and pinned while holding the canonical Team lock
 - `status = "pending"`
 - `objective_id = plan_id = plan_action_id = NULL`
 - `max_attempts`: use the existing ordinary Task default unless a specific RW4 proof justifies a different value
 - `allowed_writes`: no model/worker business writes; the exact value must be reconciled with the Task matrix's distinction between worker grants and Kernel-managed effects
 - `budget`: zero model/tool cost for this deterministic application operation; no provider call is part of RW4-2
+- `as_of`: raw database timestamp captured under the canonical Team lock
+- `team_revision_watermark`: current Team revision captured under the same lock and pinned in the immutable Task request basis
 - Task creation and request Event are application-managed; subsequent lifecycle remains exclusively TaskRuntime-owned
 
 The creator does not transition the Task to running, create an Outcome, execute matching, write SignalDisposition, or mutate a Thread.
 
 ## 6. TeamPolicy and lock-order boundary
 
+**Implementation sequencing constraint:** RW4-2 specification/review may proceed now, but the Task creator must not be implemented or enabled until the separately authorized canonical RW-5 lock helper exists and is used by the triage creator. The helper implementation and its PostgreSQL lock tests are a prerequisite, not an optional follow-up. Do not implement a local substitute or reorder the runtime path to avoid this dependency. The roadmap must place canonical-helper delivery before enabling the RW4-2 creator, even if D1/D2 specification decisions are completed first.
+
 A new Task must pin one exact TeamPolicy version. The creator must not silently substitute a newer policy during replay and must fail closed if the pinned policy/request evidence is invalid.
 
-The repository has no production TeamPolicy publisher. The creator reads the Team and selected immutable TeamPolicy to establish eligibility and pin the policy version; it writes only the Task and its request Event. This operation does not mutate world memory and is outside the RW-5 protected-writer set. It does not acquire the RW-5 Team lock. The accepted RW-5 lock chain governs the later RW4-3 matching/commit path, which must revalidate current eligibility and capture the Team revision under that contract. Do not introduce a second lock helper or independently retrofit RW-5 writers in RW4-2.
+The repository has no production TeamPolicy publisher. The creator reads the Team and selected immutable TeamPolicy to establish eligibility and pin the policy version, but it must do so inside the canonical RW-5 serialization boundary: because the Task row does not yet exist, Task creation begins by acquiring the Team row with `FOR NO KEY UPDATE` through the one canonical lock helper. Under that lock it revalidates the Team and selected immutable TeamPolicy, captures raw database `as_of` and the Team revision watermark, derives/validates the immutable request basis, and inserts the Task plus exactly one request Event atomically. It then commits without acquiring child Thread/Hypothesis locks because Task creation does not mutate those rows. This creator is therefore a lock-protected writer for serialization purposes, although it does not mutate world-memory records. It must not use a bespoke Team lock, a temporary lock protocol, or a second helper. The same canonical helper is shared by decay and triage under RW-5 §4.6. The absence of a production TeamPolicy publisher does not remove the lock requirement: any future publisher or same-Team protected writer must serialize against this creator. RW4-3 still reacquires the canonical lock chain and revalidates current eligibility immediately before matching/commit.
 
 ## 7. Matching-pin shape, source, and stale-Task fate
 
@@ -241,7 +248,7 @@ Freeze the pin object's **shape** and D4a ownership rule in RW4-2; D4b supplies 
 
 All four fields are required, non-empty where strings, type-checked, and immutable once the request Event commits. Unknown fields are rejected under schema version 1; adding fields requires an explicit schema-version change. This makes the object extensible without changing Task identity. Serialize it as canonical compact UTF-8 JSON with sorted keys and fixed separators; store the object and its SHA-256 content hash in the immutable request Event. Recompute and compare the hash on every replay/load. The request fingerprint binds this object/hash.
 
-**D4a — pin ownership rule (proposed):** TeamPolicy is not the matching-pin source in the first release and remains unchanged. `matcher_id` and `matcher_version` are code-owned by the single first-release matcher implementation/registry. `embedding_space_key` and `chunking_version` are also code-owned for the first release; the repository has per-projection metadata, but this audit did not establish a single authoritative source-index configuration record that the Task creator can safely pin. Do not infer that per-row metadata is a canonical configuration owner. The creator reads one code-owned, immutable matching-pin declaration; execution verifies that the live Signal and candidate projections match those pins and fails closed on mismatch. No generic provider interface, plugin registry, TeamPolicy schema change, or new configuration subsystem is needed for this single implementation. Tests use fixed pin values and pin the canonical object/hash. A later change may move embedding/chunking ownership to the index only after the repository proves a durable, authoritative index configuration record and its consistency/rebuild contract.
+**D4a — pin ownership rule (proposed):** TeamPolicy is not the matching-pin source in the first release and remains unchanged. `matcher_id` and `matcher_version` are code-owned by the single first-release matcher implementation/registry. `embedding_space_key` and `chunking_version` are also code-owned for the first release; the repository has per-projection metadata, but this audit did not establish a single authoritative source-index configuration record that the Task creator can safely pin. Do not infer that per-row metadata is a canonical configuration owner. The creator reads one code-owned, immutable matching-pin declaration while holding the canonical Team lock; execution verifies that the live Signal and candidate projections match those pins and fails closed on mismatch. No generic provider interface, plugin registry, TeamPolicy schema change, or new configuration subsystem is needed for this single implementation. Tests use fixed pin values and pin the canonical object/hash. A later change may move embedding/chunking ownership to the index only after the repository proves a durable, authoritative index configuration record and its consistency/rebuild contract.
 
 **D4b — actual values:** deferred to the matching implementation/decision work. No placeholder, mutable alias, or `latest` resolution is permitted. Experiment A may require a new matching-pin schema version if it changes the pinned representation or field semantics; that does not change Task identity version by itself. Any reprocessing of stale v1 work still requires the separately approved `triage_identity_v2` transition above.
 
