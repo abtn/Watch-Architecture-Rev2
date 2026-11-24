@@ -1,6 +1,6 @@
 # RW4-2 — Trusted Task boundary and canonical identity
 
-**Status:** D1 accepted by the Operator on 2026-11-24; D2 remains open for separate Operator decisions. This document remains a design/specification artifact. No creator implementation is authorized.
+**Status:** D1 accepted by the Operator on 2026-11-24; D2 is partially accepted: the canonical UUIDv5 Task identity (including namespace and golden vector) and the Task-schema migration/composite uniqueness requirement are accepted. The remaining D2 decisions are open. This document remains a design/specification artifact. No creator implementation is authorized.
 
 **Preparation baseline:** `main` after PR #184 squash merge `3fd27167e7e77eeed2110d9a2028a9ecaa005bc3` (2026-11-24).
 
@@ -131,16 +131,16 @@ No login, token verifier, user store, RBAC framework, deployed Watch API/CLI, au
 
 ### 4.2 Canonical Task ID
 
-**Recommendation:** use the deterministic UUIDv5 as `Task.id` itself, and separately require persisted identity components and a database unique constraint on `(team_id, signal_id, identity_version)`. The Task primary key arbitrates duplicate UUIDs; the tuple constraint prevents a second writer from assigning a different UUID to the same Team/Signal pair within the same identity generation. The current schema audit found no `signal_id` or `identity_version` fields on Task and no such unique constraint (see §4.9), so this requires a Task-schema migration. The Operator accepted this migration cost on 2026-11-24.
+**Operator decision (2026-11-24): ACCEPT.** Use the deterministic UUIDv5 as `Task.id` itself, and separately require persisted identity components and a database unique constraint on `(team_id, signal_id, identity_version)`. The Task primary key arbitrates duplicate UUIDs; the tuple constraint prevents a second writer from assigning a different UUID to the same Team/Signal pair within the same identity generation. The current schema audit found no `signal_id` or `identity_version` fields on Task and no such unique constraint (see §4.9), so this requires a Task-schema migration. The Operator accepted the migration requirement separately; both accepted decisions are design requirements only and do not authorize migration or creator implementation.
 
-The UUIDv5 namespace must be dedicated to RW4 triage and versioned in source/documentation. Proposed frozen namespace UUID: `383bbdde-37be-4895-8fb7-1afa196b5cf7` (UUIDv4 generated for this contract; once accepted, never regenerate or derive it). The canonical name must unambiguously encode, using canonical lowercase UUID text and a fixed documented delimiter/field order:
+The UUIDv5 namespace must be dedicated to RW4 triage and versioned in source/documentation. Accepted frozen namespace UUID: `383bbdde-37be-4895-8fb7-1afa196b5cf7` (UUIDv4 generated for this contract; once accepted, never regenerate or derive it). The canonical name must unambiguously encode, using canonical lowercase UUID text and a fixed documented delimiter/field order:
 
 - fixed identity version `triage_identity_v1`;
 - operation/task type `triage_signal`;
 - canonical Team UUID;
 - canonical Signal UUID.
 
-The canonical name template is exactly `triage_identity_v1|triage_signal|team:<team-uuid>|signal:<signal-uuid>`, with lowercase canonical UUID text and no whitespace. The dedicated RW4 namespace UUID is a separate frozen contract constant; do not reuse the RW-3 `update_thread` namespace. Both constants must be recorded in the accepted spec before implementation. A golden test must pin the resulting UUID for fixed Team/Signal inputs so namespace or encoding drift fails visibly. The proposed golden vector is Team `00000000-0000-4000-8000-000000000001`, Signal `00000000-0000-4000-8000-000000000002`, expected Task ID `5b45ed53-a50f-51e8-ba81-ce52512aa922` under the proposed namespace above. Treat this vector and namespace as proposed draft constants until D2 is accepted.
+The canonical name template is exactly `triage_identity_v1|triage_signal|team:<team-uuid>|signal:<signal-uuid>`, with lowercase canonical UUID text and no whitespace. The dedicated RW4 namespace UUID is a separate frozen contract constant; do not reuse the RW-3 `update_thread` namespace. Both constants must be recorded in the accepted spec before implementation. A golden test must pin the resulting UUID for fixed Team/Signal inputs so namespace or encoding drift fails visibly. The accepted golden vector is Team `00000000-0000-4000-8000-000000000001`, Signal `00000000-0000-4000-8000-000000000002`, expected Task ID `5b45ed53-a50f-51e8-ba81-ce52512aa922` under the accepted namespace above. The namespace, canonical name template, identity version, and golden vector are frozen D2 v1 constants.
 
 The Task ID is independent of requester identity, policy version, matcher/embedding/chunking pins, Team revision watermark, and retry attempt. Pins belong in the request fingerprint and conflict on mismatch; they are not part of identity. Reusing the same Signal/Team pair in the first generation derives the same Task ID even if the caller or pins differ; identical pins replay, while changed pins return a conflict against that same canonical identity.
 
@@ -225,9 +225,9 @@ RW4-2 does not create SignalDisposition. RW4-1 must separately enforce one dispo
 
 **Accepted D2 requirement (2026-11-24):** persist `signal_id` and `identity_version` on triage Tasks and enforce a database unique constraint on `(team_id, signal_id, identity_version)`, with validation requiring these identity components for `task_type = 'triage_signal'`. This requires a Task-schema migration, and the Operator has accepted that migration cost. Callers cannot supply or override the persisted identity components. Migration implementation, backfill/preflight strategy, and compatibility proof remain part of the separately authorized implementation work.
 
-The narrow Control Room creator and deterministic UUIDv5 Task ID/recompute-on-load validation remain proposed parts of the broader D2 contract. Acceptance of the schema migration does not accept the UUID namespace, name, golden vector, or other remaining D2 decisions.
+The narrow Control Room creator and recompute-on-load validation remain proposed parts of the broader D2 contract. Acceptance of the Task identity constants does not accept the other remaining D2 decisions or authorize implementation.
 
-**Remaining implementation requirements:** define and review the exact migration, preflight/backfill strategy, existing-writer compatibility, constraint validation, and PostgreSQL proof. These are implementation design/review requirements, not reasons to reopen the accepted requirement for database-enforced logical-pair uniqueness. A "no-schema-change" alternative is not selected. The Task-schema migration and composite constraint are accepted. The UUIDv5 namespace, name, golden vector, and v1 identity semantics remain proposals until the separate canonical Task-identity decision is accepted; acceptance of the migration alone does not accept those constants or other D2 choices.
+**Remaining implementation requirements:** define and review the exact migration, preflight/backfill strategy, existing-writer compatibility, constraint validation, and PostgreSQL proof. These are implementation design/review requirements, not reasons to reopen the accepted requirement for database-enforced logical-pair uniqueness. A "no-schema-change" alternative is not selected. The Task-schema migration and composite constraint are accepted. The UUIDv5 namespace, name, golden vector, and v1 identity semantics are also accepted by the Operator on 2026-11-24; these design decisions do not authorize migration or creator implementation. Other D2 choices remain open.
 
 ## 4.8 Request-Event exact-one cardinality — pending Operator risk disposition
 
