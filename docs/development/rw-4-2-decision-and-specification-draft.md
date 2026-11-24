@@ -219,17 +219,13 @@ RW4-2 does not create SignalDisposition. RW4-1 must separately enforce one dispo
 
 ## 4.7 Canonical-identity uniqueness — Task-schema migration accepted (2026-11-24)
 
-**Status: pending Operator disposition — minimal v1 guarantee recommended.**
+**Status: ACCEPTED — 2026-11-24.**
 
 **Operator decision (2026-11-24): ACCEPT.** The Operator explicitly accepted the Task-schema migration and database composite unique constraint. The current Task primary key guarantees uniqueness only for the UUID value inserted; the additional composite constraint prevents a writer supplying a different UUID from creating another row for the same canonical `(team_id, signal_id, identity_version)` tuple. The existing source audit found no persisted `signal_id`/`identity_version` fields on Task and no pair-level unique constraint (see §4.9).
 
 **Accepted v1 guarantee:** retain one narrow Control Room creator, but do not rely on its check-then-insert behavior for uniqueness. Persist `signal_id` and `identity_version` on Task and enforce a database unique constraint on `(team_id, signal_id, identity_version)`, with a database/application validation requiring these identity components for `task_type = 'triage_signal'`. Keep the deterministic UUIDv5 Task ID, recompute-on-load validation, and one narrow creator; callers cannot supply or override the identity components. This requires a Task-schema migration and the Operator has accepted that migration cost. Migration implementation, backfill/preflight strategy, and compatibility proof remain part of the separately authorized implementation work.
 
-**Operator disposition required before Stage B:**
-- Approve minimal v1 with the required canonical-identity uniqueness migration, explicitly accepting its migration/preflight/test cost; or
-- Do not accept that risk/constraint design and direct a different database-enforced identity representation for review.
-
-A "no-schema-change" alternative is not selected. The Task-schema migration and composite constraint are accepted. The UUIDv5 namespace, name, golden vector, and v1 identity semantics remain proposals until the separate canonical-identity decision is accepted; acceptance of the migration alone does not accept those constants or other D2 choices.
+**Remaining implementation requirements:** define and review the exact migration, preflight/backfill strategy, existing-writer compatibility, constraint validation, and PostgreSQL proof. These are implementation design/review requirements, not reasons to reopen the accepted requirement for database-enforced logical-pair uniqueness. A "no-schema-change" alternative is not selected. The Task-schema migration and composite constraint are accepted. The UUIDv5 namespace, name, golden vector, and v1 identity semantics remain proposals until the separate canonical Task-identity decision is accepted; acceptance of the migration alone does not accept those constants or other D2 choices.
 
 ## 4.8 Request-Event exact-one cardinality — pending Operator risk disposition
 
