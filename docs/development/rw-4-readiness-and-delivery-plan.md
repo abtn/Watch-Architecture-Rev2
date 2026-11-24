@@ -1,7 +1,7 @@
 # RW-4 Readiness and Delivery Plan
 
-**Status:** Active staged-delivery baseline. The 2026-11-24 RW3.4 sequencing exception is recorded; no individual production slice is blanket-authorized.
-**Planning baseline:** `main` at `183c0307c04dad0aa31dfbfb1e268d5595521e81` (PR #182 merge; 2026-11-24).
+**Status:** Active staged-delivery baseline. D1 was accepted on 2026-11-24; D2 remains open. The 2026-11-24 RW3.4 sequencing exception is recorded; no individual production slice is blanket-authorized.
+**Planning baseline:** `main` after PR #184 squash merge `3fd27167e7e77eeed2110d9a2028a9ecaa005bc3` (2026-11-24).
 **Status authority:** `PLAN.md` remains the only authority for milestone status and authorization. This document owns the dependency-aware RW-4 readiness checklist and delivery sequence.
 **Sequencing decision:** [RW-4/RW-5 sequencing decision](rw-4-rw-5-sequencing-decision.md) records the approved 2026-11-24 RW4-2-first serial order.
 **Scope:** Reconcile the evidence audit in PR #175, the bounded RW4-0 proposal in PR #174, the minimal matching proposal in PR #176, the RW-4 design plan, Task specifications, and architecture.
@@ -12,7 +12,7 @@ The Operator's 2026-11-24 sequencing exception satisfies the overall RW3.4 seque
 
 The delivery path is deliberately serial. The updated Operator order supersedes the earlier RW-5-first order:
 
-1. **RW4-2 design/decision stage:** close D1/D2 and review/freeze the Task-creator specification and proof subset. This stage is documentation/decision work only; it does not implement or enable the creator. Resolve the identity-enforcement residuals before implementation authorization.
+1. **RW4-2 design/decision stage:** D1 is accepted: the Control Room is the single Task-creation authority; only active Teams are eligible; production host authentication is required before production use and scheduled after the R8 test; URL normalization is deferred until after the R8 test (exact comparison remains current, with hostname-case-only normalization proposed for later); greatest-version TeamPolicy selection under the canonical Team lock fails closed. Close D2 and review/freeze the Task-creator specification and proof subset next. This stage is documentation/decision work only; it does not implement or enable the creator. Resolve the identity-enforcement residuals before implementation authorization.
 2. **RW4-1 — SignalDisposition persistence:** follow the RW4-2 D1/D2 design gate; D3/D5 must be accepted first. Implement the bounded persistence slice and preserve linear Alembic history.
 3. **RW-5 canonical lock helper, Team revision, and writer retrofit:** separately authorize the migration and RW3.4-adjacent WorldMemoryCommitService/Operator compatibility changes; prove every supported writer through real entrypoints. This must land before the RW4-2 creator and RW4-3.
 4. **RW4-2 creator implementation:** return to the RW4-2 implementation stage only after RW4-1 and the canonical helper/Team-revision/writer retrofit have landed and passed real PostgreSQL lock tests. Reuse the one canonical helper; no bespoke lock path.
