@@ -9,8 +9,8 @@
 
 The bounded regression review found no blocker under the accepted first-release threat model. The shared RW-5/RW-4 concurrency boundary is frozen in §4. This closes the contract gate only; every implementation and migration slice remains separately authorized. The next engineering work is the spike-to-helper step: implement the canonical lock helper and its focused tests, after explicit implementation authorization. The migration and RW3.4-adjacent writer/lock-mode compatibility retrofit require their own explicit authorization.
 
-1. RW-5 shared contract freeze.
-2. RW-5 implementation and proof.
+1. RW-5 shared contract freeze — complete in PR #182.
+2. RW-5 implementation and proof — next engineering slice begins with the canonical lock-helper spike-to-helper work, after separate explicit implementation authorization.
 3. RW4-1 SignalDisposition persistence.
 4. RW4-2 triage Task identity and TaskRuntime boundary.
 5. RW4-3 deterministic matching/commit, initially without dormant-Thread reactivation.
@@ -21,7 +21,7 @@ RW4-1 and RW4-2 are not to run in parallel. Each implementation stream requires 
 
 ## 2. Source baseline and constraints
 
-The proposal is grounded in the post-PR-181 source tree:
+This contract is grounded in the post-PR-181 source tree:
 
 - `core/models.py:856–900`: Thread lifecycle and `last_updated_at`.
 - `core/models.py:900–957`: Hypothesis status, confidence, and `last_touched_at`.
@@ -62,14 +62,14 @@ All seven rows remain PARTIAL. `RW-REQ-01` and `RW-POL-01` remain external integ
 
 ### 4.1 Task production, identity, and authority
 
-**Proposed contract:**
+**Contract:**
 
 - RW-5 core provides a typed, idempotent application boundary that creates one `apply_decay` Task for one Team, pins the immutable request and TeamPolicy version, and persists the request Event atomically.
-- The creator derives Team authority from a trusted host boundary, never from model output or an untrusted worker payload. Production host authentication/composition remains an external integration boundary; this proposal does not invent it.
+- The creator derives Team authority from a trusted host boundary, never from model output or an untrusted worker payload. Production host authentication/composition remains an external integration boundary; this contract does not invent it.
 - A periodic scheduler/host trigger is a separate integration slice, **RW5-P**. It may invoke the typed creator but may not mutate world memory, execute Tasks, or become a second runtime. The existing TaskDispatcher remains `ingest_source`-only.
 - RW-5 core acceptance covers deterministic creation/execution from a valid typed invocation. It does not claim autonomous periodic operation. **RW5-P is required before foundation exit/R8 can claim scheduled decay is operational.**
 
-The Task table has no generic idempotency-key column. The proposed database identity is a deterministic UUIDv5 Task primary key from a dedicated, versioned namespace and canonical `(team_id, operation, trusted_schedule_slot)`. The schedule slot is trusted host metadata, not model-selected data. For a manual invocation, use an equivalent caller-generated idempotency token in a distinct, explicitly typed identity form. The captured `as_of` timestamp is deliberately **not** part of the Task identity: it is generated only during creation and must be reused by replay.
+The Task table has no generic idempotency-key column. The contracted database identity is a deterministic UUIDv5 Task primary key from a dedicated, versioned namespace and canonical `(team_id, operation, trusted_schedule_slot)`. The schedule slot is trusted host metadata, not model-selected data. For a manual invocation, use an equivalent caller-generated idempotency token in a distinct, explicitly typed identity form. The captured `as_of` timestamp is deliberately **not** part of the Task identity: it is generated only during creation and must be reused by replay.
 
 The database primary-key constraint arbitrates concurrent creators. A creator that finds the deterministic Task ID validates its immutable request and returns the original Task, original `as_of`, and original policy pin—even if the current TeamPolicy has since advanced. A changed semantic request under the same identity is a conflict. If a duplicate attempt carries different operational clock metadata (`observed_last_clock_at` or `clock_rebase_generation`) but the same semantic request identity, the already-stored Task envelope wins: return that Task and its original envelope. Validate the stored envelope's integrity hash against its own stored bytes; do not compare the candidate envelope's full-byte hash with the stored hash or misclassify that expected candidate mismatch as tampering. Only corruption of the stored envelope itself is an integrity failure. The request Event and Task row are one transaction. Do not take an existing Task row lock after acquiring the Team lock; validate immutable request data without reversing TaskRuntime's Task → Team lock order. Tests must cover same-identity duplicate creation with changed operational clock fields, proving the original envelope is returned, as well as semantic mismatch conflict, golden vectors, unique-conflict races, and concurrent PostgreSQL creators.
 
@@ -100,7 +100,7 @@ Replay reconstructs the original decision. The immutable database-captured insta
 
 ### 4.3 Historical evidence is authoritative; current-state fields are only accelerators
 
-**Decision proposed:** reconstruct evidence age from immutable accepted evidence history. Hypothesis.last_touched_at is a mutable current-state cache/prefilter, not the authority for a past decay decision. Accepted supporting or challenging EvidenceLinks are the authoritative evidence-touch records. An accepted touch resets evidence age even if confidence does not change.
+**Decision:** reconstruct evidence age from immutable accepted evidence history. Hypothesis.last_touched_at is a mutable current-state cache/prefilter, not the authority for a past decay decision. Accepted supporting or challenging EvidenceLinks are the authoritative evidence-touch records. An accepted touch resets evidence age even if confidence does not change.
 
 **Source-backed history gap:** the existing world-memory commit path uses application datetime.now(timezone.utc) for committed_at and stamps Hypothesis, EvidenceLink/ConfidenceChange, and Events with it. ORM server defaults on other insert paths use PostgreSQL now() (transaction-start time). Neither is a database-captured post-lock acceptance instant. The current Hypothesis creation path sets mutable confidence='low' and records confidence='low' in the immutable hypothesis_created Event, but creates no initial ConfidenceChange row. The Event is the only existing immutable record of the initial band; its timestamp is not a reliable database ordering key.
 
@@ -210,7 +210,7 @@ Prove both race orders with disposable PostgreSQL. Unit tests that mock away row
 
 ### 4.8 Task transaction, recovery, and per-Hypothesis failures
 
-**Atomicity is a required design proof, not an assumption about the current APIs.** The existing WorldMemoryCommitService.commit_model() opens its own transaction, while TaskRuntime.finalize() opens a separate transaction. commit_model_in_session() provides a possible shared-session seam, but the current finalization API does not itself prove that business writes, summary Event, Outcome, and terminal Task state can commit atomically. A TaskRuntime-owned finalize-in-session extension may touch shared RW3.4 code; it is not an incidental RW-5 refactor and is not authorized by this proposal.
+**Atomicity is a required design proof, not an assumption about the current APIs.** The existing WorldMemoryCommitService.commit_model() opens its own transaction, while TaskRuntime.finalize() opens a separate transaction. commit_model_in_session() provides a possible shared-session seam, but the current finalization API does not itself prove that business writes, summary Event, Outcome, and terminal Task state can commit atomically. A TaskRuntime-owned finalize-in-session extension may touch shared RW3.4 code; it is not an incidental RW-5 refactor and is not authorized by this contract.
 
 Before implementation, separately review the exact shared-runtime change against the seven RW3.4 residuals. The current impact map is: RW-REC-01 (Task/attempt lock and fencing cases), RW-REPLAY-01 (atomic write/replay behavior), and RW-RP-01 (unknown-commit/repeated recovery) are directly touched and require targeted RW-5 proof while remaining PARTIAL outside that proof. RW-CTX-06 is not touched unless Context identity/recovery code changes; RW-RT-02 is not touched unless the 45s/60s timing contract changes; RW-REQ-01 and RW-POL-01 remain external host-authentication and policy-publisher boundaries. No RW3.4 row is closed by this mapping. If the required TaskRuntime change exceeds this narrow boundary, stop for a separate RW3.4 impact review and explicit authorization.
 
@@ -249,7 +249,7 @@ Prefer existing Thread, Hypothesis, ConfidenceChange, Task, and Event records wh
 
 ### 5.1 Minimum logical representation and database constraints
 
-The following logical representation is the minimum contract baseline. It requires a migration; this proposal does not authorize that migration or the RW3.4-adjacent writer retrofit.
+The following logical representation is the minimum contract baseline. It requires a migration; this contract does not authorize that migration or the RW3.4-adjacent writer retrofit.
 
 | Record | Required durable state |
 |---|---|
@@ -290,7 +290,7 @@ The model deliberately avoids a generic temporal framework, generic event store,
 | Eligibility and manifest completeness | Build epoch and Task manifest with active, superseded, and rejected Hypotheses; prove only active rows receive baselines/manifest entries and decay writes. Transition a pinned active Hypothesis to superseded/rejected before execution and prove it is skipped with `hypothesis_not_active`, while other active members proceed. Unknown lifecycle values fail closed. Incomplete baseline/history state rejects epoch transition or Task creation atomically. Prove the chosen 500-Hypothesis/10,000-history-row caps reject admission with `decay_manifest_overflow`, no Task/request Event, and one durable operator-visible `decay_task_rejected` Event; prove the 5,000 ms transaction cap rolls back business writes and terminalizes the Task as `stopped` with `decay_execution_limit_exceeded` and no retry. Prove no truncation, pagination, partitioning, or silent skip occurs. |
 | Boundaries and evidence reset | Test before, exactly at, and after each UTC decay-window boundary; timezone/DST-independent arithmetic; no-evidence baseline and first-evidence-anchor transition. Supporting/challenging evidence resets age even without confidence change; mentions/rejection/decay do not. |
 | Catch-up and attribution | Multiple elapsed windows apply the defined sequence once, with at most two actual reductions and no no-op rows after `low`. Every decay ConfidenceChange has exactly one valid decay Task cause; no EvidenceLink cause; cross-Team/wrong-Task attribution rejected. |
-| Locking | Task `FOR UPDATE` (when present) → Team `FOR NO KEY UPDATE` → sorted Thread/Hypothesis `FOR NO KEY UPDATE`; one-at-a-time sorted acquisition; session registry guards protected new paths. Prove canonical helper reuse by decay and triage and absence of lock cycles. The FK-compatibility test's `FOR NO KEY UPDATE` cases, READ COMMITTED post-Team-lock test, and sorted Hypothesis-lock test use the proposed helper modes. `test_fk_lock_inversion_reproduces_deadlock` is deliberately a stronger-lock (`FOR UPDATE`) negative control; it demonstrates the legacy inversion risk and does **not** prove a deadlock under the proposed helper modes. A separate helper-mode interleaving test must prove the same FK child-insert sequence completes with Team/Hypothesis `FOR NO KEY UPDATE`. The four original spike tests were present and green on exact PR head `10fa8aa59582fb415b617ae5e7475f802da48836` in hosted CI run [#45395204845](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45395204845): 1,310 tests passed against a real `pgvector/pgvector:pg16` service. This proves only the isolated PostgreSQL mechanics actually exercised by those tests, not production writer participation, the future canonical helper, Team revision allocation, or complete writer coverage. The repository proposal does not yet declare a production PostgreSQL major-version target; execution evidence is PostgreSQL 16 only. Pin the deployment major before rollout and repeat the lock proof on that major if it differs. The global before_flush retrofit for existing writers and database-role restrictions are deferred follow-ups and residual risks. |
+| Locking | Task `FOR UPDATE` (when present) → Team `FOR NO KEY UPDATE` → sorted Thread/Hypothesis `FOR NO KEY UPDATE`; one-at-a-time sorted acquisition; session registry guards protected new paths. Prove canonical helper reuse by decay and triage and absence of lock cycles. The FK-compatibility test's `FOR NO KEY UPDATE` cases, READ COMMITTED post-Team-lock test, sorted Hypothesis-lock test, and `test_fk_lock_inversion_completes_with_no_key_update` exercise the proposed helper modes. `test_fk_lock_inversion_reproduces_deadlock` deliberately uses stronger `FOR UPDATE` locks as a negative control; it demonstrates the legacy inversion risk and does **not** claim a deadlock under the proposed helper modes. All five spike test functions (the FK-compatibility test has four parameter cases) passed on exact PR head `1f41c4d0a8a9408612dea802b87d5952a76981e4` in hosted CI run [#45398352689](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45398352689): 1,311 tests passed against a real `pgvector/pgvector:pg16` service. This proves only the isolated PostgreSQL mechanics actually exercised by those tests, not production writer participation, the future canonical helper, Team revision allocation, or complete writer coverage. The repository's Compose and CI configurations pin PostgreSQL 16; no production deployment major is documented. Confirm the deployment major before rollout and repeat the lock proof if it differs. The global before_flush retrofit for existing writers and database-role restrictions are deferred follow-ups and residual risks. |
 | RW3.4 Blocker 3 dispositions | Retain Task attempt fencing, READ COMMITTED post-Team-lock revalidation, SQLSTATE retry classification (`40P01`, `55P03`; `40001` only under SERIALIZABLE; `57014` separately classified), simplified unknown-commit resolution from terminal Task + matching Outcome, and the single shared lock helper for decay/triage. Defer the global before_flush retrofit on existing writers and database-role/privilege strategy as follow-up/residual risk. |
 | Race and replay/recovery | Prove decay-first and triage-first outcomes, under-lock revalidation, no stale evidence overwrite, no duplicate writes/Events on retry/recovery, and fail-closed terminal-marker ambiguity. |
 | Failure, bounds, lifecycle | Distinguish ineligibility from integrity/transaction failure; no partial writes on failed atomic batch; deterministic scan/write cap and explicit overflow. TaskRuntime owns admission, attempt fencing, one-transaction business/Event/Outcome/terminal commit, and recovery. Unknown commit is resolved from terminal Task + matching Outcome only. No RW3.4 residual is closed. |
@@ -322,20 +322,22 @@ Residual risks retained explicitly:
 - Existing Operator world-memory paths may currently use wider `FOR UPDATE` locks. Standardizing them on the canonical helper's `FOR NO KEY UPDATE` mode is part of the separately authorized writer-compatibility retrofit; until then, their lock-mode equivalence is not assumed.
 - The global `before_flush` retrofit for existing writers and database-role/privilege enforcement for scripts or external writers are deferred follow-ups and residual risks. The new-path guard remains in scope; raw SQL/Core/external writers remain a deployment residual.
 - The chosen first-release capacity limits (500 active Hypotheses, 10,000 relevant history rows, 5,000 ms transaction/Team-lock duration) are not benchmark-derived. Trigger a capacity review when any Team reaches 80% of either count cap or 80% of the duration budget, or before R8 data volumes are introduced; do not silently raise limits or partition batches. If a Team reaches a cap, its decay admission is terminally rejected and requires an Operator-visible capacity decision.
-- PostgreSQL lock execution evidence is PostgreSQL 16 only; no production deployment major is pinned in this proposal. Confirm the deployment major before migration/rollout and repeat the lock proof if it differs.
+- PostgreSQL lock execution evidence is PostgreSQL 16 only; no production deployment major is documented in the repository. Confirm the deployment major before migration/rollout and repeat the lock proof if it differs.
 - Production host authentication/composition and TeamPolicy publisher integration remain the existing external RW3.4 boundaries.
 
 ## 9. Decision and authorization boundary
 
-The shared contract is frozen after the bounded regression review. The following authorization boundaries remain:
+The contract gate is closed after the bounded regression review and exact-head CI. The following boundaries remain:
 
-- no RW-5 production implementation is authorized;
-- no RW-5 production implementation is authorized;
-- no RW4-1 or RW4-2 implementation is authorized by this document;
-- RW4-1 and RW4-2 remain sequential, not parallel;
-- dormant-Thread reactivation remains D6-gated;
-- RW3.4 remains implementation-complete with formal acceptance deferred and all seven PARTIAL rows unchanged;
-- live provider authorization remains closed;
+- The shared time, history-ordering, epoch/cutover, decay, locking, replay, atomicity, and failure/bounds rules are frozen as design. Their production behavior remains unimplemented and must be proven by separately authorized work.
+- The next engineering slice is the canonical lock-helper spike-to-helper implementation and focused tests; it must receive explicit implementation authorization before work starts.
+- The migration and RW3.4-adjacent WorldMemoryCommitService revision/clock plus Operator lock-mode compatibility retrofit require separate explicit authorization and review.
+- No RW-5 production decay execution or RW5-P scheduler deployment is authorized by this contract.
+- No RW4-1 or RW4-2 implementation is authorized by this document.
+- RW4-1 and RW4-2 remain sequential, not parallel.
+- Dormant-Thread reactivation remains D6-gated.
+- RW3.4 remains implementation-complete with formal acceptance deferred and all seven PARTIAL rows unchanged.
+- Live provider authorization remains closed.
 - R7-C, persistent-database operations, and R8 remain separately gated.
 
-The one bounded regression review is complete and found no blocker. Record future findings only if they are regressions, factual contradictions, or demonstrated blockers under the agreed rubric; other concerns belong in the residual-risk register with a trigger. The next work is the separately authorized canonical lock-helper spike-to-helper implementation and tests. Do not begin it, the migration, or the RW3.4-adjacent writer/lock-mode retrofit without their respective explicit authorizations. A further review round requires explicit Operator authorization and a named blocker.
+The one bounded regression review is complete and found no blocker. Record future findings only if they are regressions, factual contradictions, or demonstrated blockers under the agreed rubric; other concerns belong in the residual-risk register with a trigger. Do not begin the canonical helper, migration, or RW3.4-adjacent writer/lock-mode retrofit without their respective explicit authorizations. A further review round requires explicit Operator authorization and a named blocker.
