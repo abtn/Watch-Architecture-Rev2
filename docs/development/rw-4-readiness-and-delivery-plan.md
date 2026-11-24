@@ -1,7 +1,7 @@
 # RW-4 Readiness and Delivery Plan
 
 **Status:** Active staged-delivery baseline. The 2026-11-24 RW3.4 sequencing exception is recorded; no individual production slice is blanket-authorized.
-**Planning baseline:** `main` at `5aecf096b077ab34bc7c8fb09cb750a59a19c335` (PR #181 merge; 2026-11-24).
+**Planning baseline:** `main` at `183c0307c04dad0aa31dfbfb1e268d5595521e81` (PR #182 merge; 2026-11-24).
 **Status authority:** `PLAN.md` remains the only authority for milestone status and authorization. This document owns the dependency-aware RW-4 readiness checklist and delivery sequence.
 **Sequencing decision:** [RW-4/RW-5 sequencing decision](rw-4-rw-5-sequencing-decision.md) records the 2026-11-24 exception and RW-5-first order.
 **Scope:** Reconcile the evidence audit in PR #175, the bounded RW4-0 proposal in PR #174, the minimal matching proposal in PR #176, the RW-4 design plan, Task specifications, and architecture.
