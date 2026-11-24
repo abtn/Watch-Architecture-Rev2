@@ -101,6 +101,7 @@ Agree before RW4 reactivation implementation:
 - whether matching/reactivation changes a Thread-level timestamp;
 - which timestamp is authoritative, if any;
 - whether a reactivated Thread can immediately become dormant under unchanged Hypothesis touch times;
+- the durable recovery/reconsideration behavior for every lifecycle transition that can make a Thread unavailable to triage; dormancy must not ship before this path exists;
 - exact rows/records locked by triage and decay;
 - common lock order and under-lock revalidation;
 - decay-first and triage-first outcomes;
@@ -160,19 +161,20 @@ At minimum map:
 
 RW4-0 umbrella closure remains a separate milestone requiring D1–D6 and cross-cutting contracts to be fully reconciled and accepted. A staged implementation does not close RW4-0 by implication.
 
-## 4. Parallel work that does not block RW4-0..2
+## 4. RW-5-first delivery and independent preparation
 
 ### RW-5 — deterministic decay
 
-RW-5 is the first workstream to start at the shared-contract level. This does not require completing all of RW-5 before RW4-1/RW4-2; those slices may proceed in parallel when their own gates are met. RW-5 design and implementation may proceed independently of RW4-0, RW4-1, and RW4-2. Before implementation, review and freeze the shared contract items below:
-1. deterministic `apply_decay` Task through existing TaskRuntime;
-2. effective Team/Domain decay-policy selection;
-3. confidence reduction with exactly one valid decay Task cause;
-4. never reject Hypotheses and never mutate `last_touched_at`;
-5. Thread dormancy when all active Hypotheses meet the accepted low-confidence/window condition;
-6. boundary-time, repeated-run idempotency, concurrency, and recovery proofs.
+RW-5 is the first engineering stream and is completed/reviewed before RW4-1 begins; RW4-1 and RW4-2 are sequential and must not run in parallel. Preparation that does not alter the implementation stream may continue independently, but no second production implementation stream is started. Before RW-5 implementation, freeze and prove:
+1. a typed idempotent `apply_decay` Task creator and the separate RW5-P periodic host/scheduler integration gate;
+2. one database-captured UTC `as_of` persisted in an immutable canonical Task request and reused on retry/recovery;
+3. evidence age reconstructed from accepted EvidenceLink and ConfidenceChange history, with mutable current-state fields used only as accelerators;
+4. inclusive decay-window boundaries, deterministic catch-up, and cross-Task database uniqueness;
+5. database-enforced immutable request records, identity, and common Task → Team → sorted Thread → sorted Hypothesis lock order;
+6. under-lock history/state/policy revalidation, decay/triage race outcomes, and bounded lock/query/transaction work;
+7. a TaskRuntime-owned atomic business commit, summary Event, Outcome, and terminal Task transition, proven with transaction fault injection.
 
-Before RW-5 implementation, freeze: (a) the authoritative UTC clock and one captured as-of instant per decay Task; (b) inclusive/exclusive decay-window boundary semantics; (c) the exact meaning of `last_touched_at` and the rule that decay never changes it; (d) the Thread/Hypothesis/TeamPolicy rows and common lock order used by decay and triage; (e) under-lock state/policy revalidation; (f) deterministic decay-first and triage-first race outcomes; and (g) idempotent replay and at-most-one ConfidenceChange/Thread lifecycle Event behavior. These are required decisions, not pre-decided values. The shared D6 timestamp/lock contract must be delivered before RW4 implements reactivation. RW-5 must not invent a second runtime or scheduler; TaskRuntime remains the sole lifecycle authority.
+RW-5 first release changes confidence only. It does not transition Threads to dormant. Dormancy is prohibited until D6, a durable RW-4 reactivation/recovery path, and separate authorization exist. `last_touched_at` is not historical authority and decay never changes it. RW5-P remains a separate host integration and must be accepted before foundation exit/R8 can claim autonomous periodic decay. TaskRuntime remains the sole lifecycle/recovery authority.
 
 ### Experiment A
 
