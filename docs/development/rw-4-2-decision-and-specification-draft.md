@@ -114,7 +114,7 @@ No login, token verifier, user store, RBAC framework, deployed Watch API/CLI, au
 | Identity | Proposed definition | Purpose |
 |---|---|---|
 | Business identity | `(signal_id, team_id)` | One Team-specific triage result |
-| Task identity | Deterministic UUIDv5 over canonical Team, Signal, and `triage_signal` operation under a dedicated versioned RW4 namespace | One canonical Task for the pair |
+| Task identity | Deterministic UUIDv5 over canonical Team, Signal, `triage_signal`, and fixed identity version `triage_identity_v1`, under a dedicated RW4 namespace | One canonical Task for the pair in the first identity generation |
 | Request provenance | One immutable Task-attributed request Event | Records who requested the first canonical Task and the immutable request basis |
 | Disposition identity | Unique `(signal_id, team_id)` | One persisted disposition; implemented separately in RW4-1 |
 | Execution identity | Existing Task ID plus TaskRuntime attempt/recovery state | TaskRuntime owns retries and lifecycle; attempts do not create new Tasks |
@@ -278,6 +278,7 @@ Exact test node IDs are to be added after the implementation plan is reviewed. T
 | RW42-RACE-02 | Different pairs | Different Team/Signal pairs produce distinct Task IDs |
 | RW42-RUNTIME-01 | Lifecycle ownership | Creator leaves Task pending; no direct start/finalization/Outcome |
 | RW42-DISPATCH-01 | Unsupported Task kind remains queued and ignored | With only a pending `triage_signal` Task, `find_eligible_task()` returns `None`; direct dispatch raises `TaskNotDispatchable` before admission; Task remains pending with zero attempts and no lifecycle Events; dispatcher does not crash or loop |
+| RW42-DB-01 | No schema migration | Alembic head before and after RW4-2 implementation is identical; no migration is added |
 | RW42-SCOPE-02 | No adjacent feature expansion | No dispatcher, scheduler, worker, provider, disposition, Thread, or migration changes in RW4-2 |
 
 Tests must include tampered/missing/duplicate Event evidence and rollback/crash-safe transaction outcomes. SQLite-only tests are insufficient for uniqueness-race and PostgreSQL lock claims.
