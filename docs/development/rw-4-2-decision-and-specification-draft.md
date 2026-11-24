@@ -91,15 +91,17 @@ The adapter must:
 1. Reject a missing, wrong-type, malformed, or unsupported principal before durable writes.
 2. Validate stable issuer/subject identity using the existing canonical principal-identity rules; do not invent a second actor-identity encoding.
 3. Require exactly one applicable Team grant for action `triage_signal`. If the principal carries zero or ambiguous applicable grants, fail closed. The host selects the intended Team by issuing the exact grant.
-4. Load the canonical Signal and Team and verify the Signal's domain equals the Team's canonical domain. A request cannot override either value.
-5. Require the Team state that the accepted Team contract defines as eligible (expected: active); fail closed for missing/inactive Team or missing Signal.
+4. Load the canonical Signal and Team. Require both (a) `Signal.domain == Team.domain` using canonical stored values and (b) the exact `(Signal.origin_url, Signal.source_type)` pair to appear in the selected immutable TeamPolicy version's `rules["sources"]` allowlist, following ADR-0028's Team-scoped source authorization rule. Domain equality alone is insufficient; a source allowlist match alone is also insufficient. A request cannot override any of these values. If the policy schema or source entry is malformed, fail closed.
+5. Require the Team state that the accepted Team contract defines as eligible (expected: `active`); fail closed for missing/inactive Team or missing Signal. Resolve and pin the applicable TeamPolicy version using the accepted creator/lock contract.
 6. Independently authorize every caller before either creating a Task or resolving/replaying an existing canonical Task.
 7. Create or resolve only the canonical `triage_signal` Task described in D2.
 8. Return a typed result identifying the Task and whether it was newly created or replayed. It does not admit, execute, or finalize the Task.
 
+These are creation-time checks, not execution guarantees. Team status, domain/source eligibility, and policy may change while the Task is queued. RW4-3 must revalidate current Team eligibility and the Signal-to-Team source scope under the accepted RW-5 lock chain immediately before matching/commit. A Task that no longer qualifies must not be executed against stale authority.
+
 ### Trust limitation
 
-The principal is an in-process trust contract, not a credential. Only a trusted host composition boundary may construct and pass it. No production host composition root currently exists, so the implementation can prove Watch-side grant validation only. End-to-end host authentication remains an external integration proof.
+The principal is an in-process trust contract, not a credential or an unforgeable runtime object: any code in the process can construct the Python value. The practical boundary is architectural and testable: only the one narrow typed creator writes `triage_signal` Tasks; it derives Team and authority exclusively from the supplied trusted principal/grant and canonical database records; request payload fields cannot supply or override Team, requester, role, or authority. Tests must prove forged/payload-supplied authority is ignored or rejected. No production host composition root currently exists, so the implementation can prove Watch-side validation only, not end-to-end authentication. The host must authenticate the requester before constructing/calling the adapter.
 
 ### D1 non-goals
 
@@ -121,17 +123,20 @@ No login, token verifier, user store, RBAC framework, deployed Watch API/CLI, au
 
 **Recommendation:** use the deterministic UUIDv5 as `Task.id` itself. The Task primary-key constraint then provides database-enforced uniqueness without adding a redundant identity column or secondary unique index.
 
-The UUIDv5 namespace must be dedicated to RW4 triage and versioned in source/documentation. The canonical name must unambiguously encode:
+The UUIDv5 namespace must be dedicated to RW4 triage and versioned in source/documentation. The canonical name must unambiguously encode, using canonical lowercase UUID text and a fixed documented delimiter/field order:
 
-- canonical Team UUID;
+- fixed identity version `triage_identity_v1`;
 - operation/task type `triage_signal`;
+- canonical Team UUID;
 - canonical Signal UUID.
 
-Use a fixed, documented encoding and canonical UUID representation. Do not use string concatenation without a versioned delimiter/encoding contract. Do not reuse the RW-3 `update_thread` namespace.
+The namespace UUID and exact name encoding are frozen contract constants; do not reuse the RW-3 `update_thread` namespace. A golden test must pin the resulting UUID for fixed Team/Signal inputs so namespace or encoding drift fails visibly. The expected UUID must be recorded when those constants are frozen, before implementation is accepted.
 
-The Task ID is independent of requester identity, policy version, matcher version, and retry attempt. Those are request provenance/pins or execution state, not business identity. Reusing the same Signal/Team pair must resolve the same Task even if the caller differs.
+The Task ID is independent of requester identity, policy version, matcher/embedding/chunking pins, Team revision watermark, and retry attempt. Pins belong in the request fingerprint and conflict on mismatch; they are not part of identity. Reusing the same Signal/Team pair in the first generation resolves the same Task even if the caller or pins differ.
 
-Because the deterministic ID is the Task primary key, concurrent inserts are arbitrated by PostgreSQL primary-key uniqueness. Application pre-checks alone are insufficient.
+**Re-triage rule for the first release:** there is exactly one Task identity per `(signal_id, team_id, triage_identity_v1)`. A terminally failed Task continues to occupy that identity; an ordinary retry/replay never creates a replacement. A changed policy or matching pin conflicts with the existing Task and does not create a second Task. Re-triage/new generations are explicitly out of scope. Revisit only when an approved requirement needs deliberate re-evaluation after a changed matcher/policy or recovery from terminal failure; any later generation must use a new explicit identity-version input, not mutate `triage_identity_v1` semantics.
+
+Because the deterministic ID is the Task primary key, concurrent inserts are arbitrated by PostgreSQL primary-key uniqueness. The PK alone does not prove that a row's stored semantics match its ID: every load/replay must recompute the expected UUID from the row's canonical Team, Signal, operation, and identity version, then compare it to `Task.id`. A mismatch fails closed and is never repaired in place. Application pre-checks alone are insufficient.
 
 ### 4.3 Immutable request Event
 
@@ -154,10 +159,12 @@ Proposed payload fields (exact schema and canonical serialization to be frozen b
 - `chunking_version`
 - `requested_by_principal` (canonical issuer/subject attribution)
 - `request_fingerprint`
+- `matching_pins` (the complete versioned pin object defined in §7)
+- `matching_pins_hash` (SHA-256 of the canonical serialized `matching_pins` object)
 
 The Event envelope supplies Event ID, Task ID attribution, type, and creation timestamp. Avoid duplicating envelope fields in payload unless the existing Event convention requires them; if duplicated, validate exact equality.
 
-The request fingerprint is SHA-256 over canonical compact UTF-8 JSON with a fixed domain tag and schema version. It binds all immutable request pins and canonical Team/Signal/Task identity. It excludes the fingerprint field itself and excludes requester identity: requester identity is provenance, not semantic equivalence. The raw principal credential/token must never be stored.
+The request fingerprint is SHA-256 over canonical compact UTF-8 JSON with a fixed domain tag and schema version. It binds all immutable request pins (including the complete `matching_pins` object and its content hash) and canonical Team/Signal/Task identity. It excludes the fingerprint field itself and excludes requester identity: requester identity is provenance, not semantic equivalence. The raw principal credential/token must never be stored. The matcher/embedding/chunking pins are explicitly not inputs to Task identity; they affect replay equivalence only.
 
 The Event is immutable after creation. A later authorized caller with the same canonical pair and identical immutable pins resolves the same Task; it does not replace the first requester's provenance or append another request Event.
 
@@ -185,7 +192,7 @@ The implementation must use a PostgreSQL-safe conflict/race strategy that leaves
 | Same pair, same immutable pins, same requester | Replay canonical Task; no new Event |
 | Same pair, same immutable pins, different independently authorized requester | Replay canonical Task; preserve original requester provenance |
 | Same pair, changed policy pin | Conflict; no second Task/Event |
-| Same pair, changed matcher/embedding/chunking pin | Conflict; no second Task/Event |
+| Same pair, changed matcher/embedding/chunking pin | Conflict; no second Task/Event; if already queued, execution must not proceed on stale pins and the Task must be terminally superseded by a TaskRuntime-owned path (see §7) |
 | Same pair, malformed/missing/duplicate request Event | Fail closed; no repair-by-overwrite |
 | Same pair, unauthorized caller | Authorization failure before replay result is disclosed |
 | Concurrent same-pair requests | One Task and one request Event; loser validates winner |
@@ -198,7 +205,7 @@ RW4-2 does not create SignalDisposition. RW4-1 must separately enforce one dispo
 
 ## 5. Proposed Task envelope
 
-The following is a draft contract, not a frozen implementation instruction:
+The following is a draft contract, not a frozen implementation instruction. The Team revision watermark from RW-5 does not exist at Task creation and must not be fabricated or pinned here. RW4-3 captures the applicable Team revision at execution time while holding the accepted RW-5 Team lock, then carries that value in the execution/decision manifest used for matching and commit.
 
 - `task_type = "triage_signal"`
 - `team_id`: Team derived from the trusted grant and canonical Signal/Team validation
@@ -220,23 +227,27 @@ The repository has no production TeamPolicy publisher. Existing RW-3 creator cod
 
 Before implementation, review the exact RW-5 lock contract against the new creator transaction. Do not introduce a second lock helper or independently retrofit RW-5 writers in RW4-2. Record the exact lock mode/order and the reason the creator is compatible with the frozen contract. If compatibility cannot be established without implementing the RW-5 helper, stop and resolve the dependency rather than inventing a temporary lock protocol.
 
-## 7. Open decision: immutable matching pins
+## 7. Matching-pin shape, source, and stale-Task fate
 
-D2 requires the request to bind:
+Freeze the pin object's **shape** in RW4-2; D4 supplies and accepts the actual values. Version 1 is a strict object with these required fields:
 
-- matcher identifier and version;
-- embedding-space key;
-- chunking version.
+```json
+{
+  "schema_version": 1,
+  "matcher_id": "<D4-defined stable identifier>",
+  "matcher_version": "<D4-defined immutable version>",
+  "embedding_space_key": "<D4-defined immutable space key>",
+  "chunking_version": "<D4-defined immutable version>"
+}
+```
 
-The current source audit does not establish an accepted RW4 matcher contract or an authoritative configuration source for all these values. D4 owns the matching representation and remains a later decision gate.
+All four fields are required, non-empty where strings, type-checked, and immutable once the request Event commits. Unknown fields are rejected under schema version 1; adding fields requires an explicit schema-version change. This makes the object extensible without changing Task identity. Serialize it as canonical compact UTF-8 JSON with sorted keys and fixed separators; store the object and its SHA-256 content hash in the immutable request Event. Recompute and compare the hash on every replay/load. The request fingerprint binds this object/hash.
 
-This is a real dependency, not a field-name exercise. Before D2 is accepted for implementation, choose one of these explicit resolutions:
+D4 must decide whether these values can be read from the existing immutable, versioned TeamPolicy content (preferred if it is a single authoritative source and the values are available to the creator), or whether a minimal code-owned D4 configuration supplies them. Do not create a second source of truth, invent placeholder values, copy unproven defaults, or let execution resolve “latest”. The Experiment A dependency may change embedding representation, so the shape must remain versioned and the actual embedding-space value must be an immutable key, not a mutable alias.
 
-1. Identify existing canonical, versioned values and prove their source, immutability, and availability at Task creation; or
-2. Freeze a minimal code-owned version identity for the initial matcher and its embedding/chunking inputs as part of the D4 design, without adding a speculative configuration subsystem; or
-3. Narrow the first RW4 implementation contract so the Task does not claim to pin inputs it will not consume, but only after reconciling the D2 proposal and all authority documents.
+**Queued Task after pin change:** a Task whose recorded pins no longer match the currently accepted execution configuration must not run and must not remain pending/retried forever. RW4-3 must terminally supersede it through TaskRuntime-owned finalization, with a distinct durable superseded reason/outcome. If TaskRuntime does not yet support that terminal category, RW4-3 must define and test it before enabling triage execution; RW4-2 does not add a parallel lifecycle writer. This is a residual implementation dependency, not permission to mutate Task status directly.
 
-Do not invent placeholder values, copy current defaults without source evidence, or let the worker resolve “latest” matcher/configuration at execution time. The Task must carry the exact immutable inputs that its eventual deterministic decision consumes.
+The Team revision watermark is separate from this creation-time matching pin object. RW-5 introduces it; RW4-3 captures it at execution time under the Team lock and includes it in the execution manifest. It is not part of Task identity or the RW4-2 creation fingerprint.
 
 ## 8. TaskRuntime boundary
 
@@ -248,6 +259,8 @@ When execution is separately implemented, TaskRuntime remains the sole authority
 
 Exact test node IDs are to be added after the implementation plan is reviewed. The minimum proof obligations are:
 
+**Frozen first-release test subset:** forged/payload-supplied authority rejection; every-caller authorization including replay; concurrent creation yielding one Task and one request Event; different-requester replay preserving original provenance; pin-mismatch conflict; golden UUID; recompute-on-load; dispatcher ignores unsupported `triage_signal` without admission/failure/retry/crash; and Alembic head unchanged (no migration). The existing dispatcher already filters `find_eligible_task()` to `ingest_source` and rejects unsupported types before `TaskRuntime.admit()`; RW4-2 must add a focused regression test proving the complete queued-Task behavior rather than relying on source inspection alone.
+
 | ID | Requirement | Required proof |
 |---|---|---|
 | RW42-AUTH-01 | Typed trusted principal required | Missing, wrong-type, malformed issuer/subject rejected with no Task/Event |
@@ -255,7 +268,7 @@ Exact test node IDs are to be added after the implementation plan is reviewed. T
 | RW42-AUTH-03 | Caller cannot establish Team authority from request body | Request has no authoritative Team field; grant and canonical DB state determine Team |
 | RW42-AUTH-04 | Every replay caller independently authorized | Unauthorized caller cannot learn/resolve existing Task |
 | RW42-SCOPE-01 | Canonical Signal/Team scope | Missing Signal/Team, inactive Team, domain mismatch fail closed |
-| RW42-ID-01 | Canonical Task identity | Stable UUIDv5 across process restart; Team/Signal/task type separation |
+| RW42-ID-01 | Canonical Task identity | Stable UUIDv5 across process restart; Team/Signal/task type/identity-version separation; golden UUID for fixed inputs; recompute-and-compare on every Task load/replay |
 | RW42-ID-02 | Database uniqueness | PostgreSQL primary-key conflict arbitrates concurrent same-pair creation |
 | RW42-REQ-01 | Atomic Task/request Event | Commit both or neither; exactly one request Event |
 | RW42-REQ-02 | Replay integrity | Exact one valid Event; verify all immutable fields and fingerprint |
@@ -264,6 +277,7 @@ Exact test node IDs are to be added after the implementation plan is reviewed. T
 | RW42-RACE-01 | Concurrent same-pair requests | Real PostgreSQL race yields one Task, one request Event, valid replay for loser |
 | RW42-RACE-02 | Different pairs | Different Team/Signal pairs produce distinct Task IDs |
 | RW42-RUNTIME-01 | Lifecycle ownership | Creator leaves Task pending; no direct start/finalization/Outcome |
+| RW42-DISPATCH-01 | Unsupported Task kind remains queued and ignored | With only a pending `triage_signal` Task, `find_eligible_task()` returns `None`; direct dispatch raises `TaskNotDispatchable` before admission; Task remains pending with zero attempts and no lifecycle Events; dispatcher does not crash or loop |
 | RW42-SCOPE-02 | No adjacent feature expansion | No dispatcher, scheduler, worker, provider, disposition, Thread, or migration changes in RW4-2 |
 
 Tests must include tampered/missing/duplicate Event evidence and rollback/crash-safe transaction outcomes. SQLite-only tests are insufficient for uniqueness-race and PostgreSQL lock claims.
@@ -284,10 +298,12 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 | Decision | Recommendation | Status |
 |---|---|---|
 | D1 trusted invocation | Accept narrow host-invoked adapter with typed principal and exact Team/`triage_signal` grant; production host authentication remains external | Proposed; not accepted |
-| D2 canonical Task identity | UUIDv5 Task primary key over Team + Signal + operation, dedicated namespace; Task/Event atomicity and exact replay validation | Proposed; not accepted |
+| D2 canonical Task identity | UUIDv5 Task primary key over Team + Signal + operation + `triage_identity_v1`, dedicated namespace; recompute-on-load and golden test; Task/Event atomicity and exact replay validation | Proposed; not accepted |
 | D2 requester semantics | Requester is immutable first-request provenance, excluded from semantic request fingerprint; every replay caller independently authorized | Proposed; not accepted |
 | D2 disposition uniqueness | Separate unique `(signal_id, team_id)` constraint in RW4-1 | Deferred to RW4-1 |
-| D2 matching pins | Must identify authoritative versioned source before implementation; D4 dependency unresolved | Open |
+| D2 matching-pin shape | Freeze strict schema-v1 object and canonical content hash in RW4-2; D4 supplies authoritative values and decides TeamPolicy versus minimal code-owned source | Shape proposed; values/source open |
+| D2 re-triage | One identity generation only; terminal failure and pin change do not create a replacement; later generations require a separately approved identity version | Proposed; not accepted |
+| D2 execution watermark | Capture Team revision under RW-5 lock at execution, not Task creation | Proposed; RW4-3 dependency |
 | RW4-2 implementation | Requires accepted D1/D2, reviewed proof subset, lock-order compatibility, and explicit authorization | Not authorized |
 
 **No implementation authorization is requested or implied by PR #183 or this draft.**
