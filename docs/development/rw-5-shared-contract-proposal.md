@@ -1,13 +1,13 @@
-# RW-5 Shared Contract — Freeze Proposal
+# RW-5 Shared Contract
 
-**Decision status:** Proposed for Operator review; not yet frozen.
-**Document purpose:** settle the shared time, decay, locking, replay, and Task-production contracts before RW-5 implementation and before RW-4 dormant-Thread reactivation.
+**Decision status:** Frozen after the bounded regression review on 2026-11-24. Exact-head hosted CI run [#45398352689](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45398352689) passed on `1f41c4d0a8a9408612dea802b87d5952a76981e4` with 1,311 tests.
+**Document purpose:** define the frozen shared time, decay, locking, replay, and Task-production contract for RW-5 and RW-4 dormant-Thread reactivation prerequisites.
 **Baseline:** `main` at `5aecf096b077ab34bc7c8fb09cb750a59a19c335` (PR #181 merge).
-**Scope of this proposal:** documentation and source-backed design only. It does not authorize production code, schema changes, migrations, scheduler deployment, provider calls, persistent-database operations, or RW3.4 acceptance. The accepted logical representation requires a migration; that migration and the RW3.4-adjacent writer retrofit are explicit, separately reviewed implementation gates.
+**Scope of this contract:** this document freezes design decisions only. It does not authorize production code, schema changes, migrations, scheduler deployment, provider calls, persistent-database operations, or RW3.4 acceptance. The accepted logical representation requires a migration; that migration and the RW3.4-adjacent writer retrofit are explicit, separately reviewed implementation gates.
 
-## 1. Decision requested
+## 1. Frozen decision and sequence
 
-Approve or correct the proposed contracts in §4. The intent is to freeze the shared RW-5/RW-4 concurrency boundary once, then implement one stream at a time:
+The bounded regression review found no blocker under the accepted first-release threat model. The shared RW-5/RW-4 concurrency boundary is frozen in §4. This closes the contract gate only; every implementation and migration slice remains separately authorized. The next engineering work is the spike-to-helper step: implement the canonical lock helper and its focused tests, after explicit implementation authorization. The migration and RW3.4-adjacent writer/lock-mode compatibility retrofit require their own explicit authorization.
 
 1. RW-5 shared contract freeze.
 2. RW-5 implementation and proof.
@@ -58,7 +58,7 @@ The ledger remains **28 PASS / 7 PARTIAL / 0 OPEN**. This mapping classifies whe
 
 All seven rows remain PARTIAL. `RW-REQ-01` and `RW-POL-01` remain external integration boundaries. The duplicate/future terminal-marker behavior remains fail-closed: do not weaken integrity checks to force terminalization.
 
-## 4. Proposed RW-5 shared contract
+## 4. Frozen RW-5 shared contract
 
 ### 4.1 Task production, identity, and authority
 
@@ -327,9 +327,9 @@ Residual risks retained explicitly:
 
 ## 9. Decision and authorization boundary
 
-This proposal is ready for independent review and Operator disposition. Until accepted:
+The shared contract is frozen after the bounded regression review. The following authorization boundaries remain:
 
-- the database-clock/revision/epoch cutoff, history-reconstruction algorithm, confidence-window semantics, lock helper/guard scope, atomicity, and failure/bounds rules remain proposed; the PostgreSQL spike was executed against PostgreSQL 16 in CI and is lock-mechanics evidence only, not proof of production writer coverage; dormancy is explicitly excluded from RW-5 first release;
+- no RW-5 production implementation is authorized;
 - no RW-5 production implementation is authorized;
 - no RW4-1 or RW4-2 implementation is authorized by this document;
 - RW4-1 and RW4-2 remain sequential, not parallel;
@@ -338,4 +338,4 @@ This proposal is ready for independent review and Operator disposition. Until ac
 - live provider authorization remains closed;
 - R7-C, persistent-database operations, and R8 remain separately gated.
 
-After the one bounded regression review, record only regressions, contradictions, or demonstrated blockers here, reconcile the Task and architecture specifications, then request explicit authorization for the single next implementation stream. A further review round requires explicit Operator authorization and a named blocker.
+The one bounded regression review is complete and found no blocker. Record future findings only if they are regressions, factual contradictions, or demonstrated blockers under the agreed rubric; other concerns belong in the residual-risk register with a trigger. The next work is the separately authorized canonical lock-helper spike-to-helper implementation and tests. Do not begin it, the migration, or the RW3.4-adjacent writer/lock-mode retrofit without their respective explicit authorizations. A further review round requires explicit Operator authorization and a named blocker.
