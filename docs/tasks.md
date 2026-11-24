@@ -342,7 +342,7 @@ side effect in footnote ¹; footnote ¹ grants no worker Snapshot permission.
 | `triage_signal` | — | — | W | C/W² | — | — | — | — | — | — | — | — | — | — | — | — | — | K | — | K |
 | `update_thread` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
 | `operator_update` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
-| `apply_decay` | — | — | — | W⁵ | — | — | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
+| `apply_decay` | — | — | — | — | — | — | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
 | `check_triggers` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | K²⁰ | — | K |
 | `review_knowledge` | — | — | — | — | — | — | — | — | — | — | W⁶ | — | — | — | — | — | — | K | — | K |
 | `render_output` | — | — | — | — | — | — | — | W | — | — | — | — | — | — | — | — | — | K²¹ | K⁷ | K |
