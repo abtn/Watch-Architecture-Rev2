@@ -12,15 +12,16 @@ The Operator's 2026-11-24 sequencing exception satisfies the overall RW3.4 seque
 
 The delivery path is deliberately serial. The updated Operator order supersedes the earlier RW-5-first order:
 
-1. **RW4-2 — trusted Task boundary and canonical identity:** start with D1/D2 decision closure, then the reviewed slice spec and explicit authorization. Expected no migration only if the existing Task primary key can enforce canonical identity; verify before freezing.
-2. **RW4-1 — SignalDisposition persistence:** follow RW4-2; D3/D5 must be accepted first. Expect a migration and preserve linear Alembic history.
-3. **RW-5 canonical lock helper, Team revision, and writer retrofit:** separately authorize the migration and the RW3.4-adjacent WorldMemoryCommitService/Operator compatibility changes; prove every supported writer through real entrypoints. This must land before RW4-3.
-4. **RW4-3 — deterministic matching and commit:** requires accepted D4/C1/D5 and the helper from step 3. No dormant reactivation, new Thread creation, noise classification, or near-duplicate classification.
-5. **RW-5 decay implementation:** follow RW4-3; scheduler/host invocation remains a separate RW5-P gate.
-6. **RW4-4 — bounded Context retrieval:** only after its own Context-consumer gate and Experiment A disposition.
-7. **D6 / RW4-5:** dormant reactivation and integrated race proof only after explicit D6 acceptance.
+1. **RW4-2 design/decision stage:** close D1/D2 and review/freeze the Task-creator specification and proof subset. This stage is documentation/decision work only; it does not implement or enable the creator. Resolve the identity-enforcement residuals before implementation authorization.
+2. **RW4-1 — SignalDisposition persistence:** follow the RW4-2 D1/D2 design gate; D3/D5 must be accepted first. Implement the bounded persistence slice and preserve linear Alembic history.
+3. **RW-5 canonical lock helper, Team revision, and writer retrofit:** separately authorize the migration and RW3.4-adjacent WorldMemoryCommitService/Operator compatibility changes; prove every supported writer through real entrypoints. This must land before the RW4-2 creator and RW4-3.
+4. **RW4-2 creator implementation:** return to the RW4-2 implementation stage only after RW4-1 and the canonical helper/Team-revision/writer retrofit have landed and passed real PostgreSQL lock tests. Reuse the one canonical helper; no bespoke lock path.
+5. **RW4-3 — deterministic matching and commit:** requires the RW4-2 creator, accepted D4/C1/D5, and the helper from step 3. No dormant reactivation, new Thread creation, noise classification, or near-duplicate classification.
+6. **RW-5 decay implementation:** follow RW4-3; scheduler/host invocation remains a separate RW5-P gate.
+7. **RW4-4 — bounded Context retrieval:** only after its own Context-consumer gate and Experiment A disposition.
+8. **D6 / RW4-5:** dormant reactivation and integrated race proof only after explicit D6 acceptance.
 
-This supersedes the earlier 2026-11-24 RW-5-first order. It is a review-load and migration-linearity constraint, not a claim of technical dependency. Only one production implementation stream may be active. No slice starts without its own reviewed spec, accepted prerequisites, explicit authorization, exact-head hosted CI, and Programmer-local disposable-database verification.
+This supersedes the earlier 2026-11-24 RW-5-first order and clarifies the later RW4-2 creator dependency without changing the Operator's RW4-2-first design/decision priority. RW4-2 is deliberately split: D1/D2 specification and decision closure first; RW4-1 persistence next; RW-5 helper/Team revision/writer retrofit next; then RW4-2 creator implementation; then RW4-3. This split is required because the creator must use the canonical helper, while RW4-1 does not depend on the creator. It is a review-load and migration-linearity constraint, not a claim that unrelated work is technically dependent. Only one production implementation stream may be active. No production implementation starts without its own reviewed spec, accepted prerequisites, explicit authorization, exact-head hosted CI, and Programmer-local disposable-database verification.
 
 ### RW3.4 PARTIAL residual touchpoint map
 
@@ -184,7 +185,7 @@ At minimum map:
 
 | Slice | Required decisions/evidence before that slice |
 |---|---|
-| **RW4-2 — Task boundary** | D1 trusted host invocation/authority boundary and D2 versioned canonical Task identity, immutable request pins, DB uniqueness, request Event, concurrency/replay/conflict contract accepted; TaskRuntime envelope and write scope reconciled. This is the first implementation slice; RW4-1 schema is not a prerequisite. |
+| **RW4-2 — Task boundary** | **Design/decision stage:** D1/D2, immutable request pins, identity/replay contract, Task envelope, and proof subset accepted; no production creator code. **Creator implementation stage:** after RW4-1 and the RW-5 canonical helper/Team-revision/writer retrofit have landed, with PostgreSQL lock proof; then separately authorize the creator. The two stages are serial and must not be collapsed. |
 | **RW4-1 — persistence** | D3 terminal-deferred lifecycle and Task/write-scope reconciliation accepted; D5 disposition vocabulary, reference matrix, uniqueness scope, and physical constraints accepted. No matching algorithm, D6 decay contract, receipt, or Context decision is required for this persistence-only slice. |
 | **RW4-3 — matching and commit** | D4 matching/duplicate evidence and measured query cost accepted, or a narrower deterministic subset explicitly accepted; C1 receipt/recovery contract accepted; D6 shared decay/reactivation timestamp, lock order, and revalidation contract accepted before any reactivation implementation. If reactivation is explicitly deferred from the slice, the D6 gate applies before adding it, not to unrelated matching/commit work. |
 | **RW4-4 — Context** | Named later Task consumer, existing assembler, eligible records, provenance, bounds, overflow, snapshot/manifest and replay contract accepted; Experiment A result or explicit Operator disposition recorded before representation freeze. |
@@ -221,9 +222,11 @@ RWN-01 is the separate newsroom value-harness scenario. Freeze publisher PDF and
 
 Each stage has its own reviewed scope, acceptance evidence, and explicit authorization.
 
-### RW4-2 — Triage Task boundary
+### RW4-2 — Triage Task boundary (two-stage delivery)
 
-Implement the explicit trusted host-invoked creator and TaskRuntime-owned execution boundary: canonical Task identity, immutable request, Team/Signal validation, policy pin, atomic Task/request Event, DB uniqueness/race behavior, fingerprint/replay/conflict rules, exact Task envelope and write scope, admission/failure/recovery.
+**Stage A — design and decisions (first):** accept D1/D2; freeze the canonical Task identity, immutable request, Team/Signal eligibility, current TeamPolicy selection, Task envelope, replay/conflict behavior, lock-path contract, proof subset, and explicit database-enforcement residual decisions. This stage creates no production code.
+
+**Stage B — creator implementation (deferred):** only after RW4-1 persistence and the separately authorized RW-5 canonical lock-helper/Team-revision/writer retrofit have landed with real PostgreSQL lock proofs. Implement the host-invoked creator and TaskRuntime-owned boundary: atomic Task/request Event, canonical helper paths, database/race behavior, fingerprint/replay/conflict rules, exact Task envelope, admission/failure/recovery. Obtain separate explicit implementation authorization.
 
 Keep TaskDispatcher unchanged. Do not add automatic post-ingestion enqueueing.
 
@@ -280,8 +283,8 @@ Reconsider only when a concrete scenario and evidence justify a separate design 
 
 1. **Reconcile docs and evidence:** bring PR #175 findings onto current main; update architecture, Task matrix, PLAN, README, CHANGE_MAP, and historical labels.
 2. **Apply the sequencing exception:** retain all seven RW3.4 PARTIAL rows and formal acceptance deferred; do not require their unrelated closure before RW-4/RW-5 work.
-3. **Prepare RW4-2:** close D1/D2, review its slice spec and requirement-to-test subset, then obtain explicit authorization. Do not begin implementation before those gates are satisfied.
-4. **Continue the serial implementation order:** after RW4-2 is reviewed/closed, RW4-1 may begin when D3/D5, its reviewed proof subset, and explicit authorization are satisfied. After RW4-1, separately authorize and implement the RW-5 canonical lock helper/Team revision/writer retrofit. RW4-3 follows only after that helper is reviewed/closed and D4/C1/D5 are accepted. RW-5 decay follows RW4-3. RW4-0 remains open unless separately closed.
+3. **Prepare RW4-2 Stage A:** close D1/D2 and review the design/proof subset; no creator implementation is included in this stage.
+4. **Continue the serial implementation order:** after RW4-2 Stage A decisions are accepted, RW4-1 may begin when D3/D5, its reviewed proof subset, and explicit authorization are satisfied. After RW4-1, separately authorize and implement the RW-5 canonical lock helper/Team revision/writer retrofit, including real PostgreSQL lock proof. Only then separately authorize RW4-2 Stage B creator implementation. RW4-3 follows after the creator/helper are reviewed/closed and D4/C1/D5 are accepted. RW-5 decay follows RW4-3. RW4-0 remains open unless separately closed.
 5. **Close umbrella RW4-0:** reconcile and explicitly accept all D1–D6 and cross-cutting contracts, including matching evidence/query cost, receipt/recovery, and Context representation. This is a separate design-closure milestone; it does not retroactively authorize implementation.
 6. **Implement RW4-3 and RW4-4 when their own gates are met:** RW4-3 matching/commit without reactivation requires D4, C1, and D5; dormant reactivation is a separately gated addition requiring D6. RW4-4 requires its named Context consumer/contracts and an accepted Experiment A result or explicit Operator disposition before representation freeze.
 7. **Integrate and accept:** complete RW4-5 with RW-5 race and post-decay retrieval proofs; decide RW4-KU; complete foundation-exit evidence and explicit acceptance.
