@@ -1,8 +1,8 @@
 # RW4-0 — Bounded triage decision record
 
-**Status:** Operator review requested; proposals below are not accepted decisions.
+**Status:** D1 accepted on 2026-11-24 as recorded below; D2–D6 remain proposals/open decisions. No implementation is authorized by this record.
 
-> **Current reconciliation (2026-11-23):** This record preserves the bounded D1–D6 proposals from PR #174. PR #176 subsequently narrowed the matching proposal: `new_thread` and automatic `noise` are disabled; exact-hash same-Team duplicate and terminal `deferred` are proposed; maximum-pairwise similarity remains experimental only. These later proposals do not close D1–D6 or authorize implementation. Follow the [RW-4 Readiness and Delivery Plan](rw-4-readiness-and-delivery-plan.md) for the consolidated open gates.
+> **Current reconciliation (2026-11-24):** PR #176's narrowed matching proposal remains unchanged: `new_thread` and automatic `noise` are disabled; exact-hash same-Team duplicate and terminal `deferred` are proposed; maximum-pairwise similarity remains experimental only. D1 is now accepted by explicit Operator decision; D2–D6 and implementation authorization remain open/separate. Follow the [RW-4 Readiness and Delivery Plan](rw-4-readiness-and-delivery-plan.md) for the consolidated gates.
 **Scope:** First, narrow `triage_signal` slice only. No implementation is authorized by this record.
 **Baseline:** main after PR #173, merge commit `126063199c919a9576e20f4909781f0776d1ca87` (2026-11-23).
 **Authority:** `PLAN.md` remains authoritative for milestone status and implementation authorization. Existing accepted ADRs, Task contracts, and write-scope matrix remain binding unless explicitly amended.
@@ -21,18 +21,25 @@ The model is not involved in triage. Triage does not create or enqueue `update_t
 
 Each item is a proposal, not an accepted project decision.
 
-### D1 — Explicit, host-authorized invocation
+### D1 — Control Room is the single Task-creation authority
 
-**Proposal:** A trusted host explicitly requests triage for one Signal and one Team through a narrow in-repository application adapter.
+**<badge>ACCEPTED — 2026-11-24</badge>**
 
-- The host authenticates the requester and supplies a trusted principal identity plus an authorization context identifying the exact Team and the triage operation.
-- The adapter must not treat a Team identifier or claimed role in an untrusted request payload as authorization. The selected Team is explicit, but the adapter accepts it only together with the trusted host authorization context.
-- The Watch boundary validates the principal/context shape, exact Team scope, operation scope, Signal existence, Team existence/status, and Signal-to-Team/domain eligibility before Task creation.
-- The request Event records the authenticated requester identity and the Team/Signal being requested. Do not invent a production authentication service, RBAC subsystem, or deployed Watch API; the host-to-adapter trust contract is an integration boundary to be supplied by the host.
-- No automatic `ingest_source → triage_signal` creation, periodic scheduler, queue expansion, or general-purpose Task creator is included.
-- The existing TaskRuntime remains the sole Task lifecycle authority. The current TaskDispatcher remains unchanged.
+**Operator decision:** The application Control Room is the single authority allowed to create and persist Tasks. Every host-facing adapter or feature-specific entrypoint must delegate Task creation to a named Control Room operation. Workers, models, ingestion code, and feature modules must not create Tasks directly or introduce parallel Task factories. Existing supported Task-creation paths are to be represented as Control Room operations; this decision does not itself authorize refactoring existing RW-3 code.
 
-**Reason:** ingestion and Team-specific triage are separate responsibilities. One Signal can have different dispositions for different Teams. An explicit request avoids silently expanding ingestion authority or introducing a second scheduler.
+The accepted `triage_signal` operation has these boundaries:
+
+- The host authenticates the requester and supplies a typed principal identity plus an invocation-scoped grant for exactly one Team and the `triage_signal` action. The request payload cannot choose or override Team, requester, role, Task ID, or authority.
+- Only a Team whose persisted state is exactly `active` may create or replay a triage Task.
+- Production host authentication integration is a required prerequisite scheduled after the R8 test. It must be complete before production use. The current repository still has no production host composition/authentication root; this decision does not claim end-to-end authentication is implemented. The in-process principal remains forgeable by code inside the process.
+- URL normalization is deferred until after the R8 test. Until then, persisted `origin_url` and `source_type` values are compared exactly. The future minimal foundation should make DNS hostname case insignificant (for example, `Google.com` and `google.com` compare as the same host), while preserving scheme, port, path, query, fragment, and trailing-slash distinctions. `source_type` remains exact. This future rule is not current behavior and is not implementation-authorized.
+- The greatest immutable `TeamPolicy.version` is current, resolved under the canonical Team lock. Missing, malformed, or unsupported greatest-version policy/source data fails closed; there is no fallback to an older version.
+- RW4-3 must revalidate Team eligibility, domain/source scope, and policy under the accepted RW-5 lock chain immediately before matching/commit.
+- TaskRuntime remains the sole authority for Task admission, attempts, retry, interruption, recovery, and finalization. The Control Room creates/resolves the Task; it does not execute or finalize it.
+
+**Reason:** Task creation is an application control-plane responsibility, not a capability distributed across workers or domain features. A single Control Room authority makes authorization, identity, audit, and idempotency enforceable at one boundary.
+
+**Implementation boundary:** This is a design decision only. It does not authorize a Control Room refactor, a new creator implementation, host-authentication integration, URL normalization, TaskDispatcher changes, or any production code/schema/migration work. RW4-2 Stage B remains separately gated.
 
 ### D2 — One canonical Task and disposition per Signal/Team pair
 
