@@ -126,7 +126,11 @@ def test_fk_lock_inversion_reproduces_deadlock(
     database_engine: Engine,
     spike_schema: str,
 ) -> None:
-    """Child-first FK locking plus Team-first FOR UPDATE forms a real cycle."""
+    """Negative control: child-first FK locking plus Team-first FOR UPDATE forms a cycle.
+
+    FOR UPDATE is stronger than the proposed helper mode; this is not evidence
+    that the FOR NO KEY UPDATE helper sequence deadlocks.
+    """
     child_ready = Event()
     child_result: Queue[tuple[str, str | None]] = Queue()
     child_pid_result: Queue[int] = Queue()
@@ -313,3 +317,67 @@ def test_opposite_input_orders_use_one_sorted_lock_order(
         worker.join(timeout=8)
         assert not worker.is_alive(), "sorted writer did not finish"
         assert result.get(timeout=1) == "committed"
+
+
+
+def test_fk_lock_inversion_completes_with_no_key_update(
+    database_engine: Engine,
+    spike_schema: str,
+) -> None:
+    """The same FK child-first sequence completes with helper lock modes."""
+    child_ready = Event()
+    release_child = Event()
+    child_result: Queue[str] = Queue()
+
+    with database_engine.connect() as owner:
+        owner_tx = owner.begin()
+        owner.execute(
+            text(
+                f"SELECT id FROM {spike_schema}.teams "
+                "WHERE id = 1 FOR NO KEY UPDATE"
+            )
+        )
+
+        def child_first_writer() -> None:
+            with database_engine.connect() as child:
+                child_tx = child.begin()
+                try:
+                    child.execute(text("SET LOCAL lock_timeout = '8s'"))
+                    child.execute(
+                        text(
+                            f"INSERT INTO {spike_schema}.fk_children "
+                            "(id, hypothesis_id) VALUES (21, 1)"
+                        )
+                    )
+                    child.execute(
+                        text(
+                            f"SELECT id FROM {spike_schema}.teams "
+                            "WHERE id = 1 FOR NO KEY UPDATE"
+                        )
+                    )
+                    child_ready.set()
+                    if not release_child.wait(5):
+                        raise AssertionError("owner did not release helper-mode lock")
+                    child_tx.commit()
+                    child_result.put("committed")
+                except Exception as error:
+                    child_tx.rollback()
+                    child_result.put(f"error:{error!r}")
+
+        worker = Thread(target=child_first_writer)
+        worker.start()
+        assert child_ready.wait(5), "child-first writer blocked under helper lock modes"
+        try:
+            owner.execute(
+                text(
+                    f"SELECT id FROM {spike_schema}.hypotheses "
+                    "WHERE id = 1 FOR NO KEY UPDATE"
+                )
+            )
+            owner_tx.commit()
+        finally:
+            release_child.set()
+
+        worker.join(timeout=8)
+        assert not worker.is_alive(), "helper-mode child writer did not finish"
+        assert child_result.get(timeout=1) == "committed"
