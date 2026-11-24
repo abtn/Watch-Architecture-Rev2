@@ -88,7 +88,7 @@ No automatic `ingest_source → triage_signal` Task creation, scheduler, or Task
 
 ### D2 — Canonical Task and disposition identity
 
-Keep three identities distinct: (a) business identity `(signal_id, team_id)`; (b) one deterministic Task identity derived from canonical Team, Signal, and `triage_signal` operation under a dedicated, versioned identity namespace/domain tag (database-enforced uniqueness, unless that canonical identity is deliberately the Task primary key); and (c) immutable request provenance/fingerprint. Freeze atomic Task/request-Event creation, same-request replay, and conflicting-request behavior. The losing concurrent request loads and validates the winning Task/Event; it does not create a second Event. Requester identity is provenance, not semantic equivalence, as recorded in the PR #174 correction.
+Keep three identities distinct: (a) business identity `(signal_id, team_id)`; (b) one deterministic Task identity derived from canonical Team, Signal, and `triage_signal` under a dedicated, versioned UUIDv5 namespace/domain tag, with the Task primary key enforcing collisions for the canonical UUID; and (c) immutable request provenance/fingerprint. The canonical primary key alone does not enforce pair-level uniqueness against a nonconforming writer that supplies a different UUID. Before RW4-2 Stage B, explicitly choose the single-creator application invariant or authorize a database-enforced `(team_id, signal_id, identity_version)` constraint/table. Likewise decide whether the exact-one request Event guarantee remains transactional/application-enforced or receives a dedicated partial unique index. Freeze atomic Task/request-Event creation, same-request replay, and conflict behavior. Requester identity is provenance, not semantic equivalence, as recorded in the PR #174 correction.
 
 Separately freeze SignalDisposition uniqueness for `(signal_id, team_id)`, its canonical persisted identity, Task attribution, reason, timestamp fields, and database constraints. The immutable Task request must pin Team ID, Signal ID, canonical Signal Snapshot reference and hash, TeamPolicy version, matcher identifier/version, embedding-space key, and chunking version. Same-request replay requires the complete immutable fingerprint to match; a changed pin or other immutable request content conflicts. The existing `update_thread` idempotency namespace is precedent for transaction/replay shape only; it must not be reused as triage identity.
 
@@ -195,7 +195,7 @@ RW4-0 umbrella closure remains a separate milestone requiring D1–D6 and cross-
 
 ## 4. Serial delivery and independent preparation
 
-The approved implementation order is RW4-2 → RW4-1 → RW-5 canonical lock helper/Team revision/writer retrofit → RW4-3 → RW-5 decay → RW4-4 → D6/RW4-5. Only one production implementation stream may be active. Preparation that does not alter the implementation stream may continue independently.
+The approved serial delivery order is RW4-2 Stage A (design/decision) → RW4-1 → RW-5 canonical lock helper/Team revision/writer retrofit → RW4-2 Stage B (creator implementation) → RW4-3 → RW-5 decay → RW4-4 → D6/RW4-5. Only one production implementation stream may be active. Preparation that does not alter the implementation stream may continue independently.
 
 ### RW-5 — deterministic decay
 
