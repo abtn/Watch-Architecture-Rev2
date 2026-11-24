@@ -162,8 +162,6 @@ def test_fk_lock_inversion_reproduces_deadlock(
                 except DBAPIError as error:
                     child_tx.rollback()
                     child_result.put(("error", _sqlstate(error)))
-                finally:
-                    child.info["spike_pid"] = pid
 
         worker = Thread(target=child_first_writer)
         worker.start()
@@ -242,11 +240,9 @@ def test_read_committed_reads_after_team_lock_wait(
                     )
                     waiter_tx.commit()
                     result.put(value)
-                except Exception:
+                except Exception as error:
                     waiter_tx.rollback()
-                    raise
-                finally:
-                    waiter.info["spike_pid"] = pid
+                    result.put(f"error:{error!r}")
 
         worker = Thread(target=waiting_writer)
         worker.start()
@@ -298,11 +294,9 @@ def test_opposite_input_orders_use_one_sorted_lock_order(
                     lock_hypotheses(second, [2, 1])
                     second_tx.commit()
                     result.put("committed")
-                except Exception:
+                except Exception as error:
                     second_tx.rollback()
-                    raise
-                finally:
-                    second.info["spike_pid"] = pid
+                    result.put(f"error:{error!r}")
 
         worker = Thread(target=reverse_order_writer)
         worker.start()
