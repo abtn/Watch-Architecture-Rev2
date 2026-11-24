@@ -103,7 +103,7 @@ is an upper bound on the Actions authorized by one Strategy, not a daily Task
 quota. It must not be compared with `max_tasks_per_day`.
 - **Scope:** This rule enforces a Task-start count quota only. It does not mean
 that daily cost quotas are enforced.
-**Creation sources:** Triggers (all three types), the scheduler (ingestion, decay, review, overdue scans), explicitly authorized Task enqueues (consultation follow-ups), and Task retries. Manual Operator Tasks are created by a thin in-repository application adapter invoked in-process by a host after it authenticates and authorizes the Operator. This is not a separate deployed Watch API/CLI. R6-F Checkpoint 3 implements the adapter for `approve_learning_change`; RW-2 adds `operator_update` through the same host boundary. Other manual Task specifications do not imply implemented callers.
+**Creation sources:** Triggers (all three types), separately implemented and authorized host/scheduler integrations (including ingestion, review, and overdue scans; decay requires the distinct RW5-P gate), explicitly authorized Task enqueues (consultation follow-ups), and Task retries. Manual Operator Tasks are created by a thin in-repository application adapter invoked in-process by a host after it authenticates and authorizes the Operator. This is not a separate deployed Watch API/CLI. R6-F Checkpoint 3 implements the adapter for `approve_learning_change`; RW-2 adds `operator_update` through the same host boundary. Other manual Task specifications do not imply implemented callers.
 ## 2. Common validation rules (every commit path)
 1. Task status is `running` and budget is not exhausted (operator task types: no model cost, no enforced deadline).
 2. All referenced entities exist and belong to the Task's Team.
@@ -196,12 +196,13 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 ### `apply_decay` — deterministic, scheduled
 
 **Implementation status:** specified; not implemented. Planned for RW-5. The proposed shared contract is documented in [RW-5 Shared Contract](development/rw-5-shared-contract-proposal.md) and remains subject to Operator review; it does not authorize implementation. The deterministic Task creator/executor belongs to RW-5 core; periodic scheduler/host invocation is a separate proposed RW5-P integration.
-- **Purpose:** lower confidence of stale Hypotheses; flag dormant Threads.
-- **Reads:** effective `decay_window` and `decay_action` (pack default or team `decay` override); Hypotheses' `last_touched_at` and bands; Thread composition.
-- **Writes:** ConfidenceChange (`cause_kind="decay"` only), Thread status `active → dormant`, Event.
-- **Flow:** F3.
-- **Validation:** never rejects a Hypothesis; never touches `last_touched_at`; only this task type may write decay causes (INV-08).
-- **Failure:** batch job; per-hypothesis errors are logged and skipped, Task completes with a summary Event.
+- **Purpose:** lower confidence of stale Hypotheses using one database-captured immutable `as_of` persisted in the canonical Task request.
+- **Task production:** a typed, idempotent creator pins the request and TeamPolicy version. Periodic host/scheduler invocation is separate RW5-P integration; it is not implemented or implied by this Task specification. The creator captures `as_of` once with PostgreSQL `clock_timestamp()` and persists it in the immutable request record. Retries/recovery reuse it; callers and models cannot supply it.
+- **Reads:** pinned TeamPolicy decay rules; canonical accepted supporting/challenging EvidenceLink history; ConfidenceChange history; Hypothesis and Team ownership/state. `last_touched_at` is only a query accelerator and must be checked against history before mutation.
+- **Writes:** ConfidenceChange (`cause_kind="decay"` only) and one bounded Task-attributed summary Event. No Thread status or lifecycle/activity timestamp writes in RW-5 first release.
+- **Flow:** F3 confidence decay only. Thread dormancy is excluded until D6 and a durable reactivation/recovery path are accepted and separately authorized.
+- **Validation:** never rejects a Hypothesis; never changes `last_touched_at`; only this Task type may write decay causes (INV-08). Database uniqueness and immutable-request constraints enforce cross-Task idempotency and reproducibility; application prechecks are not the guarantee.
+- **Failure:** deterministic ineligibility is summarized with an explicit reason. Integrity, ownership, stale-attempt, policy, lock, and transaction failures abort the atomic Task commit; do not swallow transaction errors as per-Hypothesis skips. TaskRuntime owns retry/recovery and terminalization.
 ### `check_triggers` — deterministic, scheduled
 - **Purpose:** evaluate threshold Triggers; fire scheduled ones on schedule.
 - **Reads:** active Triggers, current entity state for conditions.
@@ -366,9 +367,9 @@ Snapshot is created under the universal `Task (K)` lifecycle authority
 described in footnote ¹⁹ and ADR-0030, not under this `Snapshot (K) = K¹`
 cell; it is an application-managed lifecycle record committed atomically with
 the Outcome, terminal Task status, and corresponding terminal Event.
-² Create on `new_thread`; reactivate `dormant → active`.
+² Create on `new_thread`; reactivate `dormant → active` (reactivation remains separately D6-gated).
 ³ Refine `deferred` only. ⁴ Summary projection and explicit resolution only.
-⁵ `active → dormant` only. ⁶ `active → needs_review` only.
+⁶ `active → needs_review` only.
 ⁷ Store only the Snapshot for the Artifact produced by this operation.
 ⁸ Store only the observation Snapshot when the Outcome type has an observation.
 ⁹ With `subject_kind="evaluation"`. ¹⁰ Create only (`open`).
