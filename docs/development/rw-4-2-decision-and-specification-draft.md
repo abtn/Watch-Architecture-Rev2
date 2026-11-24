@@ -310,8 +310,8 @@ Exact test node IDs are to be added after the implementation plan is reviewed. T
 | RW42-RACE-02 | Different pairs | Different Team/Signal pairs produce distinct Task IDs |
 | RW42-RUNTIME-01 | Lifecycle ownership | Creator leaves Task pending; no direct start/finalization/Outcome |
 | RW42-DISPATCH-01 | Unsupported Task kind remains queued and ignored | With only a pending `triage_signal` Task, `find_eligible_task()` returns `None`; direct dispatch raises `TaskNotDispatchable` before admission; Task remains pending with zero attempts and no lifecycle Events; dispatcher does not crash or loop |
-| RW42-DB-01 | No schema migration | Alembic head before and after RW4-2 implementation is identical; no migration is added |
-| RW42-SCOPE-02 | No adjacent feature expansion | No dispatcher, scheduler, worker, provider, disposition, Thread, or migration changes in RW4-2 |
+| RW42-DB-01 | Explicit uniqueness-enforcement choice | If the Operator accepts the single-creator v1 invariant, Alembic head is unchanged and all triage Task writes are source-audited through the canonical creator. If database-enforced pair/Event cardinality is selected, add and test the explicitly authorized migration/constraints before implementation; do not claim no-migration in that variant |
+| RW42-SCOPE-02 | No adjacent feature expansion | No dispatcher, scheduler, model worker/provider, disposition persistence, or Thread mutation in RW4-2. A uniqueness migration is permitted only if separately selected under §§4.7–4.8 and explicitly authorized; otherwise no migration |
 
 Tests must include tampered/missing/duplicate Event evidence and rollback/crash-safe transaction outcomes. SQLite-only tests are insufficient for uniqueness-race and PostgreSQL lock claims.
 
