@@ -108,7 +108,7 @@ Agree before RW4 reactivation implementation:
 - decay-first and triage-first outcomes;
 - replay behavior and at-most-one reactivation Event.
 
-Decay uses Hypothesis `last_touched_at`; accepted evidence is the only operation that updates it. Decay does not update it. Triage must not use it as a proxy for Thread activity. RW-5 implementation itself remains independent; the shared contract is required before RW4 implements reactivation and before integrated proof.
+Decay age is reconstructed from immutable accepted supporting/challenging EvidenceLink history and the immutable current-epoch baseline; `Hypothesis.last_touched_at` is only a mutable cache/prefilter and is never historical authority. A pre-epoch EvidenceLink timestamp cannot anchor decay in a later epoch. Only a newly accepted eligible EvidenceLink in the current epoch replaces that epoch's baseline anchor. Decay does not update `last_touched_at`, and triage must not use it as a proxy for Thread activity. The RW-5 shared contract is authoritative for clock, epoch, evidence-age, and locking semantics; RW-5 implementation remains its own serial engineering stream.
 
 ### Cross-cutting gate — Assessment receipt and recovery
 
