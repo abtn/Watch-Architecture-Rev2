@@ -129,6 +129,7 @@ def test_fk_lock_inversion_reproduces_deadlock(
     """Child-first FK locking plus Team-first FOR UPDATE forms a real cycle."""
     child_ready = Event()
     child_result: Queue[tuple[str, str | None]] = Queue()
+    child_pid_result: Queue[int] = Queue()
 
     with database_engine.connect() as owner:
         owner_tx = owner.begin()
@@ -148,6 +149,7 @@ def test_fk_lock_inversion_reproduces_deadlock(
                             "(id, hypothesis_id) VALUES (20, 1)"
                         )
                     )
+                    child_pid_result.put(pid)
                     child_ready.set()
                     child.execute(
                         text(
@@ -166,18 +168,8 @@ def test_fk_lock_inversion_reproduces_deadlock(
         worker = Thread(target=child_first_writer)
         worker.start()
         assert child_ready.wait(5), "child insert did not acquire its FK lock"
-        with database_engine.connect() as monitor:
-            child_pid = monitor.scalar(
-                text(
-                    "SELECT pid FROM pg_stat_activity "
-                    "WHERE datname = current_database() "
-                    "AND state = 'idle in transaction' "
-                    "AND query LIKE 'INSERT INTO %fk_children%' "
-                    "ORDER BY query_start DESC LIMIT 1"
-                )
-            )
-        assert child_pid is not None
-        _wait_until_blocked(database_engine, int(child_pid))
+        child_pid = child_pid_result.get(timeout=1)
+        _wait_until_blocked(database_engine, child_pid)
 
         owner_outcome: tuple[str, str | None]
         try:
@@ -209,6 +201,7 @@ def test_read_committed_reads_after_team_lock_wait(
     """A statement after the Team-lock wait sees the preceding commit."""
     waiting = Event()
     result: Queue[str] = Queue()
+    waiter_pid_result: Queue[int] = Queue()
     with database_engine.connect() as owner:
         owner_tx = owner.begin()
         owner.execute(
@@ -233,6 +226,7 @@ def test_read_committed_reads_after_team_lock_wait(
                     )
                     waiter.execute(text("SET LOCAL lock_timeout = '8s'"))
                     pid = waiter.scalar(text("SELECT pg_backend_pid()"))
+                    waiter_pid_result.put(pid)
                     waiting.set()
                     waiter.execute(
                         text(
@@ -257,18 +251,8 @@ def test_read_committed_reads_after_team_lock_wait(
         worker = Thread(target=waiting_writer)
         worker.start()
         assert waiting.wait(5)
-        with database_engine.connect() as monitor:
-            waiter_pid = monitor.scalar(
-                text(
-                    "SELECT pid FROM pg_stat_activity "
-                    "WHERE datname = current_database() "
-                    "AND state = 'active' "
-                    "AND wait_event_type = 'Lock' "
-                    "ORDER BY query_start DESC LIMIT 1"
-                )
-            )
-        assert waiter_pid is not None
-        _wait_until_blocked(database_engine, int(waiter_pid))
+        waiter_pid = waiter_pid_result.get(timeout=1)
+        _wait_until_blocked(database_engine, waiter_pid)
         owner_tx.commit()
         worker.join(timeout=8)
         assert not worker.is_alive(), "waiting writer did not finish"
@@ -282,6 +266,7 @@ def test_opposite_input_orders_use_one_sorted_lock_order(
     """Opposite candidate order converges when IDs are locked one by one sorted."""
     waiting = Event()
     result: Queue[str] = Queue()
+    second_pid_result: Queue[int] = Queue()
 
     def lock_hypotheses(connection, ids: list[int]) -> None:
         for hypothesis_id in sorted(set(ids)):
@@ -308,6 +293,7 @@ def test_opposite_input_orders_use_one_sorted_lock_order(
                 try:
                     second.execute(text("SET LOCAL lock_timeout = '8s'"))
                     pid = second.scalar(text("SELECT pg_backend_pid()"))
+                    second_pid_result.put(pid)
                     waiting.set()
                     lock_hypotheses(second, [2, 1])
                     second_tx.commit()
@@ -321,18 +307,8 @@ def test_opposite_input_orders_use_one_sorted_lock_order(
         worker = Thread(target=reverse_order_writer)
         worker.start()
         assert waiting.wait(5)
-        with database_engine.connect() as monitor:
-            second_pid = monitor.scalar(
-                text(
-                    "SELECT pid FROM pg_stat_activity "
-                    "WHERE datname = current_database() "
-                    "AND state = 'active' "
-                    "AND wait_event_type = 'Lock' "
-                    "ORDER BY query_start DESC LIMIT 1"
-                )
-            )
-        assert second_pid is not None
-        _wait_until_blocked(database_engine, int(second_pid))
+        second_pid = second_pid_result.get(timeout=1)
+        _wait_until_blocked(database_engine, second_pid)
         first.execute(
             text(
                 f"SELECT id FROM {spike_schema}.hypotheses "
