@@ -359,12 +359,14 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 | Decision | Recommendation | Status |
 |---|---|---|
 | D1 trusted invocation | Accept narrow host-invoked adapter with typed principal and exact Team/`triage_signal` grant; production host authentication remains external | Proposed; not accepted |
-| D2 canonical Task identity | UUIDv5 Task primary key over Team + Signal + operation + `triage_identity_v1`, dedicated namespace; recompute-on-load and golden test; Task/Event atomicity and exact replay validation | Proposed; not accepted |
+| D2 canonical Task identity | UUIDv5 Task primary key over Team + Signal + operation + `triage_identity_v1`, dedicated namespace; persisted canonical identity key with database uniqueness; recompute-on-load and golden test | Proposed; not accepted |
 | D2 requester semantics | Requester is immutable first-request provenance, excluded from semantic request fingerprint; every replay caller independently authorized | Proposed; not accepted |
 | D2 disposition uniqueness | Separate unique `(signal_id, team_id)` constraint in RW4-1 | Deferred to RW4-1 |
 | D2 matching-pin shape / D4a | Freeze strict schema-v1 object and canonical content hash; all four values are code-owned in the first release; TeamPolicy remains unchanged | Shape and ownership proposed; actual values deferred to D4b |
 | D2 re-triage | One identity generation only; terminal failure and pin change do not create a replacement; later generations require a separately approved identity version | Proposed; not accepted |
 | D2 execution watermark | Capture the immutable Task-creation Team revision watermark under the canonical Team lock; RW4-3 separately captures/revalidates the current watermark under the execution lock chain without overwriting the creation cutoff | Proposed; RW4-3 dependency |
+| Risk acceptance — canonical Task identity uniqueness | Minimal v1 recommendation: narrow creator plus persisted canonical identity key and database unique constraint; audited schema requires Task migration | **Pending Operator disposition; migration cost explicit** |
+| Risk acceptance — request Event exact-one cardinality | Minimal v1 recommendation: transactional winner-only write, replay validation, source audit, and required PostgreSQL two-session CI test; alternative is partial unique index plus migration | **Pending Operator disposition** |
 | RW4-2 implementation | Requires accepted D1/D2, reviewed proof subset, lock-order compatibility, and explicit authorization | Not authorized |
 
 **No implementation authorization is requested or implied by PR #183 or this draft.**
