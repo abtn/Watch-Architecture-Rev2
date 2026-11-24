@@ -1,8 +1,8 @@
 # RW4-2 — Trusted Task boundary and canonical identity
 
-**Status:** Draft for Operator decision and specification review. D1/D2 are not accepted by this document. No implementation is authorized.
+**Status:** D1 accepted by the Operator on 2026-11-24; D2 remains open for separate Operator decisions. This document remains a design/specification artifact. No creator implementation is authorized.
 
-**Preparation baseline:** `main` after PR #183 squash merge `710ce27830efa465b6af1727c0fa11fb07b38bda` (2026-11-24).
+**Preparation baseline:** `main` after PR #184 squash merge `3fd27167e7e77eeed2110d9a2028a9ecaa005bc3` (2026-11-24).
 
 **Authority:** `PLAN.md` remains the sole milestone/authorization status authority. This document is a bounded RW4-2 preparation artifact. PR #183 is housekeeping/documentation reconciliation and is not implementation authorization.
 
@@ -13,9 +13,9 @@ RW4-2 establishes the trusted host-to-application Task-creation boundary and the
 The intended boundary is:
 
 ```text
-trusted host authentication/authorization
+trusted host (authentication integration is a post-R8-test prerequisite)
     -> typed principal + exact Team/action grant
-    -> narrow Watch application adapter
+    -> Control Room (the single application authority for Task creation)
     -> immutable canonical triage_signal Task + one request Event
     -> existing TaskRuntime owns all later lifecycle transitions
 ```
@@ -24,7 +24,7 @@ The model is not involved in Task creation, identity selection, authorization, o
 
 ### In scope for this specification
 
-- D1 trusted principal and exact Team/action grant.
+- D1 Control Room as the single Task-creation authority, with a typed trusted principal and exact Team/action grant.
 - D2 business, Task, request-provenance, and disposition identities.
 - One narrow Task creator and its immutable request Event.
 - Database-enforced canonical Task uniqueness, atomic creation, concurrency arbitration, replay, and conflict semantics.
@@ -57,9 +57,19 @@ These are source observations, not acceptance of the proposed RW4 contract.
 
 ## 3. D1 — Trusted host invocation
 
-### Proposed decision
+### Accepted Operator decision (2026-11-24)
 
-Accept one narrow host-invoked operation that requests triage for one Signal under one exact Team grant.
+D1 is accepted with the following decisions:
+
+1. **Single Task-creation authority:** the application Control Room is the only authority allowed to create/persist Tasks. Host-facing adapters and feature-specific entrypoints may request work, but they must delegate to a named Control Room operation. Workers, models, ingestion code, and feature modules must not create Tasks directly or introduce parallel Task factories. Existing supported Task-creation paths must be represented as Control Room operations; this decision does not itself authorize a refactor of existing RW-3 code.
+2. **Team eligibility:** only a Team whose persisted state is exactly `active` is eligible for triage Task creation or replay.
+3. **Authentication timing:** the host remains responsible for authenticating the requester. Production host authentication integration is accepted as a required prerequisite, scheduled after the R8 test. It must be complete before production use; this decision does not claim authentication is implemented or authorize production use before it exists. The in-process principal remains forgeable by code inside the process.
+4. **URL normalization:** broader URL normalization is deferred until after the R8 test. Until then, compare the persisted `origin_url` and `source_type` values exactly. The future minimal foundation should treat DNS hostname case as insignificant (for example, `Google.com` and `google.com` compare as the same host) while preserving scheme, port, path, query, fragment, and trailing-slash distinctions; `source_type` remains exact. This is a proposed narrow rule for the post-R8-test normalization work, not current behavior or implementation authorization.
+5. **Policy selection:** use the greatest immutable `TeamPolicy.version` for the Team, resolved under the canonical Team lock. Missing, malformed, or unsupported greatest-version policy/source data fails closed; never fall back to an older version.
+
+### Accepted adapter contract
+
+The host invokes one narrow Control Room operation that requests triage for one Signal under one exact Team grant. The host selects the intended Team and supplies a typed principal with stable issuer/subject identity and an invocation-scoped Team/action grant. The request itself cannot supply authority or select a Team.
 
 The host authenticates the requester and supplies a typed principal with stable issuer and subject identity and an exact Team/action grant. The host is responsible for deciding which Team grant to issue. The adapter must not infer authority from a Team ID, role, email, display name, or claimed identity in an untrusted request payload.
 
@@ -86,13 +96,13 @@ The request deliberately has no Team ID, requester ID, Task ID, policy version, 
 
 Proposed action string: `triage_signal`.
 
-The adapter must:
+The Control Room operation must:
 
 1. Reject a missing, wrong-type, malformed, or unsupported principal before durable writes.
 2. Validate stable issuer/subject identity using the existing canonical principal-identity rules; do not invent a second actor-identity encoding.
 3. Require exactly one invocation-scoped Team grant for action `triage_signal`. The principal may hold grants for other actions; those are irrelevant. If more than one Team grant for `triage_signal` is supplied for this invocation, fail closed rather than choosing one. The host selects the intended Team and supplies that exact grant.
-4. Load the canonical Signal and Team. Require both (a) `Signal.domain == Team.domain` using stored values and (b) the exact stored `(Signal.origin_url, Signal.source_type)` pair to appear in the current immutable TeamPolicy's `rules["sources"]` allowlist, following ADR-0028's Team-scoped source authorization rule. Current means the greatest `TeamPolicy.version` for that Team, resolved under the canonical Team lock; there is no active-policy pointer. Domain equality alone is insufficient; a source allowlist match alone is also insufficient. The repository audit did not establish a shared ingestion URL-normalization implementation, so RW4-2 must not claim or invent one: compare persisted values exactly and do not normalize scheme, host case, path case, or trailing slash in the creator. Tests must prove exact-match acceptance and rejection when any of those stored URL components differs. A request cannot override any of these values. If no policy exists, or the greatest-version policy/schema/source entry is malformed or unsupported, fail closed without falling back to an older version.
-5. Require the Team state that the accepted Team contract defines as eligible (expected: `active`); fail closed for missing/inactive Team or missing Signal. Resolve and pin the applicable TeamPolicy version using the accepted creator/lock contract.
+4. Load the canonical Signal and Team. Require both (a) `Signal.domain == Team.domain` using stored values and (b) the persisted `(Signal.origin_url, Signal.source_type)` pair to appear in the greatest-version immutable TeamPolicy's `rules["sources"]` allowlist, following ADR-0028. The greatest `TeamPolicy.version` is resolved under the canonical Team lock; there is no active-policy pointer. Domain equality alone is insufficient; an allowlist match alone is also insufficient. Until the separately gated post-R8-test URL-normalization work is accepted and implemented, compare the persisted URL and source type exactly. A request cannot override any of these values. If no policy exists, or the greatest-version policy/schema/source entry is malformed or unsupported, fail closed without falling back to an older version.
+5. Require the Team state to be exactly `active`; fail closed for missing or any other Team state, or a missing Signal. Resolve and pin the applicable TeamPolicy version using the accepted creator/lock contract.
 6. Independently authorize every caller before either creating a Task or resolving/replaying an existing canonical Task.
 7. Create or resolve only the canonical `triage_signal` Task described in D2.
 8. Return a typed result identifying the Task and whether it was newly created or replayed. It does not admit, execute, or finalize the Task.
@@ -101,11 +111,11 @@ These are creation-time checks, not execution guarantees. Team status, domain/so
 
 ### Trust limitation
 
-The principal is an in-process trust contract, not a credential or an unforgeable runtime object: any code in the process can construct the Python value. The practical boundary is architectural and testable: only the one narrow typed creator writes `triage_signal` Tasks; it derives Team and authority exclusively from the supplied trusted principal/grant and canonical database records; request payload fields cannot supply or override Team, requester, role, or authority. Tests must prove forged/payload-supplied authority is ignored or rejected. No production host composition root currently exists, so the implementation can prove Watch-side validation only, not end-to-end authentication. The host must authenticate the requester before constructing/calling the adapter.
+The principal is an in-process trust contract, not a credential or an unforgeable runtime object: any code in the process can construct the Python value. The Control Room is the only application authority that may persist Tasks; its narrow typed operation derives Team and authority exclusively from the supplied trusted principal/grant and canonical database records. Host-facing adapters delegate to the Control Room, and workers/models/feature modules cannot create Tasks directly. Request payload fields cannot supply or override Team, requester, role, or authority. Tests must prove forged/payload-supplied authority is ignored or rejected. No production host composition root currently exists, so Watch-side validation proves only the application-side contract, not end-to-end authentication. The host must authenticate before constructing/calling the adapter; this integration is required before production use and is scheduled after the R8 test.
 
 ### D1 non-goals
 
-No login, token verifier, user store, RBAC framework, deployed Watch API/CLI, automatic ingestion trigger, scheduler, queue expansion, or TaskDispatcher change.
+No login, token verifier, user store, RBAC framework, deployed Watch API/CLI, automatic ingestion trigger, scheduler, queue expansion, or TaskDispatcher change. No URL normalization is implemented in this stage; its narrow hostname-case rule is deferred until after the R8 test. No refactor of existing RW-3 Task-creation code is authorized by this documentation decision.
 
 ## 4. D2 — Canonical identity and replay
 
