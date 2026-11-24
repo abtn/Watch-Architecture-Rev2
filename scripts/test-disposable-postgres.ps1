@@ -78,11 +78,15 @@ finally {
     try {
         foreach ($name in $trackedVariables) {
             $saved = $originalEnvironment[$name]
+            $environmentPath = "Env:\\$name"
             if ($saved.WasSet) {
-                [System.Environment]::SetEnvironmentVariable($name, $saved.Value, "Process")
+                Set-Item -LiteralPath $environmentPath -Value $saved.Value -ErrorAction Stop
             }
             else {
-                [System.Environment]::SetEnvironmentVariable($name, $null, "Process")
+                $currentlySet = [System.Environment]::GetEnvironmentVariables("Process").Contains($name)
+                if ($currentlySet) {
+                    Remove-Item -LiteralPath $environmentPath -ErrorAction Stop
+                }
             }
         }
 
