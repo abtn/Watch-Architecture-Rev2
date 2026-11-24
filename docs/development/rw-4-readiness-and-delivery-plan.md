@@ -1,7 +1,7 @@
 # RW-4 Readiness and Delivery Plan
 
 **Status:** Active staged-delivery baseline. The 2026-11-24 RW3.4 sequencing exception is recorded; no individual production slice is blanket-authorized.
-**Planning baseline:** `main` at `d9589fbcf4f720212ef398cae0d850e5854fdb91` (PR #180 merge; 2026-11-24).
+**Planning baseline:** `main` at `5aecf096b077ab34bc7c8fb09cb750a59a19c335` (PR #181 merge; 2026-11-24).
 **Status authority:** `PLAN.md` remains the only authority for milestone status and authorization. This document owns the dependency-aware RW-4 readiness checklist and delivery sequence.
 **Sequencing decision:** [RW-4/RW-5 sequencing decision](rw-4-rw-5-sequencing-decision.md) records the 2026-11-24 exception and RW-5-first order.
 **Scope:** Reconcile the evidence audit in PR #175, the bounded RW4-0 proposal in PR #174, the minimal matching proposal in PR #176, the RW-4 design plan, Task specifications, and architecture.
@@ -10,15 +10,16 @@
 
 The Operator's 2026-11-24 sequencing exception satisfies the overall RW3.4 sequencing gate while preserving formal acceptance as deferred and all seven PARTIAL qualifications. RW4-0 remains open. PR #176 is a merged design proposal, not acceptance of its experimental matcher or closure of D1–D6. No individual RW-4 slice is blanket-authorized: each must satisfy its own prerequisites, independently reviewed proof subset, and explicit Operator authorization. PR #175's evidence findings are incorporated here; its audit branch is closed and is not a current baseline.
 
-The delivery path has four work classes:
+The delivery path is deliberately serial to keep one implementation stream under review at a time:
 
-1. **RW-5 shared contract first:** settle the common clock/as-of, decay-window, locking, revalidation, race, and replay contract that RW4 reactivation will consume.
-2. **Independently gated RW-4 slices:** RW4-1 and RW4-2 may progress once their D3/D5 and D1/D2 gates are accepted; they do not wait for all of RW-5.
-3. **RW-5 implementation and proof:** proceed under its own reviewed requirements and explicit authorization, using the existing TaskRuntime.
-4. **RW4-3 without reactivation:** matching/commit may proceed when D4/C1/D5 are accepted; dormant candidates remain deferred until D6 is accepted.
-5. **RW4-4 and foundation exit:** Context retrieval remains separately gated; integrate reactivation, decay, post-decay retrieval, RW4-KU, Experiment A, RWN-01, and formal acceptance before R8.
+1. **RW-5 shared contract freeze:** review the [RW-5 shared clock, decay, and locking proposal](rw-5-shared-contract-proposal.md), including the seven-row RW3.4 residual mapping.
+2. **RW-5 implementation and proof:** separately authorize the deterministic decay Task boundary and TaskRuntime/Kernel execution. Periodic scheduler/host invocation remains a separate RW5-P integration gate.
+3. **RW4-1 persistence:** begin only after RW-5 implementation is reviewed/closed and RW4-1's D3/D5 gates, proof subset, and explicit authorization are satisfied.
+4. **RW4-2 Task boundary:** follow RW4-1 as the next single implementation stream, with D1/D2 gates, proof subset, and explicit authorization.
+5. **RW4-3 without reactivation:** matching/commit may proceed when D4/C1/D5 are accepted; dormant candidates remain deferred until D6 is accepted.
+6. **RW4-4 and integrated proof:** Context retrieval remains separately gated; later integrate authorized reactivation, decay, post-decay retrieval, RW4-KU, Experiment A, RWN-01, and formal acceptance before R8.
 
-Do not require all of RW-5 to finish before starting RW-4. The recommended order is RW-5 shared contract first, then RW4-1/RW4-2 and RW-5 implementation in parallel as their gates permit. The shared timestamp, revalidation, and concurrency contract is required before RW4 implements dormant-Thread reactivation; both slices are required for integrated proof.
+This serial order is the Operator's review-load constraint; it does not make RW4-1/RW4-2 technically dependent on RW-5 or alter their individual gates. The shared timestamp, revalidation, and concurrency contract is required before RW4 implements dormant-Thread reactivation. No implementation slice starts without explicit authorization.
 
 ## 2. Current evidence baseline
 
@@ -100,12 +101,14 @@ Agree before RW4 reactivation implementation:
 - whether matching/reactivation changes a Thread-level timestamp;
 - which timestamp is authoritative, if any;
 - whether a reactivated Thread can immediately become dormant under unchanged Hypothesis touch times;
-- exact rows/records locked by triage and decay;
-- common lock order and under-lock revalidation;
+- the durable recovery/reconsideration behavior for every lifecycle transition that can make a Thread unavailable to triage; dormancy must not ship before this path exists;
+- exact rows/records locked by triage and decay, including Task FKs on both Hypothesis EvidenceLink and ConfidenceChange writes;
+- database-captured non-decreasing time, Team revision watermark, epoch/cutover baseline, and per-Hypothesis history-watermark semantics;
+- exact lock modes (Task `FOR UPDATE`; Team/Thread/Hypothesis `FOR NO KEY UPDATE`), canonical one-at-a-time sorted lock helper, new-path session guard, and under-lock revalidation;
 - decay-first and triage-first outcomes;
 - replay behavior and at-most-one reactivation Event.
 
-Decay uses Hypothesis `last_touched_at`; accepted evidence is the only operation that updates it. Decay does not update it. Triage must not use it as a proxy for Thread activity. RW-5 implementation itself remains independent; the shared contract is required before RW4 implements reactivation and before integrated proof.
+Decay age is reconstructed from immutable accepted supporting/challenging EvidenceLink history and the immutable current-epoch baseline; `Hypothesis.last_touched_at` is only a mutable cache/prefilter and is never historical authority. A pre-epoch EvidenceLink timestamp cannot anchor decay in a later epoch. Only a newly accepted eligible EvidenceLink in the current epoch replaces that epoch's baseline anchor. Decay does not update `last_touched_at`, and triage must not use it as a proxy for Thread activity. The RW-5 shared contract is authoritative for clock, epoch, evidence-age, and locking semantics; RW-5 implementation remains its own serial engineering stream.
 
 ### Cross-cutting gate — Assessment receipt and recovery
 
@@ -159,19 +162,20 @@ At minimum map:
 
 RW4-0 umbrella closure remains a separate milestone requiring D1–D6 and cross-cutting contracts to be fully reconciled and accepted. A staged implementation does not close RW4-0 by implication.
 
-## 4. Parallel work that does not block RW4-0..2
+## 4. RW-5-first delivery and independent preparation
 
 ### RW-5 — deterministic decay
 
-RW-5 is the first workstream to start at the shared-contract level. This does not require completing all of RW-5 before RW4-1/RW4-2; those slices may proceed in parallel when their own gates are met. RW-5 design and implementation may proceed independently of RW4-0, RW4-1, and RW4-2. Before implementation, review and freeze the shared contract items below:
-1. deterministic `apply_decay` Task through existing TaskRuntime;
-2. effective Team/Domain decay-policy selection;
-3. confidence reduction with exactly one valid decay Task cause;
-4. never reject Hypotheses and never mutate `last_touched_at`;
-5. Thread dormancy when all active Hypotheses meet the accepted low-confidence/window condition;
-6. boundary-time, repeated-run idempotency, concurrency, and recovery proofs.
+RW-5 is the first engineering stream and is completed/reviewed before RW4-1 begins; RW4-1 and RW4-2 are sequential and must not run in parallel. Preparation that does not alter the implementation stream may continue independently, but no second production implementation stream is started. Before RW-5 implementation, freeze and prove:
+1. a typed idempotent `apply_decay` Task creator and the separate RW5-P periodic host/scheduler integration gate;
+2. one database-captured UTC `as_of` persisted in an immutable canonical Task request and reused on retry/recovery;
+3. evidence age reconstructed from accepted EvidenceLink and ConfidenceChange history, with mutable current-state fields used only as accelerators;
+4. inclusive decay-window boundaries, deterministic catch-up, and cross-Task database uniqueness;
+5. database-enforced immutable request records, identity, and common Task → Team → sorted Thread → sorted Hypothesis lock order;
+6. under-lock history/state/policy revalidation, decay/triage race outcomes, and bounded lock/query/transaction work;
+7. a TaskRuntime-owned atomic business commit, summary Event, Outcome, and terminal Task transition, proven with transaction fault injection.
 
-Before RW-5 implementation, freeze: (a) the authoritative UTC clock and one captured as-of instant per decay Task; (b) inclusive/exclusive decay-window boundary semantics; (c) the exact meaning of `last_touched_at` and the rule that decay never changes it; (d) the Thread/Hypothesis/TeamPolicy rows and common lock order used by decay and triage; (e) under-lock state/policy revalidation; (f) deterministic decay-first and triage-first race outcomes; and (g) idempotent replay and at-most-one ConfidenceChange/Thread lifecycle Event behavior. These are required decisions, not pre-decided values. The shared D6 timestamp/lock contract must be delivered before RW4 implements reactivation. RW-5 must not invent a second runtime or scheduler; TaskRuntime remains the sole lifecycle authority.
+RW-5 first release changes confidence only. It does not transition Threads to dormant. Dormancy is prohibited until D6, a durable RW-4 reactivation/recovery path, and separate authorization exist. `last_touched_at` is not historical authority and decay never changes it. RW5-P remains a separate host integration and must be accepted before foundation exit/R8 can claim autonomous periodic decay. TaskRuntime remains the sole lifecycle/recovery authority.
 
 ### Experiment A
 
@@ -245,7 +249,7 @@ Reconsider only when a concrete scenario and evidence justify a separate design 
 1. **Reconcile docs and evidence:** bring PR #175 findings onto current main; update architecture, Task matrix, PLAN, README, CHANGE_MAP, and historical labels.
 2. **Apply the sequencing exception:** retain all seven RW3.4 PARTIAL rows and formal acceptance deferred; do not require their unrelated closure before RW-4/RW-5 work.
 3. **Freeze the RW-5 shared contract first:** decide clock/as-of, boundary, lock order, revalidation, races, and replay semantics.
-4. **Authorize RW-5 implementation and ready RW-4 slices separately:** RW4-1 requires D3/D5; RW4-2 requires D1/D2 and a stable RW4-1 schema. RW4-1/RW4-2 may proceed alongside RW-5 once each has a reviewed proof subset and explicit authorization; RW4-0 remains open.
+4. **Authorize the serial implementation stream:** after RW-5 implementation and proof are reviewed/closed, RW4-1 may begin when D3/D5, its reviewed proof subset, and explicit authorization are satisfied. RW4-2 follows only after RW4-1 is reviewed/closed and D1/D2, a stable RW4-1 schema, its proof subset, and explicit authorization are satisfied. Neither RW4-1 nor RW4-2 runs alongside RW-5 or each other. RW4-0 remains open unless separately closed.
 5. **Close umbrella RW4-0:** reconcile and explicitly accept all D1–D6 and cross-cutting contracts, including matching evidence/query cost, receipt/recovery, and Context representation. This is a separate design-closure milestone; it does not retroactively authorize implementation.
 6. **Implement RW4-3 and RW4-4 when their own gates are met:** RW4-3 matching/commit without reactivation requires D4, C1, and D5; dormant reactivation is a separately gated addition requiring D6. RW4-4 requires its named Context consumer/contracts and an accepted Experiment A result or explicit Operator disposition before representation freeze.
 7. **Integrate and accept:** complete RW4-5 with RW-5 race and post-decay retrieval proofs; decide RW4-KU; complete foundation-exit evidence and explicit acceptance.

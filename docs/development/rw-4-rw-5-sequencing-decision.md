@@ -6,7 +6,7 @@
 
 ## 1. Decision
 
-RW3.4 remains implementation-complete and merged, but formal acceptance remains deferred. Its seven PARTIAL qualifications remain open exactly as recorded in the RW3.4 evidence ledger. The Operator grants a sequencing exception so that RW-4 and RW-5 can advance under their own staged prerequisites without waiting for formal RW3.4 acceptance.
+RW3.4 remains implementation-complete and merged, but formal acceptance remains deferred. Its seven PARTIAL qualifications remain open exactly as recorded in the RW3.4 evidence ledger. The Operator grants a sequencing exception so RW-5 and subsequent RW-4 slices can advance under their own staged prerequisites without waiting for formal RW3.4 acceptance. Production implementation remains one serial stream.
 
 This is a sequencing decision, not a retrospective RW3.4 acceptance and not blanket authorization for every RW-4 or RW-5 implementation slice. Each production slice still requires:
 - its own accepted design and dependency gates;
@@ -18,14 +18,16 @@ RW4-0 umbrella closure is not a universal prerequisite for independently gated s
 
 ## 2. RW-5-first dependency order
 
-Start with the shared timestamp, decay, and concurrency contract needed by both workstreams. Do not wait for all of RW-5 to finish before starting independently ready RW-4 slices.
+The production implementation order is serial: RW-5 implementation/proof → RW4-1 → RW4-2 → RW4-3 → RW4-4 under its own gates → D6 reactivation and RW4-5 integrated proof. Preparation/design work may continue independently, but no second production implementation stream starts while the current one remains open.
 
-1. **RW-5 shared contract first.** Resolve and document the authoritative clock/as-of instant, UTC handling, decay-window boundary semantics, the meaning and permitted updates of `Hypothesis.last_touched_at`, the records locked by decay and triage, common lock order, under-lock revalidation, decay-first/triage-first race outcomes, replay/idempotency, and at-most-one lifecycle Event behavior. These are design decisions to be reviewed; this record does not silently choose unresolved values.
-2. **RW4-1 and RW4-2 may progress independently** as soon as their own gates are met: D3/D5 for persistence and D1/D2 for the Task boundary/identity, with the Task/write-scope reconciliation and proof subsets reviewed. They do not wait for completion of RW-5.
-3. **RW-5 implementation and proof** follow the accepted shared contract, using the existing TaskRuntime and existing commit path. No second runtime, scheduler, or lifecycle authority.
-4. **RW4-3 may initially exclude dormant-Thread reactivation.** Matching/commit requires D4 evidence (or an explicitly accepted narrower deterministic subset), C1 receipt/recovery, and D5 disposition semantics. After D5 is accepted, and until D6 is accepted, a dormant candidate must not be reactivated or receive a `matched` result that implies reactivation; resolve it only through the terminal `deferred` disposition with an explicit reason. D5 must be accepted before this disposition is implemented.
-5. **RW4-4 remains separately gated** by its named Context consumer, provenance, bounds, overflow, snapshot/manifest and replay contract. Experiment A informs the representation choice: before freezing it, record either the accepted experiment result or an explicit Operator rationale with residual uncertainty.
-6. **RW4 reactivation and RW4-5 integrated proof come after D6 and RW-5 behavior are available.** Prove both race orders, under-lock revalidation, at-most-one reactivation Event, and retrieval against canonical post-decay state.
+1. **RW-5 shared contract freeze — complete in PR #182.** The bounded regression review found no blocker and exact-head CI passed. The frozen contract resolves raw PostgreSQL `as_of`, commit-only epoch high-water mark and named Operator-authorized rebase, terminal supersession of stale Tasks, audit-only observed high-water metadata, Team revision watermark, explicit revision-0 legacy-row treatment, immutable cutover baselines, pinned bounded active-Hypothesis manifests, history reconstruction, confidence-window semantics, and one canonical Task → Team → sorted Thread → sorted Hypothesis lock helper. No clock-health monitor, singleton, incident latch, or separate catch-up cap is part of the first-release contract. Existing Operator lock-mode standardization is part of the separately authorized compatibility retrofit.
+2. **RW-5 implementation and proof.** Separately authorize the migration and RW3.4-adjacent WorldMemoryCommitService writer compatibility change, including existing Operator lock-mode standardization, then the deterministic decay Task boundary and TaskRuntime/Kernel execution. The migration is required; it is not included or authorized by the documentation proposal. Periodic scheduler/host invocation remains a separate RW5-P integration gate.
+3. **RW4-1 SignalDisposition persistence.** Begin only after RW-5 implementation/proof is reviewed and closed and RW4-1's D3/D5 gates, proof subset, and explicit authorization are satisfied.
+4. **RW4-2 triage Task boundary.** Follow RW4-1 as the next single implementation stream, with D1/D2 gates, proof subset, and explicit authorization.
+5. **RW4-3 without reactivation.** Matching/commit may proceed only after its own D4/C1/D5 gates; dormant candidates remain deferred until D6 is accepted.
+6. **RW4-4 and integrated proof.** Context retrieval remains separately gated; later integrate authorized reactivation, decay, post-decay retrieval, RW4-KU, Experiment A, RWN-01, and formal acceptance before R8.
+
+RW4-1 and RW4-2 do not run in parallel with each other or with RW-5 implementation. This serial order is the Operator's review-load constraint, not a claim that every slice is technically dependent on the previous one. No implementation slice starts without its own explicit authorization.
 
 ## 3. RW3.4 residual handling
 
