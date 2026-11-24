@@ -313,3 +313,169 @@ def test_opposite_input_orders_use_one_sorted_lock_order(
         worker.join(timeout=8)
         assert not worker.is_alive(), "sorted writer did not finish"
         assert result.get(timeout=1) == "committed"
+
+
+def test_clock_health_shared_lock_blocks_incident_latch_until_commit(
+    database_engine: Engine,
+    spike_schema: str,
+) -> None:
+    """A participant's shared health lock holds its validated generation stable."""
+    with database_engine.begin() as setup:
+        setup.execute(
+            text(
+                f"CREATE TABLE {spike_schema}.clock_health ("
+                "id integer PRIMARY KEY, generation integer NOT NULL, "
+                "status text NOT NULL)"
+            )
+        )
+        setup.execute(
+            text(
+                f"INSERT INTO {spike_schema}.clock_health "
+                "VALUES (1, 1, 'healthy')"
+            )
+        )
+
+    latch_pid_result: Queue[int] = Queue()
+    latch_result: Queue[str] = Queue()
+    with database_engine.connect() as participant:
+        participant_tx = participant.begin()
+        participant.execute(
+            text(
+                f"SELECT id FROM {spike_schema}.teams "
+                "WHERE id = 1 FOR NO KEY UPDATE"
+            )
+        )
+        generation = participant.scalar(
+            text(
+                f"SELECT generation FROM {spike_schema}.clock_health "
+                "WHERE id = 1 FOR SHARE"
+            )
+        )
+        assert generation == 1
+
+        def latch_incident() -> None:
+            with database_engine.connect() as monitor:
+                monitor_tx = monitor.begin()
+                try:
+                    pid = monitor.scalar(text("SELECT pg_backend_pid()"))
+                    latch_pid_result.put(pid)
+                    monitor.execute(
+                        text(
+                            f"SELECT id FROM {spike_schema}.clock_health "
+                            "WHERE id = 1 FOR UPDATE"
+                        )
+                    )
+                    monitor.execute(
+                        text(
+                            f"UPDATE {spike_schema}.clock_health "
+                            "SET generation = 2, status = 'incident' WHERE id = 1"
+                        )
+                    )
+                    monitor_tx.commit()
+                    latch_result.put("committed")
+                except Exception as error:
+                    monitor_tx.rollback()
+                    latch_result.put(f"error:{error!r}")
+
+        worker = Thread(target=latch_incident)
+        worker.start()
+        latch_pid = latch_pid_result.get(timeout=5)
+        _wait_until_blocked(database_engine, latch_pid)
+        with database_engine.connect() as observer:
+            assert observer.scalar(
+                text(
+                    f"SELECT generation FROM {spike_schema}.clock_health "
+                    "WHERE id = 1"
+                )
+            ) == 1
+        participant_tx.commit()
+        worker.join(timeout=8)
+        assert not worker.is_alive(), "incident latch did not finish"
+        assert latch_result.get(timeout=1) == "committed"
+
+    with database_engine.connect() as verify:
+        assert verify.scalar(
+            text(
+                f"SELECT generation FROM {spike_schema}.clock_health "
+                "WHERE id = 1"
+            )
+        ) == 2
+
+
+@pytest.mark.parametrize(
+    "participant_kind",
+    ["task_creation", "decay_execution", "history_writer"],
+)
+def test_clock_health_incident_latch_precedes_participant_without_lock_cycle(
+    database_engine: Engine,
+    spike_schema: str,
+    participant_kind: str,
+) -> None:
+    """A monitor holding only the singleton lets Team-first participants proceed after latch."""
+    with database_engine.begin() as setup:
+        setup.execute(
+            text(
+                f"CREATE TABLE {spike_schema}.clock_health ("
+                "id integer PRIMARY KEY, generation integer NOT NULL, "
+                "status text NOT NULL)"
+            )
+        )
+        setup.execute(
+            text(
+                f"INSERT INTO {spike_schema}.clock_health "
+                "VALUES (1, 1, 'healthy')"
+            )
+        )
+
+    participant_pid_result: Queue[int] = Queue()
+    participant_result: Queue[tuple[str, int | None]] = Queue()
+    with database_engine.connect() as monitor:
+        monitor_tx = monitor.begin()
+        monitor.execute(
+            text(
+                f"SELECT id FROM {spike_schema}.clock_health "
+                "WHERE id = 1 FOR UPDATE"
+            )
+        )
+        monitor.execute(
+            text(
+                f"UPDATE {spike_schema}.clock_health "
+                "SET generation = 2, status = 'incident' WHERE id = 1"
+            )
+        )
+
+        def participate() -> None:
+            with database_engine.connect() as participant:
+                participant_tx = participant.begin()
+                try:
+                    participant.execute(
+                        text(
+                            f"SELECT id FROM {spike_schema}.teams "
+                            "WHERE id = 1 FOR NO KEY UPDATE"
+                        )
+                    )
+                    participant_pid_result.put(
+                        participant.scalar(text("SELECT pg_backend_pid()"))
+                    )
+                    generation = participant.scalar(
+                        text(
+                            f"SELECT generation FROM {spike_schema}.clock_health "
+                            "WHERE id = 1 FOR SHARE"
+                        )
+                    )
+                    participant_tx.commit()
+                    participant_result.put(("committed", generation))
+                except Exception as error:
+                    participant_tx.rollback()
+                    participant_result.put((f"error:{error!r}", None))
+
+        worker = Thread(target=participate)
+        worker.start()
+        participant_pid = participant_pid_result.get(timeout=5)
+        _wait_until_blocked(database_engine, participant_pid)
+        # The monitor never requests the Team lock: it can commit while the
+        # participant holds Team and waits for the singleton.
+        monitor_tx.commit()
+        worker.join(timeout=8)
+        assert not worker.is_alive(), f"{participant_kind} deadlocked with monitor"
+        assert participant_result.get(timeout=1) == ("committed", 2)
