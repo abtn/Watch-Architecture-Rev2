@@ -10,16 +10,32 @@
 
 The Operator's 2026-11-24 sequencing exception satisfies the overall RW3.4 sequencing gate while preserving formal acceptance as deferred and all seven PARTIAL qualifications. RW4-0 remains open. PR #176 is a merged design proposal, not acceptance of its experimental matcher or closure of D1–D6. No individual RW-4 slice is blanket-authorized: each must satisfy its own prerequisites, independently reviewed proof subset, and explicit Operator authorization. PR #175's evidence findings are incorporated here; its audit branch is closed and is not a current baseline.
 
-The delivery path is deliberately serial to keep one implementation stream under review at a time:
+The delivery path is deliberately serial. The updated Operator order supersedes the earlier RW-5-first order:
 
-1. **RW-5 shared contract freeze:** review the [RW-5 shared clock, decay, and locking proposal](rw-5-shared-contract-proposal.md), including the seven-row RW3.4 residual mapping.
-2. **RW-5 implementation and proof:** separately authorize the deterministic decay Task boundary and TaskRuntime/Kernel execution. Periodic scheduler/host invocation remains a separate RW5-P integration gate.
-3. **RW4-1 persistence:** begin only after RW-5 implementation is reviewed/closed and RW4-1's D3/D5 gates, proof subset, and explicit authorization are satisfied.
-4. **RW4-2 Task boundary:** follow RW4-1 as the next single implementation stream, with D1/D2 gates, proof subset, and explicit authorization.
-5. **RW4-3 without reactivation:** matching/commit may proceed when D4/C1/D5 are accepted; dormant candidates remain deferred until D6 is accepted.
-6. **RW4-4 and integrated proof:** Context retrieval remains separately gated; later integrate authorized reactivation, decay, post-decay retrieval, RW4-KU, Experiment A, RWN-01, and formal acceptance before R8.
+1. **RW4-2 — trusted Task boundary and canonical identity:** start with D1/D2 decision closure, then the reviewed slice spec and explicit authorization. Expected no migration only if the existing Task primary key can enforce canonical identity; verify before freezing.
+2. **RW4-1 — SignalDisposition persistence:** follow RW4-2; D3/D5 must be accepted first. Expect a migration and preserve linear Alembic history.
+3. **RW-5 canonical lock helper, Team revision, and writer retrofit:** separately authorize the migration and the RW3.4-adjacent WorldMemoryCommitService/Operator compatibility changes; prove every supported writer through real entrypoints. This must land before RW4-3.
+4. **RW4-3 — deterministic matching and commit:** requires accepted D4/C1/D5 and the helper from step 3. No dormant reactivation, new Thread creation, noise classification, or near-duplicate classification.
+5. **RW-5 decay implementation:** follow RW4-3; scheduler/host invocation remains a separate RW5-P gate.
+6. **RW4-4 — bounded Context retrieval:** only after its own Context-consumer gate and Experiment A disposition.
+7. **D6 / RW4-5:** dormant reactivation and integrated race proof only after explicit D6 acceptance.
 
-This serial order is the Operator's review-load constraint; it does not make RW4-1/RW4-2 technically dependent on RW-5 or alter their individual gates. The shared timestamp, revalidation, and concurrency contract is required before RW4 implements dormant-Thread reactivation. No implementation slice starts without explicit authorization.
+This supersedes the earlier 2026-11-24 RW-5-first order. It is a review-load and migration-linearity constraint, not a claim of technical dependency. Only one production implementation stream may be active. No slice starts without its own reviewed spec, accepted prerequisites, explicit authorization, exact-head hosted CI, and Programmer-local disposable-database verification.
+
+### RW3.4 PARTIAL residual touchpoint map
+
+These are slice touchpoints, not blanket blockers. Carry a row into a slice's proof subset only when that slice changes or relies on the corresponding contract; do not relabel any row PASS.
+
+| RW3.4 PARTIAL row | RW-4 / RW-5 touchpoints | Handling |
+|---|---|---|
+| RW-REQ-01 — production host authentication/composition | RW4-2 D1 trusted principal/grant boundary; RW4-3 commit authority; RW-5 Operator-authorized bootstrap/rebase | Prove Watch-side validation only. Deployed host authentication remains external; do not fabricate it. |
+| RW-POL-01 — production TeamPolicy publisher/lock serialization | RW4-2 immutable policy pin; RW4-3 under-lock policy revalidation; RW-5 Team revision helper and writer retrofit | Test supported writer/lock compatibility in the RW-5 retrofit. Production publisher remains external unless separately implemented. |
+| RW-CTX-06 — broader Context tuple/state coverage | RW4-3 evidence-profile/provenance inputs; RW4-4 Context membership and provenance | Add only directly relevant tuple/state cases. The broad cross-product remains residual until separately proven. |
+| RW-REPLAY-01 — duplicate write outcomes across replay states | RW4-2 Task/request-Event replay; RW4-1 disposition uniqueness; RW4-3 C1 receipt and business-commit replay; RW-5 decay Task replay | Prove each slice's supported replay boundary; do not claim the entire RW3.4 replay matrix is closed. |
+| RW-RT-02 — deadline/recovery boundary | RW4-2 TaskRuntime attempt/deadline contract; RW4-3 receipt recovery; RW-5 bounded decay transaction and TaskRuntime finalization | Preserve existing fail-closed behavior; prove only the new supported recovery paths. |
+| RW-REC-01 — locked Session/Task/attempt matrix | RW4-2 Task/attempt fencing; RW4-3 receipt/business commit locks; RW-5 shared lock helper and Task lock | Add focused real-session lock/revalidation tests for changed paths. |
+| RW-RP-01 — repeated recovery idempotency | RW4-2 creator replay; RW4-3 receipt and business-result replay; RW-5 decay replay/supersession | Assert repeated calls are no-ops for each new path; broad historical outcome matrix remains PARTIAL. |
+
 
 ## 2. Current evidence baseline
 
