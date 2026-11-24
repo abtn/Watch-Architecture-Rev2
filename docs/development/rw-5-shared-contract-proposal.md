@@ -60,115 +60,130 @@ All seven rows remain PARTIAL. `RW-REQ-01` and `RW-POL-01` remain external integ
 
 ## 4. Proposed RW-5 shared contract
 
-### 4.1 Task production and authority
+### 4.1 Task production, identity, and authority
 
-**Proposed split:**
+**Proposed contract:**
 
-- RW-5 core includes a typed, idempotent application boundary that creates an `apply_decay` Task for one Team, pins its immutable request and TeamPolicy version, and records the Task request Event atomically.
-- The Task is executed and finalized only by the existing TaskRuntime and Kernel commit path.
-- A periodic scheduler/host trigger is a separate integration slice, provisionally named **RW5-P**. It may invoke the typed creator but may not mutate world memory, execute Tasks, or become a second runtime.
-- The current TaskDispatcher remains `ingest_source`-only. Do not expand it to schedule or execute decay.
-- The external production host/authentication composition remains outside the Watch-side implementation until separately provided and authorized.
+- RW-5 core provides a typed, idempotent application boundary that creates one `apply_decay` Task for one Team, pins the immutable request and TeamPolicy version, and persists the request Event atomically.
+- The creator derives Team authority from a trusted host boundary, never from model output or an untrusted worker payload. Production host authentication/composition remains an external integration boundary; this proposal does not invent it.
+- A periodic scheduler/host trigger is a separate integration slice, **RW5-P**. It may invoke the typed creator but may not mutate world memory, execute Tasks, or become a second runtime. The existing TaskDispatcher remains `ingest_source`-only.
+- RW-5 core acceptance covers deterministic creation/execution from a valid typed invocation. It does not claim autonomous periodic operation. **RW5-P is required before foundation exit/R8 can claim scheduled decay is operational.**
 
-The creator must derive Team authority from a trusted host boundary, not from model output or an untrusted worker payload. The Task table currently has no generic idempotency column. Proposed no-column identity: derive a deterministic UUIDv5 Task primary key from a dedicated versioned namespace plus canonical `(team_id, operation, schedule_slot)`; the Task primary key then arbitrates concurrent creation. The schedule slot is trusted host metadata, not model-selected data. Under the Team serialization lock, first look up the deterministic Task ID. If it already exists, validate its immutable request Event/fingerprint and return its original policy pin; do not select the latest policy and accidentally turn a legitimate replay into a conflict after policy advancement. If it does not exist, select the latest valid policy under the Team lock, then insert the Task and request Event atomically. Do not acquire an existing Task row lock after taking the Team lock; the replay path validates immutable fields without reversing TaskRuntime's Task → Team lock order. Validate the UUID namespace and canonical fingerprint with golden vectors and concurrent PostgreSQL tests before accepting this design. An application-only precheck is insufficient.
+The Task table has no generic idempotency-key column. The proposed database identity is a deterministic UUIDv5 Task primary key from a dedicated, versioned namespace and canonical `(team_id, operation, trusted_schedule_slot)`. The schedule slot is trusted host metadata, not model-selected data. For a manual invocation, use an equivalent caller-generated idempotency token in a distinct, explicitly typed identity form. The captured `as_of` timestamp is deliberately **not** part of the Task identity: it is generated only during creation and must be reused by replay.
 
-### 4.2 Authoritative time
+The database primary-key constraint arbitrates concurrent creators. A creator that finds the deterministic Task ID validates its immutable request and returns the original Task, original `as_of`, and original policy pin—even if the current TeamPolicy has since advanced. A changed semantic request under the same identity is a conflict. The request Event and Task row are one transaction. Do not take an existing Task row lock after acquiring the Team lock; validate immutable request data without reversing TaskRuntime's Task → Team lock order. Golden vectors, unique-conflict races, and concurrent PostgreSQL tests are required.
 
-**Proposed choice:** the database-generated UTC `Task.created_at` is the immutable `as_of` instant for the decay Task.
+The Kernel/application boundary must enforce that only the typed creator can create `apply_decay` Tasks. A convention or worker-side check is insufficient. No generic Task-creation permission is added.
 
-- Capture it once when the Task is inserted; do not accept caller/model-supplied time.
-- The current ORM/database default generates `created_at`, but the schema does not itself prohibit a later UPDATE. Freeze it as write-once by application contract and prove no update path mutates it; if that cannot be guaranteed, add the smallest database guard rather than calling it immutable by assumption.
-- The Task's `as_of` is reused for every Hypothesis, every Thread, and every retry/recovery of that Task.
-- Do not call the application clock independently per Hypothesis or substitute retry-start time.
-- Persisting a second timestamp field is unnecessary if the existing Task creation timestamp is confirmed database-generated, timezone-aware, immutable, and available to the worker. If any of those conditions is false, stop and present the smallest schema change before implementation.
+### 4.2 Authoritative time: one database-captured immutable instant
 
-This keeps the operation reproducible: the same Task request always evaluates the same time boundary.
+**Decision proposed:** capture one UTC `as_of` instant exactly once from PostgreSQL using `clock_timestamp()` during the typed Task-creation transaction, then persist that value in the immutable canonical Task request envelope/Event. The Task request fingerprint includes it. Do not use `Task.created_at` as the decay clock: PostgreSQL `now()` is the transaction-start timestamp, not necessarily the Task insertion instant, and the Task may wait in a queue before execution.
 
-### 4.3 Evidence age and decay-window boundaries
+- The production creator obtains the timestamp from the database; callers and models cannot supply or override it.
+- Persist the exact value at database precision with timezone-aware UTC representation. The request record is append-only/immutable, with a database-enforced guard against update or replacement. If the current Event schema does not guarantee that property, add the smallest database constraint/trigger required; do not rely on application convention.
+- Every Hypothesis, Thread decision, retry, and interrupted recovery for this Task uses the exact same persisted `as_of`. Execution never calls a clock to recompute it.
+- The deterministic Task identity excludes `as_of`; a replay loads and validates the winning Task request and reuses its original value.
+- Provide a test-only deterministic database-clock seam at Task creation. Production callers must not gain a caller-controlled timestamp parameter.
+- If relevant accepted evidence or a state transition is later than `as_of`, the worker skips that record with an explicit deterministic reason. It must not clamp negative elapsed time or pretend the later state existed at the pinned instant.
 
-**Proposed choice:** a decay window becomes due inclusively at its exact UTC boundary.
+This makes a Task replay a reconstruction of the original decision, not a new decision made at retry time. The immutable request value—not a mutable Task column or process clock—is the authoritative time source.
 
-For a Hypothesis with evidence-touch baseline (t_0), Task time (t_a), and configured window (W):
+### 4.3 Historical evidence is authoritative; current-state fields are only accelerators
 
-[
-n_{due} = leftlfloor rac{t_a-t_0}{W} ightfloor
-]
+**Decision proposed:** reconstruct evidence age from immutable accepted evidence history. `Hypothesis.last_touched_at` is a mutable current-state cache/prefilter, not the authority for a past decay decision.
 
-No decay step is due when (t_a < t_0+W). A step becomes due when (t_a ge t_0+W). All arithmetic uses timezone-aware UTC instants and a single pinned policy version.
+- Accepted supporting or challenging EvidenceLinks are the authoritative evidence-touch records. An accepted touch resets the evidence-age baseline even if confidence does not change.
+- Mentions-only links, rejected proposals, retrieval, and decay do not reset the baseline.
+- A duplicate/replayed EvidenceLink is not a new touch. Canonical EvidenceLink identity—not timestamp equality alone—distinguishes new accepted evidence from replay.
+- `last_touched_at` may narrow candidate queries, but before mutation the worker reconstructs the latest eligible touch from history and verifies the cache agrees with that history. A mismatch is an integrity failure/defer, not permission to trust the cache.
+- For a Hypothesis with no accepted supporting/challenging evidence, use its immutable creation baseline only if the domain contract explicitly says creation starts the inactivity clock; otherwise it is ineligible until a first accepted touch. Freeze this detail before implementation.
+- Confidence history is also authoritative for confidence transitions. The low-confidence interval (if later needed) begins at the later of the latest accepted evidence touch and the latest historical ConfidenceChange that transitioned the current Hypothesis into `low`. Do not infer a low streak from the current confidence value alone.
 
-`last_touched_at` is an evidence-activity clock, not a generic row-update timestamp:
+**No-new-column is a hypothesis, not a frozen assumption.** Retain the existing representation only if focused property/replay tests prove exact reconstruction across: evidence touches that do and do not change confidence; same-timestamp distinct accepted touches; duplicate EvidenceLink replay; transitions into and out of `low`; decay catch-up; and evidence arriving after a Task's `as_of`. A dedicated touch-version/reference or low-confidence-start field is justified if those proofs fail.
 
-- Accepted supporting or challenging evidence resets the evidence-age baseline, even if the confidence band does not change.
-- Mentions-only evidence, rejected proposals, retrieval, and decay itself do not reset it.
-- Decay must never write `last_touched_at`.
-- Any other operation that is allowed to reset it must do so atomically with its accepted evidence commit.
+A new temporal EvidenceLink index is not assumed. Measure the bounded history query and query plan on a representative disposable PostgreSQL fixture. Add the smallest index only if measured cardinality/latency or bounded-work requirements demand it. Do not add an age column or index speculatively.
 
-**Idempotency without a new age column:** the proposed key is a versioned hash of `(hypothesis_id, evidence_baseline_fingerprint, window_ordinal)`. The baseline fingerprint should be derived from `last_touched_at` plus the canonical IDs of accepted supporting/challenging EvidenceLinks committed at that exact touch instant (with a stable creation baseline for a Hypothesis that has no evidence yet). This distinguishes two accepted touches even if database timestamp precision gives them the same instant. A retry for the same baseline and elapsed window therefore addresses the same logical decay step; new accepted evidence changes the fingerprint and starts a new sequence. Tests must prove that every path which updates `last_touched_at` also leaves enough canonical EvidenceLink identity to reconstruct this fingerprint. If it cannot be derived reliably, propose the smallest dedicated touch-version/reference field; do not claim the no-new-column approach is proven. The existing unique constraint is only `(created_by_task_id, idempotency_key)`, so it does not prevent two different decay Tasks from applying the same logical step. Proposed database guarantee: add a partial unique index on `(team_id, hypothesis_id, idempotency_key) WHERE cause_kind = 'decay'`. This requires a small migration but no new age or Task-attribution column. Confirm that the key is namespaced/versioned, fits the existing 128-character field, and cannot collide with other ConfidenceChange causes. Do not count decay rows using timestamps alone where equal transaction timestamps could make ordering ambiguous.
+**Window semantics:** use half-open elapsed windows with an inclusive due boundary:
+
+`due(k) iff as_of >= anchor + k * W`
+
+Use integer/microsecond arithmetic over timezone-aware UTC instants. The anchor is the latest accepted evidence-touch instant, not a value mutated by decay. A newly accepted touch starts a new window sequence. Catch up one actual confidence-band transition per elapsed window, in ordinal order; write one ConfidenceChange per actual transition, with no no-op rows after the lowest band. The same Task/replay must not apply a window twice. A deterministic, versioned key identifies `(team_id, hypothesis_id, canonical evidence-touch identity, window ordinal)`, and a database uniqueness constraint must arbitrate duplicate application across different Tasks.
 
 ### 4.4 Confidence transition semantics
 
-**Proposed choice:** apply one confidence-band transition for each elapsed decay window, catching up all due windows in the same Task, subject to the configured decay policy and the lowest band.
-
-- Every actual band transition creates one ConfidenceChange with `cause_kind="decay"`, the current decay Task attribution, and the deterministic window idempotency key.
-- Decay never rejects, supersedes, deletes, or otherwise changes Hypothesis lifecycle status.
+- Every actual confidence-band transition creates one ConfidenceChange with `cause_kind="decay"`, the current decay Task attribution, and the deterministic per-window idempotency key.
+- Decay never rejects, supersedes, deletes, or otherwise changes Hypothesis lifecycle status. It never updates `last_touched_at`.
 - Do not create no-op ConfidenceChange rows once the lowest band is reached.
-- A Task retry must not apply a window twice.
-- A policy that is missing, malformed, unsupported, or internally inconsistent fails closed; do not silently fall back to a different policy version or a default guessed by the worker.
+- Missing, malformed, unsupported, or internally inconsistent pinned policy fails closed; do not silently select a newer policy or guess a default.
+- The supported policy vocabulary, defaulting rules, and exact confidence-band transition table must be frozen against the existing domain specification before implementation. The absence of a decay parser in `core/policy.py` is a source gap, not permission to add a generic policy framework.
 
-The supported policy vocabulary, defaulting rules, and exact confidence-band transition table must be frozen against the existing domain specification before implementation. The absence of a decay parser in `core/policy.py` is a source gap, not permission to add a generic policy framework.
+The exact interaction between catch-up windows and policy changes is pinned by the Task's original TeamPolicy version. A replay cannot adopt a newer policy midway through catch-up.
 
-### 4.5 Thread dormancy
+### 4.5 Dormancy is out of scope until D6 recovery exists
 
-**Proposed conservative rule:** a Thread may transition `active → dormant` only when the pinned policy explicitly enables dormancy, the Thread has at least one active Hypothesis, and every active Hypothesis is currently `low` and has exceeded the accepted low-confidence inactivity threshold at the Task's `as_of`. Derive each current low-confidence interval without a new column: it begins at the later of (a) `last_touched_at` and (b) the latest ConfidenceChange that transitioned the Hypothesis into `low`. If current confidence is not `low`, there is no active low-confidence streak. Accepted supporting/challenging evidence resets the interval through `last_touched_at`, even when the confidence band remains `low`.
+**RW-5 first release performs confidence decay only. It does not transition Threads to `dormant`.**
 
-- An empty active-Hypothesis set must not satisfy the condition by vacuous truth.
-- Rejected and superseded Hypotheses are not active evidence and do not independently trigger dormancy.
-- The exact low-confidence inactivity threshold must be part of the frozen policy vocabulary, not hard-coded in a worker. Prove transitions into/out of `low`, evidence resets with and without a band change, and same-timestamp evidence identity. Add no `low_confidence_since`/streak column unless those proofs show the existing records cannot derive the interval safely.
-- A decay-caused dormancy transition updates the Thread lifecycle timestamp and writes exactly one Task-attributed lifecycle Event; it does not rewrite any Hypothesis evidence-touch timestamp.
-- Repeated execution/recovery must not emit a second transition Event.
+Dormancy is an irreversible lifecycle transition for the current delivery sequence: it can make a Thread unavailable to the first RW-4 matching path, while the authorized reactivation/recovery path is not yet implemented. The non-vacuous rule (“at least one active Hypothesis, and every active Hypothesis is low and beyond the accepted inactivity threshold”) is not sufficient by itself. A lifecycle transition must not ship before its recovery path exists.
 
-A dormant Thread is not reactivated by RW-5. Reactivation remains a separately gated RW-4 operation under D6.
+- RW-5 must not change Thread status or Thread lifecycle/activity timestamps and must not emit a dormancy Event.
+- Do not add dormancy as an optional policy flag in the first RW-5 release.
+- Dormancy requires D6 acceptance, a durable RW-4 reactivation path, and an explicit recovery/reconsideration behavior for decay-first and triage-first outcomes.
+- If dormancy is later authorized, reconstruct low-confidence age from accepted evidence and ConfidenceChange history as described above; never infer it solely from mutable current-state fields.
 
-### 4.6 Shared lock order
+This is a hard scope boundary, not a deferred implementation detail within RW-5.
 
-**Proposed common execution order:**
+### 4.6 Shared lock order and database-enforced concurrency
 
-1. Lock the current Task row and validate its running status/current attempt.
-2. Lock the Team row `FOR UPDATE` as the per-Team serialization point.
-3. Lock all affected Thread rows in ascending canonical ID order.
-4. Lock all affected Hypothesis rows in ascending canonical ID order.
-5. Revalidate ownership, lifecycle, evidence-touch baseline, policy pin, and current-attempt preconditions under those locks.
-6. Write ConfidenceChanges, lifecycle transitions, and Task-attributed Events through the existing commit boundary.
+**Proposed common order:**
 
-The TeamPolicy version is immutable and pinned at Task creation. Execution consumes that pinned version; it must not silently switch to the latest policy. The Team row is locked before selecting/pinning the latest policy in the creator. The creator's lock suffix must remain compatible with the common Team → Thread ordering; it must never lock a Thread/Hypothesis and then acquire the Team lock.
+1. Lock the current Task row and validate running status/current attempt.
+2. Lock the Team row with `FOR UPDATE` as the per-Team writer serialization point.
+3. Lock affected Thread rows in ascending canonical ID order.
+4. Lock affected Hypothesis rows in ascending canonical ID order.
+5. Revalidate Team ownership, lifecycle, historical evidence baseline, policy pin, and current-attempt preconditions under those locks.
+6. Write ConfidenceChanges and Task-attributed Events through the accepted TaskRuntime/Kernel transaction boundary.
 
-This order is a proposed common contract, not an assertion that every current code path already follows it. Before freeze, review every relevant RW-4/RW-5 path and record any exception explicitly. No path may acquire a lower-ranked lock after a higher-ranked one.
+The Team lock is exclusive because the contract requires writer serialization; a shared lock would not provide it. This is intentionally conservative and may serialize all writes for a Team. Measure contention before considering a narrower lock scheme. Any Task creator must follow the compatible Team-first suffix because its Task row does not exist yet; it must not lock a Thread/Hypothesis and then acquire Team.
+
+Before freeze, identify every relevant RW-4/RW-5 writer and prove its acquisition order. Prefer one small shared lock-order helper (or one mechanically equivalent implementation) over duplicated undocumented ordering. An instrumented test must fail on out-of-order acquisition across decay, triage, and ingestion paths. After acquiring the Thread lock, reload the eligible Hypothesis set and revalidate it under lock; do not act on a stale pre-lock candidate list.
+
+Define a bounded lock timeout and classify timeout/deadlock as retryable Task failure under existing TaskRuntime policy. Do not swallow it as a per-Hypothesis skip. PostgreSQL unique constraints, immutable-record guards, and row locks are the concurrency authority; application prechecks only improve diagnostics and are never the guarantee.
 
 ### 4.7 Decay/triage race outcomes
 
-The Team lock serializes decay and triage operations for the same Team. Both operations must reload and revalidate canonical rows after acquiring it.
+The exclusive Team lock serializes decay and triage writers for the same Team. Each operation reloads and revalidates canonical rows and accepted history after acquiring it.
 
-- **Triage commits first:** accepted evidence updates `last_touched_at`; the later decay operation sees the new baseline and does not apply a step that is no longer due.
-- **Decay commits first:** triage observes the committed confidence/lifecycle state. Before D6 is accepted, a dormant candidate cannot be reactivated or reported as a successful `matched` disposition implying reactivation; the applicable RW-4 path must use the accepted terminal `deferred` outcome.
-- **After D6:** the explicitly authorized reactivation path must revalidate Team, Thread state, and evidence under the same lock order and emit at most one reactivation Event.
-- A losing concurrent/replayed request must return or validate the canonical committed result; it must not append a duplicate ConfidenceChange or lifecycle Event.
+- **Triage commits first:** the later decay operation observes the accepted EvidenceLink and recomputes the baseline from history. A step no longer due at the Task's pinned `as_of` is not applied.
+- **Decay commits first:** triage observes the committed confidence state. Before D6 and a durable reactivation/recovery path exist, dormant-Thread behavior is not reachable because RW-5 does not create dormant Threads.
+- **After D6:** a separately authorized reactivation path must validate current Team, Thread, Hypothesis, and evidence state under the same lock order and emit at most one reactivation Event. It must also define how decay-first state is reconsidered; merely changing `dormant → active` is not enough.
+- A losing concurrent/replayed request loads or validates the canonical committed result; it cannot append a duplicate ConfidenceChange or lifecycle Event.
 
-The integrated proof must exercise both race orders against disposable PostgreSQL. A unit test that mocks away row locks is not sufficient evidence for the serialization contract.
+Prove both race orders with disposable PostgreSQL. Unit tests that mock away row locks do not prove serialization.
 
 ### 4.8 Task transaction, recovery, and per-Hypothesis failures
 
-**Preferred design:** keep the decay business changes, summary Event, Outcome, and Task terminal transition within the existing TaskRuntime/Kernel transaction boundary where the current APIs permit it. This avoids introducing a separate receipt/commit-marker protocol solely for decay.
+**Atomicity is a required design proof, not an assumption about the current APIs.** The existing `WorldMemoryCommitService.commit_model()` opens its own transaction, while `TaskRuntime.finalize()` opens a separate transaction. `commit_model_in_session()` provides a possible shared-session seam, but the current finalization API does not itself prove that business writes, summary Event, Outcome, and terminal Task state can commit atomically.
 
-- TaskRuntime remains the only lifecycle and interrupted-recovery authority.
-- Do not create a decay-specific runtime, scheduler-owned worker, or second recovery system.
-- If atomic business commit plus terminalization is not possible, stop and design the durable commit marker/recovery contract before implementation. That alternative must be separately reviewed and tested; it is not authorized by this proposal.
-- Skip only deterministic, explicitly classified per-Hypothesis ineligibility. Integrity violations, ownership conflicts, stale-attempt failures, malformed policy, and infrastructure/transaction failures must not be swallowed as ordinary per-Hypothesis skips.
-- The existing Task specification says per-Hypothesis errors are logged and skipped. Before implementation, reconcile that broad wording with transaction-abort behavior: a failed PostgreSQL transaction cannot safely continue without a deliberate savepoint/rollback contract. Do not add savepoint complexity unless the accepted requirement genuinely needs it.
-- The Task emits one bounded summary Event containing deterministic counts/outcomes. Event vocabulary and payload shape must be frozen with the Task contract. Do not emit repeated summary Events on retry.
+Before implementation, demonstrate a TaskRuntime-owned orchestration/finalize-in-session path that commits the following in one database transaction:
+
+- all eligible decay ConfidenceChanges;
+- the single deterministic summary Event;
+- the Task Outcome; and
+- the terminal Task state.
+
+Bound the batch size, transaction duration, and lock duration. Deterministic ineligibility may be skipped only with an explicit stable reason recorded in the summary. Integrity violations, ownership conflicts, stale attempts, malformed policy, lock timeout/deadlock, and infrastructure/transaction errors abort the transaction; do not swallow them as per-Hypothesis skips.
+
+Inject failures before writes, after business writes, before summary Event, and before terminal Task state. Each failure must roll back all business and terminal writes, leaving TaskRuntime's normal retry/recovery policy authoritative. Do not add savepoints unless an accepted requirement demonstrates that individual Hypothesis failures must be isolated.
+
+If a clean single-transaction TaskRuntime path cannot be implemented, stop. A separate durable marker/receipt plus recovery protocol requires a new design and explicit review; do not claim atomicity while using two transactions. TaskRuntime remains the only lifecycle and interrupted-recovery authority.
 
 ### 4.9 Bounded work
 
-The current specification describes a Team batch but does not define a proven maximum scan/write bound. Before implementation, define a deterministic per-Task bound and overflow behavior from the existing Task/policy budget model. Never silently truncate a Team's Hypotheses or partially process an arbitrary prefix while claiming the batch is complete. If the bound is exceeded, fail or defer before business writes, or use an explicitly designed continuation identity; do not invent continuation Tasks inside the worker.
+The Team batch must have explicit maximum Hypothesis count, maximum EvidenceLink-history rows examined, and a bounded transaction/lock duration. Query only the canonical Team scope; detect overflow before mutation and fail/defer the Task rather than silently truncating a candidate or history set. Measure query plans and cardinality on a representative disposable PostgreSQL fixture. Any required pagination must preserve one immutable `as_of`, one pinned policy, and deterministic ordering across the entire Task. The summary Event reports deterministic counts and explicit overflow/failure outcome without leaking unbounded payloads.
+
+### 4.10 RW-5 first-release acceptance boundary
+
+RW-5 first release means: typed idempotent Task creation; database-captured immutable request `as_of`; pinned policy; history-authoritative confidence decay; database-enforced uniqueness and immutable records; shared lock-order proof; atomic TaskRuntime/Kernel business commit and terminalization; bounded work; deterministic retry/replay. It does **not** include periodic scheduling (RW5-P), Thread dormancy, reactivation, or autonomous lifecycle management. RW5-P remains required before foundation exit/R8 can claim periodic decay is operational.
 
 ## 5. Schema and migration posture
 
