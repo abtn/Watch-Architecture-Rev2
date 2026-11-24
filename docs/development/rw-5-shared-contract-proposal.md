@@ -25,8 +25,9 @@ The proposal is grounded in the post-PR-181 source tree:
 
 - `core/models.py:856–900`: Thread lifecycle and `last_updated_at`.
 - `core/models.py:900–957`: Hypothesis status, confidence, and `last_touched_at`.
+- `core/models.py:153–210`: Task has a UUID primary key, a Team/policy pin, and a database-generated `created_at` (`server_default=func.now()`); it has no generic Task idempotency-key column.
 - `core/models.py:957–1020`: ConfidenceChange cause, optional EvidenceLink, generic `created_by_task_id`, idempotency key, and creation time.
-- `migrations/versions/0019_rw1_world_memory.py:379–446`: ConfidenceChange persistence, cause checks, and indexes. The schema has no dedicated `decay_task_id`.
+- `migrations/versions/0019_rw1_world_memory.py:379–446`: ConfidenceChange persistence, cause checks, and indexes. Its existing uniqueness is scoped to `(created_by_task_id, idempotency_key)`; it does not enforce the same logical decay step across distinct Tasks. The schema has no dedicated `decay_task_id`.
 - `core/world_memory.py:1812–1835`: Task-row locking in the existing world-memory commit.
 - `core/world_memory.py:1926–2005`: Team, Thread, and Hypothesis locking in the existing commit.
 - `core/world_memory.py:2260–2271`: accepted support/challenge evidence updates `last_touched_at`, including evidence that does not necessarily change confidence.
@@ -69,7 +70,7 @@ All seven rows remain PARTIAL. `RW-REQ-01` and `RW-POL-01` remain external integ
 - The current TaskDispatcher remains `ingest_source`-only. Do not expand it to schedule or execute decay.
 - The external production host/authentication composition remains outside the Watch-side implementation until separately provided and authorized.
 
-The creator must derive Team authority from a trusted host boundary, not from model output or an untrusted worker payload. The request identity must be database-arbitrated and replay-safe; an application-only precheck is insufficient. The exact identity columns/constraint must be established by a focused schema audit before implementation. Add a migration only if existing Task identity fields cannot enforce the required uniqueness.
+The creator must derive Team authority from a trusted host boundary, not from model output or an untrusted worker payload. The Task table currently has no generic idempotency column. Proposed no-column identity: derive a deterministic UUIDv5 Task primary key from a dedicated versioned namespace plus canonical `(team_id, operation, schedule_slot)`; the Task primary key then arbitrates concurrent creation. Persist the canonical request fingerprint and schedule-slot identity in the atomic request Event. A replay loads the existing Task/Event and returns the Task only when Team, operation, policy pin, schedule slot, and immutable request fingerprint all match; otherwise it conflicts. The schedule slot is trusted host metadata, not model-selected data. Validate the UUID namespace and canonical fingerprint with golden vectors and concurrent PostgreSQL tests before accepting this design. An application-only precheck is insufficient.
 
 ### 4.2 Authoritative time
 
@@ -101,7 +102,7 @@ No decay step is due when (t_a < t_0+W). A step becomes due when (t_a ge t_0+W).
 - Decay must never write `last_touched_at`.
 - Any other operation that is allowed to reset it must do so atomically with its accepted evidence commit.
 
-**Idempotency without a new age column:** first test whether the existing ConfidenceChange idempotency key and database uniqueness constraint can identify each decay window deterministically. The proposed key is a versioned hash of `(hypothesis_id, last_touched_at, window_ordinal)`. A retry for the same evidence baseline and elapsed window therefore addresses the same logical decay step; new accepted evidence changes the baseline and starts a new sequence. This is a test-backed design constraint, not a claim that no migration will be needed. Do not count decay rows using timestamps alone where equal transaction timestamps could make ordering ambiguous.
+**Idempotency without a new age column:** the proposed key is a versioned hash of `(hypothesis_id, last_touched_at, window_ordinal)`. A retry for the same evidence baseline and elapsed window therefore addresses the same logical decay step; new accepted evidence changes the baseline and starts a new sequence. The existing unique constraint is only `(created_by_task_id, idempotency_key)`, so it does not prevent two different decay Tasks from applying the same logical step. Proposed database guarantee: add a partial unique index on `(team_id, hypothesis_id, idempotency_key) WHERE cause_kind = 'decay'`. This requires a small migration but no new age or Task-attribution column. Confirm that the key is namespaced/versioned, fits the existing 128-character field, and cannot collide with other ConfidenceChange causes. Do not count decay rows using timestamps alone where equal transaction timestamps could make ordering ambiguous.
 
 ### 4.4 Confidence transition semantics
 
@@ -173,7 +174,9 @@ The current specification describes a Team batch but does not define a proven ma
 Prefer the existing Thread, Hypothesis, ConfidenceChange, Task, and Event records. In particular:
 
 - Do not add a dedicated `decay_task_id` column merely to duplicate the generic Task attribution already present on ConfidenceChange.
-- Do not add a new age/streak column if the existing `last_touched_at` plus deterministic ConfidenceChange idempotency keys can prove correct reset, catch-up, and replay behavior.
+- Do not add a new age/streak column if `last_touched_at` plus deterministic per-window keys prove correct reset, catch-up, and replay behavior.
+- Expect a minimal partial unique index for cross-Task decay-step idempotency unless an equally strong database-enforced alternative is demonstrated; the current Task-scoped unique constraint is not sufficient by itself.
+- Use the existing Task UUID primary key for deterministic Task-creation identity if golden-vector and concurrent-creation tests validate the proposed UUIDv5 scheme; add no generic idempotency column by default.
 - Do not add Thread embeddings, new Domain policy subsystems, or a scheduler/runtime as part of RW-5.
 - A no-migration conclusion is valid only after database-backed tests prove the existing constraints enforce the contract. If a required uniqueness or integrity invariant is not enforceable, propose the smallest migration explicitly rather than relying on application prechecks.
 
