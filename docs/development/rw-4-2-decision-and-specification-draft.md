@@ -130,7 +130,7 @@ The UUIDv5 namespace must be dedicated to RW4 triage and versioned in source/doc
 - canonical Team UUID;
 - canonical Signal UUID.
 
-The canonical name template is exactly `triage_identity_v1|triage_signal|team:<team-uuid>|signal:<signal-uuid>`, with lowercase canonical UUID text and no whitespace. The dedicated RW4 namespace UUID is a separate frozen contract constant; do not reuse the RW-3 `update_thread` namespace. Both constants must be recorded in the accepted spec before implementation. A golden test must pin the resulting UUID for fixed Team/Signal inputs so namespace or encoding drift fails visibly.
+The canonical name template is exactly `triage_identity_v1|triage_signal|team:<team-uuid>|signal:<signal-uuid>`, with lowercase canonical UUID text and no whitespace. The dedicated RW4 namespace UUID is a separate frozen contract constant; do not reuse the RW-3 `update_thread` namespace. Both constants must be recorded in the accepted spec before implementation. A golden test must pin the resulting UUID for fixed Team/Signal inputs so namespace or encoding drift fails visibly. The proposed golden vector is Team `00000000-0000-4000-8000-000000000001`, Signal `00000000-0000-4000-8000-000000000002`, expected Task ID `5b45ed53-a50f-51e8-ba81-ce52512aa922` under the proposed namespace above. Treat this vector and namespace as proposed draft constants until D2 is accepted.
 
 The Task ID is independent of requester identity, policy version, matcher/embedding/chunking pins, Team revision watermark, and retry attempt. Pins belong in the request fingerprint and conflict on mismatch; they are not part of identity. Reusing the same Signal/Team pair in the first generation derives the same Task ID even if the caller or pins differ; identical pins replay, while changed pins return a conflict against that same canonical identity.
 
@@ -267,7 +267,7 @@ Exact test node IDs are to be added after the implementation plan is reviewed. T
 | RW42-AUTH-02 | Exact Team/action grant required | Missing, wrong-Team, wrong-action, ambiguous grant rejected |
 | RW42-AUTH-03 | Caller cannot establish Team authority from request body | Request has no authoritative Team field; grant and canonical DB state determine Team |
 | RW42-AUTH-04 | Every replay caller independently authorized | Unauthorized caller cannot learn/resolve existing Task |
-| RW42-SCOPE-01 | Canonical Signal/Team scope | Missing Signal/Team, inactive Team, domain mismatch fail closed |
+| RW42-SCOPE-01 | Canonical Signal/Team/source scope | Missing Signal/Team, inactive Team, domain mismatch, missing source allowlist entry, or any non-exact persisted `origin_url`/`source_type` pair fail closed; exact match passes, while scheme, host-case, path-case, and trailing-slash variants do not match |
 | RW42-ID-01 | Canonical Task identity | Stable UUIDv5 across process restart; Team/Signal/task type/identity-version separation; golden UUID for fixed inputs; recompute-and-compare on every Task load/replay |
 | RW42-ID-02 | Database uniqueness | PostgreSQL primary-key conflict arbitrates concurrent same-pair creation |
 | RW42-REQ-01 | Atomic Task/request Event | Commit both or neither; exactly one request Event |
