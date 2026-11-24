@@ -152,7 +152,7 @@ Proposed payload fields (exact schema and canonical serialization to be frozen b
 - `signal_id`
 - `signal_snapshot_ref`
 - `signal_content_hash`
-- `as_of` (raw database timestamp captured under the canonical Team lock)
+- `as_of` (the result of PostgreSQL `SELECT clock_timestamp()` captured after acquiring the canonical Team lock; application time, `now()`, and `CURRENT_TIMESTAMP` are prohibited)
 - `team_revision_watermark` (captured under that same lock)
 - `policy_version`
 - `matcher_id`
@@ -177,7 +177,7 @@ Proposed transaction behavior:
 1. Validate the typed request and principal, then resolve the exact Team grant and canonical Signal/Team identifiers. These preliminary reads do not establish the policy/pin snapshot and must be revalidated under lock.
 2. Begin the transaction and acquire the Team row with `FOR NO KEY UPDATE` through the canonical RW-5 lock helper. No Task row exists yet, so Team is the first lock; do not acquire child locks because Task creation does not mutate Thread/Hypothesis rows.
 3. Under the Team lock, reload and revalidate Team status/domain, Signal source eligibility, the selected immutable TeamPolicy, and the code-owned immutable matching-pin declaration. Fail closed if any value is missing, malformed, or no longer eligible.
-4. Capture raw database `as_of` and the current Team revision watermark under that same lock. These are immutable first-writer Task/request-basis values, not values to be fabricated later by RW4-3.
+4. Capture `as_of` by executing PostgreSQL `SELECT clock_timestamp()` after the Team lock is held, and capture the current Team revision watermark under that same lock. Store the returned `timestamptz` as the immutable first-writer cutoff. Application clocks, PostgreSQL `now()`/`CURRENT_TIMESTAMP` (transaction-start time), `Task.created_at`, and caller-supplied timestamps are not substitutes. RW4-3 later captures/revalidates a separate current watermark; it never overwrites this creation-time cutoff.
 5. Derive the canonical Task UUID and semantic request fingerprint from the validated identity, policy, Signal snapshot/content identity, and matching pins. Do not include the newly sampled `as_of` or Team revision watermark in replay-equivalence calculation.
 6. Attempt to insert the pending Task with the exact Task envelope and no Objective/Plan/PlanAction links.
 7. Only the transaction that wins Task insertion writes `triage_signal_requested`.
@@ -206,6 +206,23 @@ The implementation must use a PostgreSQL-safe conflict/race strategy that leaves
 
 RW4-2 does not create SignalDisposition. RW4-1 must separately enforce one disposition per `(signal_id, team_id)`. A disposition uniqueness constraint does not replace canonical Task uniqueness, and Task uniqueness does not replace disposition uniqueness.
 
+## 4.7 Canonical-pair uniqueness boundary — explicit residual decision
+
+The UUIDv5 Task primary key guarantees that two inserts using the correct canonical UUID cannot create two rows. It does **not** independently prevent a different internal writer from inserting a `triage_signal` Task with a different UUID for the same `(signal_id, team_id)`, because the current Task schema has no persisted Signal/identity-version columns or pair-level unique constraint. The v1 application guarantee therefore depends on one narrow creator being the only supported `triage_signal` Task writer, with every creation path routed through it and every load recomputing the canonical UUID.
+
+Before implementation authorization, the Operator must explicitly choose one of these boundaries:
+
+- **Single-creator v1 (recommended minimal scope):** accept the application-level single-writer invariant, prohibit alternate Task insertion paths, and test/source-audit that all `triage_signal` creation uses the canonical creator. No Task schema migration is added.
+- **Database-enforced pair uniqueness:** add a persisted canonical identity representation and a unique database constraint for `(team_id, signal_id, identity_version)` (or an equivalent dedicated identity table/FK). This requires a migration and changes the current no-migration assumption; do not implement without explicit scope approval.
+
+Do not describe the Task primary key as enforcing arbitrary pair-level uniqueness. The choice does not change the UUIDv5 namespace, name, golden vector, or v1 identity semantics.
+
+## 4.8 Request-Event exact-one enforcement — explicit residual decision
+
+The current Event schema has no unique constraint for one `triage_signal_requested` Event per Task. The transaction protocol writes the Event only in the transaction that wins Task insertion, and replay validates exactly one Event; this is an application/transaction guarantee, not a database-enforced cardinality guarantee.
+
+Before implementation authorization, the Operator must decide whether that bounded single-creator transaction guarantee is sufficient, or whether to add a PostgreSQL partial unique index on `Event.task_id` for `type = 'triage_signal_requested'` (with the corresponding migration and duplicate-history preflight). Do not claim database-enforced exact-one Event semantics unless that constraint is added and tested. This decision does not alter Task identity.
+
 ## 5. Proposed Task envelope
 
 The following is a draft contract, not a frozen implementation instruction. The Task creator captures the applicable Team revision watermark while holding the canonical RW-5 Team lock, and stores it with the immutable Task request basis as required by the accepted Task envelope. RW4-3 must reacquire the same canonical lock chain and revalidate current Team, policy, Signal, and candidate state before matching/commit; it must not treat the creation-time watermark as proof that later state is unchanged.
@@ -216,9 +233,9 @@ The following is a draft contract, not a frozen implementation instruction. The 
 - `status = "pending"`
 - `objective_id = plan_id = plan_action_id = NULL`
 - `max_attempts`: use the existing ordinary Task default unless a specific RW4 proof justifies a different value
-- `allowed_writes`: no model/worker business writes; the exact value must be reconciled with the Task matrix's distinction between worker grants and Kernel-managed effects
+- `allowed_writes = []`: the Task has no model/worker business-write grant. Its later SignalDisposition effect, if accepted, is a narrowly specified Kernel-managed effect and is never added to worker `allowed_writes`.
 - `budget`: zero model/tool cost for this deterministic application operation; no provider call is part of RW4-2
-- `as_of`: raw database timestamp captured under the canonical Team lock
+- `as_of`: PostgreSQL `SELECT clock_timestamp()` result captured after acquiring the canonical Team lock
 - `team_revision_watermark`: current Team revision captured under the same lock and pinned in the immutable Task request basis
 - Task creation and request Event are application-managed; subsequent lifecycle remains exclusively TaskRuntime-owned
 
@@ -226,11 +243,18 @@ The creator does not transition the Task to running, create an Outcome, execute 
 
 ## 6. TeamPolicy and lock-order boundary
 
-**Implementation sequencing constraint:** RW4-2 specification/review may proceed now, but the Task creator must not be implemented or enabled until the separately authorized canonical RW-5 lock helper exists and is used by the triage creator. The helper implementation and its PostgreSQL lock tests are a prerequisite, not an optional follow-up. Do not implement a local substitute or reorder the runtime path to avoid this dependency. The roadmap must place canonical-helper delivery before enabling the RW4-2 creator, even if D1/D2 specification decisions are completed first.
+**Implementation sequencing constraint:** RW4-2 is split into two non-overlapping stages to preserve the approved serial stream without violating RW-5. Stage A is this decision/specification work: accept D1/D2 and freeze the creator contract, but do not create production code. Stage B (creator implementation) is deferred until after RW4-1 persistence and the separately authorized RW-5 canonical lock-helper/Team-revision/writer retrofit have landed with their required PostgreSQL proofs. The sequence is therefore RW4-2 design/decision → RW4-1 → RW-5 helper/retrofit → RW4-2 creator implementation → RW4-3. This is a sequencing clarification, not permission to run parallel production streams. No bespoke or temporary helper is permitted.
 
-A new Task must pin one exact TeamPolicy version. The creator must not silently substitute a newer policy during replay and must fail closed if the pinned policy/request evidence is invalid.
+A new Task must pin the current immutable TeamPolicy selected under the Team lock. The current policy is the row with the greatest `version` for that Team, matching the repository's existing Task-creation selection convention. TeamPolicy versions are immutable and unique per Team/version. If no policy exists, or the greatest-version row is malformed, unsupported, or lacks a valid `rules["sources"]` allowlist, fail closed; do not fall back to an older version. On replay, validate the Task's original pinned version and request Event; do not silently substitute the newest policy or compare the original pin to a newly advanced version.
 
-The repository has no production TeamPolicy publisher. The creator reads the Team and selected immutable TeamPolicy to establish eligibility and pin the policy version, but it must do so inside the canonical RW-5 serialization boundary: because the Task row does not yet exist, Task creation begins by acquiring the Team row with `FOR NO KEY UPDATE` through the one canonical lock helper. Under that lock it revalidates the Team and selected immutable TeamPolicy, captures raw database `as_of` and the Team revision watermark, derives/validates the immutable request basis, and inserts the Task plus exactly one request Event atomically. It then commits without acquiring child Thread/Hypothesis locks because Task creation does not mutate those rows. This creator is therefore a lock-protected writer for serialization purposes, although it does not mutate world-memory records. It must not use a bespoke Team lock, a temporary lock protocol, or a second helper. The same canonical helper is shared by decay and triage under RW-5 §4.6. The absence of a production TeamPolicy publisher does not remove the lock requirement: any future publisher or same-Team protected writer must serialize against this creator. RW4-3 still reacquires the canonical lock chain and revalidates current eligibility immediately before matching/commit.
+The repository has no production TeamPolicy publisher. The creator uses the same canonical RW-5 helper as decay and triage; it does not invent a second lock protocol. The helper exposes two paths:
+
+- **First-creation path:** after deriving the canonical Task ID and a non-locking existence probe, if no Task is present, begin the creation transaction and acquire Team `FOR NO KEY UPDATE` first. Under that lock, re-read the Task by canonical ID and revalidate Team, Signal eligibility, current TeamPolicy, and matching pins. If it remains absent, capture `as_of` with PostgreSQL `SELECT clock_timestamp()`, capture the Team revision watermark, then atomically insert the Task and its one request Event. No Thread/Hypothesis locks are taken because creation does not mutate those rows.
+- **Existing-Task replay path:** if the preflight probe finds a Task, begin a replay transaction and acquire Task `FOR UPDATE` first, then Team `FOR NO KEY UPDATE`, through the canonical helper. Reload and validate the Task and its request Event while both locks are held. Replay is read-only; it does not rewrite the Task, Event, or first-writer cutoff.
+
+A concurrent creator can pass the initial absent probe while another transaction wins. If, after acquiring Team on the first-creation path, the fresh Task lookup finds that winner, the losing transaction must roll back/release its Team lock and restart through the existing-Task replay path (Task `FOR UPDATE` → Team `FOR NO KEY UPDATE`). It must not acquire Task after Team in the same transaction. This retry is bounded to the single canonical identity and cannot create a replacement Task/Event. The Team lock serializes first creators; the Task lock fences existing-Task replay in the accepted RW-5 order. Every caller is independently authorized before the replay result is disclosed.
+
+The creator is a lock-protected writer for serialization purposes, although it does not mutate world-memory records. It must not use a bespoke Team lock, a temporary lock protocol, or a second helper. The same canonical helper is shared by decay and triage under RW-5 §4.6. The absence of a production TeamPolicy publisher does not remove the lock requirement: any future publisher or same-Team protected writer must serialize against this creator. RW4-3 still reacquires the canonical lock chain and revalidates current eligibility immediately before matching/commit.
 
 ## 7. Matching-pin shape, source, and stale-Task fate
 
@@ -292,14 +316,15 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 
 ## 10. Implementation sequence after decision acceptance
 
-1. Accept D1/D2 and resolve §7 pin sources.
-2. Freeze the exact adapter/request/principal types and Task/Event schema.
-3. Freeze the RW4-2 requirement-to-test subset and verify lock-order compatibility with the accepted RW-5 contract.
-4. Obtain explicit Operator authorization for RW4-2 implementation.
-5. Implement the narrow creator/replay path test-first, reusing existing principal validation and TaskRuntime contracts; no new framework.
-6. Run focused tests, Ruff, Mypy, full suite, and disposable PostgreSQL migration/concurrency/rollback tests.
-7. Obtain one named independent review from someone other than the implementation author.
-8. Reconcile `PLAN.md` and the authoritative Task/architecture documents only after the implementation and evidence are accepted.
+1. Complete D1/D2 decision review and accept the creator contract; resolve the two explicit database-enforcement choices in §§4.7–4.8 before implementation authorization.
+2. Keep this PR documentation-only. Do not implement or enable the Task creator in this stage.
+3. Proceed to RW4-1 persistence only after its independent D3/D5 gate, reviewed proof subset, and explicit authorization.
+4. Proceed to the separately authorized RW-5 canonical lock-helper/Team-revision/writer retrofit and prove the helper on real PostgreSQL.
+5. Return to RW4-2 creator implementation only after RW4-1 and the RW-5 helper/retrofit have landed; freeze the exact adapter/request/principal types and Task/Event schema, then obtain separate implementation authorization.
+6. Implement the narrow creator/replay path test-first, using the canonical helper paths in §6; no new framework or bespoke lock implementation.
+7. Run focused tests, Ruff, Mypy, full suite, and disposable PostgreSQL migration/concurrency/rollback tests on the exact tested head.
+8. Obtain one named independent review from someone other than the implementation author.
+9. Reconcile `PLAN.md` and the authoritative Task/architecture documents only after implementation and evidence are accepted.
 
 ## 11. Decision record — awaiting Operator disposition
 
@@ -311,7 +336,7 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 | D2 disposition uniqueness | Separate unique `(signal_id, team_id)` constraint in RW4-1 | Deferred to RW4-1 |
 | D2 matching-pin shape / D4a | Freeze strict schema-v1 object and canonical content hash; all four values are code-owned in the first release; TeamPolicy remains unchanged | Shape and ownership proposed; actual values deferred to D4b |
 | D2 re-triage | One identity generation only; terminal failure and pin change do not create a replacement; later generations require a separately approved identity version | Proposed; not accepted |
-| D2 execution watermark | Capture Team revision under RW-5 lock at execution, not Task creation | Proposed; RW4-3 dependency |
+| D2 execution watermark | Capture the immutable Task-creation Team revision watermark under the canonical Team lock; RW4-3 separately captures/revalidates the current watermark under the execution lock chain without overwriting the creation cutoff | Proposed; RW4-3 dependency |
 | RW4-2 implementation | Requires accepted D1/D2, reviewed proof subset, lock-order compatibility, and explicit authorization | Not authorized |
 
 **No implementation authorization is requested or implied by PR #183 or this draft.**
