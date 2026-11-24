@@ -1,7 +1,7 @@
 # RW-4 Readiness and Delivery Plan
 
 **Status:** Active staged-delivery baseline. The 2026-11-24 RW3.4 sequencing exception is recorded; no individual production slice is blanket-authorized.
-**Planning baseline:** `main` at `d9589fbcf4f720212ef398cae0d850e5854fdb91` (PR #180 merge; 2026-11-24).
+**Planning baseline:** `main` at `5aecf096b077ab34bc7c8fb09cb750a59a19c335` (PR #181 merge; 2026-11-24).
 **Status authority:** `PLAN.md` remains the only authority for milestone status and authorization. This document owns the dependency-aware RW-4 readiness checklist and delivery sequence.
 **Sequencing decision:** [RW-4/RW-5 sequencing decision](rw-4-rw-5-sequencing-decision.md) records the 2026-11-24 exception and RW-5-first order.
 **Scope:** Reconcile the evidence audit in PR #175, the bounded RW4-0 proposal in PR #174, the minimal matching proposal in PR #176, the RW-4 design plan, Task specifications, and architecture.
@@ -10,15 +10,16 @@
 
 The Operator's 2026-11-24 sequencing exception satisfies the overall RW3.4 sequencing gate while preserving formal acceptance as deferred and all seven PARTIAL qualifications. RW4-0 remains open. PR #176 is a merged design proposal, not acceptance of its experimental matcher or closure of D1–D6. No individual RW-4 slice is blanket-authorized: each must satisfy its own prerequisites, independently reviewed proof subset, and explicit Operator authorization. PR #175's evidence findings are incorporated here; its audit branch is closed and is not a current baseline.
 
-The delivery path has four work classes:
+The delivery path is deliberately serial to keep one implementation stream under review at a time:
 
-1. **RW-5 shared contract first:** settle the common clock/as-of, decay-window, locking, revalidation, race, and replay contract that RW4 reactivation will consume.
-2. **Independently gated RW-4 slices:** RW4-1 and RW4-2 may progress once their D3/D5 and D1/D2 gates are accepted; they do not wait for all of RW-5.
-3. **RW-5 implementation and proof:** proceed under its own reviewed requirements and explicit authorization, using the existing TaskRuntime.
-4. **RW4-3 without reactivation:** matching/commit may proceed when D4/C1/D5 are accepted; dormant candidates remain deferred until D6 is accepted.
-5. **RW4-4 and foundation exit:** Context retrieval remains separately gated; integrate reactivation, decay, post-decay retrieval, RW4-KU, Experiment A, RWN-01, and formal acceptance before R8.
+1. **RW-5 shared contract freeze:** review the [RW-5 shared clock, decay, and locking proposal](rw-5-shared-contract-proposal.md), including the seven-row RW3.4 residual mapping.
+2. **RW-5 implementation and proof:** separately authorize the deterministic decay Task boundary and TaskRuntime/Kernel execution. Periodic scheduler/host invocation remains a separate RW5-P integration gate.
+3. **RW4-1 persistence:** begin only after RW-5 implementation is reviewed/closed and RW4-1's D3/D5 gates, proof subset, and explicit authorization are satisfied.
+4. **RW4-2 Task boundary:** follow RW4-1 as the next single implementation stream, with D1/D2 gates, proof subset, and explicit authorization.
+5. **RW4-3 without reactivation:** matching/commit may proceed when D4/C1/D5 are accepted; dormant candidates remain deferred until D6 is accepted.
+6. **RW4-4 and integrated proof:** Context retrieval remains separately gated; later integrate authorized reactivation, decay, post-decay retrieval, RW4-KU, Experiment A, RWN-01, and formal acceptance before R8.
 
-Do not require all of RW-5 to finish before starting RW-4. The recommended order is RW-5 shared contract first, then RW4-1/RW4-2 and RW-5 implementation in parallel as their gates permit. The shared timestamp, revalidation, and concurrency contract is required before RW4 implements dormant-Thread reactivation; both slices are required for integrated proof.
+This serial order is the Operator's review-load constraint; it does not make RW4-1/RW4-2 technically dependent on RW-5 or alter their individual gates. The shared timestamp, revalidation, and concurrency contract is required before RW4 implements dormant-Thread reactivation. No implementation slice starts without explicit authorization.
 
 ## 2. Current evidence baseline
 
