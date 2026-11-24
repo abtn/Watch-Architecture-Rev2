@@ -13,7 +13,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    if: github.event_name == 'pull_request'
+    name: Detect code changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Check out the exact commit
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Classify changed paths
+        id: filter
+        shell: bash
+        run: |
+          git diff --name-only "origin/${GITHUB_BASE_REF}...HEAD" > "$RUNNER_TEMP/changed-files"
+          if grep -Eqv '(^docs/|\.md$)' "$RUNNER_TEMP/changed-files"; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   verify:
+    if: >-
+      always() &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true')
+    needs: [changes]
     name: postgres, static checks, tests
     runs-on: ubuntu-latest
     timeout-minutes: 20

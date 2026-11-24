@@ -23,6 +23,30 @@ uv run alembic upgrade head
 
 Use commands supported by `pyproject.toml` and the current repository environment. Report exact commands and outcomes; do not infer success from inspection.
 
+## Current verification baseline after RW-5 contract merge — 2026-11-24
+
+- PR #182 exact tested head: `1f41c4d0a8a9408612dea802b87d5952a76981e4`; hosted CI [run #45398352689](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45398352689) passed the fresh PostgreSQL migration/head checks, Ruff, Mypy, patch-whitespace check, and full suite: **1,311 passed, 130 warnings**.
+- PR #182 merge: `183c0307c04dad0aa31dfbfb1e268d5595521e81`. Its merge commit has the same Git tree as the tested PR head. Post-merge `main` CI [run #45400238332](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45400238332) completed successfully on that exact merge commit.
+- The earlier PostgreSQL spike revision `5e9a64054e151736a813bb3cb0749126ffa59613` had four clock-health test cases (one singleton-lock test and three parameterized incident-latch cases). The final spike removes those four and adds one `FOR NO KEY UPDATE` FK-lock-inversion completion test. The net suite change is therefore **−3**, matching the earlier 1,314 and current 1,311 totals. This is test removal/addition accounting, not an unexplained coverage loss.
+- The 130 warnings are the existing Alembic `path_separator` deprecations. The 77-warning B2 result is a valid historical result for its then-smaller 806-test suite; it is not the current warning baseline.
+- PostgreSQL execution evidence is specifically PostgreSQL 16 using `pgvector/pgvector:pg16`. No different production PostgreSQL major version is established by repository configuration.
+
+### Programmer-local disposable PostgreSQL loop
+
+From the repository root in PowerShell:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+uv sync --locked
+.\scripts\test-disposable-postgres.ps1
+```
+
+The script starts a uniquely named disposable `pgvector/pgvector:pg16` container on a dynamically assigned loopback port, migrates that database to the sole Alembic head, runs Ruff, Mypy, and the full pytest suite, then removes the container. It captures both the presence and exact value of `DATABASE_URL`, `TEST_DATABASE_URL`, and `PGPASSWORD`, restores them in a `finally` block, and verifies the restoration. It does not target the persistent `watch` database.
+
+**Programmer-local verification — PR #183 exact head:** branch `housekeeping-local-ci-and-rw4-sequence-20261124`, HEAD `89d217be8395a06a45151907dc00963be6f212b5`. The Programmer ran this wrapper on the exact head. A fresh disposable `pgvector/pgvector:pg16` container was created on a dynamically assigned loopback port; `uv run alembic upgrade head` and Alembic current/sole-head checks passed; Ruff passed; Mypy passed with no issues in 42 source files; the full suite passed (**1,311 passed, 130 warnings in 380.11s**). The wrapper removed the disposable container and verified exact restoration of `DATABASE_URL`, `TEST_DATABASE_URL`, and `PGPASSWORD`. The final PowerShell exit-code check also passed. The 130 warnings are existing Alembic `path_separator` deprecations in migration tests.
+
+**Hosted exact-head verification:** GitHub Actions [run #45420308303](https://github.com/abtn/Watch-Architecture-Rev2/actions/runs/45420308303) completed successfully on the same exact head. Fresh PostgreSQL migration/head checks, Ruff, Mypy, patch whitespace, and the full suite (**1,311 passed, 130 warnings in 246.93s**) passed. This evidence supersedes the earlier failed restoration assertion on PR #169 and the absence of local verification on PR #178; those historical records remain unchanged.
+
 ## Current RW-3 status
 
 RW3.1–RW3.3 are formally accepted and merged. RW3.4 implementation and corrective recovery behavior are merged through PRs #152, #163, #165, #167, #169, and #178; documentation reconciliation PRs #168 and #170 are merged. The 35-row ledger remains **28 PASS / 7 PARTIAL / 0 OPEN**. PR #169's exact-head hosted CI passed with 1,296 tests and Programmer-local verification passed 163 focused and 1,296 full tests, Ruff, Mypy, and disposable PostgreSQL phases; its final environment-restoration assertion failed, so exact restoration is not claimed. PR #178's exact-head hosted CI passed with 1,303 tests; no Programmer-local verification was performed on #178. Formal RW3.4 Operator acceptance is **deferred**, not pending. Live provider authorization remains closed; deterministic fake providers only. Current milestone status and authorization are owned by [PLAN.md](../PLAN.md).
