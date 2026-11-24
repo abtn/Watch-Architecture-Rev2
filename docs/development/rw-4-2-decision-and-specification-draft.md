@@ -362,11 +362,12 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 8. Obtain one named independent review from someone other than the implementation author.
 9. Reconcile `PLAN.md` and the authoritative Task/architecture documents only after implementation and evidence are accepted.
 
-## 11. Decision record — D1 accepted; D2 pending Operator disposition
+## 11. Decision record — D1 accepted; D2 partially accepted
 
 | Decision | Recommendation | Status |
 |---|---|---|
 | D1 Task-creation authority and trusted invocation | Control Room is the sole application Task-creation authority; typed principal and exact Team/`triage_signal` grant; only `active` Teams; host authentication required before production use and scheduled after R8 test; URL normalization deferred until after R8 test (exact matching meanwhile); greatest-version TeamPolicy under Team lock, fail closed | Accepted 2026-11-24 |
+| D2 canonical UUIDv5 Task identity | Use UUIDv5 directly as `Task.id`; identity version `triage_identity_v1`; namespace `383bbdde-37be-4895-8fb7-1afa196b5cf7`; canonical name `triage_identity_v1|triage_signal|team:<team-uuid>|signal:<signal-uuid>`; accepted golden vector Team `00000000-0000-4000-8000-000000000001` + Signal `00000000-0000-4000-8000-000000000002` → Task `5b45ed53-a50f-51e8-ba81-ce52512aa922` | **Accepted — 2026-11-24** |
 | D2 Task-schema uniqueness migration | Persist `signal_id` and `identity_version` on triage Tasks; require them for `triage_signal`; database unique constraint on `(team_id, signal_id, identity_version)` | **Accepted — 2026-11-24** |
 | D2 requester semantics | Requester is immutable first-request provenance, excluded from semantic request fingerprint; every replay caller independently authorized | Proposed; not accepted |
 | D2 disposition uniqueness | Separate unique `(signal_id, team_id)` constraint in RW4-1 | Deferred to RW4-1 |
