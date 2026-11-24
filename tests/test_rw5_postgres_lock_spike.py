@@ -126,7 +126,7 @@ def test_fk_lock_inversion_reproduces_deadlock(
     database_engine: Engine,
     spike_schema: str,
 ) -> None:
-    """Negative control: child-first FK locking plus Team-first FOR UPDATE forms a cycle.
+    """Negative control: child-first FK locking plus Team-first FOR UPDATE cycles.
 
     FOR UPDATE is stronger than the proposed helper mode; this is not evidence
     that the FOR NO KEY UPDATE helper sequence deadlocks.
