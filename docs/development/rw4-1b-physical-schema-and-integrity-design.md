@@ -55,6 +55,7 @@ Recommended row-level constraints:
 - Unique (team_id, signal_id).
 - CHECK for the exact three disposition values.
 - CHECK for the complete D5.2 nullability/reference matrix.
+- CHECK requiring `identity_version = 'triage_identity_v1'`.
 - CHECK rejecting duplicate_of_signal_id = signal_id.
 - CHECK restricting deferred reason to the six accepted D5.3 codes and requiring NULL otherwise.
 - FK team_id → teams.id.
@@ -157,7 +158,7 @@ Recommendation:
 
 The current Task schema lacks persisted signal_id and identity_version. The accepted [D2 identity contract](https://github.com/abtn/Watch-Architecture-Rev2/issues/186) requires both, unique (team_id, signal_id, identity_version), and recomputation of the canonical UUIDv5 Task ID from persisted request data.
 
-A composite FK to (tasks.id, tasks.team_id) proves same-Team Task ownership, not that this is the canonical Task for this Signal. The disposition must carry `identity_version='triage_identity_v1'` and reference the four-column Task key `(id, team_id, signal_id, identity_version)`. The separate D2 migration must create a unique support key on those four Task columns in addition to the accepted unique `(team_id, signal_id, identity_version)` identity key, then install the deferred composite FK from SignalDisposition. This is a separately versioned D2-dependent migration step, not a change to the RW4-1 initial migration. There is no acceptable caller-supplied, request-Event-only, or unpersisted transitional substitute for the accepted D2 identity contract.
+A composite FK to (tasks.id, tasks.team_id) proves same-Team Task ownership, not that this is the canonical Task for this Signal. The disposition must carry `identity_version='triage_identity_v1'` and reference the four-column Task key `(id, team_id, signal_id, identity_version)`. The separate D2 migration must create a unique support key on those four Task columns in addition to the accepted unique `(team_id, signal_id, identity_version)` identity key, then install the composite FK from SignalDisposition. This is a separately versioned D2-dependent migration step, not a change to the RW4-1 initial migration. There is no acceptable caller-supplied, request-Event-only, or unpersisted transitional substitute for the accepted D2 identity contract.
 
 Required boundary:
 - Do not add D2 columns/indexes in the RW4-1 disposition migration.
@@ -269,17 +270,17 @@ The immutable observation Snapshot is stored outside PostgreSQL. A failed DB tra
 | Migration | Fresh disposable DB; upgrade from current head; one head/current; injected DDL failure | Correct schema; rollback leaves no partial objects; linear history. |
 | Row checks | Every valid D5 matrix row; every invalid/null combination; unknown disposition/reason; self-duplicate | Valid rows accepted; invalid rows rejected by PostgreSQL. |
 | Uniqueness | Same Team/Signal twice; same Signal in two Teams; concurrent same-pair insert | One row per pair; cross-Team rows independent; exactly one concurrent winner. |
-| FK ownership | Missing Signal/Team/Thread/Task; cross-Team Thread/Task | FK rejection; no cascading history deletion. |
+| FK ownership | Missing Signal/Team/Thread/Task; cross-Team Thread; Task has same Team but different Signal; wrong identity_version; missing D2 composite key | FK rejection; no cascading history deletion; disposition cannot point at a different same-Team triage Task. |
 | Provenance | Exhaustive historical intake Event preflight; missing/malformed Event; wrong Task Team; Signal/Snapshot/hash mismatch; domain mismatch; UPDATE/DELETE or Event-type rewrite; Signal/Task/Team identity mutation; runtime-role trigger bypass attempt; migration-first and writer-first table-lock interleavings | Migration aborts on bad historical rows; invalid new Events/mutations rejected by PostgreSQL; runtime cannot bypass protections; migration and writers serialize without deadlock or preflight gap. |
 | Ingestion reuse regression | fetch_no_change, ON CONFLICT winner, and prior_outcome replay with cross-domain Signal reuse | All three rejected for RW4-1 eligibility; ingestion correction, if any, remains separately scoped. |
 | Thread | Wrong Team/domain; resolved; active; dormant without RW4-5; both lock interleavings against lifecycle writers | Invalid candidates rejected; active allowed only after RW-5 helper/retrofit and two-session serialization proof; dormant defers without reactivation. |
 | Duplicate | Cross-Team target; different hash; noncanonical target; same hash but D4.1a winner unavailable | No duplicate disposition until canonical proof is available. |
-| Task identity | Wrong Task type/Team/Signal/identity; malformed or duplicate request Event; canonical UUID mismatch | Fail closed; D2 migration is prerequisite for persisted identity check. |
+| Task identity | Wrong Task type/Team/Signal/identity; mismatched disposition Task/Signal tuple; malformed or duplicate request Event; canonical UUID mismatch; absent D2 support key/FK | FK or TaskRuntime validation rejects; D2 migration is prerequisite for persisted identity check. |
 | Immutability | UPDATE and DELETE under actual runtime role; privileged path if applicable | Mutation rejected by selected DB enforcement. |
 | Timestamp | Omitted timestamp; explicit caller timestamp; repeat read | PostgreSQL assigns stable timestamp; caller-supplied value is ignored/rejected by the selected enforcement mechanism. |
 | Atomic success | Matched and deferred paths; duplicate only after D4.1a gate | Disposition + Outcome + Task + terminal Event commit together. |
 | Atomic rollback | Inject failure after disposition insert and before Outcome/Event/Task terminalization | No DB row from terminal bundle survives. |
-| Replay | Exact replay; corrupt/missing disposition; corrupt Outcome/Event/Task state | Exact replay read-only; inconsistency fails closed. |
+| Terminal evidence/replay | Exact JSON member/version; UUID casing; null-versus-omitted fields; extra keys; invalid D5 matrix; Event payload key/value mismatch; Outcome/Snapshot mismatch; Task.completed_at mismatch; duplicate/missing terminal Event | Canonical serialization is deterministic; exact replay is read-only; every mismatch fails closed. |
 | Concurrency | Two concurrent same-Team ingestions both holding Team FOR SHARE before Event trigger; conflicting Team.domain/Signal identity update; migration-first and writer-first preflight locks; concurrent disposition inserts; triage-first and lifecycle-first Team/Thread lock interleavings | No SHARE→NO KEY UPDATE upgrade/deadlock; identity update waits or is rejected; preflight has no write gap; unique disposition winner; active Thread remains eligible through commit. Use real PostgreSQL sessions and record blocking/commit order. |
 | Boundaries | No Signal/Thread/EvidenceLink business mutation; no new Task/dispatcher path; no RW-5 helper/revision/decay implementation or RW4-5 reactivation inside RW4-1 | No out-of-scope writes. Later write-enable proof consumes the already-implemented RW-5 helper; it does not implement it. |
 
