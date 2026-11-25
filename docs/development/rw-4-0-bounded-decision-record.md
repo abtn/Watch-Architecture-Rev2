@@ -1,15 +1,15 @@
 # RW4-0 — Bounded triage decision record
 
-**Status:** D1/all six D2, D3-A/B/C, and D4.1/D4.1a/D4.2/D4.3 are accepted. D4 evidence/design closure remains open; D5 and D6 remain separate Operator decisions. No implementation is authorized by this record.
+**Status:** D1/all six D2, D3-A/B/C, D4.1/D4.1a/D4.2/D4.3, and D5.1–D5.4 are accepted. D4 evidence/design closure and D6 remain open. No implementation is authorized by this record.
 
-> **Current reconciliation (2026-11-25):** D4.1/D4.1a/D4.2/D4.3 are accepted. Exact raw-hash duplicate scope is same-Team regardless of origin, with the first committed Team/hash Signal canonical; the narrow existing-Thread matcher shape is accepted but maximum-pairwise similarity remains experimental and its numeric parameters/query-cost evidence are open; automatic Thread creation is disabled in v1. D5's disposition/reference matrix and D6 reactivation remain open. Follow the [RW-4 Readiness and Delivery Plan](rw-4-readiness-and-delivery-plan.md) for consolidated gates.
+> **Current reconciliation (2026-11-25):** D4.1/D4.1a/D4.2/D4.3 and D5.1–D5.4 are accepted. Exact raw-hash duplicate scope is same-Team regardless of origin, with the first committed Team/hash Signal canonical; the matcher shape is accepted but numeric parameters/query-cost evidence remain open; automatic Thread creation and noise classification are excluded. D5 freezes exactly three disposition values, the reference matrix, deferred reason codes, and TaskRuntime-owned atomic terminal evidence. D6 reactivation remains open. Follow the [RW-4 Readiness and Delivery Plan](rw-4-readiness-and-delivery-plan.md) for consolidated gates.
 ## RW4-2 D2 Operator decision — canonical Task identity (2026-11-24)
 
 **ACCEPTED:** use UUIDv5 directly as `Task.id` for `triage_signal`, with identity version `triage_identity_v1`. Frozen namespace: `383bbdde-37be-4895-8fb7-1afa196b5cf7`. Exact canonical name: `triage_identity_v1|triage_signal|team:<team-uuid>|signal:<signal-uuid>`, using lowercase canonical UUID text and no whitespace. Accepted golden vector: Team `00000000-0000-4000-8000-000000000001`, Signal `00000000-0000-4000-8000-000000000002`, expected Task ID `5b45ed53-a50f-51e8-ba81-ce52512aa922`.
 
 This is separate from the already accepted Task-schema requirement to persist `signal_id` and `identity_version` and enforce unique `(team_id, signal_id, identity_version)`. All six D2 decisions are design decisions only; no migration or creator implementation is authorized. Decisions 3–6 were accepted on 2026-11-24 and are summarized below.
 
-**Scope:** First, narrow `triage_signal` slice only. D1/all D2, D3-A/B/C, and D4.1/D4.1a/D4.2/D4.3 are accepted; D4 evidence closure, D5 disposition/reference decisions, and D6 reactivation remain separate gates. No implementation is authorized by this record.
+**Scope:** First, narrow `triage_signal` slice only. D1/all D2, D3-A/B/C, and D4.1/D4.1a/D4.2/D4.3 are accepted; D4 evidence closure and D6 reactivation remain separate gates; D5.1–D5.4 are accepted. No implementation is authorized by this record.
 **Current reconciliation baseline:** main after PR #190 squash merge `4d9c3f3b51cc8f3176aca4ab30b367cb4271686d` (2026-11-25). PR #184 is the earlier D1/D2 proposal baseline; historical proposal origins remain PRs #174 and #176. D3 decisions are recorded in [issue #189](https://github.com/abtn/Watch-Architecture-Rev2/issues/189); D4 decisions are recorded in [issue #191](https://github.com/abtn/Watch-Architecture-Rev2/issues/191).
 **Authority:** `PLAN.md` remains authoritative for milestone status and implementation authorization. Existing accepted ADRs, Task contracts, and write-scope matrix remain binding unless explicitly amended.
 
@@ -23,9 +23,9 @@ The intended first-slice boundary is:
 
 The model is not involved in triage. Triage does not create or enqueue `update_thread` Tasks.
 
-## 2. Accepted D1/D2/D3/D4 decisions and remaining D5/D6 proposals
+## 2. Accepted D1/D2/D3/D4/D5 decisions and remaining D6 proposal
 
-D1 and all six D2 decisions are accepted as recorded below. D3-A/B/C and D4.1/D4.1a/D4.2/D4.3 are accepted on 2026-11-25 and reconciled in §7. D4's policy shape is closed, but its canonical Team/hash persistence design and measured matcher evidence remain engineering gates. D5 and D6 require separate Operator decisions.
+D1 and all six D2 decisions are accepted as recorded below. D3-A/B/C and D4.1/D4.1a/D4.2/D4.3 are accepted on 2026-11-25 and reconciled in §7. D4's policy shape is closed, but its canonical Team/hash persistence design and measured matcher evidence remain engineering gates. D5 is accepted; D6 remains a separate Operator decision.
 
 ### D1 — Control Room is the single Task-creation authority
 
@@ -49,7 +49,7 @@ The accepted `triage_signal` operation has these boundaries:
 
 ### D2 — One canonical Task and disposition per Signal/Team pair
 
-**Accepted D2 identity/replay contract; adjacent disposition scope remains separate:** the first release has one canonical triage operation per `(signal_id, team_id)`, represented by one immutable `triage_signal` Task. D3 lifecycle semantics are accepted; SignalDisposition persistence/uniqueness remain assigned to RW4-1, and the complete allowed disposition vocabulary/reference matrix remains D5.
+**Accepted D2 identity/replay contract; adjacent disposition scope remains separate:** the first release has one canonical triage operation per `(signal_id, team_id)`, represented by one immutable `triage_signal` Task. D3 and D5 business semantics are accepted; SignalDisposition persistence/uniqueness remain assigned to RW4-1 and require a reviewed physical design.
 
 Keep these identities distinct:
 
@@ -79,7 +79,7 @@ D3-A/B/C are accepted. Signal has no lifecycle/status column; eligibility derive
 
 TaskRuntime remains the sole lifecycle authority. `pending` and `running` follow normal admission/attempt/recovery rules; `done` and `failed` are terminal and occupy the v1 identity. A stale-pin queued Task must be terminally superseded through the existing TaskRuntime terminal non-success path as status `failed`, result category `terminal_failure`, and stable reason `matching_pins_superseded`; this is not a technical execution fault and adds no Task status or result category. RW4-3 must prove this behavior before enabling triage execution.
 
-A valid `deferred` business disposition is immutable/terminal in v1 and its Task completes successfully as `done`. The disposition row, Task attribution/reason, TaskRuntime `task_execution` Outcome, terminal Task status, and `task_completed` Event must commit or roll back together in one TaskRuntime-owned database transaction. The Kernel persistence operation uses the active Session and cannot open/commit a separate transaction. Technical failures remain distinct and follow TaskRuntime retry/recovery; no `update_thread`, `operator_update`, or background refinement may change the disposition. D5 still owns the complete disposition vocabulary/reference matrix; D6 alone may authorize dormant-Thread reactivation. D3 acceptance authorizes no code/schema/migration.
+A valid `deferred` business disposition is immutable/terminal in v1 and its Task completes successfully as `done`. The disposition row, Task attribution/reason, TaskRuntime `task_execution` Outcome, terminal Task status, and `task_completed` Event must commit or roll back together in one TaskRuntime-owned database transaction. The Kernel persistence operation uses the active Session and cannot open/commit a separate transaction. Technical failures remain distinct and follow TaskRuntime retry/recovery; no `update_thread`, `operator_update`, or background refinement may change the disposition. D5.1–D5.4 freeze the disposition contract; D6 alone may authorize dormant-Thread reactivation. D3 acceptance authorizes no code/schema/migration.
 
 ### D4 — Duplicate identity, existing-Thread matching, and no automatic Thread creation
 
@@ -92,17 +92,53 @@ A valid `deferred` business disposition is immutable/terminal in v1 and its Task
 
 D4 acceptance does not close D5's disposition/reference matrix, authorize RW4-1 persistence, RW4-3 implementation, RW4-2 Stage B, or D6 reactivation. It excludes new-Thread creation, near-duplicate detection, and automatic noise classification from the first-release scope.
 
-### D5 — Disposition vocabulary and reference matrix (OPEN)
+### D5 — Disposition vocabulary, references, reasons, and terminal evidence (ACCEPTED 2026-11-25)
 
-D5 remains an Operator decision. D4.3 has already excluded automatic new_thread creation in v1; D5 must not re-open it by implication. Automatic noise classification remains excluded absent a separate deterministic, source-backed rule. The proposed first-release business outcomes are matched, duplicate, and terminal deferred, but the complete allowed/prohibited reference combinations, reason vocabulary, and Task-attributed Event semantics are not yet accepted.
+**Decision status: D5.1–D5.4 ACCEPTED by the Operator on 2026-11-25.** The accepted v1 vocabulary, reference matrix, deferred reason codes, and Task-attributed terminal semantics are recorded in [issue #193](https://github.com/abtn/Watch-Architecture-Rev2/issues/193). This freezes the business contract; it does not approve a physical schema, migration, or implementation.
 
-Before RW4-1, freeze every disposition/reference combination and enforce it at persistence/commit:
-- matched: one existing same-Team/domain Thread; dormant candidates cannot produce a matched result that implies reactivation before D6.
-- duplicate: one canonical same-Team exact-content duplicate Signal reference.
-- deferred: a validated durable reason and no Thread or duplicate reference.
-- no new_thread in v1; no automatic noise outcome in this slice.
+#### D5.1 — Exactly three v1 disposition values
 
-No disposition may mutate Hypothesis, EvidenceLink, ConfidenceChange, TeamPolicy, or enqueue follow-up Tasks. The disposition, permitted references, Task attribution, and required Event semantics must be closed and validated. RW4-1 remains gated on D5 acceptance, its reviewed proof subset, and explicit authorization.
+- `matched`: the Signal is associated with one existing eligible Thread.
+- `duplicate`: the Signal is an exact raw-content-hash duplicate of the canonical Signal for the same Team.
+- `deferred`: no safe, sufficiently supported business decision can be made.
+
+`new_thread` and `noise` are excluded. Execution states such as `pending`, `processing`, and `failed` belong to TaskRuntime and are not disposition values. Deferred is a successful terminal business result, not a Task failure.
+
+#### D5.2 — Required reference matrix
+
+| Field | `matched` | `duplicate` | `deferred` |
+|---|---|---|---|
+| `thread_id` | Required | NULL | NULL |
+| `duplicate_of_signal_id` | NULL | Required | NULL |
+| `reason_code` | NULL | NULL | Required |
+| `decided_by_task_id` | Required | Required | Required |
+
+- A matched Thread must be same-Team and same-Domain and satisfy D4 eligibility. A dormant Thread may be referenced as a non-reactivating match only if the decision does not imply reactivation; its status and timestamps remain unchanged. D6 alone may authorize reactivation.
+- A duplicate reference must identify the canonical Signal for the same Team and exact raw content hash; it cannot reference itself. Team association is established through ingestion history, not a Signal.team_id column.
+- Deferred carries neither a Thread nor a duplicate reference.
+- Every disposition references exactly one canonical `triage_signal` Task for the same Team and Signal. References are validated against persisted records, never caller/model assertions.
+- One immutable disposition per `(signal_id, team_id)`; `created_at` is immutable and database-assigned; there is no `updated_at`.
+- Database constraints must enforce row-local nullability, uniqueness, and available foreign keys. Same-Team/domain, canonical Team/hash association, and Task/Signal/Team cross-record consistency require a reviewed enforceable relational design and transaction validation; a simple FK must not be claimed to prove them.
+
+#### D5.3 — Stable deferred reason codes
+
+Allowed values:
+- `no_eligible_thread`
+- `ambiguous_thread_match`
+- `insufficient_evidence`
+- `no_compatible_evidence`
+- `evidence_limit_exceeded`
+- `dormant_thread_requires_reactivation`
+
+Human-readable explanation is separate from the stable code and is retained in Task-attributed evidence. Corrupt or inconsistent provenance is a technical/integrity failure, not deferred. Superseded Task pins use TaskRuntime's existing terminal non-success path with status `failed`, result category `terminal_failure`, and reason `matching_pins_superseded`; they do not create a disposition. Database/provider/runtime failures follow TaskRuntime retry/recovery and may ultimately fail.
+
+#### D5.4 — Task attribution and terminal Event semantics
+
+Every disposition references exactly one canonical `triage_signal` Task with the same Team and Signal. The immutable request Event retains the original request and requester provenance. A successful decision produces one TaskRuntime `task_execution` Outcome and one terminal `task_completed` Event. The Outcome records the disposition, the deferred reason code when applicable, and the relevant reference.
+
+The disposition, Task-attributed evidence, Outcome, terminal Task status, and completion Event commit or roll back together in one TaskRuntime-owned transaction. Kernel persistence participates in the active Session and cannot commit independently. Deferred completes successfully with Task status `done`, never `failed`. Replay validates the existing canonical Task, request Event, and disposition; it never creates replacement history.
+
+No disposition may mutate Hypothesis, EvidenceLink, ConfidenceChange, TeamPolicy, or enqueue follow-up Tasks. D5 acceptance does not authorize RW4-1 persistence or any production code/schema/migration. RW4-1 still requires a reviewed physical design, proof subset, and explicit implementation authorization. D4 evidence closure remains required for RW4-3; D6 remains separate for dormant-Thread reactivation.
 
 ### D6 — Reactivation is a matched-only atomic transition with defined race outcomes
 
@@ -137,9 +173,9 @@ The following are not part of this first triage slice and are not authorized her
 
 ## 4. Required reconciliation before RW4-0 can close
 
-D1, all six D2 decisions, D3-A/B/C, and D4.1/D4.1a/D4.2/D4.3 are accepted and must not be reopened by this reconciliation section. The remaining D5/D6 decisions and D4 evidence closure plus cross-cutting documentation work must be completed before RW4-0 can close; acceptance does not itself authorize implementation:
+D1, all six D2 decisions, D3-A/B/C, and D4.1/D4.1a/D4.2/D4.3 are accepted and must not be reopened by this reconciliation section. The remaining D6 decision, D4 evidence closure, and cross-cutting documentation work must be completed before RW4-0 can close; acceptance does not itself authorize implementation:
 
-1. D3 lifecycle reconciliation is complete: Signal eligibility is derived without a Signal status column; TaskRuntime owns Task lifecycle and terminal identity occupancy; terminal deferred is immutable and its Task completes `done`; technical failures remain TaskRuntime failures. D5 vocabulary/reference combinations and D6 Thread reactivation remain separate.
+1. D3 lifecycle reconciliation is complete: Signal eligibility is derived without a Signal status column; TaskRuntime owns Task lifecycle and terminal identity occupancy; terminal deferred is immutable and its Task completes `done`; technical failures remain TaskRuntime failures. D5.1–D5.4 are accepted; D6 Thread reactivation remains separate.
 2. Preserve the accepted D1 trusted-host/Control Room boundary as historical decision text: the application Control Room is the sole logical Task-creation authority; supported producers delegate to named Control Room operations; the host supplies the typed principal and exact Team/action grant; production authentication remains a post-R8 prerequisite. Reconcile implementation evidence and the nine-writer conformance plan without reopening or relabeling D1 as pending. The boundary is trusted application code, not a database-enforced authorization claim.
 3. Freeze the separate duplicate-Signal, existing-Thread match, and new-Thread eligibility rules from a concrete fixture and source audit, or explicitly narrow the first implementation to a smaller supported scenario. Specify all no-candidate, unique-candidate, multiple/tied-candidate, weak, ambiguous, and insufficient-input outcomes.
 4. Treat the accepted D2 identity and request-Event decisions as fixed historical inputs, not open proposals: UUIDv5 directly as `Task.id` with the frozen v1 namespace/name/golden vector; persisted `signal_id` and `identity_version` with composite unique `(team_id, signal_id, identity_version)`; partial unique request-Event index (at-most-one) plus atomic Task/Event creation and replay validation (exactly-one); accepted requester provenance/replay/re-triage rules; immutable first-writer watermarks excluded from semantic replay equivalence; and code-owned v1 matching pins with actual values deferred to D4b. Reconcile their implementation/proof requirements and cross-document wording without asking the Operator to accept these decisions again. The accepted schema/creator requirements remain unimplemented and do not authorize a migration or Stage B.
@@ -181,6 +217,6 @@ This matrix identifies proof obligations, not existing tests or implementation e
 
 D1 and all six D2 decisions were explicitly accepted on 2026-11-24; D3-A/B/C were explicitly accepted on 2026-11-25. They are closed as Operator decisions and must not be presented as awaiting acceptance. Their implementation requirements, migration design, Control Room writer conformance, and PostgreSQL proof remain separate engineering/review gates; acceptance did not authorize code or schema changes.
 
-The remaining Operator decisions are D5 and D6. D4.1/D4.1a/D4.2/D4.3 were accepted on 2026-11-25; their numeric/persistence evidence gates remain engineering prerequisites, not pending policy decisions. D3-A/B/C were accepted on 2026-11-25 and are reconciled: no Signal lifecycle state; an existing disposition excludes a new v1 decision; TaskRuntime owns lifecycle and terminal identity occupancy; deferred is immutable and completes as `done`; disposition plus Task attribution/reason and the TaskRuntime Outcome/status/terminal Event commit atomically; missing or inconsistent canonical Task/request-Event history fails closed without repair or replacement; stale-pin supersession uses the existing TaskRuntime terminal non-success path and is a required RW4-3 proof; and dormant-Thread reactivation remains prohibited until D6. Technical failures remain distinct and are never relabeled deferred. D3 reconciliation does not authorize RW4-1 persistence. D4's accepted decision shape still requires canonical Team/hash persistence design and concurrency proof, independent labeled fixtures, measured thresholds/margin/score serialization/bounds, actual v1 pins, and query-plan/cost evidence. D5's complete disposition/reference matrix and durable reason/Event semantics, and D6's decay/reactivation timestamp, locking, and race semantics remain unresolved. D4.3 has already excluded automatic Thread creation; a deterministic title source is not a v1 gate. Cross-cutting assessment receipt/recovery and later Context-consumer contracts also remain separate closure items.
+The remaining Operator decision is D6. D4.1/D4.1a/D4.2/D4.3 were accepted on 2026-11-25; their numeric/persistence evidence gates remain engineering prerequisites, not pending policy decisions. D3-A/B/C were accepted on 2026-11-25 and are reconciled: no Signal lifecycle state; an existing disposition excludes a new v1 decision; TaskRuntime owns lifecycle and terminal identity occupancy; deferred is immutable and completes as `done`; disposition plus Task attribution/reason and the TaskRuntime Outcome/status/terminal Event commit atomically; missing or inconsistent canonical Task/request-Event history fails closed without repair or replacement; stale-pin supersession uses the existing TaskRuntime terminal non-success path and is a required RW4-3 proof; and dormant-Thread reactivation remains prohibited until D6. Technical failures remain distinct and are never relabeled deferred. D3 reconciliation does not authorize RW4-1 persistence. D4's accepted decision shape still requires canonical Team/hash persistence design and concurrency proof, independent labeled fixtures, measured thresholds/margin/score serialization/bounds, actual v1 pins, and query-plan/cost evidence. D5.1–D5.4 are accepted and reconciled; the RW4-1 physical persistence design remains an engineering gate. D6's decay/reactivation timestamp, locking, and race semantics remain unresolved. D4.3 has already excluded automatic Thread creation; a deterministic title source is not a v1 gate. Cross-cutting assessment receipt/recovery and later Context-consumer contracts also remain separate closure items.
 
 An implementation stage may begin only when that slice's own prerequisites and the cross-cutting contracts it depends on are independently reviewed, explicitly accepted where required, its proof subset is frozen, and explicit authorization is recorded. D4–D6 are not a universal blocker for every slice: D5 gates RW4-1 disposition persistence; D4/C1/D5 gate RW4-3 matching/commit; D6 gates dormant-Thread reactivation. This does not reopen D1/D2 or make their accepted design requirements implementation-ready by implication.
