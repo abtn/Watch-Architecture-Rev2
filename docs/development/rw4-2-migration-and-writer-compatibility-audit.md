@@ -141,7 +141,9 @@ Existing code writes many Task-attributed Events, but the audited source contain
 
 ### 4.2 Control Room boundary observation
 
-The accepted D1 decision makes the application Control Room the single logical authority for new Task creation. The current codebase has several established feature/runtime Task producers listed above; this audit does not silently declare them already consolidated into a physical Control Room module. Stage B must create the triage Task through one named Control Room operation and must not add a new ad-hoc writer to a worker, matcher, ingestion path, or feature service. Whether the legacy producers require a separate staged architectural consolidation is not necessary to make this additive schema migration safe and is not authorized by this audit.
+The accepted D1 decision makes the application Control Room the single logical authority for Task creation. The source audit shows that this target is **not yet enforced as one physical write choke point**: the existing producers above construct or insert Tasks in several modules, including TaskRuntime follow-on creation. This is an existing architectural conformance gap, not a reason to reopen D1 and not something the additive schema migration can solve.
+
+Stage B must place the new triage creation behind one named Control Room operation. That operation must preserve the RW-5 lock order and the atomic Task/Event transaction; it must not add a direct writer in a worker, matcher, ingestion path, or feature service. The Stage B contract must also state how this Control Room operation owns or participates in the caller's transaction. Do not move TaskRuntime's existing follow-on creation across transaction boundaries as an incidental schema change. A broader retrofit of the legacy producers may be separately staged, but this audit does not authorize that refactor or claim that D1 is already physically enforced.
 
 ## 5. Test and review requirements
 
