@@ -370,7 +370,7 @@ A Signal has no lifecycle/status field in the current canonical model. Do not ad
 
 - The Signal and its referenced immutable Snapshot must exist and pass integrity checks; the Signal's canonical provenance must be attributable to the selected Team and its source/domain policy.
 - The persisted Team state must be exactly `active`; the caller must be independently authorized, and the applicable source/domain/policy checks must pass. Creation and replay retain the accepted D1 fail-closed behavior.
-- A pre-existing SignalDisposition for the same Team/Signal pair means the first-release decision has already been recorded; do not create another triage decision or Task to reconsider it.
+- A pre-existing SignalDisposition for the same Team/Signal pair means the first-release decision has already been recorded; do not create another triage decision or replacement Task to reconsider it. An authorized request may still resolve the canonical D2 Task as a replay, but it must return the recorded result without re-execution or disposition mutation.
 - Eligibility is revalidated at the execution/commit boundary under the accepted lock protocol. Creation-time watermark is evidence of the original request basis, not a substitute for current-state validation.
 - This does not freeze D4 matching eligibility, D5 disposition vocabulary/reference combinations, or D6 Thread reactivation.
 
