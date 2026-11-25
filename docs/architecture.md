@@ -188,7 +188,7 @@ Immutable. Current ingestion uniqueness on `(origin_url, content_hash)` makes an
 
 ### `SignalDisposition`
 
-> **Conceptual target only; not implemented.** The field sketch below predates the narrowed PR #176 proposal and is not an accepted schema. In particular, its `new_thread` vocabulary and `updated_at` field must not be treated as frozen. See the [RW-4 readiness and delivery plan](development/rw-4-readiness-and-delivery-plan.md).
+> **Conceptual target only; not implemented.** The field sketch below predates the accepted D4.3 first-release scope and is not an accepted schema. Its `new_thread` vocabulary and `updated_at` field must not be treated as v1 requirements. D4.3 disables automatic Thread creation; D5 still owns the complete disposition/reference matrix. See the [RW-4 readiness and delivery plan](development/rw-4-readiness-and-delivery-plan.md).
 
 ```python
 SignalDisposition
@@ -535,7 +535,7 @@ Transitions not listed are forbidden. Every transition emits an Event (INV-13).
 
 ### SignalDisposition
 
-> **D3 lifecycle semantics accepted 2026-11-25; persistence and vocabulary remain gated.** Signal has no lifecycle/status column. Eligibility is derived from canonical Signal/Snapshot integrity and provenance plus active-Team, authorization, and source/domain/policy checks. An existing Team/Signal disposition excludes another v1 decision. If the disposition exists without exactly one valid canonical Task/request Event, replay fails closed without repair or replacement. D3 makes a deferred disposition terminal and immutable in v1; its Task completes successfully as `done`. The disposition, Task attribution/reason, TaskRuntime Outcome, terminal Task status, and terminal Event commit or roll back in one TaskRuntime-owned transaction. Technical execution failure follows TaskRuntime retry/recovery and may end `failed`. D5 still owns the complete disposition vocabulary and reference matrix; D4 matching eligibility and D6 reactivation remain separate decisions. RW4-1 owns persistence and is not authorized by this decision.
+> **D3 lifecycle semantics accepted 2026-11-25; persistence and vocabulary remain gated.** Signal has no lifecycle/status column. Eligibility is derived from canonical Signal/Snapshot integrity and provenance plus active-Team, authorization, and source/domain/policy checks. An existing Team/Signal disposition excludes another v1 decision. If the disposition exists without exactly one valid canonical Task/request Event, replay fails closed without repair or replacement. D3 makes a deferred disposition terminal and immutable in v1; its Task completes successfully as `done`. The disposition, Task attribution/reason, TaskRuntime Outcome, terminal Task status, and terminal Event commit or roll back in one TaskRuntime-owned transaction. Technical execution failure follows TaskRuntime retry/recovery and may end `failed`. D4.1/D4.1a/D4.2/D4.3 are accepted; canonical Team/hash persistence and measured matcher parameters remain evidence gates. D5 still owns the complete disposition vocabulary and reference matrix; D6 owns dormant reactivation. RW4-1 owns persistence and is not authorized by this decision.
 
 
 ### Artifact
