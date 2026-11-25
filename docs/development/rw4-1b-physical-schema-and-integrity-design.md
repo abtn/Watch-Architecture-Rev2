@@ -73,33 +73,39 @@ The migration and tests must use the exact six accepted D5.3 reason codes from t
 
 The hard relationships are: Team has an intake association to Signal; Signal and Team domains agree; matched Thread belongs to the same Team/domain and is eligible; duplicate target is the canonical same-Team/same-hash Signal; attributed Task is the canonical triage Task for this Signal.
 
-### Option A — transaction validation against existing records
+### Option A — database-enforced existing-event witness
 
-The TaskRuntime-owned persistence operation validates the existing Event/Task/Signal/Thread rows in the same transaction. It uses a defined lock order and isolation level, and revalidates all facts immediately before insert/terminal commit.
+The current Event/Task relationship can remain the provenance source only if the database makes the relevant facts durable. A SELECT followed by application validation is not sufficient.
 
-**Advantages:** smallest schema; no new ownership registry; keeps RW4-1 focused.
+The source audit establishes that Event has a Task FK, JSONB payload, and no typed Signal FK. It does not establish a database append-only rule for Event or immutability for the Signal/Team fields on which the relationship depends. Therefore the current schema, by itself, does **not** satisfy Option A.
 
-**Risks:** the existing Event payload is JSONB and does not have a typed Signal FK; Event mutability/deletion behavior and all concurrent writers must be audited. Without stable locks or immutable witness rows, a validation query can race with provenance changes. The accepted RW-5 canonical Team lock helper is not yet implemented, so RW4-1 cannot claim that protocol.
+To retain Option A, the physical design and migration must include all of the following database protections:
+
+1. **Intake Event insert validation:** a PostgreSQL trigger for signal_ingested and fetch_no_change validates that the referenced Task exists and is an ingest_source Task; the payload contains a valid Signal ID; the Signal exists; and payload origin_url, source_type, content_hash, and snapshot_ref agree with the stored Signal. It also validates Signal.domain == Task.team.domain. The trigger rejects malformed or cross-domain reuse regardless of which of the three audited ingestion paths produced the Event.
+2. **Intake Event immutability:** a PostgreSQL trigger rejects UPDATE and DELETE of either intake Event type. It must also prevent changing an Event into or out of either protected type. The trigger is exercised under the actual runtime role, which must not own the table, be superuser, or be able to disable/replace the trigger.
+3. **Referenced identity stability:** database enforcement prevents changing the Signal provenance fields used by the witness (domain, source_type, origin_url, content_hash, and snapshot_ref) after an intake Event exists. It also prevents changing the owning Task's team_id or task_type while a protected intake Event exists, and prevents changing Team.domain while protected intake provenance or a disposition exists. If the repository requires legitimate domain or Signal corrections, those require a separately designed versioned correction path; silently updating the witness is not permitted.
+4. **Disposition-time locking:** within the TaskRuntime transaction, lock the Task first, then Team, then Signal, then the selected Thread when applicable. Use the RW-5 canonical modes/order for Task, Team, and Thread once that helper is available. The Signal row is locked against concurrent provenance-field updates until commit. The immutable Event and protected identity fields then remain valid after commit, not merely during the read.
+5. **Role boundary:** document the trigger owner/function security model, fixed search_path, schema-qualified references, and runtime grants. A table owner/superuser can bypass ordinary trigger protection; operationally excluding that principal from application runtime is part of the proof.
+
+**Advantages:** preserves the current Task-attributed intake Event as the source of provenance and avoids a second Team/Signal association registry.
+
+**Costs:** requires DB trigger/privilege design and ingestion-path regression proof. It is not merely a service-layer validation change.
 
 ### Option B — relational intake-witness representation
 
-Add typed relational columns or a dedicated Team/Signal intake-witness table with enforceable keys, populated by ingestion. This could make Team/Signal provenance and domain ownership more directly relational.
+If the Option A trigger/immutability boundary cannot be made reliable under the actual runtime-role model, stop and propose a separate typed relational intake-witness relation. It must carry explicit Team, Signal, Task, and source Event references with enforceable FKs and immutable association semantics.
 
-**Advantages:** stronger ordinary FK composition and queryability.
+That relation must **not** add a Team/content-hash uniqueness rule or choose the D4.1a canonical duplicate. It records which Team intake associated which Signal; D4.1a separately decides which Signal is canonical for a Team and exact content hash. The witness relation would require an ingestion-writer retrofit and its own migration, concurrency proof, and sequencing approval. It is not silently included in RW4-1.
 
-**Risks:** changes ingestion writes and schema, overlaps D4.1a canonical Team/hash arbitration, requires a migration and compatibility retrofit, and risks making a second source of truth for intake association. It is broader than a disposition-only slice.
+### Recommendation — retain Option A only with the specified database protections
 
-### Recommendation — Option A only if race proof is real; otherwise stop and re-scope
-
-Prefer Option A only if the design can prove that the existing Event witness is immutable/stable for the lifetime of the disposition and that all mutable referenced rows are protected against concurrent change under a concrete PostgreSQL lock/isolation protocol. The design must name the exact rows read/locked, lock modes, order, isolation level, and writers that can mutate/delete them.
-
-If the current Event/Task/Signal model cannot provide that guarantee, do not paper over it with application validation. Return to review with a narrowly scoped relational-witness proposal and explicit sequencing impact. Do not silently implement Option B inside RW4-1.
+Option A is the preferred minimum only if all five protections above are implementable and proved. The current source does not yet prove them. If any protection cannot be enforced for every supported runtime writer, Option A is rejected and RW4-1 must stop for a separately reviewed Option B design. Application-only validation is not an acceptable fallback.
 
 For either option:
-- Require the intake Event to be one of the accepted types and Task-attributed to the same Team.
-- Validate Event Signal ID, origin, source type, content hash, and Snapshot reference against the persisted Signal and Snapshot provenance.
+- Require the intake Event to be exactly signal_ingested or fetch_no_change, attributed to the same Team through its Task.
+- Validate Event Signal ID, origin, source type, content hash, and Snapshot reference against the persisted Signal.
 - Validate Signal.domain == Team.domain.
-- Validate Thread.team_id == team_id, Thread.domain == Team.domain, and the status rule at commit. Active Thread is eligible; dormant can only be matched with the separately gated RW4-5 atomic reactivation path; resolved is ineligible.
+- Validate Thread.team_id == team_id, Thread.domain == Team.domain, and status under the lifecycle lock protocol. Active is eligible; dormant remains deferred until RW4-5 is implemented and proven; resolved is ineligible.
 - Do not accept caller-supplied provenance assertions.
 
 ## 5. Keep D4.1a duplicate canonicality outside this slice
