@@ -67,7 +67,17 @@ The unique pair enforces at most one row per Team/Signal. A same Signal may have
 
 ### 3.1 Deferred vocabulary source
 
-The migration and tests must use the exact six accepted D5.3 reason codes from the accepted RW4-2 specification/decision record. This proposal intentionally does not restate or paraphrase their identifiers: a copied or stale list would create a second vocabulary authority. Before implementation, the physical design review must verify the exact literal set against the normative source and record it in the migration/test plan.
+The normative authority is [RW4-2 Stage A specification, D5.3 — Stable deferred reason codes](rw-4-2-decision-and-specification-draft.md), also recorded in [accepted decision issue #193](https://github.com/abtn/Watch-Architecture-Rev2/issues/193).
+
+The exact permitted literals are:
+- `no_eligible_thread`
+- `ambiguous_thread_match`
+- `insufficient_evidence`
+- `no_compatible_evidence`
+- `evidence_limit_exceeded`
+- `dormant_thread_requires_reactivation`
+
+This list is a review convenience, not a second authority. The migration CHECK and tests must match the D5.3 normative list exactly; any future change requires a new accepted decision and coordinated migration/test review. No aliases or additional values are permitted.
 
 ## 4. Cross-record integrity: options and recommendation
 
@@ -142,18 +152,21 @@ Recommendation:
 - RW4-1 design must state this dependency explicitly. Do not create a partial canonical-hash registry, second winner algorithm, or surrogate timestamp ordering in this migration.
 - The RW4-1 schema may reference the eventual canonical witness only if that dependency's exact interface is already accepted; otherwise keep canonical validation outside the frozen DDL and block duplicate execution.
 
-## 6. Keep D2 Task identity outside this migration
+## 6. D2 Task identity is a hard write-enable prerequisite
 
-The current Task schema lacks persisted signal_id and identity_version. The accepted D2 contract requires both plus unique (team_id, signal_id, identity_version), and recomputation of the canonical UUIDv5 Task ID from persisted request data.
+The current Task schema lacks persisted signal_id and identity_version. The accepted D2 contract requires both, unique (team_id, signal_id, identity_version), and recomputation of the canonical UUIDv5 Task ID from persisted request data.
 
-A composite FK to (tasks.id, tasks.team_id) proves same-Team Task ownership, not that this is the canonical Task for this Signal.
+A composite FK to (tasks.id, tasks.team_id) proves same-Team Task ownership, not that this is the canonical Task for this Signal. There is no acceptable caller-supplied, request-Event-only, or unpersisted transitional substitute for the accepted D2 identity contract.
 
-Recommendation:
-- Do not add D2 columns/indexes in the RW4-1 migration.
+Required boundary:
+- Do not add D2 columns/indexes in the RW4-1 disposition migration.
 - Do not weaken Task attribution to caller-provided IDs or a task-type-only check.
-- Make the D2 Task identity migration a hard prerequisite for disposition writes unless a reviewed, equally strong persisted identity proof exists beforehand.
-- At disposition insert and replay, recompute and verify canonical Task ID, Team, Signal, operation, identity version, and exactly-one valid request Event from persisted data.
-- If this requires D2 fields, RW4-1 disposition writes must wait for that migration to land. This creates a sequencing question because the accepted serial plan places RW4-1 before RW-5 and RW4-2 Stage B, while the D2 Task identity migration has not yet been implemented. This proposal does not reorder those slices. The Operator must decide whether to schedule the already-accepted D2 migration as a narrowly bounded prerequisite before enabling RW4-1 writes, or accept a separately reviewed transitional proof that is equally strong without those fields. Do not proceed on an assumed workaround.
+- The accepted D2 Task identity migration is a hard prerequisite before any triage Task can be created and before any disposition write or replay can be enabled.
+- At disposition insert and replay, recompute and verify canonical Task UUIDv5 ID, Team, Signal, operation, identity_version, and exactly-one valid triage_signal_requested Event from persisted data.
+- The D2 migration remains a separately reviewed and separately authorized migration. Sequence it as a required schema/preflight step before RW4-2 Stage B enables the triage creator. RW4-1 may prepare its own schema and persistence code earlier, but that path remains disabled until D2 identity is present and verified.
+- Do not reopen a transitional-proof alternative in implementation. If the accepted D2 schema contract itself is changed, that requires a new Operator decision before implementation.
+
+This preserves the approved serial order: RW4-1 design/schema preparation → RW-5 helper and writer retrofit → D2 identity migration as a Stage B prerequisite → RW4-2 Stage B creator → RW4-3 disposition execution. The D2 migration does not become part of the RW4-1 migration.
 
 ## 7. Immutability and timestamp
 
