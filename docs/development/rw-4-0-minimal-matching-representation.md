@@ -253,7 +253,7 @@ At minimum include:
 9. A Thread represented only by `mentions` EvidenceLinks (not a candidate in v1).
 10. A resolved Thread with otherwise strong evidence (excluded).
 11. Thread with no eligible Signal-backed EvidenceLinks (unmatchable; must not cause new Thread creation).
-12. No valid KnowledgeChunk projection at Task admission (Task creator rejects without creating Task); a pinned matcher/projection decision that becomes unsupported after admission follows TaskRuntime's terminal supersession/integrity path, not a deferred disposition.
+12. No valid incoming KnowledgeChunk projection at Task admission (Task creator rejects without creating Task); queued Task whose immutable matcher pins are no longer supported (terminal `matching_pins_superseded`, no retry/replacement); candidate profile lacking a compatible projection (candidate excluded and may contribute to a valid deferred result); and required projection loss after admission while pins remain supported (TaskRuntime technical-failure/recovery path, not deferred or stale-pin supersession; exact reason mapping remains unresolved).
 13. Mismatched embedding-space key or chunking version.
 14. Corrupt or mismatched Signal Snapshot/hash (integrity failure; fail closed through TaskRuntime, never deferred).
 15. Domain mismatch and cross-Team evidence attempts, including an EvidenceLink owned by Team A that references a Signal ingested only by Team B with the same Domain.
@@ -336,4 +336,4 @@ Keep this PR limited to the matching-representation proposal. Reconcile the arch
 
 ### Preserved boundaries
 
-The D4 decisions now accepted by the Operator supersede the former open-decision wording in this historical proposal. They do not close D5/D6 or RW4-0, settle numeric thresholds or scan budgets, satisfy the RW3.4 sequencing gate, or authorize application code, tests, schema, migrations, database operations, provider calls, or scored experiments.
+The D4, D5, and D6 decisions now accepted by the Operator supersede the former open-decision wording in this historical proposal. They do not close the remaining RW4-0 evidence gates, settle numeric thresholds or scan budgets, satisfy the RW3.4 sequencing gate, or authorize application code, tests, schema, migrations, database operations, provider calls, or scored experiments.
