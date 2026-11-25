@@ -163,7 +163,7 @@ A composite FK to (tasks.id, tasks.team_id) proves same-Team Task ownership, not
 Required boundary:
 - Do not add D2 columns/indexes in the RW4-1 disposition migration.
 - Do not weaken Task attribution to caller-provided IDs or a task-type-only check.
-- The accepted D2 Task identity migration is a hard prerequisite before any triage Task can be created and before any disposition write or replay can be enabled. It must add `UNIQUE (id, team_id, signal_id, identity_version)` as the composite-FK support key and install the deferred FK from `signal_dispositions(decided_by_task_id, team_id, signal_id, identity_version)` to `tasks(id, team_id, signal_id, identity_version)`. Install the FK only after a preflight confirms no pre-existing disposition rows or malformed triage Tasks; the write gate remains closed until the migration commits.
+- The accepted D2 Task identity migration is a hard prerequisite before any triage Task can be created and before any disposition write or replay can be enabled. It must add `UNIQUE (id, team_id, signal_id, identity_version)` as the composite-FK support key and install the later D2-dependent FK from `signal_dispositions(decided_by_task_id, team_id, signal_id, identity_version)` to `tasks(id, team_id, signal_id, identity_version)`. Install the FK only after a preflight confirms no pre-existing disposition rows or malformed triage Tasks; the write gate remains closed until the migration commits.
 - At disposition insert and replay, the composite FK enforces Task/Team/Signal/identity-version equality. TaskRuntime must additionally recompute and verify canonical Task UUIDv5 ID, operation, and exactly-one valid triage_signal_requested Event from persisted data. The FK enforces relational correspondence; application validation enforces deterministic UUID identity.
 - The D2 migration remains a separately reviewed and separately authorized migration. Sequence it as a required schema/preflight step before RW4-2 Stage B enables the triage creator. RW4-1 may prepare its own schema and persistence code earlier, but that path remains disabled until D2 identity is present and verified.
 - Do not reopen a transitional-proof alternative in implementation. If the accepted D2 schema contract itself is changed, that requires a new Operator decision before implementation.
@@ -180,13 +180,14 @@ No cascading deletes. If a referenced Signal, Team, Thread, or Task is subject t
 
 ## 8. TaskRuntime integration and terminal evidence contract
 
-Do not open a second transaction and do not add a generic callback framework. The current `TerminalObservation` is a frozen dataclass with explicit optional evidence fields; its serializer `_observation_payload()` builds the immutable Snapshot JSON. The current `_replay()` compares the canonical Snapshot bytes and checks Task status plus terminal Event type/cardinality, but it does not validate the complete terminal Event payload or `Task.completed_at`. The triage extension must close those exact gaps for this category without changing unrelated replay behavior.
+Do not open a second transaction and do not add a generic callback framework. The current `TerminalObservation` is a frozen dataclass with explicit optional evidence fields; its serializer `_observation_payload()` builds the immutable Snapshot JSON. The current `_replay()` compares the canonical Snapshot bytes and checks Task status plus terminal Event type/cardinality, but it does not validate the complete terminal Event payload or `Task.completed_at`. The triage extension must add `success_signal_triaged` to the existing `TerminalObservation.result_category` Literal and close those exact gaps for this category without changing unrelated replay behavior.
 
 ### 8.1 One triage success category and typed member
 
 Use one TaskRuntime success category for all three successful business dispositions: `success_signal_triaged`. The disposition value distinguishes matched, duplicate, and deferred. Deferred is successful and ends with Task status `done`. Technical failures and stale-pin supersession remain on the existing non-success path and create no disposition.
 
 Add an optional typed `signal_triage` member to the frozen `TerminalObservation`, represented by a frozen `SignalTriageObservation` value. It is required if and only if `result_category == "success_signal_triaged"`; it is forbidden for every other result category. It contains:
+- `schema_version: Literal[1]` (fixed to 1)
 - `signal_id: UUID`
 - `disposition: Literal["matched", "duplicate", "deferred"]`
 - `thread_id: UUID | None`
