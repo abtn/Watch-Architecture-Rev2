@@ -1,7 +1,7 @@
 # RW-4 Readiness and Delivery Plan
 
 **Status:** Active staged-delivery baseline. D1 and all six D2 decisions were accepted on 2026-11-24. D3-A/B/C were accepted on 2026-11-25 and reconciled: no invented Signal lifecycle state; eligibility derives from canonical Signal/Snapshot provenance plus active-Team, authorization, and source/domain/policy checks; existing Team/Signal disposition excludes another v1 decision; TaskRuntime owns lifecycle; terminal deferred is immutable and completes its Task as done, while technical failure remains failed/retryable under TaskRuntime. D4/D5/D6 and D4b actual pin values remain outstanding. Exact migration design/proofs remain outstanding. No individual production slice is blanket-authorized.
-**Planning baseline:** `main` after PR #184 squash merge `3fd27167e7e77eeed2110d9a2028a9ecaa005bc3` (2026-11-24).
+**Planning baseline:** `main` after PR #187 squash merge `94563be9e551ebf73faee626d952e9b839b57946` (2026-11-25); PR #184 is the earlier D1/D2 proposal baseline.
 **Status authority:** `PLAN.md` remains the only authority for milestone status and authorization. This document owns the dependency-aware RW-4 readiness checklist and delivery sequence.
 **Sequencing decision:** [RW-4/RW-5 sequencing decision](rw-4-rw-5-sequencing-decision.md) records the approved 2026-11-24 RW4-2-first serial order.
 **Scope:** Reconcile the evidence audit in PR #175, the bounded RW4-0 proposal in PR #174, the minimal matching proposal in PR #176, the RW-4 design plan, Task specifications, and architecture.
