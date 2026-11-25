@@ -1,7 +1,7 @@
 # RW-4 Readiness and Delivery Plan
 
 **Status:** Active staged-delivery baseline. D1 and all six D2 decisions were accepted on 2026-11-24; D3-A/B/C and D4.1/D4.1a/D4.2/D4.3 were accepted on 2026-11-25. D4's policy shape is frozen, but canonical Team/hash persistence, measured matcher thresholds/margins/bounds/score serialization/query cost, and actual matching-pin values remain open evidence/design gates. D5's complete disposition/reference matrix and D6 reactivation contract remain open. This plan is subordinate to PLAN.md for current milestone status and authorization.
-**Planning baseline:** `main` after PR #187 squash merge `94563be9e551ebf73faee626d952e9b839b57946` (2026-11-25); PR #184 is the earlier D1/D2 proposal baseline.
+**Planning baseline:** `main` after PR #190 squash merge `4d9c3f3b51cc8f3176aca4ab30b367cb4271686d` (2026-11-25); PR #187 is the earlier D1/D2/D3 reconciliation baseline; PR #184 is the earlier D1/D2 proposal baseline.
 **Status authority:** `PLAN.md` remains the only authority for milestone status and authorization. This document owns the dependency-aware RW-4 readiness checklist and delivery sequence.
 **Sequencing decision:** [RW-4/RW-5 sequencing decision](rw-4-rw-5-sequencing-decision.md) records the approved 2026-11-24 RW4-2-first serial order.
 **Scope:** Reconcile the evidence audit in PR #175, the bounded RW4-0 proposal in PR #174, the minimal matching proposal in PR #176, the RW-4 design plan, Task specifications, and architecture.
