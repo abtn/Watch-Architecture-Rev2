@@ -188,11 +188,11 @@ Before the migration/creator contract can be frozen, the implementation design a
 3. A `triage_signal` Task with either identity field missing is rejected by PostgreSQL.
 4. A half-populated identity pair is rejected.
 5. Two Tasks with different UUID primary keys but the same `(team_id, signal_id, identity_version)` are rejected by the composite unique constraint.
-6. Reuse of the same canonical Task UUID is rejected/arbitrated by the existing primary key.
-7. A duplicate `triage_signal_requested` Event for one Task is rejected by the partial unique index; a different Task may have its own request Event.
-8. Migration preflight scans every triage_signal_requested Event and every triage_signal Task, aborts without mutation on any non-zero historical population, and reports orphan, cross-Task, malformed, duplicate, and identity-inconsistent evidence. Historical repair is a separate reviewed migration.
-9. Control Room operations use the caller's active Session and never commit/rollback independently; Task and request Event creation roll back together; replay rejects missing, duplicate, malformed, cross-Task, or identity-inconsistent request evidence.
-10. The ORM metadata and Alembic schema agree, and the tested Alembic head is the exact reviewed migration set.
+7. Reuse of the same canonical Task UUID is rejected/arbitrated by the existing primary key.
+8. A duplicate `triage_signal_requested` Event for one Task is rejected by the partial unique index; a different Task may have its own request Event.
+9. Migration preflight scans every triage_signal_requested Event and every triage_signal Task, aborts without mutation on any non-zero historical population, and reports orphan, cross-Task, malformed, duplicate, and identity-inconsistent evidence. Historical repair is a separate reviewed migration.
+10. Control Room operations use the caller's active Session and never commit/rollback independently; Task and request Event creation roll back together; replay rejects missing, duplicate, malformed, cross-Task, or identity-inconsistent request evidence. A lock-order retry signal causes the outer transaction owner to roll back and reinvoke through a fresh Session/transaction; Control Room never performs that rollback itself.
+11. The ORM metadata and Alembic schema agree, and the tested Alembic head is the exact reviewed migration set.
 
 The docs-only CI run for PR #187 cannot satisfy any PostgreSQL migration, index, writer-compatibility, or concurrency proof. Those require a later code-bearing, separately authorized slice and real disposable PostgreSQL execution.
 
