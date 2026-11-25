@@ -9,7 +9,7 @@
 
 This is separate from the already accepted Task-schema requirement to persist `signal_id` and `identity_version` and enforce unique `(team_id, signal_id, identity_version)`. All six D2 decisions are design decisions only; no migration or creator implementation is authorized. Decisions 3–6 were accepted on 2026-11-24 and are summarized below.
 
-**Scope:** First, narrow `triage_signal` slice only. D1/all D2 and D3-A/B/C are accepted; D4–D6 remain separate decisions. No implementation is authorized by this record.
+**Scope:** First, narrow `triage_signal` slice only. D1/all D2, D3-A/B/C, and D4.1/D4.1a/D4.2/D4.3 are accepted; D4 evidence closure, D5 disposition/reference decisions, and D6 reactivation remain separate gates. No implementation is authorized by this record.
 **Current reconciliation baseline:** main after PR #187 squash merge `94563be9e551ebf73faee626d952e9b839b57946` (2026-11-25). PR #184 is the earlier D1/D2 proposal baseline; historical proposal origins remain PRs #174 and #176. D3 decisions are recorded in [issue #189](https://github.com/abtn/Watch-Architecture-Rev2/issues/189).
 **Authority:** `PLAN.md` remains authoritative for milestone status and implementation authorization. Existing accepted ADRs, Task contracts, and write-scope matrix remain binding unless explicitly amended.
 
@@ -23,9 +23,9 @@ The intended first-slice boundary is:
 
 The model is not involved in triage. Triage does not create or enqueue `update_thread` Tasks.
 
-## 2. Accepted D1/D2/D3 decisions and remaining D4–D6 proposals
+## 2. Accepted D1/D2/D3/D4 decisions and remaining D5/D6 proposals
 
-D1 and all six D2 decisions are accepted as recorded below. D3-A/B/C are accepted on 2026-11-25 and reconciled in §7. D4–D6 remain separate proposals and require separate Operator decisions.
+D1 and all six D2 decisions are accepted as recorded below. D3-A/B/C and D4.1/D4.1a/D4.2/D4.3 are accepted on 2026-11-25 and reconciled in §7. D4's policy shape is closed, but its canonical Team/hash persistence design and measured matcher evidence remain engineering gates. D5 and D6 require separate Operator decisions.
 
 ### D1 — Control Room is the single Task-creation authority
 
@@ -137,7 +137,7 @@ The following are not part of this first triage slice and are not authorized her
 
 ## 4. Required reconciliation before RW4-0 can close
 
-D1 and all six D2 decisions are already accepted and must not be reopened by this reconciliation section. The following remaining D4–D6 and cross-cutting documentation work must be completed before RW4-0 can close; acceptance of D1/D2 does not itself authorize implementation:
+D1, all six D2 decisions, D3-A/B/C, and D4.1/D4.1a/D4.2/D4.3 are accepted and must not be reopened by this reconciliation section. The remaining D5/D6 decisions and D4 evidence closure plus cross-cutting documentation work must be completed before RW4-0 can close; acceptance does not itself authorize implementation:
 
 1. D3 lifecycle reconciliation is complete: Signal eligibility is derived without a Signal status column; TaskRuntime owns Task lifecycle and terminal identity occupancy; terminal deferred is immutable and its Task completes `done`; technical failures remain TaskRuntime failures. D5 vocabulary/reference combinations and D6 Thread reactivation remain separate.
 2. Preserve the accepted D1 trusted-host/Control Room boundary as historical decision text: the application Control Room is the sole logical Task-creation authority; supported producers delegate to named Control Room operations; the host supplies the typed principal and exact Team/action grant; production authentication remains a post-R8 prerequisite. Reconcile implementation evidence and the nine-writer conformance plan without reopening or relabeling D1 as pending. The boundary is trusted application code, not a database-enforced authorization claim.
