@@ -49,7 +49,7 @@ The accepted `triage_signal` operation has these boundaries:
 
 ### D2 — One canonical Task and disposition per Signal/Team pair
 
-**Accepted D2 identity/replay contract; adjacent disposition scope remains separate:** the first release has one canonical triage operation per `(signal_id, team_id)`, represented by one immutable `triage_signal` Task. SignalDisposition uniqueness and allowed disposition outcomes remain assigned to RW4-1/D3/D5.
+**Accepted D2 identity/replay contract; adjacent disposition scope remains separate:** the first release has one canonical triage operation per `(signal_id, team_id)`, represented by one immutable `triage_signal` Task. D3 lifecycle semantics are accepted; SignalDisposition persistence/uniqueness remain assigned to RW4-1, and the complete allowed disposition vocabulary/reference matrix remains D5.
 
 Keep these identities distinct:
 
