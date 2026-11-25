@@ -46,7 +46,7 @@ The audit confirms:
 4. On an existing match, writes `fetch_no_change`; otherwise writes the immutable Snapshot, inserts the Signal, and writes `signal_ingested`.
 5. Writes the Signal and success Event in the same PostgreSQL transaction.
 
-The success Event payload carries `origin_url`, `source_type`, `content_hash`, `signal_id`, and `snapshot_ref`. The Event's `task_id` points to a Task, and that Task supplies the Team association. This is the current canonical intake path.
+The success Event payload carries `origin_url`, `source_type`, `content_hash`, `signal_id`, and `snapshot_ref`. The Event's `task_id` points to a Task, and that Task supplies the Team association. This is the current intake-provenance path. It records that a Team-associated ingestion operation referred to a Signal; it does not establish D4.1a's first-successfully-committed Team/hash canonical winner.
 
 Important limitations:
 
@@ -58,7 +58,13 @@ Important limitations:
 
 The D4.1a first-successfully-committed Team/hash winner therefore needs its own reviewed database-arbitrated representation and two-session proof. It cannot be inferred from `fetched_at`, Event timestamps, UUID ordering, or the existing origin/hash constraint. Keep that C1/D4.1a engineering gate separate from the disposition table.
 
-There is also a current write-time domain gap: when `_commit` finds an existing Signal by `(origin_url, content_hash)`, both the ordinary `fetch_no_change` path and the `ON CONFLICT` winner path verify the stored bytes/hash but do not compare `Signal.domain` with the current Task Team's `domain` before writing the Team-attributed Event. A same-origin/same-hash Signal first created under a different-domain Team can therefore be associated by a later Team's Event. The existing `IngestSourceRuleEvaluator._signal_from_business_event` does reject that mismatch later (`signal.domain != team.domain`), but that downstream check does not prevent the ingestion Event from being committed. RW4-1 eligibility must independently fail closed on this provenance/domain mismatch. Do not silently change the ingestion path inside this audit; any ingestion correction needs its own bounded scope and proof.
+There is also a current domain-integrity gap across all three existing-Signal reuse paths in `IngestionService._commit`:
+
+- The ordinary `fetch_no_change` path does not compare `Signal.domain` with the current Task Team's `domain` before writing the Team-attributed Event.
+- The `ON CONFLICT` winner path has the same omission.
+- The `prior_outcome` replay path loads the Signal and checks origin, source type, and content hash, but does not compare its domain with the current Team before returning the replayed result.
+
+A same-origin/same-hash Signal first created under a different-domain Team can therefore be associated by a later Team's Event or returned by replay without this domain check. The existing `IngestSourceRuleEvaluator._signal_from_business_event` rejects a domain mismatch later, but that downstream check neither prevents the ingestion Event from being committed nor repairs the replay result. RW4-1 eligibility must independently fail closed on this provenance/domain mismatch. Include all three paths in the future proof matrix. Do not silently change ingestion inside this audit; any ingestion correction needs its own bounded scope and proof.
 
 ### 2.2 Existing direct Signal writers and fixtures
 
@@ -124,6 +130,8 @@ The physical design should evaluate:
 - A database-assigned immutable `created_at`; no `updated_at`.
 - Indexes for the unique pair and the referencing columns needed by supported lookup/delete behavior.
 
+The stable machine-readable `reason_code` belongs on the disposition row. The human-readable explanation and complete terminal result belong in immutable Task-attributed observation/Outcome evidence; the `task_execution` Outcome must agree exactly with the disposition's value, reason code, and reference. Do not add a competing mutable explanation field to the disposition row.
+
 A simple FK to Signal proves only that the Signal exists. It does not prove that the Signal has intake provenance for this Team, that its domain matches the Team, or that `duplicate_of_signal_id` is the canonical same-Team/same-hash Signal. Likewise, a Thread/Team composite FK proves ownership but not same-domain or active-at-commit status. A Task/Team composite FK proves ownership but not that the Task is the canonical `triage_signal` Task for this Signal.
 
 ### 4.2 Cross-record integrity that still needs a design
@@ -173,7 +181,7 @@ The physical-design review should freeze a requirement-to-test matrix covering a
 2. **Row checks:** all valid matched/duplicate/deferred reference combinations; every invalid/null combination; only the three accepted values; all six deferred reasons; reject unknown reasons and self-duplicate references.
 3. **Uniqueness/isolation:** same Team/Signal pair rejected on second insert; same Signal may have separate dispositions for different Teams; concurrent duplicate pair inserts yield exactly one row on real PostgreSQL.
 4. **Foreign keys:** missing Signal/Team/Thread/Task rejected; cross-Team Thread and Task references rejected through composite FKs.
-5. **Cross-record validation:** missing or malformed intake Event; wrong Task Team; Signal/Snapshot/hash mismatch; Signal/Team domain mismatch (including a same-origin/same-hash Signal reused by a different-domain Team); Thread domain mismatch; duplicate target not associated with the same Team/hash. Canonical first-writer proof remains a separate D4.1a/C1 requirement.
+5. **Cross-record validation:** missing or malformed intake Event; wrong Task Team; Signal/Snapshot/hash mismatch; Signal/Team domain mismatch across all three ingestion reuse paths: ordinary `fetch_no_change`, `ON CONFLICT` winner, and `prior_outcome` replay; Thread domain mismatch; duplicate target not associated with the same Team/hash. Canonical first-writer proof remains a separate D4.1a/C1 requirement.
 6. **Task attribution:** only a valid triage Task/request basis may be attributed; prove same-Team Task FK now and same-Signal canonical Task validation when the D2 Task identity fields arrive. Do not add the D2 migration here.
 7. **Immutability/timestamp:** UPDATE and DELETE refused by the selected DB mechanism; `created_at` assigned by PostgreSQL and stable; no `updated_at`.
 8. **Atomic terminalization:** matched, duplicate, and deferred disposition plus Task attribution/reason, one `task_execution` Outcome, `task_completed`, Task `done`, and `completed_at` commit together. Inject failure after disposition insertion and before finalization; assert no DB record from the bundle survives.
