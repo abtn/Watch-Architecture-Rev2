@@ -4,7 +4,7 @@
 
 **Preparation baseline:** `main` after PR #184 squash merge `3fd27167e7e77eeed2110d9a2028a9ecaa005bc3` (2026-11-24).
 
-**Authority:** `PLAN.md` remains the sole milestone/authorization status authority. This document is a bounded RW4-2 preparation artifact. PR #183 is housekeeping/documentation reconciliation and is not implementation authorization.
+**Authority:** `PLAN.md` remains the sole milestone/authorization status authority. This document is the bounded RW4-2 Stage A specification artifact. PR #187 records the accepted D1/D2 documentation reconciliation; neither this PR nor this document authorizes Stage B implementation.
 
 ## 1. Purpose and boundary
 
