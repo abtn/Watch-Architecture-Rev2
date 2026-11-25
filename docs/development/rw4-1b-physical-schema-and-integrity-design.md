@@ -398,13 +398,43 @@ This proposal intentionally separates recommendations from accepted decisions. R
 
 1. Row shape: accept or amend the proposed one-row-per-(team_id, signal_id) shape and D5.2 reference matrix.
 2. Cross-record enforcement: conditional Option A is accepted as the design direction, subject to the mandatory non-owner runtime/migration-owner role boundary and the Operator-accepted forward-only DB-attested cutover in §4.0.2. The exact marker/trigger/role implementation remains subject to physical review and PostgreSQL proof; if either prerequisite cannot be enforced, stop and return with a separately scoped Option B design.
-3. Duplicate gate: accept that duplicate disposition writes remain disabled until D4.1a canonical arbitration is implemented and proven.
+3. **ACCEPTED:** duplicate disposition writes remain disabled until D4.1a canonical Team/hash arbitration is separately implemented and proven. Decision 7 remains open for partial-versus-complete rollout semantics.
 4. Task identity and sequencing gate: confirm the accepted D2 migration is a hard prerequisite before RW4-2 Stage B creates triage Tasks and before any disposition write/replay is enabled. Keep it separate from the RW4-1 migration; do not accept a transitional proof or caller/Event-only substitute.
 5. Immutability/timestamp: accept trigger-based UPDATE/DELETE rejection, statement-level TRUNCATE rejection on protected history/identity tables, effective runtime-role TRUNCATE revocation, and database-assigned clock_timestamp(), subject to the explicit privileged-maintenance boundary and repository convention verification.
 6. TaskRuntime seam: accept one success_signal_triaged category for matched/duplicate/deferred; the typed observation fields, existing task_execution Outcome, task_completed Event index fields, atomic transaction, and exact replay equality rules in §8; no generic callback abstraction.
 7. Outcome rollout and proof matrix: decide whether RW4-1 may initially enable matched/deferred while duplicate remains disabled pending D4.1a, or whether all three disposition outcomes must become available together; accept the bounded disposable-PostgreSQL cases in §10, with any additions/removals stated explicitly.
 
-The Operator has accepted the row shape and conditional Option A/forward-only cutover direction only. Decisions 3–7 remain open. The remaining physical design must receive independent review and explicit acceptance, and implementation still requires separate authorization. No ORM, SQL, migration, TaskRuntime, ingestion, or test changes may be made.
+The Operator has accepted the row shape, conditional Option A/forward-only cutover direction, and the Decision 3 duplicate-write gate. Decisions 4–7 remain open. The remaining physical design must receive independent review and explicit acceptance, and implementation still requires separate authorization. No ORM, SQL, migration, TaskRuntime, ingestion, or test changes may be made.
+
+### Decision 3 — duplicate disposition write gate (ACCEPTED)
+
+**Operator decision (2026-11-25):** duplicate disposition writes remain disabled until the accepted D4.1a canonical Team/hash arbitration is separately implemented and proven.
+
+This gate is narrower than the overall triage rollout decision in Decision 7. It does not decide whether matched/deferred outcomes may be enabled while duplicate remains disabled; Decision 7 remains open and must define the user-visible handling of Signals that would otherwise be duplicates. Do not invent a new deferred reason or silently classify such Signals as non-duplicates to work around this gate.
+
+**Hard rules while the gate is closed:**
+
+- No `SignalDisposition` row with `disposition='duplicate'` may be inserted.
+- No `duplicate_of_signal_id` reference may be written or inferred by RW4-1.
+- Do not choose a canonical Signal by `origin_url`, `fetched_at`, application `Event.created_at`, UUID ordering, query return order, or "first row seen".
+- Exact raw `content_hash` equality is the duplicate criterion, scoped to the same Team; origin equality is not required and cross-Team equality is not a duplicate.
+- A candidate duplicate must not be treated as safely classified until D4.1a can resolve the stable canonical Team/hash Signal.
+- RW4-1 must consume the D4.1a canonical result; it must not implement a parallel registry, winner-selection algorithm, or fallback arbitration path.
+
+**D4.1a exit evidence required before enabling duplicate writes:**
+
+1. A database-enforced arbitration mechanism makes the first successfully committed Signal association for a given Team and exact content hash the canonical winner, independent of origin.
+2. Two concurrent first arrivals for the same Team/hash, using different origins, cannot commit two canonical winners. The loser resolves to the committed winner after the appropriate transaction retry/re-read.
+3. A failed/rolled-back first attempt does not become the winner; the first successful commit does.
+4. Later arrivals for the same Team/hash resolve to the same winner, and the association remains stable.
+5. The same hash in different Teams remains independently canonicalized and is not cross-Team duplicate evidence.
+6. Tests cover exact hash equality only; no near-duplicate or semantic matching is introduced.
+7. Real disposable PostgreSQL two-session tests record transaction order, blocking/unique-conflict behavior, retries, and final committed associations. Application-only or in-memory concurrency tests are insufficient.
+8. The proof includes different-origin same-hash cases and verifies that application timestamps, `fetched_at`, and query ordering cannot determine the winner.
+
+**Enablement sequence:** D4.1a persistence/arbitration design and implementation must be independently reviewed and authorized; its exact-head migration and writer changes must pass the two-session PostgreSQL proof; only then may the duplicate-write gate be reconsidered and explicitly enabled. D4.1a acceptance by itself is not proof of implementation, and implementation proof alone does not silently change RW4-1 rollout policy.
+
+No D4.1a implementation or duplicate disposition write is authorized by this decision. It records a hard dependency and gate only.
 
 ## 12. Explicit non-authorization
 
