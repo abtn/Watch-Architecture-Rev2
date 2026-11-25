@@ -154,7 +154,7 @@ Therefore:
 | Result | Required durable reference | Side effect |
 |---|---|---|
 | `duplicate` | canonical same-Team duplicate Signal | disposition only |
-| `matched` | one existing same-Team/domain Thread | disposition; dormant reactivation only if D6/RW-5 contract is accepted |
+| `matched` | one existing same-Team/domain active Thread | disposition only; a dormant would-be match is terminal deferred until D6 reactivation is separately accepted/authorized |
 | `deferred` | explicit reason code | disposition only |
 
 The first slice does not automatically emit:
