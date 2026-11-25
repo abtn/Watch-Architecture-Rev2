@@ -149,7 +149,7 @@ The next `update_thread` TSK-250 loads context; `knowledge_selection` retrieves 
 | Records created (30 days) | |
 |---|---|
 | Signals / Dispositions | 41 / 41 (+ per-team noise from TM-02) |
-| Threads | 2 active, 1 dormant (set by decay) |
+| Threads | 2 active, 1 dormant (illustrative pre-D6.5 state; not created by RW-5 first-release decay) |
 | Hypotheses | 5 created; 1 rejected, 1 superseded — both explicit, both with Events |
 | ConfidenceChanges | 6 (4 evidence, 2 decay) — every one has a cause |
 | Artifacts | 3 (1 briefing, 2 digests), citations code-assembled |
