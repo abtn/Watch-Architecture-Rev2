@@ -91,25 +91,33 @@ CREATE UNIQUE INDEX uq_events_triage_signal_requested_task
 
 This enforces **at most one** matching request Event per Task. It does not enforce existence. The creator's single transaction must insert Task and request Event atomically, and every replay/load must verify exactly one valid request Event. Do not describe this index as an exactly-one constraint.
 
-### 3.3 Preflight and backfill policy
+### 3.3 Preflight, migration-time guard, and backfill policy
 
-The migration preflight is a read-only diagnostic gate, not an opportunity to backfill legacy triage rows. The migration may proceed only when the target database contains zero triage_signal Tasks and zero triage_signal_requested Events. Any non-zero result aborts before schema or data mutation. Historical repair/backfill requires a separate reviewed data-repair decision and migration; it must not be hidden inside this additive schema migration.
+An operator-run preflight is a read-only diagnostic gate, not the safety mechanism that authorizes DDL. A separate preflight and later migration have a time-of-check/time-of-use gap: rows could be written after the report and before the migration. Therefore the migration itself must repeat and enforce the zero-history assertion inside the same PostgreSQL transaction that applies the schema changes.
 
-Preflight must enumerate the complete population covered by the partial index, not merely Events already associated with known triage Tasks:
+The migration transaction must:
 
-1. Count every Task with task_type = triage_signal.
-2. Enumerate every Event with type = triage_signal_requested, grouped by task_id; detect duplicates, null/missing attribution, and malformed rows.
-3. For each such Event, verify its referenced Task exists and is a triage_signal Task; reject orphan Events and Events attached to any other Task type.
+1. Acquire explicit `ACCESS EXCLUSIVE` locks on both `tasks` and `events`, in that fixed order, before performing its authoritative checks. The locks wait for earlier writers to finish and prevent new inserts/updates/deletes on either table until the migration commits or rolls back. Do not rely on the isolation level alone or on an operator promise that writers are idle.
+2. After both locks are held, enumerate the complete populations covered by the new constraints/index: every Task with `task_type = 'triage_signal'` and every Event with `type = 'triage_signal_requested'`. Run the full integrity diagnostics below, including duplicate and malformed evidence checks.
+3. Abort the migration transaction before any DDL or data mutation if either population is non-empty or any violation is found. The exception must propagate so PostgreSQL rolls back the transaction and releases both locks.
+4. Only after the in-transaction assertion proves zero historical triage Tasks, zero request Events, and zero violations may the migration add the nullable columns, FK, check, composite unique constraint, and partial unique index. Keep the normal transactional index build; do not use `CREATE INDEX CONCURRENTLY` in this transaction.
+5. Keep both table locks through migration commit. The migration runner must use the repository's transactional Alembic migration behavior; if that assumption changes, stop and redesign the guard rather than splitting the assertion from DDL.
+
+The explicit table locks close the gap for database writers that use ordinary PostgreSQL transactions, including writers outside this repository. The migration must be tested against two sessions: hold a writer open before migration lock acquisition and prove the migration waits; then prove a writer started after lock acquisition blocks until commit/rollback. If the assertion aborts, verify the schema and data are unchanged and the locks are released. The standalone operator preflight remains useful for an early human-readable report but is not sufficient to protect the migration.
+
+The authoritative in-migration diagnostic must enumerate and check:
+
+1. Count every Task with `task_type = 'triage_signal'`.
+2. Enumerate every Event with `type = 'triage_signal_requested'`, grouped by `task_id`; detect duplicates, null/missing attribution, and malformed rows.
+3. For each such Event, verify its referenced Task exists and is a `triage_signal` Task; reject orphan Events and Events attached to any other Task type.
 4. Validate payload shape and required identity/provenance fields. Where a Task exists, verify exact agreement among Event attribution, Task ID, Team ID, Signal ID, identity version, and recomputed canonical UUIDv5. Verify referenced Signal existence and reject missing, malformed, cross-Task, or inconsistent evidence.
 5. Report duplicate logical identity tuples and all violations that would prevent the proposed FK/check/unique constraints.
 
-Because the permitted migration state is zero historical triage Tasks and zero request Events, the additive migration performs no backfill. If preflight finds any triage Task or request Event, including an otherwise valid-looking historical pair, stop and preserve the database unchanged. Produce a diagnostic report with affected IDs/counts. Do not delete, merge, select a winner, rewrite Task IDs, or synthesize requester provenance.
+The permitted migration state is zero historical triage Tasks and zero request Events, so the additive migration performs no backfill. If the assertion finds any triage Task or request Event, including an otherwise valid-looking historical pair, stop and preserve the database unchanged. Produce a diagnostic report with affected IDs/counts. Do not delete, merge, select a winner, rewrite Task IDs, or synthesize requester provenance.
 
 A later repair proposal must identify the trustworthy immutable source for every field, define Event cardinality/provenance treatment, preserve evidence, and include rollback procedures. Prove the repair on a disposable database copy. It requires independent review and explicit authorization.
 
-The preflight must scan all triage_signal_requested Events because the partial index applies to every row of that type, including malformed Events attached to non-triage Tasks. Checking only duplicate groups or joining from triage Tasks is insufficient. The Signal FK proves only Signal existence; the composite unique constraint proves only logical-pair uniqueness. Neither proves Team eligibility, Signal-to-Team domain equality, or TeamPolicy source-allowlist membership. Those remain creator-level validations under the canonical Team lock.
-
-If all preflight queries return zero historical triage Tasks, zero request Events, and zero constraint violations, add the nullable columns, FK, check, composite unique constraint, and partial unique index transactionally. A concurrent-index path is unnecessary unless production scale/availability evidence requires it.
+The preflight and in-migration assertion must scan all `triage_signal_requested` Events because the partial index applies to every row of that type, including malformed Events attached to non-triage Tasks. Checking only duplicate groups or joining from triage Tasks is insufficient. The Signal FK proves only Signal existence; the composite unique constraint proves only logical-pair uniqueness. Neither proves Team eligibility, Signal-to-Team domain equality, or TeamPolicy source-allowlist membership. Those remain creator-level validations under the canonical Team lock.
 
 ### 3.4 Rollout and ORM compatibility
 
@@ -130,19 +138,19 @@ Do not make the columns globally NOT NULL, add fake defaults, or retrofit unrela
 
 The audit searched the production source for `Task(`, `pg_insert(Task)`, and Task creation patterns at the audited baseline. The following direct producers were found:
 
-| Source | Creation path | Task type(s) | Required compatibility |
-|---|---|---|---|
-| `core/operator_application.py` | `OperatorApplicationAdapter.create_update_thread_task` | `update_thread` | Leave both identity fields NULL |
-| `core/operator_application.py` | LearningChange decision request insert | `approve_learning_change` | Leave both identity fields NULL |
-| `core/operator_application.py` | Operator update request creation | `operator_update` | Leave both identity fields NULL |
-| `core/plans.py` | Plan materialization creates child Tasks | Currently `ingest_source` | Leave both identity fields NULL |
-| `core/task_runtime.py` | Follow-on evaluation creation during terminal finalization | `evaluate_outcome` | Leave both identity fields NULL |
-| `core/task_runtime.py` | Follow-on Knowledge Quality assessment creation | `assess_knowledge_quality` | Leave both identity fields NULL |
-| `core/task_runtime.py` | Follow-on Knowledge Revalidation assessment creation | `assess_knowledge_revalidation` | Leave both identity fields NULL |
-| `core/task_runtime.py` | Follow-on Knowledge Lifecycle assessment creation | `assess_knowledge_lifecycle` | Leave both identity fields NULL |
-| `core/knowledge_revalidation.py` | `KnowledgeRevalidationService.create_task` | `assess_knowledge_revalidation` | Leave both identity fields NULL |
+| Existing producer / caller | Task type | Control Room-owned operation | Required delegation and compatibility |
+|---|---|---|---|---|
+| `OperatorApplicationAdapter` update_thread path (currently exposed as `create_update_thread_task`) | `update_thread` | `create_update_thread_task` | Adapter method delegates to Control Room; it is not itself the persistence authority. Leave both identity fields NULL. |
+| LearningChange decision request in `OperatorApplication` | `approve_learning_change` | `create_approve_learning_change_task` | OperatorApplication delegates; Control Room owns persistence. Leave both identity fields NULL. |
+| Operator update request in `OperatorApplication` | `operator_update` | `create_operator_update_task` | OperatorApplication delegates; Control Room owns persistence. Leave both identity fields NULL. |
+| Plan materialization in `PlanService` | Currently `ingest_source` | `create_ingest_source_task` | PlanService delegates per child Task inside the existing plan transaction. Leave both identity fields NULL. |
+| TaskRuntime follow-on evaluation | `evaluate_outcome` | `create_evaluate_outcome_task` | TaskRuntime delegates using its existing Session/transaction. Leave both identity fields NULL. |
+| TaskRuntime Knowledge Quality follow-on | `assess_knowledge_quality` | `create_assess_knowledge_quality_task` | TaskRuntime delegates using its existing Session/transaction. Leave both identity fields NULL. |
+| TaskRuntime Knowledge Revalidation follow-on | `assess_knowledge_revalidation` | `create_assess_knowledge_revalidation_task` | TaskRuntime delegates to the shared operation using its existing Session/transaction. Leave both identity fields NULL. |
+| TaskRuntime Knowledge Lifecycle follow-on | `assess_knowledge_lifecycle` | `create_assess_knowledge_lifecycle_task` | TaskRuntime delegates using its existing Session/transaction. Leave both identity fields NULL. |
+| `KnowledgeRevalidationService` task producer | `assess_knowledge_revalidation` | `create_assess_knowledge_revalidation_task` | Service delegates to the same Control Room persistence operation as TaskRuntime. Leave both identity fields NULL. |
 
-The Knowledge Revalidation Task type has two source-level creation paths: the dedicated service and the TaskRuntime follow-on path. They must remain compatible with the same nullable schema; this audit does not consolidate or refactor them.
+The Knowledge Revalidation Task type has two source-level producer workflows: the dedicated service and the TaskRuntime follow-on path. Their business workflows remain separate; this audit does not consolidate or refactor them. Both delegate Task persistence to the same named Control Room operation, and both remain compatible with the same nullable schema.
 
 No other production Task constructor or `pg_insert(Task)` writer was found in the audited source search. This is a bounded source audit, not a proof against dynamically constructed SQL, external host code, or writes made outside this repository.
 
@@ -152,9 +160,11 @@ Existing code writes many Task-attributed Events, but the audited source contain
 
 ### 4.2 Control Room authority and transaction boundary
 
-D1 is an accepted architectural decision, not merely a requirement for the new triage entrypoint. The Control Room is the sole logical authority for every application Task creation. All nine inventoried producers in §4 must therefore become named Control Room operations. This is a staged conformance requirement, not a reopening of D1 and not permission to refactor code in this documentation-only PR.
+D1 is an accepted architectural decision, not merely a requirement for the new triage entrypoint. The Control Room is the sole logical authority for every application Task creation. All nine inventoried producers in §4 must delegate to named operations owned by Control Room. The source components remain callers; they do not become Control Room merely by renaming an existing method, and they must have no direct Task-persistence fallback. This is a staged conformance requirement, not a reopening of D1 and not permission to refactor code in this documentation-only PR.
 
-Before Stage A can freeze, use one explicit operation mapping for all nine paths. The following names are proposed for the contract (final method signatures remain implementation detail): OperatorApplication update_thread → create_update_thread_task; LearningChange approval → create_approve_learning_change_task; Operator update → create_operator_update_task; PlanService materialization → create_ingest_source_task (called for each child Task inside the existing plan transaction); TaskRuntime follow-ons → create_evaluate_outcome_task, create_assess_knowledge_quality_task, create_assess_knowledge_revalidation_task, and create_assess_knowledge_lifecycle_task; KnowledgeRevalidationService → the same create_assess_knowledge_revalidation_task operation. The two Knowledge Revalidation producers converge on one operation rather than creating competing authority paths. Each operation preserves the existing caller's authorization, idempotency, and transaction semantics. TaskRuntime follow-on creation delegates through Control Room using the existing Session.
+The table in §4 is the authority mapping: its operation column names the Control Room owner, while its producer column identifies the delegating caller. In particular, the existing `OperatorApplicationAdapter.create_update_thread_task` entrypoint must delegate to the Control Room-owned `create_update_thread_task` operation; retaining the insert in the adapter or simply renaming that method does not satisfy D1. PlanService, TaskRuntime, OperatorApplication, and KnowledgeRevalidationService follow the same caller/owner split.
+
+The two Knowledge Revalidation producer workflows remain separate and retain their existing business responsibilities. They converge only at the shared Control Room-owned `create_assess_knowledge_revalidation_task` persistence operation. This is not a proposal to consolidate their workflows. Each Control Room operation preserves the existing caller's authorization, idempotency, and transaction semantics. TaskRuntime follow-on creation delegates through Control Room using the existing Session.
 
 Every Control Room operation is session-bound. It receives the caller's active SQLAlchemy Session and does not create a Session, begin an independent transaction, commit, or roll back. The outer workflow/transaction owner remains responsible for commit or rollback. The operation validates and authorizes, obtains operation-required locks, performs Task/Event writes, and flushes as needed. Flush is not commit and does not make writes durable.
 
@@ -192,7 +202,7 @@ Before the migration/creator contract can be frozen, the implementation design a
 7. Reuse of the same canonical Task UUID is rejected/arbitrated by the existing primary key.
 8. A duplicate `triage_signal_requested` Event for one Task is rejected by the partial unique index; a different Task may have its own request Event.
 9. Migration preflight scans every triage_signal_requested Event and every triage_signal Task, aborts without mutation on any non-zero historical population, and reports orphan, cross-Task, malformed, duplicate, and identity-inconsistent evidence. Historical repair is a separate reviewed migration.
-10. Control Room operations use the caller's active Session and never commit/rollback independently; Task and request Event creation roll back together; replay rejects missing, duplicate, malformed, cross-Task, or identity-inconsistent request evidence. A lock-order retry signal causes the outer transaction owner to roll back and reinvoke through a fresh Session/transaction; Control Room never performs that rollback itself.
+10. Control Room operations use the caller's active Session and never begin, commit, or roll back independently; Task and request Event creation roll back together. The migration-time zero-history assertion runs after ACCESS EXCLUSIVE locks on tasks then events and before DDL, within the same transactional Alembic migration. Replay rejects missing, duplicate, malformed, cross-Task, or identity-inconsistent request evidence. A typed retry-required outcome causes the outer transaction owner to roll back and reinvoke through a fresh Session/transaction; at most three total invocations are permitted, after which the owner returns a terminal retry-exhausted failure. Control Room never performs rollback or retries internally.
 11. The ORM metadata and Alembic schema agree, and the tested Alembic head is the exact reviewed migration set.
 
 The docs-only CI run for PR #187 cannot satisfy any PostgreSQL migration, index, writer-compatibility, or concurrency proof. Those require a later code-bearing, separately authorized slice and real disposable PostgreSQL execution.
@@ -201,7 +211,7 @@ The docs-only CI run for PR #187 cannot satisfy any PostgreSQL migration, index,
 
 - **Migration shape:** proposed and compatible in principle with existing non-triage Task rows.
 - **Existing writer inventory:** identified; no existing production writer needs to populate triage identity fields.
-- **Data preflight:** exhaustive and read-only; migration aborts on any historical triage Task or request Event. Actual deployed database contents have not been inspected. Historical repair is a separate reviewed migration.
+- **Data preflight:** operator preflight is exhaustive and read-only, but is not the migration safety boundary. The migration repeats the zero-history assertion after taking ACCESS EXCLUSIVE locks on tasks then events and before DDL, holding both locks through transactional commit. Any historical triage Task/request Event or integrity violation aborts the transaction without schema/data mutation. Actual deployed database contents have not been inspected. Historical repair is a separate reviewed migration.
 - **Control Room conformance:** D1 requires all nine existing producers to delegate through named Control Room operations. The boundary is session-bound; callers retain commit/rollback ownership. The producer mapping and staged rollout must be included in the frozen design.
 - **D4b matching pins:** still open and intentionally not addressed here.
 - **Stage B authorization:** remains closed. This audit does not authorize ORM/schema changes, Alembic migration, Task creator, dispatcher changes, or production behavior.
