@@ -56,6 +56,7 @@ Recommended row-level constraints:
 - CHECK for the complete D5.2 nullability/reference matrix.
 - CHECK rejecting duplicate_of_signal_id = signal_id.
 - CHECK restricting deferred reason to the six accepted D5.3 codes and requiring NULL otherwise.
+- FK team_id → teams.id.
 - FK signal_id → signals.id; FK duplicate_of_signal_id → signals.id.
 - Composite FK (thread_id, team_id) → threads(id, team_id).
 - Composite FK (decided_by_task_id, team_id) → tasks(id, team_id).
@@ -130,7 +131,7 @@ Recommendation:
 
 **Recommended immutability:** a narrow PostgreSQL trigger that rejects UPDATE and DELETE on the disposition table. A role/privilege solution is acceptable only if the actual production runtime role model is inspected and shown to prevent mutation by every supported writer. Do not assume that model.
 
-**Recommended timestamp:** created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp() (confirm the repository's timestamp convention during design review). This records database insertion time, not commit order. It is not the D2 immutable Task as_of, the D4.1a first-commit arbitration key, or the RW-5 Team revision watermark.
+**Recommended timestamp:** created_at TIMESTAMPTZ NOT NULL with a PostgreSQL-controlled insertion-time assignment using clock_timestamp(). A DEFAULT alone is insufficient because a caller can explicitly supply a value; use an insert trigger that overwrites the supplied value or a proven column-privilege boundary. The exact mechanism and repository convention must be confirmed during design review. This records database insertion time, not commit order. It is not the D2 immutable Task as_of, the D4.1a first-commit arbitration key, or the RW-5 Team revision watermark.
 
 No cascading deletes. If a referenced Signal, Team, Thread, or Task is subject to deletion, restrictive FK behavior should prevent destroying immutable disposition history. Verify the actual deletion policies and migration conventions before freezing the exact FK actions.
 
@@ -177,7 +178,7 @@ The immutable observation Snapshot is stored outside PostgreSQL as in current Ta
 | Duplicate | Cross-Team target; different hash; noncanonical target; same hash but D4.1a winner unavailable | No duplicate disposition until canonical proof is available. |
 | Task identity | Wrong Task type/Team/Signal/identity; malformed or duplicate request Event; canonical UUID mismatch | Fail closed; D2 migration is prerequisite for persisted identity check. |
 | Immutability | UPDATE and DELETE under actual runtime role; privileged path if applicable | Mutation rejected by selected DB enforcement. |
-| Timestamp | Omitted timestamp; explicit caller timestamp; repeat read | DB assigns stable timestamp; caller cannot choose it. |
+| Timestamp | Omitted timestamp; explicit caller timestamp; repeat read | PostgreSQL assigns stable timestamp; caller-supplied value is ignored/rejected by the selected enforcement mechanism. |
 | Atomic success | Matched and deferred paths; duplicate only after D4.1a gate | Disposition + Outcome + Task + terminal Event commit together. |
 | Atomic rollback | Inject failure after disposition insert and before Outcome/Event/Task terminalization | No DB row from terminal bundle survives. |
 | Replay | Exact replay; corrupt/missing disposition; corrupt Outcome/Event/Task state | Exact replay read-only; inconsistency fails closed. |
