@@ -527,7 +527,7 @@ Transitions not listed are forbidden. Every transition emits an Event (INV-13).
 
 | From | Event | To | Notes |
 |---|---|---|---|
-| — | created (triage, update commit, or `activate_team` starter Threads) | `active` | |
+| — | created (`activate_team` starter Threads; no automatic RW-4 triage creation in v1) | `active` | |
 | `active` | future dormancy transition (not authorized in RW-5 v1) | `dormant` | No current writer; dormant rows may be pre-existing/seeded. |
 | `active` / `dormant` | explicit resolution (reason given) | `resolved` | terminal; via update commit |
 
