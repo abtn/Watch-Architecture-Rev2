@@ -67,6 +67,16 @@ Recommended row-level constraints:
 
 The unique pair enforces at most one row per Team/Signal. A same Signal may have separate rows for different Teams. The composite Task FK proves the attributed Task belongs to this exact Team/Signal/identity-version tuple, not merely to the same Team. A Signal FK alone still does not prove Team intake provenance, domain equality, or duplicate canonicality.
 
+**Required supporting indexes on the new table:**
+
+- `uq_signal_dispositions_team_signal` — unique B-tree `(team_id, signal_id)`; also supports Team-scoped lookup and Team FK checks.
+- `ix_signal_dispositions_signal_id` — B-tree `(signal_id)` for Signal FK checks and Signal identity-immutability lookups.
+- `ix_signal_dispositions_duplicate_of_signal_id` — partial B-tree `(duplicate_of_signal_id) WHERE duplicate_of_signal_id IS NOT NULL` for duplicate-target FK checks and identity-immutability lookups.
+- `ix_signal_dispositions_thread_id_team_id` — partial B-tree `(thread_id, team_id) WHERE thread_id IS NOT NULL` for the composite Thread FK and the matched-Thread domain guard.
+- `ix_signal_dispositions_decided_by_task_identity` — B-tree `(decided_by_task_id, team_id, signal_id, identity_version)` for the D2-dependent composite Task FK.
+
+Do not add indexes for `created_at`, `reason_code`, or disposition alone without a demonstrated query requirement. The indexes above exist to support the declared foreign keys and narrow cross-record guards; they are not a general query-optimization project.
+
 ### 3.1 Deferred vocabulary source
 
 The normative authority is [RW4-2 Stage A specification, D5.3 — Stable deferred reason codes](rw-4-2-decision-and-specification-draft.md), also recorded in [accepted decision issue #193](https://github.com/abtn/Watch-Architecture-Rev2/issues/193).
@@ -155,7 +165,7 @@ This acceptance selects the historical-boundary direction within conditional Opt
 - A `BEFORE INSERT` trigger recognizes only `signal_ingested` and `fetch_no_change`. Under compatible `Task FOR SHARE → Team FOR SHARE → Signal FOR SHARE` row locks (the existing ingestion path already holds Task `FOR UPDATE` and Team `FOR SHARE`), it validates `Task.task_type = 'ingest_source'`, `Task.status = 'running'`, the Task's Team exists and has `Team.status = 'active'`, the referenced Signal exists, the exact payload fields (`signal_id`, `origin_url`, `source_type`, `content_hash`, `snapshot_ref`) agree with the stored Signal, and `Signal.domain = Team.domain`. Only after every check succeeds does it set the current witness version (initially proposed as `1`). The trigger must not upgrade Team's lock mode; it must preserve the audited Task → Team → Signal order.
 - The trigger owns the marker value. It overwrites any caller-supplied value for these protected Event types; callers cannot choose a version, suppress attestation, or mark an unrelated Event. The migration installs the column and trigger atomically. Events committed before that cutover remain NULL; there is no UPDATE/backfill that labels legacy rows as attested.
 - An intake Event with NULL or unsupported witness version cannot establish RW4-1 Team–Signal provenance. Eligibility also requires all protected Event, Task, Team, and Signal identity checks to pass; a marker is not a substitute for those checks.
-- Protect the marker against UPDATE, and protect both intake Event types against UPDATE, DELETE, and type changes into or out of the protected set. Protect the referenced Signal identity fields and Task `team_id`/`task_type` while at least one DB-marked intake Event references them; protect Team `domain` while a DB-marked intake Event or immutable SignalDisposition depends on it. Legacy unmarked Events do not activate these identity fences. Runtime must not own these objects or bypass their triggers.
+- Protect the marker against UPDATE, and protect both intake Event types against UPDATE, DELETE, and type changes into or out of the protected set. Protect the referenced Signal identity fields while a DB-marked intake Event or any SignalDisposition references the Signal as its subject or duplicate target; protect Task `team_id`/`task_type` while a DB-marked intake Event references the Task (the D2 check and composite FK protect triage Task identity after disposition creation); protect Team `domain` while a DB-marked intake Event or any immutable SignalDisposition for that Team depends on it. Legacy unmarked Events do not activate these identity fences. Runtime must not own these objects or bypass their triggers.
 - Existing ingestion `prior_outcome` replay remains an ingestion idempotency behavior; it must not manufacture a marker for a legacy Event. A legacy replay may still return its original ingestion result, but that Event remains ineligible as RW4-1 provenance. New triage eligibility must require the DB marker.
 - The migration must not rewrite historical Event payloads or infer a marker from application-supplied `created_at`. It must retain legacy rows and their original timestamps unchanged.
 
