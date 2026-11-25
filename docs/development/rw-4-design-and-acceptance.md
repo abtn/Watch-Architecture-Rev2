@@ -28,7 +28,7 @@ The following are existing constraints, not new decisions in this document:
 - The RW-3 update_thread Task creator remains the host-authorized Operator operation. Triage must not create or enqueue update_thread Tasks. Any future application-authored follow-up creator requires a separate actor, authorization, attribution, request-Event, idempotency, and replay design and explicit approval.
 - The existing TaskRuntime remains the sole Task lifecycle authority. The current TaskDispatcher remains limited to configured-source ingest_source work unless a separate dispatcher change is designed and authorized.
 
-RW3.4 implementation is merged, but its formal acceptance was explicitly deferred by the Operator and recorded in PR #171. RW-4 documentation planning may proceed. Before RW-4 implementation begins, the Operator must either resolve the bounded RW3.4 acceptance work and accept RW3.4, or explicitly approve a sequencing exception while retaining the deferred disposition. This document does neither.
+RW3.4 implementation is merged, but its formal acceptance remains deferred with all seven PARTIAL qualifications preserved. The Operator approved a sequencing exception on 2026-11-24 so individually gated RW-4/RW-5 slices may advance without formal RW3.4 acceptance. This does not authorize any implementation slice; each still requires its own accepted prerequisites, reviewed proof subset, and explicit authorization.
 
 ## 3. Current source audit
 
