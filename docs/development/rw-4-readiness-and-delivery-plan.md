@@ -171,7 +171,7 @@ At minimum map:
 - atomic deferred disposition, Task attribution/reason, TaskRuntime Outcome, terminal Task status, and terminal Event commit/rollback in one TaskRuntime-owned transaction;
 - fail-closed replay when a disposition exists without exactly one valid canonical Task/request Event; no synthesized history or replacement;
 - TaskRuntime terminal supersession of stale-pin queued Tasks using the existing failed/terminal_failure path and a stable non-technical supersession reason;
-- no dormant-Thread reactivation before D6 acceptance;
+- no dormant-Thread reactivation before separately authorized and proven RW4-5 implementation;
 - dormant reactivation and decay races;
 - Context membership, provenance, ordering, bounds, and replay;
 - no direct Task lifecycle writes, unapproved follow-up Task creation, or dispatcher expansion;
@@ -206,7 +206,7 @@ The shared RW-5 clock, decay, and locking contract is frozen in PR #182. Its imp
 6. under-lock history/state/policy revalidation, decay/triage race outcomes, and bounded lock/query/transaction work;
 7. a TaskRuntime-owned atomic business commit, summary Event, Outcome, and terminal Task transition, proven with transaction fault injection.
 
-RW-5 first release changes confidence only. It does not transition Threads to dormant. Dormancy is prohibited until D6, a durable RW-4 reactivation/recovery path, and separate authorization exist. `last_touched_at` is not historical authority and decay never changes it. RW5-P remains a separate host integration and must be accepted before foundation exit/R8 can claim autonomous periodic decay. TaskRuntime remains the sole lifecycle/recovery authority.
+RW-5 first release changes confidence only. It does not transition Threads to dormant. Dormancy is prohibited until a durable RW-4 reactivation/recovery path is implemented and separately authorized. D6 decisions are accepted but do not authorize a dormancy writer. `last_touched_at` is not historical authority and decay never changes it. RW5-P remains a separate host integration and must be accepted before foundation exit/R8 can claim autonomous periodic decay. TaskRuntime remains the sole lifecycle/recovery authority.
 
 ### Experiment A
 
@@ -236,7 +236,7 @@ Proof: fresh disposable PostgreSQL migration; uniqueness/FK/check violations; cr
 
 ### RW4-3 — Deterministic triage and commit
 
-Implement only the evidence-approved duplicate/matching rules: bounded candidate/evidence retrieval; same-Team ingestion and Snapshot provenance; deterministic result/reason; canonical durable assessment receipt; separate receipt transaction; Kernel-authorized business commit; and atomic disposition/Event commit. Matched active-Thread handling may proceed under the accepted D4/C1/D5 contracts. **Dormant-Thread matched outcomes are excluded before D6:** a dormant candidate may be evaluated only to determine whether it would otherwise win; it must not be reactivated or receive any `matched` disposition, even one that leaves status unchanged. If a dormant candidate would otherwise win and no active candidate wins, resolve it only through terminal `deferred` with `dormant_thread_requires_reactivation`. Do not change Thread status/activity timestamps or emit a reactivation Event.
+Implement only the evidence-approved duplicate/matching rules: bounded candidate/evidence retrieval; same-Team ingestion and Snapshot provenance; deterministic result/reason; canonical durable assessment receipt; separate receipt transaction; Kernel-authorized business commit; and atomic disposition/Event commit. Matched active-Thread handling may proceed under the accepted D4/C1/D5 contracts. D6.1–D6.6 are accepted, but dormant-Thread matched outcomes remain excluded from RW4-3: a dormant candidate may be evaluated only to determine whether it would otherwise win; it must not be reactivated or receive a `matched` disposition in this slice. If a dormant candidate would otherwise win and no active candidate wins, resolve it through terminal `deferred` with `dormant_thread_requires_reactivation`. Do not change Thread status/timestamps or emit a reactivation Event in RW4-3. Dormant matching/reactivation belongs to the separately authorized RW4-5 slice.
 
 Proof for the non-reactivation slice: positive/negative fixtures, threshold/tie/overflow, duplicate and concurrent request replay, receipt recovery across the two transactions, rollback, no Hypothesis/EvidenceLink/ConfidenceChange mutation, and no automatic `update_thread` Task. Add decay-first/triage-first races, under-lock revalidation, and at-most-one reactivation Event only in the separately authorized D6 reactivation slice.
 
