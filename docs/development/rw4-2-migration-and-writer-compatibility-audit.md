@@ -13,6 +13,7 @@ The accepted D2 schema can be added without changing the required shape of exist
 - Add a database check requiring both identity fields for `task_type = 'triage_signal'`; also reject a half-populated pair.
 - Add unique `(team_id, signal_id, identity_version)`.
 - Add a partial unique index on `events(task_id)` for `type = 'triage_signal_requested'`.
+- Add a narrow `BEFORE INSERT FOR EACH ROW` trigger on `tasks` for `task_type = 'triage_signal'` that locks the referenced Team row `FOR NO KEY UPDATE` before the Task insert proceeds.
 
 Existing Task types keep both new columns NULL. PostgreSQL's ordinary unique-constraint NULL semantics allow any number of such non-triage rows while still enforcing uniqueness for populated triage identity tuples.
 
@@ -79,7 +80,17 @@ ALTER TABLE tasks
 
 The check assigns these identity columns exclusively to triage_signal: triage Tasks require both fields and a non-empty version; every other Task type must keep both fields NULL. It rejects half-populated pairs and prevents unrelated Task types from acquiring triage identity. The check does not hard-code triage_identity_v1; the accepted v1 value is validated by the creator/replay contract, while any future identity generation remains subject to its separately approved transition. The database unique constraint is intentionally independent of the canonical UUID primary key: the primary key arbitrates equal UUIDs, while this constraint rejects a different UUID assigned to the same logical pair/version.
 
-### 3.2 Request Event index
+### 3.2 Team-lock enforcement for triage Task inserts
+
+The creator's post-Team-lock recheck can safely classify a newly visible Task as a serialized winner only if every triage Task INSERT is guaranteed to participate in the same Team lock. Application convention alone cannot establish that: a direct SQL writer could insert the canonical row without taking the Team lock, and its row would be indistinguishable from a conforming winner when the creator later acquires Team and rechecks.
+
+Therefore the migration design includes one narrow PostgreSQL `BEFORE INSERT FOR EACH ROW` trigger, restricted to `NEW.task_type = 'triage_signal'`. It must select the referenced Team row `FOR NO KEY UPDATE` and fail closed if no Team row exists. The trigger runs in the inserting transaction before the Task row is inserted; if it waits for another transaction's Team lock, the insert cannot pass the trigger until that lock is released. On the normal Control Room path the canonical helper already holds this same Team lock, so the trigger's acquisition is re-entrant. It does not add a second application lock helper.
+
+This trigger enforces only the lock-participation invariant. It does not authorize a caller, prove Control Room ownership, validate Team state/domain/source policy, choose TeamPolicy, or replace any creator/replay checks. All those remain Control Room responsibilities. The trigger must be installed and enabled by the same Task-schema migration, and the application database role must not have permission to disable it. Its lock mode and interaction with the existing Task → Team order must be proven on the supported PostgreSQL version before implementation freeze. Non-triage Task inserts are unaffected.
+
+The trigger is required because otherwise the post-lock recheck cannot distinguish a conforming race winner from a writer that bypassed the canonical Team lock. Do not attempt to infer lock participation from Task/Event shape, `as_of`, or Team revision metadata; those values are not proof that the writer held the lock.
+
+### 3.3 Request Event index
 
 Add exactly the accepted partial unique index:
 
@@ -91,7 +102,7 @@ CREATE UNIQUE INDEX uq_events_triage_signal_requested_task
 
 This enforces **at most one** matching request Event per Task. It does not enforce existence. The creator's single transaction must insert Task and request Event atomically, and every replay/load must verify exactly one valid request Event. Do not describe this index as an exactly-one constraint.
 
-### 3.3 Preflight, migration-time guard, and backfill policy
+### 3.4 Preflight, migration-time guard, and backfill policy
 
 An operator-run preflight is a read-only diagnostic gate, not the safety mechanism that authorizes DDL. A separate preflight and later migration have a time-of-check/time-of-use gap: rows could be written after the report and before the migration. Therefore the migration itself must repeat and enforce the zero-history assertion inside the same PostgreSQL transaction that applies the schema changes.
 
@@ -100,7 +111,7 @@ The migration transaction must:
 1. Acquire explicit `ACCESS EXCLUSIVE` locks on both `tasks` and `events`, in that fixed order, before performing its authoritative checks. The locks wait for earlier writers to finish and prevent new inserts/updates/deletes on either table until the migration commits or rolls back. Do not rely on the isolation level alone or on an operator promise that writers are idle.
 2. After both locks are held, enumerate the complete populations covered by the new constraints/index: every Task with `task_type = 'triage_signal'` and every Event with `type = 'triage_signal_requested'`. Run the full integrity diagnostics below, including duplicate and malformed evidence checks.
 3. Abort the migration transaction before any DDL or data mutation if either population is non-empty or any violation is found. The exception must propagate so PostgreSQL rolls back the transaction and releases both locks.
-4. Only after the in-transaction assertion proves zero historical triage Tasks, zero request Events, and zero violations may the migration add the nullable columns, FK, check, composite unique constraint, and partial unique index. Keep the normal transactional index build; do not use `CREATE INDEX CONCURRENTLY` in this transaction.
+4. Only after the in-transaction assertion proves zero historical triage Tasks, zero request Events, and zero violations may the migration add the nullable columns, FK, check, composite unique constraint, partial unique index, trigger function, and triage-only BEFORE INSERT trigger. Keep the normal transactional index build; do not use `CREATE INDEX CONCURRENTLY` in this transaction.
 5. Keep both table locks through migration commit. The migration runner must use the repository's transactional Alembic migration behavior; if that assumption changes, stop and redesign the guard rather than splitting the assertion from DDL.
 
 The explicit table locks close the gap for database writers that use ordinary PostgreSQL transactions, including writers outside this repository. The migration must be tested against two sessions: hold a writer open before migration lock acquisition and prove the migration waits; then prove a writer started after lock acquisition blocks until commit/rollback. If the assertion aborts, verify the schema and data are unchanged and the locks are released. The standalone operator preflight remains useful for an early human-readable report but is not sufficient to protect the migration.
@@ -119,7 +130,7 @@ A later repair proposal must identify the trustworthy immutable source for every
 
 The preflight and in-migration assertion must scan all `triage_signal_requested` Events because the partial index applies to every row of that type, including malformed Events attached to non-triage Tasks. Checking only duplicate groups or joining from triage Tasks is insufficient. The Signal FK proves only Signal existence; the composite unique constraint proves only logical-pair uniqueness. Neither proves Team eligibility, Signal-to-Team domain equality, or TeamPolicy source-allowlist membership. Those remain creator-level validations under the canonical Team lock.
 
-### 3.4 Rollout and ORM compatibility
+### 3.5 Rollout and ORM compatibility
 
 The ORM mapping must declare both fields nullable. Existing constructors and `pg_insert(Task)` writers may omit them and will continue to insert NULL. The database check makes omission invalid only for a `triage_signal` row.
 
@@ -130,7 +141,7 @@ The rollout order for a future authorized implementation is:
 3. Deploy the ORM mapping and tests with the existing writers unchanged.
 4. Deploy the complete Control Room Task-creation authority path described in §4.2, including all inventoried producers delegating to named Control Room operations. Do not enable only a triage-specific path while leaving legacy producers as independent Task writers.
 5. Enable triage creation only after the migration is present; the operation must always supply both identity fields and the canonical UUIDv5 Task ID.
-6. Verify PostgreSQL constraints/indexes, writer compatibility, and atomic exactly-one creation/replay on the exact tested migration head.
+6. Verify PostgreSQL constraints/indexes, the enabled triage Team-lock trigger, writer compatibility, and atomic exactly-one creation/replay on the exact tested migration head.
 
 Do not make the columns globally NOT NULL, add fake defaults, or retrofit unrelated Task types with fabricated Signal identity. Do not combine this schema migration with SignalDisposition persistence (RW4-1), the RW-5 lock-helper implementation, or the Stage B creator implementation.
 
@@ -202,14 +213,14 @@ Before the migration/creator contract can be frozen, the implementation design a
 7. Reuse of the same canonical Task UUID is rejected/arbitrated by the existing primary key.
 8. A duplicate `triage_signal_requested` Event for one Task is rejected by the partial unique index; a different Task may have its own request Event.
 9. The operator preflight and migration-time guard scan every triage_signal_requested Event and every triage_signal Task, report orphan, cross-Task, malformed, duplicate, and identity-inconsistent evidence, and abort without mutation on any non-zero historical population. A two-session PostgreSQL test proves ACCESS EXCLUSIVE lock waiting/blocking behavior and verifies an assertion failure leaves schema and data unchanged. Historical repair is a separate reviewed migration.
-10. Control Room operations use the caller's active Session and never begin, commit, or roll back independently; Task and request Event creation roll back together. The migration-time zero-history assertion runs after ACCESS EXCLUSIVE locks on tasks then events and before DDL, within the same transactional Alembic migration. Replay rejects missing, duplicate, malformed, cross-Task, or identity-inconsistent request evidence. A typed retry-required outcome causes the outer transaction owner to roll back and reinvoke through a fresh Session/transaction; at most three total invocations are permitted, after which the owner returns a terminal retry-exhausted failure. Control Room never performs rollback or retries internally.
-11. The ORM metadata and Alembic schema agree, and the tested Alembic head is the exact reviewed migration set.
+10. Control Room operations use the caller's active Session and never begin, commit, or roll back independently; Task and request Event creation roll back together. The migration-time zero-history assertion runs after ACCESS EXCLUSIVE locks on tasks then events and before DDL, within the same transactional Alembic migration. Replay rejects missing, duplicate, malformed, cross-Task, or identity-inconsistent request evidence. The triage-only BEFORE INSERT trigger acquires Team `FOR NO KEY UPDATE` for every triage Task INSERT, including direct SQL inserts that omit the application helper; a two-session PostgreSQL test proves such an insert blocks behind a creator-held Team lock. Only the protected post-Team-lock recheck returns retry-required; the outer transaction owner rolls back and reinvokes through a fresh Session/transaction, at most three total invocations. A final PK conflict after that recheck is a terminal protocol/integrity failure with no retry, replay, or request Event. Control Room never performs rollback or retries internally.
+11. The ORM metadata and Alembic schema agree, the triage Team-lock trigger is installed/enabled and cannot be disabled by the application role, and the tested Alembic head is the exact reviewed migration set.
 
 The docs-only CI run for PR #187 cannot satisfy any PostgreSQL migration, index, writer-compatibility, or concurrency proof. Those require a later code-bearing, separately authorized slice and real disposable PostgreSQL execution.
 
 ## 6. Findings and remaining Stage A work
 
-- **Migration shape:** proposed and compatible in principle with existing non-triage Task rows.
+- **Migration shape:** proposed and compatible in principle with existing non-triage Task rows; it includes a triage-only Team-lock trigger so the serialized-winner assumption is enforced rather than inferred.
 - **Existing writer inventory:** identified; no existing production writer needs to populate triage identity fields.
 - **Data preflight:** operator preflight is exhaustive and read-only, but is not the migration safety boundary. The migration repeats the zero-history assertion after taking ACCESS EXCLUSIVE locks on tasks then events and before DDL, holding both locks through transactional commit. Any historical triage Task/request Event or integrity violation aborts the transaction without schema/data mutation. Actual deployed database contents have not been inspected. Historical repair is a separate reviewed migration.
 - **Control Room conformance:** D1 requires all nine existing producers to delegate through named Control Room operations. The boundary is session-bound; callers retain commit/rollback ownership. The producer mapping and staged rollout must be included in the frozen design.
