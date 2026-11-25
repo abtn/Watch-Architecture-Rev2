@@ -450,9 +450,9 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 
 ## 10. Implementation sequence after decision acceptance
 
-1. D1 and all six D2 decisions are accepted. Reconcile and review the complete creator contract and proof subset; finish exhaustive migration preflight/abort policy, separate historical-repair policy, strict Task identity-column ownership, and the complete nine-writer Control Room/session-bound transaction design before D4b or implementation authorization.
+1. D1, all six D2 decisions, and D3-A/B/C are accepted. Reconcile and review the complete creator contract and proof subset; finish exhaustive migration preflight/abort policy, separate historical-repair policy, strict Task identity-column ownership, and the complete nine-writer Control Room/session-bound transaction design before D4b or implementation authorization.
 2. Keep this PR documentation-only. Do not implement or enable the Task creator in this stage.
-3. Proceed to RW4-1 persistence only after its independent D3/D5 gate, reviewed proof subset, and explicit authorization.
+3. Proceed to RW4-1 persistence only after D5's complete vocabulary/reference matrix, its reviewed proof subset, and explicit authorization; D3 is accepted and reconciled.
 4. Proceed to the separately authorized RW-5 canonical lock-helper/Team-revision/writer retrofit and prove the helper on real PostgreSQL.
 5. Return to RW4-2 creator implementation only after RW4-1 and the RW-5 helper/retrofit have landed; freeze the exact adapter/request/principal types and Task/Event schema, then obtain separate implementation authorization.
 6. Implement the narrow creator/replay path test-first, using the canonical helper paths in §6; no new framework or bespoke lock implementation.
@@ -460,7 +460,7 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 8. Obtain one named independent review from someone other than the implementation author.
 9. Reconcile `PLAN.md` and the authoritative Task/architecture documents only after implementation and evidence are accepted.
 
-## 11. Decision record — D1 and all D2 decisions accepted
+## 11. Decision record — D1, all D2, and D3-A/B/C accepted
 
 | Decision | Accepted contract | Status |
 |---|---|---|
@@ -473,6 +473,9 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 | D2 re-triage | Terminal v1 Task continues to occupy identity; changed pins conflict; v2 requires separate Operator decision and documented transition | **Accepted — 2026-11-24** |
 | D2 creation watermark | Immutable first-writer `as_of` and Team revision stored in request Event; validated/returned unchanged on replay, excluded from semantic fingerprint; RW4-3 revalidates current state | **Accepted — 2026-11-24** |
 | D2 request Event cardinality | Partial unique index on `events(task_id)` for `triage_signal_requested`, plus atomic Task/Event creation and replay validation; index enforces at-most-one | **Accepted — 2026-11-24; migration/proof still gated** |
+| D3-A Signal eligibility | No Signal lifecycle/status column; eligibility derives from canonical Signal/Snapshot integrity and provenance plus active-Team, caller-authorization, and source/domain/policy checks; existing Team/Signal disposition excludes another v1 decision | **Accepted — 2026-11-25** |
+| D3-B Task terminality | TaskRuntime owns lifecycle; pending/running follow runtime admission/recovery; done/failed are terminal; terminal v1 identity remains occupied | **Accepted — 2026-11-25** |
+| D3-C terminal deferred | Deferred disposition is immutable/terminal in v1; its Task completes `done`; technical failures remain TaskRuntime retry/recovery and may end `failed`; no ordinary refinement | **Accepted — 2026-11-25** |
 | Risk acceptance — canonical Task identity uniqueness migration | Persisted `signal_id`/`identity_version` and database unique constraint on `(team_id, signal_id, identity_version)`; audited schema requires Task migration | **Accepted — 2026-11-24; implementation still gated** |
 | RW4-2 implementation | Requires accepted D1/D2, reviewed proof subset, lock-order compatibility, and explicit authorization | Not authorized |
 
