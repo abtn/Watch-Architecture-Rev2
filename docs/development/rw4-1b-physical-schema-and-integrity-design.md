@@ -199,7 +199,7 @@ The nested serialized JSON member is named exactly `signal_triage` and has schem
 {
   "schema_version": 1,
   "signal_id": "lowercase-canonical-uuid",
-  "disposition": "matched|duplicate|deferred",
+  "disposition": "matched",
   "thread_id": null,
   "duplicate_of_signal_id": null,
   "reason_code": null,
@@ -210,7 +210,26 @@ All seven keys are always present. UUIDs use lowercase canonical hyphenated text
 
 ### 8.2 Canonical outer observation and Outcome
 
-The outer observation continues to use the existing TaskRuntime fields and serializer conventions: `attempt`, `failure_reason`, `observed_at`, `result_category`, and the existing evidence members. For triage, `result_category` is exactly `success_signal_triaged`, `failure_reason` is null, and `signal_triage` is present. No other optional evidence member is permitted for this category. `observed_at` must be timezone-aware and is serialized using the existing UTC timestamp serializer.
+The outer observation continues to use the existing TaskRuntime fields and serializer conventions. Its exact triage-specific additions and values are represented by this shape (UUID/time values are illustrative):
+```json
+{
+  "attempt": 1,
+  "failure_reason": null,
+  "observed_at": "2026-11-25T12:00:00+00:00",
+  "result_category": "success_signal_triaged",
+  "signals": [],
+  "signal_triage": {
+    "schema_version": 1,
+    "signal_id": "00000000-0000-4000-8000-000000000002",
+    "disposition": "matched",
+    "thread_id": "00000000-0000-4000-8000-000000000003",
+    "duplicate_of_signal_id": null,
+    "reason_code": null,
+    "explanation": "Matched an eligible existing Thread."
+  }
+}
+```
+The nested `signal_triage` object has exactly the seven keys defined in §8.1; the example shows the matched variant. For duplicate and deferred, only the D5.2 fields change according to the same fixed key set. `signals` remains the existing serializer's empty array. No other optional outer evidence member is permitted for this category. `observed_at` must be timezone-aware and is serialized using the existing UTC timestamp serializer.
 
 The existing Outcome remains the only terminal Outcome: `subject_kind=task`, `subject_id=Task.id`, `outcome_type=task_execution`, `recorded_by_task_id=Task.id`, and `team_id=Task.team_id`. Its `observation_snapshot_ref` and `observation_hash` identify the exact canonical JSON bytes above plus the existing outer fields. The disposition row stores disposition, reference, reason, and Task attribution; the human explanation remains in the immutable observation Snapshot.
 
