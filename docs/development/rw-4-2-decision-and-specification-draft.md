@@ -2,9 +2,9 @@
 
 **Status:** D1 accepted by the Operator on 2026-11-24; all six D2 decisions were accepted by the Operator on 2026-11-24: UUIDv5 identity, Task-schema logical-pair uniqueness, request-Event cardinality, replay/provenance/re-triage, immutable watermark semantics, and v1 matching-pin ownership. Migration shape and the source-level existing-writer inventory are documented in the Stage A migration/compatibility audit; target-database preflight/backfill evidence, independent audit review, D4b actual pin values, and implementation proof remain outstanding. This document remains a design/specification artifact. No creator implementation is authorized.
 
-**Preparation baseline:** `main` after PR #184 squash merge `3fd27167e7e77eeed2110d9a2028a9ecaa005bc3` (2026-11-24).
+**Preparation baseline:** `main` after PR #187 squash merge `94563be9e551ebf73faee626d952e9b839b57946` (2026-11-25); PR #184 is the earlier D1/D2 proposal baseline.
 
-**Authority:** `PLAN.md` remains the sole milestone/authorization status authority. This document is the bounded RW4-2 Stage A specification artifact. PR #187 records the accepted D1/D2 documentation reconciliation; neither this PR nor this document authorizes Stage B implementation.
+**Authority:** `PLAN.md` remains the sole milestone/authorization status authority. Accepted D3 decisions are recorded in [issue #189](https://github.com/abtn/Watch-Architecture-Rev2/issues/189). This document is the bounded RW4-2 Stage A specification artifact. PR #187 records the accepted D1/D2 documentation reconciliation; neither this PR nor this document authorizes Stage B implementation.
 
 ## 1. Purpose and boundary
 
