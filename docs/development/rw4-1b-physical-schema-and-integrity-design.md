@@ -163,25 +163,54 @@ Recommendation:
 
 No cascading deletes. If a referenced Signal, Team, Thread, or Task is subject to deletion, restrictive FK behavior should prevent destroying immutable disposition history. Verify the actual deletion policies and migration conventions before freezing the exact FK actions.
 
-## 8. TaskRuntime integration proposal
+## 8. TaskRuntime integration and terminal evidence contract
 
 Do not open a second transaction and do not add a generic callback framework.
 
-Proposed narrow flow inside existing TaskRuntime.finalize transaction:
+### 8.1 One triage success category
+
+Use one TaskRuntime success category for all three successful business dispositions: `success_signal_triaged`. The disposition value distinguishes matched, duplicate, and deferred; do not invent three Task lifecycle categories or reuse ingestion categories. This category is a proposed extension to the current TaskRuntime success-category set and is not implemented by this design document.
+
+A successful triage Task always ends with Task status `done`, one `task_execution` Outcome, and exactly one `task_completed` Event. Deferred is included in this success path. Technical failures and stale-pin supersession remain on the existing TaskRuntime non-success path and create no disposition.
+
+### 8.2 Typed observation payload
+
+Add one triage-specific typed value to the existing TerminalObservation contract. Its serialized observation object has exactly these semantic fields:
+
+| Field | Requirement |
+|---|---|
+| signal_id | Required UUID; must equal the Task's persisted D2 signal_id. |
+| disposition | Required; exactly matched, duplicate, or deferred. |
+| thread_id | Required only for matched; otherwise NULL. |
+| duplicate_of_signal_id | Required only for duplicate; otherwise NULL. |
+| reason_code | Required only for deferred and one of the six D5.3 values; otherwise NULL. |
+| explanation | Required non-empty human-readable explanation; never used as a machine decision code. |
+
+The typed value must enforce the D5.2 reference/nullability matrix before persistence. It must reject extra or contradictory references. The Task ID and attempt remain the enclosing TerminalObservation identity; they are not caller-controlled fields inside this nested value.
+
+### 8.3 Outcome and terminal Event relationship
+
+The existing Outcome remains the only terminal Outcome: subject_kind=task, subject_id=Task.id, outcome_type=task_execution, recorded_by_task_id=Task.id, and Team attribution equal to the Task Team. Its immutable observation Snapshot contains the complete typed triage object above. The disposition row stores the stable disposition value, relevant reference, and deferred reason_code; the human explanation remains in the immutable Task-attributed observation, not a new free-text disposition column.
+
+The one task_completed Event continues to reference the Outcome ID, observation_snapshot_ref, observation_hash, and result_category=success_signal_triaged. It also carries signal_id and disposition as compact index fields. Those Event fields must equal the typed Outcome observation and the persisted disposition row. The Event does not become a second source of terminal truth.
+
+### 8.4 Atomic finalization and replay
+
+Inside the existing TaskRuntime.finalize transaction:
 
 1. Lock and validate the Task/attempt using the existing TaskRuntime path.
-2. For a triage success only, validate canonical Task identity and the exactly-one request Event.
-3. Validate persisted Signal/Team intake provenance and domain; validate the selected Thread or duplicate reference according to the outcome.
-4. Insert the disposition row using the active Session, or on committed replay load and validate the exact existing disposition.
-5. Build/validate the typed terminal observation and task_execution Outcome so disposition value, reason code, reference, and human explanation agree.
-6. Insert exactly one task_completed Event and set Task done plus completed_at.
-7. Commit all database writes together.
+2. For success_signal_triaged only, verify the D2 canonical Task identity and exactly-one valid triage_signal_requested Event.
+3. Validate the protected intake-provenance witness and Team/domain relationship.
+4. Acquire the canonical Team/Thread locks required for the outcome; matched writes remain gated on the RW-5 helper and writer retrofit in §4.1.
+5. Validate the selected Thread or duplicate reference. Duplicate remains gated on D4.1a; dormant Thread remains deferred in RW4-1.
+6. Insert the disposition row through the active Session.
+7. Create the existing task_execution Outcome from the typed observation Snapshot.
+8. Insert exactly one task_completed Event and set Task done plus completed_at.
+9. Commit all database writes together.
 
-Technical failure before successful disposition validation produces no disposition and follows existing TaskRuntime retry/recovery/failure semantics. Deferred is a successful business outcome, not a technical failure.
+Replay validates the complete bundle: canonical D2 Task identity and request Event; the unique Team/Signal disposition row; its exact reference/reason matrix; the Task-attributed Outcome and immutable observation Snapshot; the task_completed Event's Outcome/Snapshot/category/index fields; Task status; and completion timestamp. All values must agree with one another. Exact replay is read-only. Any missing, duplicate, malformed, or inconsistent record fails closed; do not repair, synthesize, overwrite, or create replacement history.
 
-Replay must validate the complete bundle: canonical Task/request Event, disposition row, Task-attributed observation/Outcome, terminal Event, Task status, and completion timestamp. Exact replay is read-only. Any mismatch fails closed; do not repair, synthesize, overwrite, or create replacement history.
-
-The immutable observation Snapshot is stored outside PostgreSQL as in current TaskRuntime. A failed DB transaction may leave an unreferenced immutable file; no disposition, Outcome, terminal Event, or terminal Task state may survive independently.
+The immutable observation Snapshot is stored outside PostgreSQL. A failed DB transaction may leave an unreferenced immutable file; no disposition, Outcome, terminal Event, or terminal Task state may survive independently.
 
 ## 9. Migration boundary
 
