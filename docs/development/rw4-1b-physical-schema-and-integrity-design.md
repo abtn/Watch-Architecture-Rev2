@@ -197,7 +197,7 @@ This proposal intentionally separates recommendations from accepted decisions. R
 4. Task identity and sequencing gate: accept D2 migration as a hard prerequisite for disposition writes/replay, and decide whether its implementation must precede RW4-1 or whether a separately reviewed equivalent persisted proof is possible without reordering the accepted serial plan.
 5. Immutability/timestamp: accept trigger-based UPDATE/DELETE rejection and database-assigned clock_timestamp(), subject to runtime-role and repository convention verification.
 6. TaskRuntime seam: accept a narrow explicit triage-specific in-session finalization/replay path, with no generic callback abstraction.
-7. Proof matrix: accept the bounded disposable-PostgreSQL cases in §10, with any additions/removals stated explicitly.
+7. Outcome rollout and proof matrix: decide whether RW4-1 may initially enable matched/deferred while duplicate remains disabled pending D4.1a, or whether all three disposition outcomes must become available together; accept the bounded disposable-PostgreSQL cases in §10, with any additions/removals stated explicitly.
 
 No response to this proposal is inferred. Until the Operator accepts the design and separately authorizes implementation, no ORM, SQL, migration, TaskRuntime, ingestion, or test changes may be made.
 
