@@ -70,7 +70,7 @@ The immutable stored content behind a Signal, an Outcome observation, an Artifac
 *Banned synonyms:* cache, blob (implementation term only).
 
 ### SignalDisposition
-A per-Team record of how a Signal was handled: `matched` to a Thread, started a `new_thread`, `noise`, `duplicate`, or `deferred`. One row per (Signal, Team). Triage decisions are never implicit.
+An immutable per-Team record of how a Signal was handled. V1 values are `matched` (to one existing eligible active Thread), `duplicate` (exact raw-content-hash match to the Team's canonical Signal), or `deferred` (no safe, sufficiently supported decision). One row per (Signal, Team), attributed to its canonical triage Task. V1 does not create Threads or classify noise.
 *Banned synonyms:* classification (loose), routing.
 
 ### Thread

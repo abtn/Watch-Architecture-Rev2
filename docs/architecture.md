@@ -188,23 +188,23 @@ Immutable. Current ingestion uniqueness on `(origin_url, content_hash)` makes an
 
 ### `SignalDisposition`
 
-> **Conceptual target only; not implemented.** The field sketch below predates the accepted D4.3 first-release scope and is not an accepted schema. Its `new_thread` vocabulary and `updated_at` field must not be treated as v1 requirements. D4.3 disables automatic Thread creation; D5 still owns the complete disposition/reference matrix. See the [RW-4 readiness and delivery plan](development/rw-4-readiness-and-delivery-plan.md).
+> **Accepted business contract; physical schema not implemented.** D5.1–D5.4 were accepted on 2026-11-25. This remains a conceptual field sketch, not an approved physical schema. V1 values are only `matched`, `duplicate`, and `deferred`; there is no `new_thread`, `noise`, or `updated_at`. See the [RW-4 readiness and delivery plan](development/rw-4-readiness-and-delivery-plan.md) and [D5 decision record](https://github.com/abtn/Watch-Architecture-Rev2/issues/193).
 
 ```python
 SignalDisposition
     id: UUID
     signal_id: UUID
     team_id: UUID
-    thread_id: UUID | null      # set when matched / new_thread
-    duplicate_of_signal_id: UUID | null
-    disposition: str            # "matched" | "new_thread" | "noise" | "duplicate" | "deferred"
-    reason: str
-    decided_by_task_id: UUID
-    created_at: datetime
-    updated_at: datetime
+    thread_id: UUID | null      # required only for matched
+    duplicate_of_signal_id: UUID | null  # required only for duplicate
+    disposition: str            # "matched" | "duplicate" | "deferred"
+    reason_code: str | null      # required only for deferred; stable D5.3 code
+    decided_by_task_id: UUID    # required for every disposition
+    created_at: datetime        # immutable, database-assigned
+    # no updated_at: dispositions are immutable
 ```
 
-Proposed uniqueness is one row per `(signal_id, team_id)`. This is not implemented. The accepted D4.1 rule is exact-hash `duplicate` within one Team regardless of origin, using the first successfully committed Team/hash association as canonical winner; cross-Team and near-duplicate matches are excluded. D4.3 disables automatic `new_thread` in v1. The proposed first-release outcomes remain `matched`, `duplicate`, and terminal `deferred`; automatic `noise` remains excluded pending D5. The multi-Team identity principle remains: the same Signal may receive separate Team-scoped decisions.
+Accepted D5 uniqueness scope is one row per `(signal_id, team_id)`; this is not implemented. The only v1 values are `matched`, `duplicate`, and terminal `deferred`. The accepted reference matrix makes `thread_id` required only for matched, `duplicate_of_signal_id` required only for duplicate, `reason_code` required only for deferred, and `decided_by_task_id` required for all. Deferred reason codes are `no_eligible_thread`, `ambiguous_thread_match`, `insufficient_evidence`, `no_compatible_evidence`, `evidence_limit_exceeded`, and `dormant_thread_requires_reactivation`. Every row is immutable and DB-timestamped; there is no `updated_at`. A v1 `matched` disposition may reference only an active Thread. A dormant candidate may be evaluated but must defer with `dormant_thread_requires_reactivation` before D6; it cannot be referenced by a matched row. Cross-record Team/domain/canonical-Signal/Task consistency requires a reviewed physical design; simple foreign keys alone do not prove those relationships. The multi-Team identity principle remains: the same Signal may receive separate Team-scoped decisions.
 
 ### `Thread`
 
@@ -535,7 +535,7 @@ Transitions not listed are forbidden. Every transition emits an Event (INV-13).
 
 ### SignalDisposition
 
-> **D3 lifecycle semantics accepted 2026-11-25; persistence and vocabulary remain gated.** Signal has no lifecycle/status column. Eligibility is derived from canonical Signal/Snapshot integrity and provenance plus active-Team, authorization, and source/domain/policy checks. An existing Team/Signal disposition excludes another v1 decision. If the disposition exists without exactly one valid canonical Task/request Event, replay fails closed without repair or replacement. D3 makes a deferred disposition terminal and immutable in v1; its Task completes successfully as `done`. The disposition, Task attribution/reason, TaskRuntime Outcome, terminal Task status, and terminal Event commit or roll back in one TaskRuntime-owned transaction. Technical execution failure follows TaskRuntime retry/recovery and may end `failed`. D4.1/D4.1a/D4.2/D4.3 are accepted; canonical Team/hash persistence and measured matcher parameters remain evidence gates. D5 still owns the complete disposition vocabulary and reference matrix; D6 owns dormant reactivation. RW4-1 owns persistence and is not authorized by this decision.
+> **D3 lifecycle and D5 disposition semantics accepted 2026-11-25; physical persistence remains gated.** Signal has no lifecycle/status column. Eligibility is derived from canonical Signal/Snapshot integrity and provenance plus active-Team, authorization, and source/domain/policy checks. An existing Team/Signal disposition excludes another v1 decision. If the disposition exists without exactly one valid canonical Task/request Event, replay fails closed without repair or replacement. D3 makes a deferred disposition terminal and immutable in v1; its Task completes successfully as `done`. The disposition, Task attribution/reason, TaskRuntime Outcome, terminal Task status, and terminal Event commit or roll back in one TaskRuntime-owned transaction. Technical execution failure follows TaskRuntime retry/recovery and may end `failed`. D4.1/D4.1a/D4.2/D4.3 are accepted; canonical Team/hash persistence and measured matcher parameters remain evidence gates. D5.1–D5.4 freeze the three-value vocabulary, reference matrix, deferred reason codes, and TaskRuntime-owned terminal evidence. D6 owns dormant reactivation. RW4-1 owns physical persistence and still requires a reviewed design, proof subset, and explicit authorization.
 
 
 ### Artifact
@@ -606,7 +606,7 @@ Flow numbers (F1–F8) are cited from `docs/tasks.md` and the walkthrough.
 1. The implemented ingestion path creates an `ingest_source` Task for a configured source and commits a canonical Signal/Snapshot, or records fetch-no-change for an identical same-origin fetch. This does not create a triage Task.
 2. `triage_signal`, SignalDisposition persistence, matching, and Thread reactivation are **not implemented**.
 3. Accepted D4.1/D4.1a use exact raw content-hash equality within one Team regardless of origin, with the first successfully committed Team/hash association as canonical winner; cross-Team and near-duplicate classification are excluded. This canonical association needs a reviewed persistence design and PostgreSQL concurrency proof because current ingestion uniqueness is origin-scoped.
-4. Accepted D4.2 uses a read-time EvidenceLink → Hypothesis → Thread profile over same-Team/same-Domain active or dormant Threads (resolved excluded), supports/challenges evidence, verified same-Team Signal/Snapshot/hash provenance, and compatible pinned KnowledgeChunk projections. Threshold, winner margin, score serialization, candidate/evidence bounds, actual pins, and query cost remain evidence gates; ties/insufficient/corrupt evidence defer.
+4. Accepted D4.2 uses a read-time EvidenceLink → Hypothesis → Thread profile over same-Team/same-Domain active or dormant candidates (resolved excluded), supports/challenges evidence, verified same-Team Signal/Snapshot/hash provenance, and compatible pinned KnowledgeChunk projections. Only an active Thread may receive a v1 `matched` disposition; a dormant would-be winner defers with `dormant_thread_requires_reactivation` until D6. Threshold, winner margin, score serialization, candidate/evidence bounds, actual pins, and query cost remain evidence gates; ties/insufficient valid evidence defer, while missing/partial/mismatched/corrupt provenance is a technical/integrity failure.
 5. Accepted D4.3 disables automatic Thread creation. No qualifying match, ambiguous/insufficient evidence, or a dormant candidate blocked by D6 resolves to terminal deferred. No URL/model title fallback. Dormant reactivation remains D6-gated; triage must not create or enqueue `update_thread` Tasks.
 
 **Status and authority:** this is a target-flow summary, not implementation evidence or acceptance of D1–D6. See [the RW-4 readiness and delivery plan](development/rw-4-readiness-and-delivery-plan.md).

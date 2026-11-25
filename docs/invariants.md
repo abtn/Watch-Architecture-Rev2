@@ -59,10 +59,10 @@ Only `apply_decay` Tasks lower confidence for staleness, on the Domain's decay w
 **Violation:** a model decays a hypothesis inside an update task because the evidence "seemed old".
 
 ### INV-09 — Triage is recorded
-Every Signal is dispositioned for every Team whose scope it plausibly enters: matched, new_thread, noise, duplicate, or deferred. No Signal silently disappears.
-**Why:** untriaged signals create an invisible backlog and make noise levels unmeasurable.
-**Enforcement:** SignalDisposition rows per (Signal, Team); backlog metrics read from missing/deferred dispositions.
-**Violation:** a signal matching no heuristic simply produces no records.
+Every eligible Signal/Team pair receives at most one immutable v1 disposition: `matched`, `duplicate`, or `deferred`. A pair that cannot be decided safely is recorded as deferred with an accepted reason; ineligible pairs are not forced into a disposition. V1 does not create Threads or classify noise.
+**Why:** eligible intake decisions must be explicit and replayable without inventing a stronger result when evidence is insufficient.
+**Enforcement:** one SignalDisposition per (Signal, Team), attributed to the canonical triage Task; reference combinations and terminal evidence follow the accepted D5 contract. See PLAN.md for implementation status.
+**Violation:** a second disposition overwrites the first, a deferred result is refined by another Task, or an unsupported Signal is assigned an invented match.
 
 ### INV-10 — Artifacts cite what they used, and code writes the citations
 The citation apparatus of an Artifact (sources, quotes, links) is assembled deterministically by code from the EvidenceLinks the render Task actually consumed. The model never authors citation metadata, and rendered bodies contain no bare URLs.
