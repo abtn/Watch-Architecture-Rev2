@@ -29,7 +29,7 @@ These are slice touchpoints, not blanket blockers. Carry a row into a slice's pr
 
 | RW3.4 PARTIAL row | RW-4 / RW-5 touchpoints | Handling |
 |---|---|---|
-| RW-REQ-01 — production host authentication/composition | RW4-2 D1 trusted principal/grant boundary; RW4-3 commit authority; RW-5 Operator-authorized bootstrap/rebase | Prove Watch-side validation only. Deployed host authentication remains external; do not fabricate it. |
+| RW-REQ-01 — production host authentication/composition | RW4-2 D1 trusted principal/grant boundary and active-Team replay check; RW4-3 commit authority; RW-5 Operator-authorized bootstrap/rebase | Prove Watch-side validation only. Deployed host authentication remains external; do not fabricate it. |
 | RW-POL-01 — production TeamPolicy publisher/lock serialization | RW4-2 immutable policy pin; RW4-3 under-lock policy revalidation; RW-5 Team revision helper and writer retrofit | Test supported writer/lock compatibility in the RW-5 retrofit. Production publisher remains external unless separately implemented. |
 | RW-CTX-06 — broader Context tuple/state coverage | RW4-3 evidence-profile/provenance inputs; RW4-4 Context membership and provenance | Add only directly relevant tuple/state cases. The broad cross-product remains residual until separately proven. |
 | RW-REPLAY-01 — duplicate write outcomes across replay states | RW4-2 Task/request-Event replay; RW4-1 disposition uniqueness; RW4-3 C1 receipt and business-commit replay; RW-5 decay Task replay | Prove each slice's supported replay boundary; do not claim the entire RW3.4 replay matrix is closed. |
@@ -82,7 +82,7 @@ RW4-0 closes only after D1–D6 are reconciled, evidence-backed, and explicitly 
 
 #### D1 — Trusted host invocation and authority
 
-Freeze an explicit trusted host-invoked operation for one Signal and one Team. Define trusted principal fields and the exact Team/action grant checked by Watch. The caller cannot select a Team from untrusted payload data. Every caller is independently authorized, including a caller resolving an existing Task.
+Freeze an explicit trusted host-invoked operation for one Signal and one Team. Define trusted principal fields and the exact Team/action grant checked by Watch. The caller cannot select a Team from untrusted payload data. Every caller is independently authorized, including a caller resolving an existing Task. Both creation and replay require the Team's persisted state to be exactly `active`; replay rechecks this under the Task → Team lock order before disclosing/resolving the Task.
 
 No automatic `ingest_source → triage_signal` Task creation, scheduler, or TaskDispatcher expansion in the first slice. The production host composition/authentication boundary remains external; Watch-side grant validation is not proof of deployed host authentication.
 
@@ -167,7 +167,7 @@ Do not broaden RW-3's target-Thread Context or create a parallel Context subsyst
 Before each production RW-4 slice, freeze and independently review that slice's requirement-to-test subset. Maintain the complete RW-4 matrix as the umbrella proof plan; exact test node IDs and tested SHAs are added as each slice is implemented. The complete integration matrix must be frozen before RW4-5.
 
 At minimum map:
-- host authority, Team grant, canonical Task identity, race, replay, conflict;
+- host authority, Team grant, active-Team eligibility on both creation and replay, canonical Task identity, database-enforced Team-lock participation for triage inserts, race, replay, conflict;
 - Signal/Team ownership and disposition uniqueness;
 - Signal and EvidenceLink Snapshot/hash provenance;
 - each allowed and prohibited disposition/reference combination;
