@@ -328,6 +328,7 @@ The receipt contract comes from D4.2 and must contain, within a hard payload bou
 
 - the exact input Signal/Snapshot identity and immutable Task request fingerprint;
 - matcher identifier/version, embedding-space identity, and chunking version;
+The matcher version must uniquely bind the fixture-approved threshold, winner margin, score precision/rounding, and candidate/evidence bounds. If any of those values are independently configurable, their exact values must be included in the receipt and canonical fingerprint; they cannot drift behind an unchanged matcher pin.
 - the Team `world_memory_revision` observed under the canonical lock and used for the assessment;
 - the assessment disposition and reason;
 - a bounded, deterministically ordered candidate Thread set, including each candidate's Team/domain/status-at-assessment;
