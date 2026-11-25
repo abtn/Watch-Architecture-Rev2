@@ -230,9 +230,11 @@ Keep TaskDispatcher unchanged. Do not add automatic post-ingestion enqueueing.
 
 ### RW4-1 — SignalDisposition persistence
 
-Implement the accepted physical representation only: ORM, migration, one row per Signal/Team, Team-isolation and reference constraints, Task attribution, reason, timestamps, indexes.
+**RW4-1A — current-source and persistence audit: complete as a read-only source inspection.** The audit records the exact main baseline, current Signal/Team/Event/Task/Thread/Outcome/Snapshot relationships, the existing ingestion and TaskRuntime transaction paths, migration head, existing tests, and the integrity gaps that the physical design must address. It does not run tests or Alembic, inspect persistent database rows, change code/schema, or authorize implementation. See [RW4-1A audit](rw4-1a-current-source-and-persistence-audit.md).
 
-Proof: fresh disposable PostgreSQL migration; uniqueness/FK/check violations; cross-Team/domain rejection; all valid/invalid reference combinations; upgrade compatibility; no unapproved changes to Signal, Thread, or EvidenceLink semantics.
+**Next: physical design and proof-subset review.** Freeze the SignalDisposition row shape, named constraints and composite FKs, same-Team/domain/canonical-Signal/Task enforcement strategy, immutable-row mechanism, database timestamp, indexes, and the narrow TaskRuntime-owned in-session persistence/replay contract. Keep D4.1a canonical Team/hash arbitration, the D2 Task identity migration, and RW-5 lock/revision changes separately scoped. Do not infer that the current Event payload or Event timestamp proves canonical first-commit order.
+
+**Implementation gate:** only after the physical design and requirement-to-test matrix receive bounded review and explicit Operator authorization. The implementation proof must use disposable PostgreSQL and cover migration upgrade/rollback, all valid/invalid reference combinations, same-Team uniqueness and cross-Team isolation, FK/check violations, immutable UPDATE/DELETE rejection, TaskRuntime atomic commit/rollback/replay, and no unapproved changes to Signal, Thread, or EvidenceLink semantics. RW4-1 must not add a Task creator, dispatcher path, D4.1a canonical-winner subsystem, RW-5 helper/revision, matcher, or dormant reactivation.
 
 ### RW4-3 — Deterministic triage and commit
 
