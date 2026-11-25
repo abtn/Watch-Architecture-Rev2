@@ -12,7 +12,7 @@ RW-4 connects an ingested canonical Signal to a Team-specific world-memory Threa
 
 The intended path is:
 
-Signal → Team-scoped triage_signal disposition → qualifying existing Thread or terminal deferred/duplicate outcome → later Task Context containing eligible active Hypotheses and verified EvidenceLinks. Automatic Thread creation is excluded from v1; dormant reactivation remains D6-gated.
+Signal → Team-scoped triage_signal disposition → qualifying existing Thread or terminal deferred/duplicate outcome → later Task Context containing eligible active Hypotheses and verified EvidenceLinks. Automatic Thread creation is excluded from v1; D6 reactivation semantics are accepted, but implementation remains separately gated as RW4-5.
 
 Triage is deterministic application behavior. It is not model reasoning, and a similarity score is not authority to create a Thread by itself. A non-match does not create a Thread. Ambiguous or failed matching remains explicit as terminal deferred; a Signal must never disappear silently.
 
@@ -24,7 +24,7 @@ The following are existing constraints, not new decisions in this document:
 - RW-D21: preserve the shared EvidenceLink model and existing Evaluation/distillation behavior. Do not add automatic Hypothesis-to-Evaluation linkage or new distillation behavior without a demonstrated scenario requirement.
 - RW-D134: every implementation slice needs an explicit requirement-to-test proof matrix, exact-head verification, and disposable-PostgreSQL evidence where applicable.
 - RW-D135: documentation closeout and decision approval do not authorize implementation or scored execution.
-- RW-5 decay is an independently implementable slice: its design, implementation, and unit-level decay proofs do not wait for RW-4 triage or Experiment A. The integration boundary is narrower: the combined RW-4/RW-5 proof must exercise a deterministically matched Signal reactivating the selected dormant Thread and then verify decay behavior and retrieval against the resulting post-decay state. RW-4 must define and prove any separately authorized reactivation transition under D6 before reactivation coding; accepted D4.2 matching shape alone does not authorize reactivation. Experiment A informs RW4-4 representation only and does not block RW-5 planning or implementation.
+- RW-5 decay is an independently implementable slice: its design, implementation, and unit-level decay proofs do not wait for RW-4 triage or Experiment A. The integration boundary is narrower: the combined RW-4/RW-5 proof must exercise a deterministically matched Signal reactivating the selected dormant Thread and then verify decay behavior and retrieval against the resulting post-decay state. D6.1–D6.6 define and accept the reactivation transition; RW4-5 still requires a separately reviewed proof subset and explicit implementation authorization before reactivation coding. Experiment A informs RW4-4 representation only and does not block RW-5 planning or implementation.
 - The RW-3 update_thread Task creator remains the host-authorized Operator operation. Triage must not create or enqueue update_thread Tasks. Any future application-authored follow-up creator requires a separate actor, authorization, attribution, request-Event, idempotency, and replay design and explicit approval.
 - The existing TaskRuntime remains the sole Task lifecycle authority. The current TaskDispatcher remains limited to configured-source ingest_source work unless a separate dispatcher change is designed and authorized.
 
@@ -71,7 +71,7 @@ The current canonical SignalDisposition representation is still conceptual and n
 - Technical execution failures remain distinct and follow TaskRuntime retry/recovery.
 - Missing, duplicate, malformed, or inconsistent canonical Task/request-Event history fails closed without repair, replacement, or disposition mutation.
 
-D5 still must accept the complete disposition vocabulary/reference matrix, durable reason vocabulary, and Task-attributed Event semantics before RW4-1 persistence. This document does not freeze physical columns, constraints, or migration details and authorizes no persistence implementation.
+D5.1–D5.4 are accepted. RW4-1 still requires a reviewed physical persistence design, cross-record integrity strategy, proof subset, and separate implementation authorization. This document does not freeze physical columns, constraints, or migration details and authorizes no persistence implementation.
 
 ### 4.3 Duplicate detection and existing-Thread matching — accepted D4 shape; evidence gates remain
 
@@ -84,10 +84,10 @@ D4.1/D4.1a/D4.2/D4.3 were accepted by the Operator on 2026-11-25. The accepted r
 - Use only compatible existing KnowledgeChunk projections under immutable embedding-space/chunking pins. No Thread embeddings, model calls, re-embedding, summary/alias subsystem, or recency bonus.
 - Maximum pairwise chunk cosine similarity is an experimental baseline only. Its outlier sensitivity and evidence-profile-size bias require independent labeled fixtures. Threshold, runner-up margin, score serialization, candidate/evidence bounds, actual v1 pin values, false-positive tolerance, query plan, and cost remain open.
 - Ties, ambiguity, insufficient evidence, incompatible pins, corrupt evidence, or scan overflow defer. No UUID or incidental-order tie-break is allowed.
-- A dormant Thread may be considered as a candidate, but a match does not reactivate it. Until D6 and separate authorization, a dormant would-be match resolves to terminal deferred.
+- A dormant Thread may be considered as a candidate. Under accepted D6, it may be matched only when the same TaskRuntime-owned transaction reactivates it and records one immutable Task-attributed `thread_reactivated` Event. Until RW4-5 is separately authorized and proven, a dormant would-be match resolves to terminal deferred with `dormant_thread_requires_reactivation`.
 - Automatic Thread creation is disabled in v1. No qualifying existing match, ambiguous/insufficient evidence, or integrity uncertainty resolves to terminal deferred. No URL-derived or model-generated title fallback. Any future automatic Thread creation requires a separate source-backed design and Operator decision.
 
-The D4 policy shape is accepted; the listed persistence and matcher evidence gates are not. D4 acceptance does not close D5/D6 or authorize RW4-3 implementation.
+The D4 policy shape is accepted; the listed persistence and matcher evidence gates are not. D5 and D6 decisions are accepted, but that does not authorize RW4-1 persistence, RW4-3 implementation, or RW4-5 reactivation.
 
 ### 4.4 Later Task Context read path
 
@@ -140,7 +140,7 @@ These are planning stages, not approved code changes. Each implementation stage 
 | RW4-3 — deterministic triage commit | Implement only the evidence-closed D4 duplicate/existing-Thread rules and terminal deferred outcome; no automatic Thread creation, noise, near-duplicates, or dormant reactivation. Requires C1, D5, stale-pin supersession proof, canonical lock helper, and separate authorization. | Team/hash canonical-winner concurrency; threshold/tie/overflow and provenance fixtures; receipt recovery; duplicate/replay/concurrency; atomic rollback; Task attribution; no Thread creation/reactivation or unapproved follow-up Task. |
 | RW4-4 — world-memory Context read path | Extend the selected existing Task Context path with bounded, same-Team active Hypotheses and verified EvidenceLinks. Preserve immutable Snapshot/manifest replay. | Freeze the model-facing evidence representation using the Experiment A result, or record an explicit Operator-approved rationale and residual uncertainty if no usable result is available. Then prove positive/negative scope, exact source/quote validation, deterministic ordering, bounds/overflow, stale-reference rejection, and replay integrity. |
 | RW4-KU — claim-level attribution | Implement the D99/D133 minimum only after its dependency and exact scope are accepted. Keep it a separately gated sub-slice. | Exact KnowledgeItem/version/LearningChange/Team/Context binding, immutable references, typed assessment against the later Task Outcome, replay, and invalid/stale/forbidden-scope rejection. |
-| RW4-5 — integrated closeout | Reconcile Task/architecture/CHANGE_MAP/PLAN, run exact-head local and hosted verification, and review the complete source-to-Context path. | Exact tested SHA, required CI and disposable-DB evidence, no live provider or persistent-DB use, residual ledger, and explicit Operator acceptance. |
+| RW4-5 — dormant reactivation and integrated proof | Implement the accepted D6 transition only after its separate authorization; integrate the matched disposition, TaskRuntime terminal evidence, canonical RW-5 locks, and decay/triage races. | Exact Event identity/DB uniqueness, same-transaction rollback/replay/recovery, Team revision and stale-receipt fencing, both disposable-PostgreSQL interleavings, exact-head hosted/local verification, independent review, and explicit Operator acceptance. |
 
 RW4-1 through RW4-4 may be split further if the frozen contracts require independent review. Do not combine unrelated schema, runtime, matching, and Context changes into one large implementation PR merely to reduce PR count.
 
@@ -153,11 +153,11 @@ The exact test nodes must be named before RW-4 implementation authorization unde
 - One disposition per Signal/Team pair; the same Signal may be triaged independently by multiple eligible Teams.
 - Cross-Team and cross-domain Signal, Thread, duplicate, and disposition references are rejected.
 - Every disposition is Task-attributed and has a durable reason; no Signal is silently dropped.
-- The accepted v1 decision surface is duplicate, matched to an eligible existing active Thread, or terminal deferred. D5 must freeze the complete reference matrix and reason/Event semantics.
+- The accepted v1 decision surface is duplicate, matched to an eligible existing Thread, or terminal deferred. D5.1–D5.4 already freeze the disposition vocabulary, reference matrix, deferred reasons, and TaskRuntime-owned terminal Event semantics; RW4-1 physical persistence remains separately gated.
 - Exact raw content-hash duplicate detection is Team-scoped and origin-independent; the first committed Team/hash association is canonical. Prove database arbitration and stability with two PostgreSQL sessions.
 - No automatic Thread creation, automatic noise classification, or near-duplicate classification occurs in v1.
 - Ties, weak/insufficient evidence, provenance corruption, incompatible pins, and candidate/evidence overflow defer; no semantic tie is broken by UUID or incidental order.
-- A dormant candidate does not reactivate; until D6 and separate authorization, a dormant would-be match resolves to terminal deferred.
+- D6.1–D6.6 are accepted. Until the separately authorized and proven RW4-5 implementation is available, a dormant would-be winner with no active winner resolves to terminal deferred with `dormant_thread_requires_reactivation`; RW4-3 does not reactivate or match a dormant Thread.
 - A disposition replay returns/reuses the canonical result without duplicate Thread, disposition, or Event writes. A changed request under the same idempotency identity conflicts without mutation.
 - Thread creation/reactivation, disposition persistence, and the required Event are atomic. A failed commit leaves no partial state.
 - Deferred is terminal and immutable in v1; no ordinary Task or background process may refine it. TaskRuntime atomically commits the disposition and terminal Task evidence.
@@ -193,19 +193,10 @@ RW-4 may be requested for acceptance only when:
 
 This design PR does not authorize RW-4 implementation, a migration, a test-only follow-up, dispatcher expansion, live provider calls, persistent-database access, R7-C as a separate milestone, scored RWN-01 execution, RW-5, or R8. Those remain separately gated.
 
-## 8. Operator decisions still required
+## 8. Remaining design and engineering closure gates
 
-The bounded first-slice proposals are collected in [RW4-0 bounded decision record](rw-4-0-bounded-decision-record.md). That record is pending Operator review and does not authorize implementation.
+D1–D6 decisions are accepted and reconciled in the [RW4-0 bounded decision record](rw-4-0-bounded-decision-record.md) and the authoritative Stage A specification. That decision record remains design-only and does not authorize implementation.
 
-Before RW4-0 can close, review and decide:
+The remaining cross-cutting design work includes freezing the later Task type(s), Context assembler, eligible world-memory records, and justified retrieval bounds; confirming the RW4-KU relationship to the foundation exit gate; and approving the remaining Experiment A protocol decisions before EA-0 closes. The accepted Experiment A dependency mapping in §4.6 is not reopened by those protocol decisions. D4 matching evidence closure and the individual RW4-1/RW4-3/RW4-5 engineering gates remain as described in the readiness plan; they are not pending Operator decisions to redefine D1–D6.
 
-1. The trusted creator/trigger and immutable request identity for triage_signal.
-2. The source and versioning boundary for matching/dedup rules, including whether existing Signal chunk embeddings are sufficient and how candidate Threads are represented.
-3. The disposition transition/refinement owner, especially the current deferred contract gap with RW-2/RW-3.
-4. The exact new-Thread title/source rule and the dormant-Thread reactivation condition.
-5. The later Task type(s), Context assembler, and justified bounds for world-memory retrieval.
-6. Whether RW4-KU is an RW-4 acceptance prerequisite or a separately accepted sub-slice before the foundation exit gate.
-7. The accepted Experiment A dependency rule is fixed as described in §4.6. Separately, approve the remaining Experiment A protocol decisions in its execution plan before EA-0 closes; those protocol decisions do not reopen the accepted RW4-4/RW-5 dependency mapping.
-8. Whether RW-4 implementation waits for RW3.4 formal acceptance or proceeds only under an explicit sequencing exception.
-
-No implementation stage should begin by treating an unresolved item above as an implicit default.
+No implementation stage should begin by treating an unresolved design or proof item as an implicit default.
