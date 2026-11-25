@@ -2,7 +2,9 @@
 # Walkthrough
 
 Three concrete traces of the operating loop, using only v1 entities, glossary terms, and the flows defined in `docs/architecture.md` §5. Every record shown is legal per the state machines in §4, and the invariant that guards each step is cited inline as `INV-NN`.
-This document doubles as the spec for integration test fixtures: `tests/fixtures/` may reproduce these exact records.
+> **Historical illustrative scenario, not a current v1 triage specification.** This walkthrough predates accepted RW4 D4.3/D5/D6 decisions. Its older triage/Thread-lifecycle examples are not authority for current implementation or new test fixtures. Current v1 triage does not create Threads or classify noise; RW-5 first-release decay does not make Threads dormant; dormant reactivation remains a separately authorized RW4-5 gate. Use `docs/tasks.md`, `docs/architecture.md`, and the [RW-4 bounded decision record](development/rw-4-0-bounded-decision-record.md) for current contracts. The existing narrative may be retained as historical illustration, but must not be copied into current integration fixtures without reconciling each record to those contracts.
+
+This document was originally used as an illustrative fixture reference; it is not the current spec for integration test fixtures.
 **Conventions:** IDs are shortened for readability (`S-1041`, `TH-101`); production IDs are UUIDs. Timestamps are ISO-8601, abridged to the fields relevant at each step. Snapshot hashes are abridged (`sha256:9f21c…`). Quotes shown are illustrative; in tests, fixture snapshots contain the exact quoted substrings at the recorded offsets.
 ---
 ## Scenario A — Newsroom: the oil desk
