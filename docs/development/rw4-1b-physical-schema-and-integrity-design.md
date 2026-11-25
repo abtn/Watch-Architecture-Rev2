@@ -125,7 +125,7 @@ Recommendation:
 - Do not weaken Task attribution to caller-provided IDs or a task-type-only check.
 - Make the D2 Task identity migration a hard prerequisite for disposition writes unless a reviewed, equally strong persisted identity proof exists beforehand.
 - At disposition insert and replay, recompute and verify canonical Task ID, Team, Signal, operation, identity version, and exactly-one valid request Event from persisted data.
-- If this requires D2 fields, RW4-1 implementation must wait for that migration to land.
+- If this requires D2 fields, RW4-1 disposition writes must wait for that migration to land. This creates a sequencing question because the accepted serial plan places RW4-1 before RW-5 and RW4-2 Stage B, while the D2 Task identity migration has not yet been implemented. This proposal does not reorder those slices. The Operator must decide whether to schedule the already-accepted D2 migration as a narrowly bounded prerequisite before enabling RW4-1 writes, or accept a separately reviewed transitional proof that is equally strong without those fields. Do not proceed on an assumed workaround.
 
 ## 7. Immutability and timestamp
 
@@ -194,7 +194,7 @@ This proposal intentionally separates recommendations from accepted decisions. R
 1. Row shape: accept or amend the proposed one-row-per-(team_id, signal_id) shape and D5.2 reference matrix.
 2. Cross-record enforcement: accept Option A only if its lock/isolation proof is feasible; otherwise authorize a separate relational-witness scope. Do not accept application validation without a concrete race proof.
 3. Duplicate gate: accept that duplicate disposition writes remain disabled until D4.1a canonical arbitration is implemented and proven.
-4. Task identity gate: accept D2 migration as a hard prerequisite for disposition writes and replay validation.
+4. Task identity and sequencing gate: accept D2 migration as a hard prerequisite for disposition writes/replay, and decide whether its implementation must precede RW4-1 or whether a separately reviewed equivalent persisted proof is possible without reordering the accepted serial plan.
 5. Immutability/timestamp: accept trigger-based UPDATE/DELETE rejection and database-assigned clock_timestamp(), subject to runtime-role and repository convention verification.
 6. TaskRuntime seam: accept a narrow explicit triage-specific in-session finalization/replay path, with no generic callback abstraction.
 7. Proof matrix: accept the bounded disposable-PostgreSQL cases in §10, with any additions/removals stated explicitly.
