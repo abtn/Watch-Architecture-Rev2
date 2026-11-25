@@ -375,7 +375,7 @@ Snapshot is created under the universal `Task (K)` lifecycle authority
 described in footnote ¹⁹ and ADR-0030, not under this `Snapshot (K) = K¹`
 cell; it is an application-managed lifecycle record committed atomically with
 the Outcome, terminal Task status, and corresponding terminal Event.
-² Create on `new_thread`; reactivate `dormant → active` (reactivation remains separately D6-gated).
+² Thread creation is available only if `new_thread` is separately accepted under D5; it is not authorized by this matrix alone. Dormant reactivation remains separately D6-gated.
 ⁴ Summary projection and explicit resolution only. SignalDisposition refinement is not granted to `update_thread` or `operator_update`; D3 makes deferred terminal/immutable in v1.
 ⁶ `active → needs_review` only.
 ⁷ Store only the Snapshot for the Artifact produced by this operation.
