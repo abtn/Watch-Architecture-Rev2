@@ -98,7 +98,7 @@ D4 acceptance does not authorize RW4-1 persistence, RW4-3 implementation, RW4-2 
 
 #### D5.1 — Exactly three v1 disposition values
 
-- `matched`: the Signal is associated with one existing eligible Thread.
+- `matched`: the Signal is associated with one existing eligible active Thread.
 - `duplicate`: the Signal is an exact raw-content-hash duplicate of the canonical Signal for the same Team.
 - `deferred`: no safe, sufficiently supported business decision can be made.
 
