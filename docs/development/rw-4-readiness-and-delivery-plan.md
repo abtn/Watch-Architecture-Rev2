@@ -271,7 +271,7 @@ Do not build these merely to unblock RW-4:
 - automatic noise classification;
 - automatic triage after ingestion;
 - second scheduler/runtime or TaskDispatcher expansion;
-- deferred refinement through RW-2/RW-3 Task types without an accepted scope change;
+- deferred refinement through RW-2/RW-3 Task types is prohibited by accepted D3; no v1 refinement path exists;
 - parallel Context subsystem;
 - live provider calls or scored newsroom runs.
 
