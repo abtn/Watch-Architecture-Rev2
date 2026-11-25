@@ -55,7 +55,7 @@ The current ORM and application contracts establish the following:
 
 These are source observations, not acceptance of the proposed RW4 contract.
 
-**Stage A migration and writer audit (2026-11-25):** [Task migration and existing-writer compatibility audit](rw4-2-migration-and-writer-compatibility-audit.md) records the proposed nullable-column/check/FK/composite-unique/partial-index design, fail-closed preflight and conditional backfill strategy, all identified production Task producers, and required PostgreSQL proof. It is a source audit only; deployed database contents remain unverified and no implementation is authorized.
+**Stage A migration and writer audit (2026-11-25):** [Task migration and existing-writer compatibility audit](rw4-2-migration-and-writer-compatibility-audit.md) records the proposed nullable-column/check/FK/composite-unique/partial-index design, exhaustive read-only preflight with abort-on-any-historical-triage-data policy, all nine production Task producers, and the required Control Room transaction boundary. It is a source audit only; deployed database contents remain unverified and no implementation is authorized.
 
 ## 3. D1 — Trusted host invocation
 
@@ -63,7 +63,7 @@ These are source observations, not acceptance of the proposed RW4 contract.
 
 D1 is accepted with the following decisions:
 
-1. **Single Task-creation authority:** the application Control Room is the only authority allowed to create/persist Tasks. Control Room is the logical application boundary/owner in this decision; this wording does not claim that a dedicated Control Room module or service already exists in the repository. Host-facing adapters and feature-specific entrypoints may request work, but they must delegate to a named Control Room operation. Workers, models, ingestion code, and feature modules must not create Tasks directly or introduce parallel Task factories. Existing supported Task-creation paths must be represented as Control Room operations; this decision does not itself authorize a refactor of existing RW-3 code.
+1. **Single Task-creation authority:** the application Control Room is the only authority allowed to create/persist Tasks. Control Room is the logical application boundary/owner in this decision; this wording does not claim that a dedicated Control Room module or service already exists in the repository. Host-facing adapters and feature-specific entrypoints may request work, but they must delegate to a named Control Room operation. Workers, models, ingestion code, and feature modules must not create Tasks directly or introduce parallel Task factories. All supported Task-creation paths, including the nine inventoried production writers, must delegate to named Control Room operations. This is a conformance requirement of accepted D1, not an optional triage-only boundary. It does not require a new service/framework or change TaskRuntime lifecycle ownership; the concrete migration plan must preserve each caller's existing transaction and authorization semantics.
 2. **Team eligibility:** only a Team whose persisted state is exactly `active` is eligible for triage Task creation or replay.
 3. **Authentication timing:** the host remains responsible for authenticating the requester. Production host authentication integration is accepted as a required prerequisite, scheduled after the R8 test. It must be complete before production use; this decision does not claim authentication is implemented or authorize production use before it exists. The in-process principal remains forgeable by code inside the process.
 4. **URL normalization:** broader URL normalization is deferred until after the R8 test. Until then, compare the persisted `origin_url` and `source_type` values exactly. The future minimal foundation should treat DNS hostname case as insignificant (for example, `Google.com` and `google.com` compare as the same host) while preserving scheme, port, path, query, fragment, and trailing-slash distinctions; `source_type` remains exact. This is a proposed narrow rule for the post-R8-test normalization work, not current behavior or implementation authorization.
@@ -109,15 +109,39 @@ The Control Room operation must:
 7. Create or resolve only the canonical `triage_signal` Task described in D2.
 8. Return a typed result identifying the Task and whether it was newly created or replayed. It does not admit, execute, or finalize the Task.
 
+
+### Control Room transaction contract (required for Stage A freeze)
+
+The Control Room is the sole logical Task-creation authority, but it does not own the outer database transaction. Every named Control Room operation is session-bound: the caller supplies its active SQLAlchemy Session; the operation validates/authorizes, obtains the operation's required locks, writes the Task and any required Event, and flushes as needed. It must not create an independent Session, begin/commit/rollback a separate transaction, or commit/rollback the caller's Session. The outer workflow remains the transaction owner.
+
+For triage creation, the Task and its triage_signal_requested Event are written in the same caller-owned transaction. They commit together or roll back together. A successful flush is not a durable commit. Any failure before the outer commit leaves neither row durable.
+
+TaskRuntime follow-on creation must delegate through the corresponding named Control Room operation using the existing Session and the transaction that owns the originating Task's terminal/follow-on work. It must not open or commit a separate transaction; otherwise the originating Task finalization and its follow-on Task could become partially durable. This centralizes creation authority without transferring lifecycle authority away from TaskRuntime.
+
+The same rule applies to all nine inventoried production writers. The Stage A design must map each producer to a named Control Room operation and document its preserved transaction scope: the three OperatorApplication producers; PlanService materialization; four TaskRuntime follow-on producers; and KnowledgeRevalidationService. A new triage-only operation does not satisfy D1 while these other writers remain direct persistence paths.
+
+Illustrative shape (not a required public API):
+
+```python
+with session_factory.begin() as session:
+    result = control_room.create_triage_signal_task(
+        session=session,
+        principal=principal,
+        request=request,
+    )
+```
+
+The context manager owns commit/rollback. The Control Room operation must not call session.commit() or session.rollback(). A small logical module/facade is sufficient; no new service, generic factory, or framework is implied.
+
 These are creation-time checks, not execution guarantees. Team status, domain/source eligibility, and policy may change while the Task is queued. RW4-3 must revalidate current Team eligibility and the Signal-to-Team source scope under the accepted RW-5 lock chain immediately before matching/commit. A Task that no longer qualifies must not be executed against stale authority.
 
 ### Trust limitation
 
-The principal is an in-process trust contract, not a credential or an unforgeable runtime object: any code in the process can construct the Python value. The Control Room is the only application authority that may persist Tasks; its narrow typed operation derives Team and authority exclusively from the supplied trusted principal/grant and canonical database records. Host-facing adapters delegate to the Control Room, and workers/models/feature modules cannot create Tasks directly. Request payload fields cannot supply or override Team, requester, role, or authority. Tests must prove forged/payload-supplied authority is ignored or rejected. No production host composition root currently exists, so Watch-side validation proves only the application-side contract, not end-to-end authentication. The host must authenticate before constructing/calling the adapter; this integration is required before production use and is scheduled after the R8 test.
+The principal is an in-process trust contract, not a credential or an unforgeable runtime object: any code in the process can construct the Python value. The Control Room is the only application authority that may persist Tasks; its named operations derive authority from the applicable trusted invocation and canonical database records. Host-facing adapters and all existing production Task producers delegate to Control Room. Workers/models/feature modules cannot create Tasks directly. Every operation receives the caller's active Session and leaves commit/rollback to the outer transaction owner. Request payload fields cannot supply or override Team, requester, role, or authority. Tests must prove forged/payload-supplied authority is ignored or rejected. No production host composition root currently exists, so Watch-side validation proves only the application-side contract, not end-to-end authentication. The host must authenticate before constructing/calling the adapter; this integration is required before production use and is scheduled after the R8 test.
 
 ### D1 non-goals
 
-No login, token verifier, user store, RBAC framework, deployed Watch API/CLI, automatic ingestion trigger, scheduler, queue expansion, or TaskDispatcher change. No URL normalization is implemented in this stage; its narrow hostname-case rule is deferred until after the R8 test. No refactor of existing RW-3 Task-creation code is authorized by this documentation decision.
+No login, token verifier, user store, RBAC framework, deployed Watch API/CLI, automatic ingestion trigger, scheduler, queue expansion, or TaskDispatcher change. No URL normalization is implemented in this stage; its narrow hostname-case rule is deferred until after the R8 test. The implementation plan must stage the existing-writer conformance work without changing RW-3 business behavior or TaskRuntime lifecycle ownership. D1 is not satisfied by adding only a new triage-specific Control Room method while the other production writers continue to persist Tasks directly.
 
 ## 4. D2 — Canonical identity and replay
 
@@ -358,7 +382,7 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 
 ## 10. Implementation sequence after decision acceptance
 
-1. D1 and all six D2 decisions are accepted. Reconcile and review the complete creator contract and proof subset; finish migration/preflight/backfill and existing-writer compatibility design before requesting separate implementation authorization.
+1. D1 and all six D2 decisions are accepted. Reconcile and review the complete creator contract and proof subset; finish exhaustive migration preflight/abort policy, separate historical-repair policy, strict Task identity-column ownership, and the complete nine-writer Control Room/session-bound transaction design before D4b or implementation authorization.
 2. Keep this PR documentation-only. Do not implement or enable the Task creator in this stage.
 3. Proceed to RW4-1 persistence only after its independent D3/D5 gate, reviewed proof subset, and explicit authorization.
 4. Proceed to the separately authorized RW-5 canonical lock-helper/Team-revision/writer retrofit and prove the helper on real PostgreSQL.
