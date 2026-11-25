@@ -1,6 +1,6 @@
 # RW4-2 — Trusted Task boundary and canonical identity
 
-**Status:** D1 accepted by the Operator on 2026-11-24; all six D2 decisions were accepted by the Operator on 2026-11-24: UUIDv5 identity, Task-schema logical-pair uniqueness, request-Event cardinality, replay/provenance/re-triage, immutable watermark semantics, and v1 matching-pin ownership. Migration shape and the source-level existing-writer inventory are documented in the Stage A migration/compatibility audit; target-database preflight/backfill evidence, independent audit review, D4b actual pin values, and implementation proof remain outstanding. This document remains a design/specification artifact. No creator implementation is authorized.
+**Status:** D1 and all six D2 decisions accepted 2026-11-24; D3-A/B/C and D4.1/D4.1a/D4.2/D4.3 accepted 2026-11-25. D4's policy shape is frozen, while canonical Team/hash persistence design, measured matcher thresholds/margins/bounds/query cost, score serialization, and actual v1 matching-pin values remain open evidence/design gates. Migration compatibility, PostgreSQL implementation proof, and independent review remain outstanding. This document remains a design/specification artifact; no creator or matching implementation is authorized.
 
 **Preparation baseline:** `main` after PR #187 squash merge `94563be9e551ebf73faee626d952e9b839b57946` (2026-11-25); PR #184 is the earlier D1/D2 proposal baseline.
 
@@ -354,7 +354,7 @@ All four fields are required, non-empty where strings, type-checked, and immutab
 
 **D4a — pin ownership rule (ACCEPTED 2026-11-24; Option A for v1):** TeamPolicy is not the matching-pin source in the first release and remains unchanged. `matcher_id` and `matcher_version` are code-owned by the single first-release matcher implementation/registry. `embedding_space_key` and `chunking_version` are also code-owned for the first release; the repository has per-projection metadata, but this audit did not establish a single authoritative source-index configuration record that the Task creator can safely pin. Do not infer that per-row metadata is a canonical configuration owner. The creator reads one code-owned, immutable matching-pin declaration while holding the canonical Team lock; execution verifies that the live Signal and candidate projections match those pins and fails closed on mismatch. No generic provider interface, plugin registry, TeamPolicy schema change, or new configuration subsystem is needed for this single implementation. Tests use fixed pin values and pin the canonical object/hash. No move to index ownership is implied or authorized. Any future ownership change requires a separate Operator decision.
 
-**D4b — actual values:** deferred to the matching implementation/decision work. No placeholder, mutable alias, or `latest` resolution is permitted. Experiment A may require a new matching-pin schema version if it changes the pinned representation or field semantics; that does not change Task identity version by itself. Any reprocessing of stale v1 work still requires the separately approved `triage_identity_v2` transition above.
+**D4b — actual values:** still open. The actual four code-owned pin values must be selected and measured with the D4.2 fixture/query-plan evidence before RW4-3 implementation. No placeholder, mutable alias, or `latest` resolution is permitted. Experiment A may require a new matching-pin schema version if it changes the pinned representation or field semantics; that does not change Task identity version by itself. Any reprocessing of stale v1 work still requires the separately approved `triage_identity_v2` transition above.
 
 **Queued Task after pin change:** a Task whose recorded pins no longer match the currently accepted execution configuration must not run and must not remain pending/retried forever. RW4-3 must terminally supersede it through TaskRuntime-owned finalization, with a distinct durable superseded reason/outcome. If TaskRuntime does not yet support that terminal category, RW4-3 must define and test it before enabling triage execution; RW4-2 does not add a parallel lifecycle writer. This is a residual implementation dependency, not permission to mutate Task status directly.
 
@@ -403,6 +403,57 @@ When the accepted first-release decision logic reaches a valid business conclusi
 ### D3 write-scope and persistence boundary
 
 RW4-1 owns SignalDisposition persistence and must implement the accepted immutable/terminal semantics, with Task-attributed provenance. For a terminal deferred result, RW4-1's Kernel persistence operation must use the active Session supplied by TaskRuntime finalization; the disposition, Task-attributed reason, `task_execution` Outcome, terminal Task status, and `task_completed` Event must commit or roll back together. It must not open or commit a separate transaction. TaskRuntime owns the transaction and remains the only Task lifecycle writer. D3 acceptance does not authorize RW4-1 code/schema/migration. D5 must still define the complete disposition vocabulary and reference matrix before RW4-1 implementation. RW4-2 creator remains a later separately authorized slice.
+
+## 7.6 D4 — Duplicate identity, existing-Thread matching, and no automatic Thread creation (ACCEPTED 2026-11-25)
+
+**Decision status:** D4.1 duplicate detection, D4.1a canonical duplicate winner, D4.2 existing-Thread matching shape, and D4.3 no automatic Thread creation are accepted. This section freezes decision boundaries, not implementation details or numeric matcher parameters. It does not authorize RW4-3 code, schema, migration, or database changes. D5 still owns the complete disposition vocabulary/reference matrix; D6 still owns dormant-Thread reactivation.
+
+### D4.1 — Exact duplicate Signal detection (ACCEPTED; Option A)
+
+- Duplicate detection compares exact raw content_hash equality within the same Team's intake history.
+- Origin does not have to match. Equal raw hashes from different origins in the same Team are duplicates.
+- Equal hashes in different Teams are not duplicates; the same Signal may have separate Team-scoped decisions.
+- Near-duplicate, syndicated-copy, semantic, and similarity-based duplicate classification are excluded.
+- Duplicate detection selects a canonical Signal only. It does not select, create, or mutate a Thread.
+
+### D4.1a — Canonical duplicate winner (ACCEPTED)
+
+The canonical duplicate is the first Signal successfully committed into that Team's intake history for the exact content hash. PostgreSQL must arbitrate concurrent first arrivals, and the winning Team/hash association must remain stable. Do not choose a winner by caller-supplied fetched_at, application timestamps, random UUID order, or origin ordering.
+
+This is an accepted identity rule, not an implemented persistence design. Signals are not Team-owned in the current model; Team association is represented through ingestion Events. Existing ingestion uniqueness for origin_url + content_hash does not establish the accepted Team-wide, cross-origin identity. Before RW4-3, design and review the smallest persistence mechanism that can represent the Team/hash canonical association, arbitrate concurrent first commits, preserve the winner, and recover/replay it. Prove the actual uniqueness and two-session first-arrival race on disposable PostgreSQL. Do not claim the current ingestion path already provides this behavior, and do not add a schema or migration in this decision-reconciliation PR.
+
+### D4.2 — Existing-Thread matching (ACCEPTED; Option A shape)
+
+Use a narrow deterministic application matcher over existing canonical data:
+
+- Build candidate Thread evidence profiles at read time through the Team-scoped EvidenceLink → Hypothesis → Thread relationship. Do not add Thread embeddings, summaries, entity/alias tables, a Domain subsystem, a model call, or re-embedding.
+- Consider only same-Team, same-Domain Threads whose status is active or dormant; exclude resolved.
+- Only supports and challenges EvidenceLinks are eligible matching evidence. Mentions alone is insufficient.
+- Validate same-Team ingestion provenance for the incoming Signal and every evidence Signal. Validate each canonical Signal/Snapshot/hash association and each EvidenceLink Snapshot/hash pair. An absent legacy provenance pair is excluded from matching; a partial, conflicting, or mismatched pair is an integrity failure and defers safely.
+- Use existing Signal-backed KnowledgeChunk projections only when their embedding-space and chunking identities are compatible with the immutable Task pins. No fallback to another space/version is allowed.
+- Maximum pairwise chunk cosine similarity is the accepted experimental baseline, not a proven production score. It is vulnerable to high-scoring outliers and evidence-profile-size bias. A minimum score threshold and (when a runner-up exists) a winner margin must be calibrated against independently labeled positives and hard negatives. One candidate needs to pass the minimum threshold; a runner-up invokes the margin rule. Equal/ambiguous candidates do not receive a UUID or incidental-order tie-break.
+- No recency bonus is allowed. Do not treat Thread.last_updated_at as evidence recency or authority.
+- Bound candidate Threads, evidence Signals, and evidence chunks separately. Measure eligible cardinalities, detect overflow before ranking, and inspect query plans/cost on a disposable PostgreSQL fixture database. Never rank a truncated candidate/evidence set as complete. Do not add ANN indexes or other infrastructure speculatively.
+- Missing, incompatible, corrupt, insufficient, tied, or ambiguous evidence resolves to the deferred business path, not a guessed match.
+
+A dormant Thread may be considered by the D4 candidate matcher, but a match does not reactivate it. Until D6 and a separately authorized reactivation slice exist, RW4-3 must not change a dormant Thread's status or activity timestamps, emit a reactivation Event, or commit a matched disposition whose meaning implies reactivation. A dormant candidate that would otherwise win is resolved as terminal deferred in that non-reactivation slice.
+
+**Still open under D4 evidence closure:** actual matcher pin values (matcher_id, matcher_version, embedding_space_key, chunking_version); numeric minimum threshold and winner margin; score serialization/rounding; candidate/evidence bounds; fixture labels/results and acceptable false-positive tolerance; measured query plan and cost. These must be established from the required fixtures and disposable PostgreSQL measurements, not intuition. The accepted algorithm shape does not make these values accepted or implementation-ready.
+
+Required fixtures include: same-origin replay; cross-origin exact bytes within one Team; same hash across Teams; near-duplicate syndicated copy as a negative; clear match; broad-topic hard negative; multiple candidates and exact ties; active/dormant/resolved Threads; mentions-only and no-evidence Threads; active/superseded/rejected Hypotheses; supporting/challenging stances; missing/absent versus partial/mismatched/corrupt provenance; same-Domain cross-Team evidence; incompatible embedding/chunking pins; high-scoring outlier chunks; multiple Hypotheses/subtopics; differently sized evidence profiles; threshold and margin boundaries; and candidate/evidence overflow.
+
+Labels must be independent of the matcher. Report false positives and false negatives by case, lifecycle state, and profile size. If the acceptable false-positive tolerance or bounded query cost cannot be demonstrated, keep the affected cases deferred or narrow the first slice; do not tune by intuition.
+
+### D4.3 — No automatic Thread creation in v1 (ACCEPTED; Option A)
+
+- RW4-3 does not create a new Thread automatically.
+- A duplicate Signal is handled by the D4.1 canonical-duplicate rule and never creates or mutates a Thread.
+- A non-duplicate Signal with no qualifying existing Thread match resolves to terminal deferred.
+- Ambiguous, insufficient, incomplete, or integrity-failing matching evidence also resolves to terminal deferred, with a validated durable reason under the still-open D5 vocabulary/reference matrix.
+- Do not derive a title from a URL or generate one with a model. No title-extraction fallback is authorized.
+- Any future automatic Thread creation requires a separate source-backed design and Operator decision.
+
+D4 therefore bounds the first-release decision shape to duplicate, qualifying existing-Thread match, or deferred. It excludes new-Thread creation, near-duplicate detection, and automatic noise classification. The exact disposition/reference matrix and durable reason vocabulary remain D5 decisions. D4 acceptance does not authorize RW4-3 implementation, RW4-1 persistence, D5 closure, D6 reactivation, or RW4-2 Stage B.
 
 ## 8. TaskRuntime boundary
 
@@ -482,7 +533,11 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 | D3-A Signal eligibility | No Signal lifecycle/status column; eligibility derives from canonical Signal/Snapshot integrity and provenance plus active-Team, caller-authorization, and source/domain/policy checks; existing Team/Signal disposition excludes another v1 decision | **Accepted — 2026-11-25** |
 | D3-B Task terminality | TaskRuntime owns lifecycle; pending/running follow runtime admission/recovery; done/failed are terminal; terminal v1 identity remains occupied | **Accepted — 2026-11-25** |
 | D3-C terminal deferred | Deferred disposition is immutable/terminal in v1; its Task completes `done`; technical failures remain TaskRuntime retry/recovery and may end `failed`; no ordinary refinement | **Accepted — 2026-11-25** |
+| D4.1 exact duplicate detection | Exact raw content-hash equality within one Team's intake history regardless of origin; cross-Team and near-duplicate matches excluded | **Accepted — 2026-11-25; persistence design/proof open** |
+| D4.1a canonical duplicate winner | First successfully committed Signal for a Team + exact content hash; database arbitrates concurrent first arrivals; association remains stable | **Accepted — 2026-11-25; no persistence implementation authorized** |
+| D4.2 existing-Thread matcher shape | Same-Team/domain active or dormant Threads, resolved excluded; supports/challenges evidence only; same-Team ingestion and Snapshot/hash provenance; compatible pinned projections; deterministic score/unique winner or defer; dormant match never implies reactivation | **Accepted — 2026-11-25; thresholds, margin, bounds, score serialization, pins and query cost open** |
+| D4.3 new-Thread eligibility | Disable automatic Thread creation in v1; no qualifying match or ambiguous/insufficient evidence becomes terminal deferred; no URL/model title fallback | **Accepted — 2026-11-25; D5 matrix remains open** |
 | Risk acceptance — canonical Task identity uniqueness migration | Persisted `signal_id`/`identity_version` and database unique constraint on `(team_id, signal_id, identity_version)`; audited schema requires Task migration | **Accepted — 2026-11-24; implementation still gated** |
 | RW4-2 implementation | Requires accepted D1/D2, reviewed proof subset, lock-order compatibility, and explicit authorization | Not authorized |
 
-**No implementation authorization is requested or implied by this draft or PR #187.**
+**No implementation authorization is requested or implied by this draft or this reconciliation PR.**
