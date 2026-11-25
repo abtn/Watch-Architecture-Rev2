@@ -70,7 +70,7 @@ The immutable stored content behind a Signal, an Outcome observation, an Artifac
 *Banned synonyms:* cache, blob (implementation term only).
 
 ### SignalDisposition
-An immutable per-Team record of how a Signal was handled. V1 values are `matched` (to one existing eligible active Thread), `duplicate` (exact raw-content-hash match to the Team's canonical Signal), or `deferred` (no safe, sufficiently supported decision). One row per (Signal, Team), attributed to its canonical triage Task. V1 does not create Threads or classify noise.
+An immutable per-Team record of how a Signal was handled. V1 values are `matched` (to one existing eligible active Thread; a dormant Thread may be matched only when the same valid triage Task atomically reactivates it and records the required Task-attributed `thread_reactivated` Event under D6), `duplicate` (exact raw-content-hash match to the Team's canonical Signal), or `deferred` (no safe, sufficiently supported business decision). Until RW4-5 reactivation is separately authorized, implemented, and proven, dormant would-be winners remain deferred and cannot receive a matched disposition. Corrupt or inconsistent provenance is an integrity failure, not a deferred disposition. One row per (Signal, Team), attributed to its canonical triage Task. V1 does not create Threads or classify noise.
 *Banned synonyms:* classification (loose), routing.
 
 ### Thread
