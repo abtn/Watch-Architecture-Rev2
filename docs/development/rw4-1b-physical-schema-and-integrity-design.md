@@ -108,6 +108,28 @@ For either option:
 - Validate Thread.team_id == team_id, Thread.domain == Team.domain, and status under the lifecycle lock protocol. Active is eligible; dormant remains deferred until RW4-5 is implemented and proven; resolved is ineligible.
 - Do not accept caller-supplied provenance assertions.
 
+### 4.1 Active-Thread lifecycle fence and RW-5 dependency
+
+An active status read is not sufficient. A concurrent lifecycle writer could make the Thread dormant or otherwise ineligible before the disposition commits.
+
+The RW-4/RW-5 sequencing decision already places the RW-5 canonical lock-helper, Team-revision, and writer-compatibility retrofit after RW4-1 but before RW4-2 Stage B and RW4-3. Preserve that sequence; do not move the whole RW-5 decay implementation ahead of RW4-1.
+
+Instead, distinguish schema preparation from write enablement:
+
+- RW4-1 may prepare the disposition schema and triage-specific persistence boundary before RW-5.
+- No triage disposition writes are enabled until the D2 identity prerequisite is present and the canonical RW-5 helper plus the relevant existing-writer retrofit have landed.
+- In particular, matched writes remain disabled until every supported Thread lifecycle writer participates in the same Team/Thread serialization protocol. RW-5 decay execution itself remains in its accepted later position; this gate requires the helper and compatibility retrofit, not premature decay implementation.
+- A writer that can change Thread status/domain without taking the canonical Team lock and then the affected Thread lock must be included in the retrofit or must block matched-write enablement.
+
+For a matched disposition, TaskRuntime must hold the Task row FOR UPDATE, then the Team row FOR NO KEY UPDATE, then the selected Thread row FOR NO KEY UPDATE, following the frozen RW-5 order (and sorted Hypothesis locks only when the operation actually needs them). Use PostgreSQL READ COMMITTED, consistent with the accepted RW4-2 lock protocol. Re-read and validate Team eligibility, Thread Team/domain/status, and intake provenance after acquiring the locks; retain locks through disposition and terminal commit. Do not invent a parallel lock helper or reverse the order.
+
+Required two-session proof:
+1. **Triage first:** triage obtains Task → Team → Thread locks and commits a matched disposition; a concurrent lifecycle writer waits, then proceeds only after triage commit. The resulting order must be equivalent to a valid match followed by the lifecycle transition.
+2. **Lifecycle first:** lifecycle writer obtains Team → Thread locks and commits a status change to dormant/resolved; triage waits, re-reads under the canonical locks, and does not write matched.
+3. **Unsupported writer:** demonstrate that a writer lacking the helper cannot be treated as safe; either retrofit it or keep matched writes disabled.
+
+This is a release gate for matched dispositions, not a request to implement RW-5 decay early. Dormant matching remains deferred in RW4-1; RW4-5 owns any later reactivation.
+
 ## 5. Keep D4.1a duplicate canonicality outside this slice
 
 A duplicate disposition requires more than a valid Signal FK and matching hash. It must point to the first successfully committed Signal for the same Team and exact raw content hash, regardless of origin.
@@ -180,7 +202,7 @@ The immutable observation Snapshot is stored outside PostgreSQL as in current Ta
 | FK ownership | Missing Signal/Team/Thread/Task; cross-Team Thread/Task | FK rejection; no cascading history deletion. |
 | Provenance | Missing/malformed intake Event; wrong Task Team; Signal/Snapshot/hash mismatch; domain mismatch | Fail closed; no disposition. |
 | Ingestion reuse regression | fetch_no_change, ON CONFLICT winner, and prior_outcome replay with cross-domain Signal reuse | All three rejected for RW4-1 eligibility; ingestion correction, if any, remains separately scoped. |
-| Thread | Wrong Team/domain; resolved; active; dormant without RW4-5 | Invalid candidates rejected; active allowed; dormant defers without reactivation. |
+| Thread | Wrong Team/domain; resolved; active; dormant without RW4-5; both lock interleavings against lifecycle writers | Invalid candidates rejected; active allowed only after RW-5 helper/retrofit and two-session serialization proof; dormant defers without reactivation. |
 | Duplicate | Cross-Team target; different hash; noncanonical target; same hash but D4.1a winner unavailable | No duplicate disposition until canonical proof is available. |
 | Task identity | Wrong Task type/Team/Signal/identity; malformed or duplicate request Event; canonical UUID mismatch | Fail closed; D2 migration is prerequisite for persisted identity check. |
 | Immutability | UPDATE and DELETE under actual runtime role; privileged path if applicable | Mutation rejected by selected DB enforcement. |
@@ -188,7 +210,7 @@ The immutable observation Snapshot is stored outside PostgreSQL as in current Ta
 | Atomic success | Matched and deferred paths; duplicate only after D4.1a gate | Disposition + Outcome + Task + terminal Event commit together. |
 | Atomic rollback | Inject failure after disposition insert and before Outcome/Event/Task terminalization | No DB row from terminal bundle survives. |
 | Replay | Exact replay; corrupt/missing disposition; corrupt Outcome/Event/Task state | Exact replay read-only; inconsistency fails closed. |
-| Concurrency | Concurrent disposition inserts and relevant provenance mutation race | Unique winner; no stale/mismatched provenance commit. Use real PostgreSQL sessions. |
+| Concurrency | Concurrent disposition inserts; provenance mutation race; triage-first and lifecycle-first Team/Thread lock interleavings | Unique winner; no stale/mismatched provenance commit; active Thread remains eligible through commit. Use real PostgreSQL sessions. |
 | Boundaries | No Signal/Thread/EvidenceLink mutation; no new Task/dispatcher path; no RW-5/RW4-5 behavior | No out-of-scope writes. |
 
 All constraint, concurrency, lock, trigger, and transaction claims require disposable PostgreSQL. SQLite/in-memory substitutes are not accepted for those proofs. Record PostgreSQL version, Alembic head, exact tested SHA, isolation level, session count, and observed blocking/commit outcomes.
