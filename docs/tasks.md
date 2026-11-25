@@ -375,7 +375,7 @@ Snapshot is created under the universal `Task (K)` lifecycle authority
 described in footnote ¹⁹ and ADR-0030, not under this `Snapshot (K) = K¹`
 cell; it is an application-managed lifecycle record committed atomically with
 the Outcome, terminal Task status, and corresponding terminal Event.
-² The `triage_signal` Kernel-managed effect is limited to the accepted `matched`, `duplicate`, or `deferred` disposition and its Task-attributed evidence. It never creates a Thread. A dormant Thread is not reactivated before D6.
+² The `triage_signal` Kernel-managed effect is limited to the accepted `matched`, `duplicate`, or `deferred` disposition and its Task-attributed evidence. It never creates a Thread. Before D6, a dormant candidate may be evaluated only to determine whether it would otherwise win; it must defer and cannot receive a `matched` disposition or be reactivated.
 ⁴ Summary projection and explicit resolution only. SignalDisposition refinement is not granted to `update_thread` or `operator_update`; D3 makes deferred terminal/immutable in v1.
 ⁶ `active → needs_review` only.
 ⁷ Store only the Snapshot for the Artifact produced by this operation.
