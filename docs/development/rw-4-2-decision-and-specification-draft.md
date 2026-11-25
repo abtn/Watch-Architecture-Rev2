@@ -373,7 +373,7 @@ A Signal has no lifecycle/status field in the current canonical model. Do not ad
 - A pre-existing SignalDisposition for the same Team/Signal pair means the first-release decision has already been recorded; do not create another triage decision or replacement Task to reconsider it. An authorized request may still resolve the canonical D2 Task as a replay, but it must return the recorded result without re-execution or disposition mutation.
 - If a disposition exists but its canonical D2 Task or exactly-one valid `triage_signal_requested` Event is missing, duplicated, malformed, or inconsistent, fail closed as an integrity/provenance error. Do not create a replacement Task/Event, synthesize missing history, or mutate the disposition. Replay must recompute and validate canonical Task identity and the complete immutable request Event before returning the recorded result.
 - Eligibility is revalidated at the execution/commit boundary under the accepted lock protocol. Creation-time watermark is evidence of the original request basis, not a substitute for current-state validation.
-- This does not freeze D4 matching eligibility, D5 disposition vocabulary/reference combinations, or D6 Thread reactivation.
+- D4.1/D4.1a/D4.2/D4.3 are accepted separately; their evidence/persistence parameters remain open. This D3 decision does not freeze D5 disposition vocabulary/reference combinations or D6 Thread reactivation.
 
 ### D3-B — Task terminality and identity occupancy
 
