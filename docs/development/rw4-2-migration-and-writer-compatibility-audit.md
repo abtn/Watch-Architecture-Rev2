@@ -187,7 +187,8 @@ Before the migration/creator contract can be frozen, the implementation design a
 2. All nine inventoried producers delegate to named Control Room operations; each preserves prior authorization and transaction behavior, and existing non-triage Tasks retain NULL identity fields.
 3. A `triage_signal` Task with either identity field missing is rejected by PostgreSQL.
 4. A half-populated identity pair is rejected.
-5. Two Tasks with different UUID primary keys but the same `(team_id, signal_id, identity_version)` are rejected by the composite unique constraint.
+5. A non-triage Task with either or both identity fields populated is rejected; existing non-triage writers that omit both fields remain valid.
+6. Two Tasks with different UUID primary keys but the same `(team_id, signal_id, identity_version)` are rejected by the composite unique constraint.
 7. Reuse of the same canonical Task UUID is rejected/arbitrated by the existing primary key.
 8. A duplicate `triage_signal_requested` Event for one Task is rejected by the partial unique index; a different Task may have its own request Event.
 9. Migration preflight scans every triage_signal_requested Event and every triage_signal Task, aborts without mutation on any non-zero historical population, and reports orphan, cross-Task, malformed, duplicate, and identity-inconsistent evidence. Historical repair is a separate reviewed migration.
