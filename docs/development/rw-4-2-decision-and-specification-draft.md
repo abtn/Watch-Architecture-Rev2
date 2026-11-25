@@ -436,7 +436,7 @@ Use a narrow deterministic application matcher over existing canonical data:
 - Bound candidate Threads, evidence Signals, and evidence chunks separately. Measure eligible cardinalities, detect overflow before ranking, and inspect query plans/cost on a disposable PostgreSQL fixture database. Never rank a truncated candidate/evidence set as complete. Do not add ANN indexes or other infrastructure speculatively.
 - Missing, incompatible, corrupt, insufficient, tied, or ambiguous evidence resolves to the deferred business path, not a guessed match.
 
-A dormant Thread may be considered by the D4 candidate matcher, but a match does not reactivate it. Until D6 and a separately authorized reactivation slice exist, RW4-3 must not change a dormant Thread's status or activity timestamps, emit a reactivation Event, or commit a matched disposition whose meaning implies reactivation. A dormant candidate that would otherwise win is resolved as terminal deferred in that non-reactivation slice.
+A dormant Thread may be considered by the D4 candidate matcher only to establish whether it would otherwise qualify. Until D6 is accepted and a separately authorized reactivation slice is implemented, a dormant candidate must never receive a `matched` disposition, even if the decision would not change its status. If a dormant candidate would otherwise win and no active candidate wins, the result is terminal `deferred` with `dormant_thread_requires_reactivation`. No dormant Thread status or activity timestamp may change, and no reactivation Event may be emitted.
 
 **Still open under D4 evidence closure:** actual matcher pin values (matcher_id, matcher_version, embedding_space_key, chunking_version); numeric minimum threshold and winner margin; score serialization/rounding; candidate/evidence bounds; fixture labels/results and acceptable false-positive tolerance; measured query plan and cost. These must be established from the required fixtures and disposable PostgreSQL measurements, not intuition. The accepted algorithm shape does not make these values accepted or implementation-ready.
 
@@ -453,7 +453,7 @@ Labels must be independent of the matcher. Report false positives and false nega
 - Do not derive a title from a URL or generate one with a model. No title-extraction fallback is authorized.
 - Any future automatic Thread creation requires a separate source-backed design and Operator decision.
 
-D4 therefore bounds the first-release decision shape to duplicate, qualifying existing-Thread match, or deferred. It excludes new-Thread creation, near-duplicate detection, and automatic noise classification. The disposition/reference matrix and durable reason vocabulary are frozen by accepted D5. D4 acceptance does not authorize RW4-3 implementation, RW4-1 persistence, D6 reactivation, or RW4-2 Stage B.
+D4 therefore bounds the first-release decision shape to duplicate, qualifying **active-Thread** match, or deferred. Dormant candidates may be evaluated but always defer before D6; they cannot receive a `matched` disposition. It excludes new-Thread creation, near-duplicate detection, and automatic noise classification. The disposition/reference matrix and durable reason vocabulary are frozen by accepted D5. D4 acceptance does not authorize RW4-3 implementation, RW4-1 persistence, D6 reactivation, or RW4-2 Stage B.
 
 ### D5 — Disposition vocabulary, references, reasons, and terminal evidence (ACCEPTED 2026-11-25)
 
@@ -476,7 +476,7 @@ D4 therefore bounds the first-release decision shape to duplicate, qualifying ex
 | `reason_code` | NULL | NULL | Required |
 | `decided_by_task_id` | Required | Required | Required |
 
-- A matched Thread must be same-Team and same-Domain and satisfy D4 eligibility. A dormant Thread may be referenced as a non-reactivating match only if the decision does not imply reactivation; its status and timestamps remain unchanged. D6 alone may authorize reactivation.
+- A matched Thread must be same-Team, same-Domain, and **active** at the decision's commit point. Dormant Threads are never referenced by a v1 `matched` disposition before D6. The matcher may evaluate a dormant candidate to determine whether it would otherwise win, but that result is `deferred` with `dormant_thread_requires_reactivation`; it must not change Thread status or timestamps or emit a reactivation Event. D6 and separate implementation authorization are required before a dormant Thread can be matched/reactivated.
 - A duplicate reference must identify the canonical Signal for the same Team and exact raw content hash; it cannot reference itself. Team association is established through ingestion history, not a Signal.team_id column.
 - Deferred carries neither a Thread nor a duplicate reference.
 - Every disposition references exactly one canonical `triage_signal` Task for the same Team and Signal. References are validated against persisted records, never caller/model assertions.
@@ -501,7 +501,7 @@ Every disposition references exactly one canonical `triage_signal` Task with the
 
 The disposition, Task-attributed evidence, Outcome, terminal Task status, and completion Event commit or roll back together in one TaskRuntime-owned transaction. Kernel persistence participates in the active Session and cannot commit independently. Deferred completes successfully with Task status `done`, never `failed`. Replay validates the existing canonical Task, request Event, and disposition; it never creates replacement history.
 
-No disposition may mutate Hypothesis, EvidenceLink, ConfidenceChange, TeamPolicy, or enqueue follow-up Tasks. D5 acceptance does not authorize RW4-1 persistence or any production code/schema/migration. RW4-1 still requires a reviewed physical design, proof subset, and explicit implementation authorization. D4 evidence closure remains required for RW4-3; D6 remains separate for dormant-Thread reactivation.
+No disposition may mutate Hypothesis, EvidenceLink, ConfidenceChange, TeamPolicy, or enqueue follow-up Tasks. D5 acceptance does not authorize RW4-1 persistence or any production code/schema/migration. A `matched` disposition is restricted to an active Thread; dormant candidates defer under the accepted D4.3 precedence until D6. RW4-1 still requires a reviewed physical design, proof subset, and explicit implementation authorization. D4 evidence closure remains required for RW4-3; D6 remains separate for dormant-Thread reactivation.
 
 ## 8. TaskRuntime boundary
 
