@@ -434,7 +434,7 @@ Use a narrow deterministic application matcher over existing canonical data:
 - Maximum pairwise chunk cosine similarity is the accepted experimental baseline, not a proven production score. It is vulnerable to high-scoring outliers and evidence-profile-size bias. A minimum score threshold and (when a runner-up exists) a winner margin must be calibrated against independently labeled positives and hard negatives. One candidate needs to pass the minimum threshold; a runner-up invokes the margin rule. Equal/ambiguous candidates do not receive a UUID or incidental-order tie-break.
 - No recency bonus is allowed. Do not treat Thread.last_updated_at as evidence recency or authority.
 - Bound candidate Threads, evidence Signals, and evidence chunks separately. Measure eligible cardinalities, detect overflow before ranking, and inspect query plans/cost on a disposable PostgreSQL fixture database. Never rank a truncated candidate/evidence set as complete. Do not add ANN indexes or other infrastructure speculatively.
-- Missing, incompatible, corrupt, insufficient, tied, or ambiguous evidence resolves to the deferred business path, not a guessed match.
+- Insufficient, incompatible, tied, or ambiguous otherwise-valid evidence resolves to the deferred business path, not a guessed match. Missing, partial, mismatched, or corrupt provenance is an integrity failure and follows TaskRuntime technical-failure handling, not a deferred disposition.
 
 A dormant Thread may be considered by the D4 candidate matcher only to establish whether it would otherwise qualify. Until D6 is accepted and a separately authorized reactivation slice is implemented, a dormant candidate must never receive a `matched` disposition, even if the decision would not change its status. If a dormant candidate would otherwise win and no active candidate wins, the result is terminal `deferred` with `dormant_thread_requires_reactivation`. No dormant Thread status or activity timestamp may change, and no reactivation Event may be emitted.
 
@@ -449,7 +449,7 @@ Labels must be independent of the matcher. Report false positives and false nega
 - RW4-3 does not create a new Thread automatically.
 - A duplicate Signal is handled by the D4.1 canonical-duplicate rule and never creates or mutates a Thread.
 - A non-duplicate Signal with no qualifying existing Thread match resolves to terminal deferred.
-- Ambiguous, insufficient, incomplete, or integrity-failing matching evidence also resolves to terminal deferred, with a validated durable reason from the accepted D5.3 vocabulary. Integrity failures remain technical failures, not deferred outcomes.
+- Ambiguous, insufficient, or incomplete but otherwise-valid matching evidence resolves to terminal deferred, with a validated durable reason from the accepted D5.3 vocabulary. Missing, partial, mismatched, or corrupt provenance is a technical/integrity failure and is not recorded as deferred.
 - Do not derive a title from a URL or generate one with a model. No title-extraction fallback is authorized.
 - Any future automatic Thread creation requires a separate source-backed design and Operator decision.
 
