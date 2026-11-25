@@ -1,6 +1,6 @@
 # RW4-0 — Minimal Signal/Thread matching representation
 
-**Status:** Supporting design/evidence artifact reconciled to the Operator's accepted D4.1/D4.1a/D4.2/D4.3 decisions (2026-11-25). The decision direction is accepted; numeric thresholds, winner margin, score serialization, candidate/evidence bounds, fixture results, canonical Team/hash persistence design, query-cost evidence, and actual matching-pin values remain open. D5 and D6 remain separate decisions. No implementation is authorized.
+**Status:** Supporting design/evidence artifact reconciled to the accepted D4.1/D4.1a/D4.2/D4.3, D5.1–D5.4, and D6.1–D6.6 decisions (2026-11-25). Numeric thresholds, winner margin, score serialization, candidate/evidence bounds, fixture results, canonical Team/hash persistence design, query-cost evidence, and actual matching-pin values remain open. D5 disposition semantics and D6 reactivation contract are accepted; physical persistence and reactivation implementation remain separately gated. No implementation is authorized.
 
 **Baseline:** PR #174 merge `0d1e262c77bc79af7edf93c5f4c116cdb01475c2`.
 
@@ -63,7 +63,7 @@ The matcher constructs two bounded, ephemeral read models. They are not ORM enti
 
 The incoming Signal must have a Team association through an `ingest_source` Task Event of type `signal_ingested` or `fetch_no_change`. The Event's Task must belong to the requested Team, and its payload's Signal ID, Snapshot reference, and content hash must match the canonical Signal. Missing or inconsistent association fails closed.
 
-The Task creator must find and validate a current Signal projection before admitting the Task, then pin its `embedding_space_key` and `chunking_version` in the immutable request. If no valid projection exists at admission, do not create the Task; return a host-side admission failure so indexing can complete first. If the pinned projection becomes stale or unavailable after Task creation, the Task records `deferred` with a precise reason. The matcher never calls an embedding provider or substitutes a different model space.
+The Task creator must find and validate a current Signal projection before admitting the Task, then pin its `embedding_space_key` and `chunking_version` in the immutable request. If no valid projection exists at admission, do not create the Task; return a host-side admission failure so indexing can complete first. If the pinned projection becomes stale or unavailable after Task creation, do not record a successful deferred disposition. Treat the invalidated immutable matching decision as a TaskRuntime technical/supersession path; where the queued Task's immutable matcher pins are no longer supported, use the accepted terminal mapping (`failed`, `terminal_failure`, reason `matching_pins_superseded`) with no retry or replacement. A projection that is merely absent from an otherwise-valid candidate profile may make that candidate unmatchable and contribute to a valid deferred result. The matcher never calls an embedding provider or substitutes a different model space.
 
 ### 3.2 Thread evidence profile
 
@@ -86,7 +86,7 @@ For every contributing Signal, validate a same-Team intake association, not just
 
 - If `snapshot_ref` and `snapshot_hash` are both present, they must exactly match the referenced Signal's canonical Snapshot reference and content hash.
 - If both are absent, the EvidenceLink is not eligible for semantic matching in this first slice. Do not silently substitute the Signal's current Snapshot as though the EvidenceLink had cited it.
-- A partial pair (which the current database check should reject) or a pair that disagrees with the Signal is an integrity failure. Do not merely omit the corrupt link and continue ranking a potentially incomplete Thread profile: return `deferred` for the assessment with a precise integrity reason. The absent-pair case is different and is excluded deterministically.
+- A partial pair (which the current database check should reject) or a pair that disagrees with the Signal is an integrity failure. Do not omit the corrupt link and continue ranking a potentially incomplete Thread profile, and do not record it as `deferred`. Fail closed through TaskRuntime technical-failure/recovery handling. The absent-pair case is different and is excluded deterministically.
 
 This check is necessary because the EvidenceLink model permits both snapshot fields to be absent and only enforces pair consistency when they are present; it does not itself guarantee that the pair matches the referenced Signal. The matcher must not erase that provenance distinction.
 
@@ -154,7 +154,7 @@ Therefore:
 | Result | Required durable reference | Side effect |
 |---|---|---|
 | `duplicate` | canonical same-Team duplicate Signal | disposition only |
-| `matched` | one existing same-Team/domain active Thread | disposition only; a dormant would-be match is terminal deferred until D6 reactivation is separately accepted/authorized |
+| `matched` | one existing same-Team/domain active Thread; under accepted D6, a dormant Thread only when the same TaskRuntime transaction reactivates it and records `thread_reactivated` | disposition only for active Thread; atomic lifecycle transition/Event/TaskRuntime commit for dormant Thread. Until separately authorized and proven RW4-5, dormant would-be matches remain deferred |
 | `deferred` | explicit reason code | disposition only |
 
 The first slice does not automatically emit:
@@ -228,7 +228,7 @@ At commit, validate again:
 
 A replay of an already committed assessment returns the original business result and emits no second disposition, transition, or Event.
 
-**D6 remains open.** The matcher may identify a dormant Thread, but it does not decide whether matching resets any decay clock. It must not mutate Hypothesis `last_touched_at`. The authoritative Thread timestamp, triage/decay lock order, and decay-first/triage-first outcomes must be agreed with RW-5 before reactivation can be implemented. No lock order is invented in this document.
+**D6.1–D6.6 are accepted; RW4-5 implementation remains gated.** A dormant Thread may receive a `matched` disposition only when the same valid triage Task atomically reactivates it, records exactly one immutable Task-attributed `thread_reactivated` Event, preserves `Thread.last_updated_at`, increments Team `world_memory_revision`, and commits the disposition plus TaskRuntime terminal evidence in the same transaction. Use the accepted RW-5 canonical lock order; do not invent a second helper or lock path. Until separately authorized and proven RW4-5 implementation, a dormant would-be winner remains terminal deferred with `dormant_thread_requires_reactivation`. Do not mutate Hypothesis `last_touched_at`.
 
 ## 8. Required fixture evidence before D4 can close
 
@@ -247,9 +247,9 @@ At minimum include:
 9. A Thread represented only by `mentions` EvidenceLinks (not a candidate in v1).
 10. A resolved Thread with otherwise strong evidence (excluded).
 11. Thread with no eligible Signal-backed EvidenceLinks (unmatchable; must not cause new Thread creation).
-12. No valid KnowledgeChunk projection at Task admission (Task creator rejects without creating Task), and a projection that becomes stale after admission (Task defers).
+12. No valid KnowledgeChunk projection at Task admission (Task creator rejects without creating Task); a pinned matcher/projection decision that becomes unsupported after admission follows TaskRuntime's terminal supersession/integrity path, not a deferred disposition.
 13. Mismatched embedding-space key or chunking version.
-14. Corrupt or mismatched Signal Snapshot/hash.
+14. Corrupt or mismatched Signal Snapshot/hash (integrity failure; fail closed through TaskRuntime, never deferred).
 15. Domain mismatch and cross-Team evidence attempts, including an EvidenceLink owned by Team A that references a Signal ingested only by Team B with the same Domain.
 16. Candidate/evidence scan exceeds its bound (defer; never choose from a truncated set).
 17. Scores exactly at threshold and winner-margin boundaries.
@@ -297,16 +297,16 @@ Explicitly excluded: entity extraction/alias tables, Thread embeddings, new Doma
 | D4 semantic match | Max pairwise chunk cosine score is an experimental baseline only | D4.2 shape accepted 2026-11-25; labeled fixture, outlier/profile-size evaluation, numeric calibration, bounded candidate query, score serialization, actual pins, and query-cost proof remain open |
 | D4 near duplicate | Exclude from first slice | Accepted 2026-11-25 |
 | D4.3 new Thread | Disable automatic creation in v1; no match becomes terminal deferred | Accepted 2026-11-25; any later capability needs a separate design/decision |
-| D5 noise | Disable automatic classification | Separate deterministic rule if later required |
-| D3 deferred | Terminal | Reconcile architecture lifecycle and Task write-scope matrix |
-| D6 reactivation | Matching may identify dormant Thread only | RW-5 timestamp and shared lock-order decision |
+| D5.1–D5.4 disposition | Exactly `matched`, `duplicate`, `deferred`; accepted reference matrix and reason vocabulary | Accepted 2026-11-25; physical persistence remains gated |
+| D3 deferred lifecycle | Deferred is immutable/terminal and successful (`done`); technical/integrity failures are not deferred | Accepted; RW4-1 atomic persistence proof remains gated |
+| D6 reactivation | Matched-only dormant reactivation; preserve Thread timestamp; Team revision increment; atomic TaskRuntime commit and immutable Event under canonical RW-5 locks | Accepted 2026-11-25; RW4-5 implementation, DB uniqueness, race/recovery proof, and separate authorization remain required |
 | Task/recovery | Pin matcher + projection identity; persist assessment receipt | Exact Event schema, canonical one-per-Task identity, database uniqueness, transaction boundary, bounds, and recovery tests |
 | Evidence provenance | Require same-Team Signal intake association and matching EvidenceLink snapshot pair | Cross-Team same-Domain and absent/mismatched-pair fixtures |
 | Scoring heuristic | Max pairwise score remains experimental only | Outlier, profile-size, lifecycle-state fixtures and accepted false-positive tolerance |
 | Query bounds | Bound Thread, Signal, and chunk scans separately | Bounded overflow detection, query plan, and measured cost |
 | RW3.4 gate | Formal acceptance still deferred | Acceptance or explicit sequencing exception before RW4 implementation |
 
-No implementation or schema work begins until the representation, narrowed outcomes, fixture results, Task envelope, assessment receipt, D3 reconciliation, D6/RW-5 contract, and RW3.4 sequencing gate are reviewed and explicitly accepted.
+No implementation or schema work begins from this supporting artifact alone. D3–D6 decision contracts are accepted, but RW4-1 physical persistence, RW4-3 matcher evidence closure, RW4-5 reactivation implementation, the Task envelope/assessment-receipt proof, and each slice's explicit authorization remain separate prerequisites. RW3.4 may proceed only under its recorded sequencing exception; formal acceptance remains deferred.
 
 ## 11. Selected design options for the next review
 
