@@ -255,7 +255,7 @@ The immutable observation Snapshot is stored outside PostgreSQL. A failed DB tra
 | Atomic rollback | Inject failure after disposition insert and before Outcome/Event/Task terminalization | No DB row from terminal bundle survives. |
 | Replay | Exact replay; corrupt/missing disposition; corrupt Outcome/Event/Task state | Exact replay read-only; inconsistency fails closed. |
 | Concurrency | Concurrent disposition inserts; provenance mutation race; triage-first and lifecycle-first Team/Thread lock interleavings | Unique winner; no stale/mismatched provenance commit; active Thread remains eligible through commit. Use real PostgreSQL sessions. |
-| Boundaries | No Signal/Thread/EvidenceLink mutation; no new Task/dispatcher path; no RW-5/RW4-5 behavior | No out-of-scope writes. |
+| Boundaries | No Signal/Thread/EvidenceLink business mutation; no new Task/dispatcher path; no RW-5 helper/revision/decay implementation or RW4-5 reactivation inside RW4-1 | No out-of-scope writes. Later write-enable proof consumes the already-implemented RW-5 helper; it does not implement it. |
 
 All constraint, concurrency, lock, trigger, and transaction claims require disposable PostgreSQL. SQLite/in-memory substitutes are not accepted for those proofs. Record PostgreSQL version, Alembic head, exact tested SHA, isolation level, session count, and observed blocking/commit outcomes.
 
