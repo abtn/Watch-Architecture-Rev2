@@ -399,12 +399,12 @@ This proposal intentionally separates recommendations from accepted decisions. R
 1. Row shape: accept or amend the proposed one-row-per-(team_id, signal_id) shape and D5.2 reference matrix.
 2. Cross-record enforcement: conditional Option A is accepted as the design direction, subject to the mandatory non-owner runtime/migration-owner role boundary and the Operator-accepted forward-only DB-attested cutover in §4.0.2. The exact marker/trigger/role implementation remains subject to physical review and PostgreSQL proof; if either prerequisite cannot be enforced, stop and return with a separately scoped Option B design.
 3. **ACCEPTED:** duplicate disposition writes remain disabled until D4.1a canonical Team/hash arbitration is separately implemented and proven. Decision 7 remains open for partial-versus-complete rollout semantics.
-4. Task identity and sequencing gate: confirm the accepted D2 migration is a hard prerequisite before RW4-2 Stage B creates triage Tasks and before any disposition write/replay is enabled. Keep it separate from the RW4-1 migration; do not accept a transitional proof or caller/Event-only substitute.
+4. **ACCEPTED:** the separately reviewed D2 Task-identity migration is a hard prerequisite before any triage Task creation and before any SignalDisposition write or replay is enabled. Keep D2 identity columns/constraints out of the RW4-1 initial migration. Install the D2-dependent four-column composite FK only after SignalDisposition exists and a locked, transactional preflight proves the table is empty and triage Task identity data is valid; keep runtime disposition INSERT permission withheld until the FK is installed and verified. No caller/Event-only transitional substitute. Keep it separate from the RW4-1 migration; do not accept a transitional proof or caller/Event-only substitute.
 5. Immutability/timestamp: accept trigger-based UPDATE/DELETE rejection, statement-level TRUNCATE rejection on protected history/identity tables, effective runtime-role TRUNCATE revocation, and database-assigned clock_timestamp(), subject to the explicit privileged-maintenance boundary and repository convention verification.
 6. TaskRuntime seam: accept one success_signal_triaged category for matched/duplicate/deferred; the typed observation fields, existing task_execution Outcome, task_completed Event index fields, atomic transaction, and exact replay equality rules in §8; no generic callback abstraction.
 7. Outcome rollout and proof matrix: decide whether RW4-1 may initially enable matched/deferred while duplicate remains disabled pending D4.1a, or whether all three disposition outcomes must become available together; accept the bounded disposable-PostgreSQL cases in §10, with any additions/removals stated explicitly.
 
-The Operator has accepted the row shape, conditional Option A/forward-only cutover direction, and the Decision 3 duplicate-write gate. Decisions 4–7 remain open. The remaining physical design must receive independent review and explicit acceptance, and implementation still requires separate authorization. No ORM, SQL, migration, TaskRuntime, ingestion, or test changes may be made.
+The Operator has accepted the row shape, conditional Option A/forward-only cutover direction, the Decision 3 duplicate-write gate, and Decision 4's hard D2 migration/FK prerequisite. Decisions 5–7 remain open. The remaining physical design must receive independent review and explicit acceptance, and implementation still requires separate authorization. No ORM, SQL, migration, TaskRuntime, ingestion, or test changes may be made.
 
 ### Decision 3 — duplicate disposition write gate (ACCEPTED)
 
@@ -435,6 +435,20 @@ This gate is narrower than the overall triage rollout decision in Decision 7. It
 **Enablement sequence:** D4.1a persistence/arbitration design and implementation must be independently reviewed and authorized; its exact-head migration and writer changes must pass the two-session PostgreSQL proof; only then may the duplicate-write gate be reconsidered and explicitly enabled. D4.1a acceptance by itself is not proof of implementation, and implementation proof alone does not silently change RW4-1 rollout policy.
 
 No D4.1a implementation or duplicate disposition write is authorized by this decision. It records a hard dependency and gate only.
+
+### Decision 4 — D2 Task identity migration prerequisite (ACCEPTED)
+
+**Operator decision (2026-11-25):** the accepted D2 Task identity migration is a hard prerequisite before any `triage_signal` Task can be created and before any SignalDisposition write or replay can be enabled. The D2 migration remains separate from the RW4-1 initial migration.
+
+**Required migration boundary and sequence:**
+
+1. The RW4-1 initial migration may create the SignalDisposition table and its row-local constraints, but must not add D2 Task identity columns/indexes and must not grant the runtime role disposition INSERT permission.
+2. The separately reviewed D2 migration adds `tasks.signal_id` and `tasks.identity_version`, enforces the accepted triage-task/identity-field CHECK, creates the accepted unique `(team_id, signal_id, identity_version)` key, and adds the four-column unique support key `(id, team_id, signal_id, identity_version)`.
+3. A later D2-dependent FK-install migration adds the composite FK from `signal_dispositions(decided_by_task_id, team_id, signal_id, identity_version)` to `tasks(id, team_id, signal_id, identity_version)`. It must use its own reviewed transactional lock/preflight protocol, acquire a write-blocking `SHARE ROW EXCLUSIVE NOWAIT` lock on `signal_dispositions`, and assert that the table is empty before installing the FK. It must also validate the relevant Task identity invariants. A lock conflict, non-empty disposition table, malformed triage Task, or other preflight violation aborts the migration without schema/data mutation.
+4. Keep runtime disposition INSERT permission withheld until the composite FK has committed and its definition/support key have been verified. Task creation remains disabled until the D2 identity migration has committed and its identity constraints have been verified. Disposition replay is also disabled until the composite FK and all replay integrity checks are installed.
+5. No caller-supplied ID, request-Event-only proof, task-type-only check, temporary application validation, or other transitional substitute may bypass the accepted D2 identity contract.
+
+The D2 migration's own preflight, transactional behavior, rollback, single-head Alembic ordering, and exact PostgreSQL proof remain implementation/review requirements. D2 migration implementation is not authorized by this RW4-1B decision. This decision accepts the dependency and sequencing only; it does not authorize any schema, migration, Task creator, disposition, or runtime implementation.
 
 ## 12. Explicit non-authorization
 
