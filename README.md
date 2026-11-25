@@ -28,7 +28,7 @@ Watch is not a single model with memory attached, nor is it a replacement for la
 
 ## Watch as a cognitive architecture
 
-The term *cognitive architecture* describes how Watch organizes the capabilities and processes needed for sustained, coherent work. It is an architectural description, not a claim that Watch is conscious, human-like, or generally intelligent.
+The term *cognitive architecture* describes how Watch organizes the capabilities and processes needed for sustained, coherent work. It is an architectural description, not a claim that Watch is conscious, human-like, or generally intelligent. In this sense, Watch is intended to be a **thinking system**: not because one model thinks on its behalf, but because the architecture organizes reasoning, memory, evaluation, and coordinated contributions into a persistent process.
 
 Watch does not assume that one LLM is the system's brain or permanent central coordinator. Different models and AI components can be assigned bounded responsibilities according to the task. Coordination, state transitions, validation, permissions, and durable commits remain responsibilities of Watch's application architecture.
 
