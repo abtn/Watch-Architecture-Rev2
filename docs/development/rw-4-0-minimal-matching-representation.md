@@ -1,14 +1,14 @@
 # RW4-0 — Minimal Signal/Thread matching representation
 
-**Status:** Revised design proposal for Operator review after independent review. This document does not accept D4/D5/D6, close RW4-0, or authorize implementation.
+**Status:** Supporting design/evidence artifact reconciled to the Operator's accepted D4.1/D4.1a/D4.2/D4.3 decisions (2026-11-25). The decision direction is accepted; numeric thresholds, winner margin, score serialization, candidate/evidence bounds, fixture results, canonical Team/hash persistence design, query-cost evidence, and actual matching-pin values remain open. D5 and D6 remain separate decisions. No implementation is authorized.
 
 **Baseline:** PR #174 merge `0d1e262c77bc79af7edf93c5f4c116cdb01475c2`.
 
 **Evidence audit:** [PR #175](https://github.com/abtn/Watch-Architecture-Rev2/pull/175), whose read-only source audit is based on the same baseline.
 
-## 1. Decision sought
+## 1. Accepted D4 direction and remaining evidence
 
-Approve or amend a deliberately narrow first matching representation:
+The Operator accepted this narrow first matching representation on 2026-11-25, with the following decision boundaries:
 
 - Reuse canonical `Signal`, immutable Snapshot, `EvidenceLink`, `Hypothesis`, `Thread`, and the existing rebuildable `KnowledgeChunk` projection.
 - Derive each Thread's matching evidence set from its existing Signal-backed EvidenceLinks. Do not persist a Thread embedding, entity table, alias subsystem, or separate Domain ORM.
@@ -16,7 +16,7 @@ Approve or amend a deliberately narrow first matching representation:
 - Use same-embedding-space Signal chunk similarity to find a unique existing Thread candidate. No model call or re-embedding occurs during triage.
 - Restrict automatic first-release outcomes to `matched`, `duplicate`, and terminal `deferred`. Do not create Threads, automatically label `noise`, or refine deferred dispositions in this slice.
 
-This is a proposal, not a frozen algorithm. The numeric similarity threshold, winner margin, candidate bound, fixture evidence, and RW-5 concurrency contract remain explicit gates.
+The representation and outcome boundaries are accepted; this is not a frozen numeric algorithm. The threshold, winner margin, score serialization, candidate/evidence bounds, fixture evidence, canonical Team/hash persistence design, and RW-5-dependent dormant reactivation remain explicit gates.
 
 ## 2. Why this is the smallest representation
 
@@ -102,11 +102,11 @@ Run exact duplicate detection before Thread matching.
 
 - Scope: Signals already associated with the same Team through `ingest_source` Events of type `signal_ingested` or `fetch_no_change`.
 - Rule: another Signal with exactly the same raw `content_hash` is an exact duplicate.
-- Canonical duplicate: earliest Team-association Event `created_at`, then Signal UUID ascending as a stable tie-break.
+- Canonical duplicate: the first Signal successfully committed into the Team's intake history for that exact content hash. PostgreSQL must arbitrate concurrent first arrivals and the Team/hash association must remain stable. Do not select by Event `created_at`, application timestamps, caller-supplied `fetched_at`, Signal UUID, or origin ordering.
 - Exclude the incoming Signal itself.
 - The duplicate disposition references the canonical Signal and makes no Thread mutation.
 
-The existing unique constraint on `(origin_url, content_hash)` already prevents a second Signal for the same origin/content pair. This rule adds only cross-origin exact-byte detection inside the Team's own intake history.
+The existing unique constraint on `(origin_url, content_hash)` prevents a second Signal for the same origin/content pair, but it does not implement the accepted Team-wide, cross-origin canonical association. Signal is not Team-owned; Team membership is derived from ingestion Events. The persistence mechanism that serializes and preserves the first committed Team/hash association is still a design gate and requires a two-session disposable-PostgreSQL proof.
 
 This does **not** detect whitespace/markup changes, paraphrases, syndicated edits, or other near-duplicates. Those remain outside the first slice. Similarity must not be repurposed as a duplicate rule without separate labeled evidence and acceptance.
 
@@ -132,9 +132,9 @@ If no candidate reaches the threshold, multiple Threads tie, the best/second-bes
 
 No recency bonus is proposed initially. `Thread.last_updated_at` is not currently established as a matching clock, and adding it without a lifecycle contract would make the score depend on an unproven timestamp meaning.
 
-**Important limitation:** maximum pairwise chunk similarity is an experimental candidate heuristic, not an accepted matching rule and not proof that two Signals describe the same event. A single highly similar chunk can dominate even when the rest of the incoming Signal is unrelated. It is also biased toward Threads with larger evidence profiles because they offer more chunk pairs. Its threshold and margin must be calibrated against labeled positive and hard-negative newsroom fixtures that vary Thread profile size. If that evidence does not support an explicitly accepted false-positive tolerance, reject this heuristic or keep the matcher deferred; do not lower the threshold or add complexity by intuition. The fixture report must expose per-case false positives and false negatives, not only aggregate accuracy.
+**Accepted limitation:** maximum pairwise chunk similarity is the accepted experimental baseline heuristic, not a proven production score and not proof that two Signals describe the same event. A single highly similar chunk can dominate even when the rest of the incoming Signal is unrelated. It is also biased toward Threads with larger evidence profiles because they offer more chunk pairs. Its threshold and margin must be calibrated against labeled positive and hard-negative newsroom fixtures that vary Thread profile size. If that evidence does not support an explicitly accepted false-positive tolerance, reject this heuristic or keep the matcher deferred; do not lower the threshold or add complexity by intuition. The fixture report must expose per-case false positives and false negatives, not only aggregate accuracy.
 
-**Performance limitation:** migration `0010_knowledge_chunk_projection` creates the embedding-space/Signal B-tree index and lexical GIN index, but no pgvector ANN index. The existing vector retrieval orders by cosine distance; the source does not prove its latency at realistic Team evidence volumes. Before D4 closes, measure the eligible evidence-chunk cardinality and inspect the query plan on a disposable fixture database. The first version must have a hard evidence-scan bound and defer when that bound is exceeded. Do not add HNSW/IVFFlat or another index speculatively; require measured need and a separate schema decision.
+**Performance limitation:** migration `0010_knowledge_chunk_projection` creates the embedding-space/Signal B-tree index and lexical GIN index, but no pgvector ANN index. The existing vector retrieval orders by cosine distance; the source does not prove its latency at realistic Team evidence volumes. Before RW4-3 implementation, measure the eligible candidate/evidence cardinalities and inspect the query plan on a disposable fixture database. The first version must have a hard evidence-scan bound and defer when that bound is exceeded. Do not add HNSW/IVFFlat or another index speculatively; require measured need and a separate schema decision.
 
 ### 4.3 New Thread eligibility
 
@@ -147,25 +147,25 @@ Therefore:
 - no existing Thread match does not imply `new_thread`;
 - this matcher never creates a Thread;
 - absence of a candidate, insufficient evidence, or an unmatchable Thread set results in `deferred`;
-- `new_thread` remains disabled until a separate canonical title source and eligibility rule are demonstrated and accepted.
+- `new_thread` remains disabled for v1; any later automatic Thread creation requires a separate source-backed design and Operator decision, not title extraction alone.
 
 ## 5. First-slice disposition vocabulary
 
 | Result | Required durable reference | Side effect |
 |---|---|---|
 | `duplicate` | canonical same-Team duplicate Signal | disposition only |
-| `matched` | one existing same-Team/domain Thread | disposition; dormant reactivation only if D6/RW-5 contract is accepted |
+| `matched` | one existing same-Team/domain active Thread | disposition only; a dormant would-be match is terminal deferred until D6 reactivation is separately accepted/authorized |
 | `deferred` | explicit reason code | disposition only |
 
 The first slice does not automatically emit:
 
-- `new_thread`: no safe title source or strong new-Thread rule;
+- new Thread creation: excluded by accepted D4.3; a future capability needs a separate design and Operator decision;
 - `noise`: no deterministic, source-backed noise classifier is established;
 - near-duplicate `duplicate`: no validated near-duplicate policy or numeric threshold.
 
-Deferred is terminal in this release, consistent with D3's proposal. No `update_thread` or `operator_update` SignalDisposition refinement is introduced.
+Deferred is terminal in this release, consistent with accepted D3. No `update_thread` or `operator_update` SignalDisposition refinement is introduced.
 
-This narrowing is a proposal for Operator acceptance. It changes the target disposition coverage and must be reflected consistently in the architecture state table and Task/write-scope matrix before any schema or implementation work.
+D4.3's no-automatic-Thread-creation rule was accepted by the Operator on 2026-11-25. This changes the target disposition coverage and must remain consistent in the architecture state table and Task/write-scope matrix before any schema or implementation work.
 
 ## 6. Versioning, Task pinning, and durable assessment
 
@@ -262,7 +262,7 @@ At minimum include:
 24. EvidenceLinks whose snapshot pair is absent, disagrees with the canonical Signal Snapshot, or matches it exactly; only the exact-match case may contribute. Separately verify that the database rejects a partially populated snapshot pair.
 25. Supporting and challenging links attached to active, superseded, and rejected Hypotheses, with independent labels to determine whether historical lifecycle states improve or degrade Thread identity.
 
-The fixture must label the intended Thread or duplicate identity independently of the matcher. Report false-positive and false-negative cases, not just aggregate accuracy. Report the max-score outlier cases and stratify results by evidence-profile size and Hypothesis lifecycle state. Numeric threshold, margin, candidate bound, score precision, and acceptable query cost are not accepted until this evidence is reviewed. If no defensible threshold exists, D4 remains open.
+The fixture must label the intended Thread or duplicate identity independently of the matcher. Report false-positive and false-negative cases, not just aggregate accuracy. Report the max-score outlier cases and stratify results by evidence-profile size and Hypothesis lifecycle state. Numeric threshold, margin, candidate/evidence bounds, score precision, and acceptable query cost remain open until this evidence is reviewed. D4's decision shape is accepted; if no defensible threshold or cost bound exists, the affected matching cases remain deferred and RW4-3 cannot enable them.
 
 The operational scan bound must be defined separately for candidate Threads, evidence Signals, and evidence chunks. Specify how the query detects that a bound is exceeded without first loading an unbounded eligible set; document the relevant query plan and measured cardinalities on a disposable fixture database. The matcher must never rank a truncated candidate set as though it were complete. If the bound cannot be checked within the accepted query-cost budget, defer rather than scan or select from a partial result.
 
@@ -292,11 +292,11 @@ Explicitly excluded: entity extraction/alias tables, Thread embeddings, new Doma
 
 | Gate | Proposed resolution | Still required |
 |---|---|---|
-| D4 representation | Reuse EvidenceLink-derived Thread evidence profile + Signal KnowledgeChunk vectors | Operator acceptance of this representation |
-| D4 exact dedup | Team-scoped exact content hash only | Confirm canonical Team-association Event query and fixture proof |
-| D4 semantic match | Max pairwise chunk cosine score is an experimental candidate heuristic only | Labeled fixture, outlier/profile-size evaluation, numeric calibration, bounded candidate query, and Operator acceptance |
-| D4 near duplicate | Exclude from first slice | Explicitly accept the reduced coverage |
-| D5 new Thread | Disable | Separate title-source/eligibility proposal if later required |
+| D4 representation | Reuse EvidenceLink-derived Thread evidence profile + Signal KnowledgeChunk vectors | Accepted 2026-11-25; numeric/operational evidence remains open |
+| D4 exact dedup | Exact raw content hash within one Team regardless of origin; first committed Team/hash Signal is canonical | Accepted 2026-11-25; persistence design and PostgreSQL concurrency proof remain open |
+| D4 semantic match | Max pairwise chunk cosine score is an experimental baseline only | D4.2 shape accepted 2026-11-25; labeled fixture, outlier/profile-size evaluation, numeric calibration, bounded candidate query, score serialization, actual pins, and query-cost proof remain open |
+| D4 near duplicate | Exclude from first slice | Accepted 2026-11-25 |
+| D4.3 new Thread | Disable automatic creation in v1; no match becomes terminal deferred | Accepted 2026-11-25; any later capability needs a separate design/decision |
 | D5 noise | Disable automatic classification | Separate deterministic rule if later required |
 | D3 deferred | Terminal | Reconcile architecture lifecycle and Task write-scope matrix |
 | D6 reactivation | Matching may identify dormant Thread only | RW-5 timestamp and shared lock-order decision |
@@ -330,4 +330,4 @@ Keep this PR limited to the matching-representation proposal. Reconcile the arch
 
 ### Preserved boundaries
 
-These selections do not accept D4/D5/D6, close RW4-0, settle numeric thresholds or scan budgets, resolve D3 or D6/RW-5, satisfy the RW3.4 sequencing gate, or authorize application code, tests, schema, migrations, database operations, provider calls, or scored experiments.
+The D4 decisions now accepted by the Operator supersede the former open-decision wording in this historical proposal. They do not close D5/D6 or RW4-0, settle numeric thresholds or scan budgets, satisfy the RW3.4 sequencing gate, or authorize application code, tests, schema, migrations, database operations, provider calls, or scored experiments.

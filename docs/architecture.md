@@ -184,11 +184,11 @@ Signal
     embedding_model: str        # model name/version for coherent regeneration
 ```
 
-Immutable. Uniqueness on `(origin_url, content_hash)`: an identical re-fetch from the same origin creates no new Signal. Cross-origin near-duplicate classification is not implemented and is explicitly excluded from the current RW-4 first-release proposal. PR #176 proposes exact raw-content-hash duplicate detection only within the same Team's intake history; that proposal still requires fixture evidence and explicit acceptance. Near-duplicate handling must not be inferred from this conceptual architecture.
+Immutable. Current ingestion uniqueness on `(origin_url, content_hash)` makes an identical re-fetch from the same origin reuse its Signal. The accepted D4.1 rule is broader but Team-scoped: exact raw `content_hash` equality within one Team's intake history is a duplicate regardless of origin; equal hashes across Teams are not duplicates. D4.1a makes the first successfully committed Team/hash association canonical, with database arbitration for concurrent first arrivals. This broader Team/hash canonical association is not implemented by the current origin-scoped ingestion uniqueness; Signals are not Team-owned and Team association is represented through ingestion Events. A reviewed persistence design and real PostgreSQL proof remain required before RW4-3. Near-duplicate and semantic duplicate classification are excluded.
 
 ### `SignalDisposition`
 
-> **Conceptual target only; not implemented.** The field sketch below predates the narrowed PR #176 proposal and is not an accepted schema. In particular, its `new_thread` vocabulary and `updated_at` field must not be treated as frozen. See the [RW-4 readiness and delivery plan](development/rw-4-readiness-and-delivery-plan.md).
+> **Conceptual target only; not implemented.** The field sketch below predates the accepted D4.3 first-release scope and is not an accepted schema. Its `new_thread` vocabulary and `updated_at` field must not be treated as v1 requirements. D4.3 disables automatic Thread creation; D5 still owns the complete disposition/reference matrix. See the [RW-4 readiness and delivery plan](development/rw-4-readiness-and-delivery-plan.md).
 
 ```python
 SignalDisposition
@@ -204,7 +204,7 @@ SignalDisposition
     updated_at: datetime
 ```
 
-Proposed uniqueness is one row per `(signal_id, team_id)`. This is not implemented. The current PR #176 first-release proposal includes `matched`, exact-hash `duplicate`, and terminal `deferred`; `new_thread`, automatic `noise`, and near-duplicate outcomes are excluded pending separate evidence and acceptance. The multi-Team identity principle remains: the same Signal may receive separate Team-scoped decisions.
+Proposed uniqueness is one row per `(signal_id, team_id)`. This is not implemented. The accepted D4.1 rule is exact-hash `duplicate` within one Team regardless of origin, using the first successfully committed Team/hash association as canonical winner; cross-Team and near-duplicate matches are excluded. D4.3 disables automatic `new_thread` in v1. The proposed first-release outcomes remain `matched`, `duplicate`, and terminal `deferred`; automatic `noise` remains excluded pending D5. The multi-Team identity principle remains: the same Signal may receive separate Team-scoped decisions.
 
 ### `Thread`
 
@@ -535,7 +535,7 @@ Transitions not listed are forbidden. Every transition emits an Event (INV-13).
 
 ### SignalDisposition
 
-> **D3 lifecycle semantics accepted 2026-11-25; persistence and vocabulary remain gated.** Signal has no lifecycle/status column. Eligibility is derived from canonical Signal/Snapshot integrity and provenance plus active-Team, authorization, and source/domain/policy checks. An existing Team/Signal disposition excludes another v1 decision. If the disposition exists without exactly one valid canonical Task/request Event, replay fails closed without repair or replacement. D3 makes a deferred disposition terminal and immutable in v1; its Task completes successfully as `done`. The disposition, Task attribution/reason, TaskRuntime Outcome, terminal Task status, and terminal Event commit or roll back in one TaskRuntime-owned transaction. Technical execution failure follows TaskRuntime retry/recovery and may end `failed`. D5 still owns the complete disposition vocabulary and reference matrix; D4 matching eligibility and D6 reactivation remain separate decisions. RW4-1 owns persistence and is not authorized by this decision.
+> **D3 lifecycle semantics accepted 2026-11-25; persistence and vocabulary remain gated.** Signal has no lifecycle/status column. Eligibility is derived from canonical Signal/Snapshot integrity and provenance plus active-Team, authorization, and source/domain/policy checks. An existing Team/Signal disposition excludes another v1 decision. If the disposition exists without exactly one valid canonical Task/request Event, replay fails closed without repair or replacement. D3 makes a deferred disposition terminal and immutable in v1; its Task completes successfully as `done`. The disposition, Task attribution/reason, TaskRuntime Outcome, terminal Task status, and terminal Event commit or roll back in one TaskRuntime-owned transaction. Technical execution failure follows TaskRuntime retry/recovery and may end `failed`. D4.1/D4.1a/D4.2/D4.3 are accepted; canonical Team/hash persistence and measured matcher parameters remain evidence gates. D5 still owns the complete disposition vocabulary and reference matrix; D6 owns dormant reactivation. RW4-1 owns persistence and is not authorized by this decision.
 
 
 ### Artifact
@@ -605,9 +605,9 @@ Flow numbers (F1–F8) are cited from `docs/tasks.md` and the walkthrough.
 
 1. The implemented ingestion path creates an `ingest_source` Task for a configured source and commits a canonical Signal/Snapshot, or records fetch-no-change for an identical same-origin fetch. This does not create a triage Task.
 2. `triage_signal`, SignalDisposition persistence, matching, and Thread reactivation are **not implemented**.
-3. The current RW-4 proposal is narrower than this document's former target: exact-hash same-Team duplicates, an experimental EvidenceLink/Hypothesis-derived Thread candidate profile using KnowledgeChunk projections, and `matched` / `duplicate` / terminal `deferred`; `new_thread`, automatic `noise`, and near-duplicate classification are disabled in the proposal.
-4. Same-Team ingestion provenance, canonical Signal Snapshot/hash, EvidenceLink Snapshot provenance, pinned projection identity, bounded candidate/evidence scans, and assessment-receipt recovery are prerequisites, not inferred from a similarity score.
-5. Dormant reactivation remains blocked on the shared RW-5 timestamp/locking contract. Triage must not create or enqueue `update_thread` Tasks.
+3. Accepted D4.1/D4.1a use exact raw content-hash equality within one Team regardless of origin, with the first successfully committed Team/hash association as canonical winner; cross-Team and near-duplicate classification are excluded. This canonical association needs a reviewed persistence design and PostgreSQL concurrency proof because current ingestion uniqueness is origin-scoped.
+4. Accepted D4.2 uses a read-time EvidenceLink → Hypothesis → Thread profile over same-Team/same-Domain active or dormant Threads (resolved excluded), supports/challenges evidence, verified same-Team Signal/Snapshot/hash provenance, and compatible pinned KnowledgeChunk projections. Threshold, winner margin, score serialization, candidate/evidence bounds, actual pins, and query cost remain evidence gates; ties/insufficient/corrupt evidence defer.
+5. Accepted D4.3 disables automatic Thread creation. No qualifying match, ambiguous/insufficient evidence, or a dormant candidate blocked by D6 resolves to terminal deferred. No URL/model title fallback. Dormant reactivation remains D6-gated; triage must not create or enqueue `update_thread` Tasks.
 
 **Status and authority:** this is a target-flow summary, not implementation evidence or acceptance of D1–D6. See [the RW-4 readiness and delivery plan](development/rw-4-readiness-and-delivery-plan.md).
 
