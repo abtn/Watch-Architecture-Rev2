@@ -179,50 +179,74 @@ No cascading deletes. If a referenced Signal, Team, Thread, or Task is subject t
 
 ## 8. TaskRuntime integration and terminal evidence contract
 
-Do not open a second transaction and do not add a generic callback framework.
+Do not open a second transaction and do not add a generic callback framework. The current `TerminalObservation` is a frozen dataclass with explicit optional evidence fields; its serializer `_observation_payload()` builds the immutable Snapshot JSON. The current `_replay()` compares the canonical Snapshot bytes and checks Task status plus terminal Event type/cardinality, but it does not validate the complete terminal Event payload or `Task.completed_at`. The triage extension must close those exact gaps for this category without changing unrelated replay behavior.
 
-### 8.1 One triage success category
+### 8.1 One triage success category and typed member
 
-Use one TaskRuntime success category for all three successful business dispositions: `success_signal_triaged`. The disposition value distinguishes matched, duplicate, and deferred; do not invent three Task lifecycle categories or reuse ingestion categories. This category is a proposed extension to the current TaskRuntime success-category set and is not implemented by this design document.
+Use one TaskRuntime success category for all three successful business dispositions: `success_signal_triaged`. The disposition value distinguishes matched, duplicate, and deferred. Deferred is successful and ends with Task status `done`. Technical failures and stale-pin supersession remain on the existing non-success path and create no disposition.
 
-A successful triage Task always ends with Task status `done`, one `task_execution` Outcome, and exactly one `task_completed` Event. Deferred is included in this success path. Technical failures and stale-pin supersession remain on the existing TaskRuntime non-success path and create no disposition.
+Add an optional typed `signal_triage` member to the frozen `TerminalObservation`, represented by a frozen `SignalTriageObservation` value. It is required if and only if `result_category == "success_signal_triaged"`; it is forbidden for every other result category. It contains:
+- `signal_id: UUID`
+- `disposition: Literal["matched", "duplicate", "deferred"]`
+- `thread_id: UUID | None`
+- `duplicate_of_signal_id: UUID | None`
+- `reason_code: str | None`
+- `explanation: str`
 
-### 8.2 Typed observation payload
+The nested serialized JSON member is named exactly `signal_triage` and has schema version 1. Its exact object shape is:
+```json
+{
+  "schema_version": 1,
+  "signal_id": "lowercase-canonical-uuid",
+  "disposition": "matched|duplicate|deferred",
+  "thread_id": null,
+  "duplicate_of_signal_id": null,
+  "reason_code": null,
+  "explanation": "non-empty human-readable explanation"
+}
+```
+All seven keys are always present. UUIDs use lowercase canonical hyphenated text. Inapplicable references/reason are JSON null, never omitted or encoded as empty strings. `explanation` is trimmed only for validation; preserve the supplied human-readable text in the stored evidence. No additional nested keys are allowed. The typed value enforces the D5.2 reference/nullability matrix and exact D5.3 deferred reason set before snapshot storage.
 
-Add one triage-specific typed value to the existing TerminalObservation contract. Its serialized observation object has exactly these semantic fields:
+### 8.2 Canonical outer observation and Outcome
 
-| Field | Requirement |
-|---|---|
-| signal_id | Required UUID; must equal the Task's persisted D2 signal_id. |
-| disposition | Required; exactly matched, duplicate, or deferred. |
-| thread_id | Required only for matched; otherwise NULL. |
-| duplicate_of_signal_id | Required only for duplicate; otherwise NULL. |
-| reason_code | Required only for deferred and one of the six D5.3 values; otherwise NULL. |
-| explanation | Required non-empty human-readable explanation; never used as a machine decision code. |
+The outer observation continues to use the existing TaskRuntime fields and serializer conventions: `attempt`, `failure_reason`, `observed_at`, `result_category`, and the existing evidence members. For triage, `result_category` is exactly `success_signal_triaged`, `failure_reason` is null, and `signal_triage` is present. No other optional evidence member is permitted for this category. `observed_at` must be timezone-aware and is serialized using the existing UTC timestamp serializer.
 
-The typed value must enforce the D5.2 reference/nullability matrix before persistence. It must reject extra or contradictory references. The Task ID and attempt remain the enclosing TerminalObservation identity; they are not caller-controlled fields inside this nested value.
+The existing Outcome remains the only terminal Outcome: `subject_kind=task`, `subject_id=Task.id`, `outcome_type=task_execution`, `recorded_by_task_id=Task.id`, and `team_id=Task.team_id`. Its `observation_snapshot_ref` and `observation_hash` identify the exact canonical JSON bytes above plus the existing outer fields. The disposition row stores disposition, reference, reason, and Task attribution; the human explanation remains in the immutable observation Snapshot.
 
-### 8.3 Outcome and terminal Event relationship
+### 8.3 Exact triage task_completed Event payload
 
-The existing Outcome remains the only terminal Outcome: subject_kind=task, subject_id=Task.id, outcome_type=task_execution, recorded_by_task_id=Task.id, and Team attribution equal to the Task Team. Its immutable observation Snapshot contains the complete typed triage object above. The disposition row stores the stable disposition value, relevant reference, and deferred reason_code; the human explanation remains in the immutable Task-attributed observation, not a new free-text disposition column.
+For this category, emit exactly one `task_completed` Event with the following payload keys and no triage-specific omissions or extras:
+- `schema_version`: integer `1`
+- `from_status`: `"running"`
+- `to_status`: `"done"`
+- `attempt_count`: the same positive integer as the outer observation `attempt`
+- `result_category`: `"success_signal_triaged"`
+- `failure_reason`: JSON null
+- `outcome_id`: lowercase canonical UUID of the one task_execution Outcome
+- `observation_snapshot_ref`: exact Outcome snapshot reference
+- `observation_hash`: exact Outcome observation hash
+- `signal_id`: same UUID as `signal_triage.signal_id`
+- `disposition`: same value as `signal_triage.disposition`
+- `completed_at`: the same UTC timestamp as outer `observed_at`
 
-The one task_completed Event continues to reference the Outcome ID, observation_snapshot_ref, observation_hash, and result_category=success_signal_triaged. It also carries signal_id and disposition as compact index fields. Those Event fields must equal the typed Outcome observation and the persisted disposition row. The Event does not become a second source of terminal truth.
+The Event's `created_at` remains the Event-record insertion timestamp and is not the semantic completion timestamp. Do not require it to equal `completed_at`; the durable completion instant is `Task.completed_at = Outcome.observed_at = task_completed.payload.completed_at`. The Event payload's outcome/snapshot/signal/disposition fields must equal the referenced Outcome, its parsed immutable Snapshot, and the persisted SignalDisposition row.
 
-### 8.4 Atomic finalization and replay
+### 8.4 Atomic finalization and exact replay
 
-Inside the existing TaskRuntime.finalize transaction:
-
+Inside the existing TaskRuntime finalization transaction:
 1. Lock and validate the Task/attempt using the existing TaskRuntime path.
-2. For success_signal_triaged only, verify the D2 canonical Task identity and exactly-one valid triage_signal_requested Event.
+2. For `success_signal_triaged`, verify D2 canonical Task identity, the D2 composite identity fields, and exactly one valid `triage_signal_requested` Event.
 3. Validate the protected intake-provenance witness and Team/domain relationship.
 4. Acquire the canonical Team/Thread locks required for the outcome; matched writes remain gated on the RW-5 helper and writer retrofit in §4.1.
 5. Validate the selected Thread or duplicate reference. Duplicate remains gated on D4.1a; dormant Thread remains deferred in RW4-1.
 6. Insert the disposition row through the active Session.
-7. Create the existing task_execution Outcome from the typed observation Snapshot.
-8. Insert exactly one task_completed Event and set Task done plus completed_at.
+7. Create the existing `task_execution` Outcome from the canonical typed observation Snapshot.
+8. Insert the exact `task_completed` payload above and set Task status `done` plus `completed_at=observed_at`.
 9. Commit all database writes together.
 
-Replay validates the complete bundle: canonical D2 Task identity and request Event; the unique Team/Signal disposition row; its exact reference/reason matrix; the Task-attributed Outcome and immutable observation Snapshot; the task_completed Event's Outcome/Snapshot/category/index fields; Task status; and completion timestamp. All values must agree with one another. Exact replay is read-only. Any missing, duplicate, malformed, or inconsistent record fails closed; do not repair, synthesize, overwrite, or create replacement history.
+For triage replay, compare canonical Snapshot bytes exactly; validate the typed nested schema/version and D5 matrix; validate the single disposition row and all of its references; validate Outcome subject/type/Team/Task attribution and snapshot ref/hash; require exactly one terminal `task_completed` Event for the recorded attempt; compare its complete payload key set and every value to the canonical expected payload; and require Task status `done` plus `Task.completed_at == Outcome.observed_at == Event.payload.completed_at`. Also require Event signal/disposition fields to equal the Snapshot and disposition row. Event `created_at` is checked only for a valid persisted timestamp, not equality with semantic completion time. Exact replay is read-only. Any missing, duplicate, malformed, extra, or inconsistent record fails closed; do not repair, synthesize, overwrite, or create replacement history.
+
+These are triage-specific replay requirements. Do not silently broaden the behavior or rewrite legacy replay validation for other Task types in this design slice.
 
 The immutable observation Snapshot is stored outside PostgreSQL. A failed DB transaction may leave an unreferenced immutable file; no disposition, Outcome, terminal Event, or terminal Task state may survive independently.
 
