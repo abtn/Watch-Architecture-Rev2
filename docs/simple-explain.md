@@ -2,9 +2,7 @@
 
 **Role of this document:** orientation only. It gives the whole picture in one read; it is not an authority. If it disagrees with [PLAN.md](../PLAN.md) about current status, or with [architecture.md](architecture.md), [invariants.md](invariants.md), [tasks.md](tasks.md), accepted ADRs, or implementation evidence, those sources win and this document must be corrected.
 
-**Status rule:** this page does not own milestone or gate status. The implementation map below is a dated snapshot, not a second status tracker. For what is current, gated, or next, read [PLAN.md](../PLAN.md).
-
-**Documentation boundary:** this page is an explanatory overview, not implementation evidence. Current milestone status, verification SHAs, and authorization are maintained in [PLAN.md](../PLAN.md).
+**Status rule:** this page is not implementation evidence or a status tracker. [PLAN.md](../PLAN.md) is the sole source for current milestone status, verification SHAs, authorization, and next steps.
 
 ## Current development path
 
@@ -58,7 +56,7 @@ Watch aims at a third pattern: memory that can change, but only through earned, 
 | **Instinct** | What the AI already knows | Model weights | Nobody in Watch | No; it is not ours |
 | **Doctrine** | How the team operates | TeamPolicy | Human approval only | No; reviewed, not decayed |
 | **Skill** | What the team learned about its own methods | KnowledgeItems: practices and playbooks | Through evidence, evaluation, and approval | No; versioned and revised, not expired on a clock |
-| **Belief** | What the team thinks is happening in the world | Threads, Hypotheses, evidence | Operator commits are implemented in RW-2; model workers and triage remain future work | Yes, by the designed decay policy, not yet implemented |
+| **Belief** | What the team thinks is happening in the world | Threads, Hypotheses, evidence | The RW-3 `update_thread` model-worker implementation is merged; RW3.1–RW3.3 are accepted, while RW3.4 formal acceptance remains deferred with seven PARTIAL qualifications. Live provider calls remain unauthorized; Signal triage remains future work. | Yes, by the designed decay policy, not yet implemented |
 | **Perception** | Raw observations of the world | Signals and immutable Snapshots | Append-only ingestion | No; old observations remain, but stop being current |
 
 Skills and beliefs need opposite time policies. A belief such as "leverage is building and a squeeze is coming" should lose confidence if the world goes quiet. A hard-won practice such as "register a price level, not just a direction" should not disappear after a quiet month. If beliefs never decayed, the board would fill with stale hunches; if lessons decayed like beliefs, the team would forget hard-won methods.
@@ -89,9 +87,9 @@ The following story follows the crypto-desk scenario in [walkthrough.md](walkthr
 
 **A reporter works the wall.** The deterministic Operator path can create a Hypothesis, attach Signal/Outcome evidence, and make a later evidence-caused ConfidenceChange. Exact quote offsets, source hashes, stance, Team scope, and legal transitions are checked before commit. The `update_thread` implementation is merged, but formal RW3.4 acceptance remains deferred and live provider calls are not authorized; signal triage remains future work.
 
-**The prediction.** The desk registers a falsifiable claim before the result is known, with a measurable condition and deadline. The Outcome/Evaluation foundations exist, but the full prediction-to-Hypothesis loop depends on the unbuilt Belief layer.
+**The prediction.** The desk registers a falsifiable claim before the result is known, with a measurable condition and deadline. The Outcome/Evaluation foundations exist, but the complete automated prediction-to-Hypothesis workflow is not yet built.
 
-**Two weeks later.** The observation is checked. A missed prediction returns as challenging evidence, and the system lowers confidence with an auditable cause. This belief update is not built.
+**Two weeks later.** The observation is checked. A missed prediction returns as challenging evidence, and the system lowers confidence with an auditable cause. The illustrated automated prediction-grading and correction flow is not yet built. The deterministic Operator path for evidence-backed ConfidenceChanges is implemented.
 
 **The learning.** An Evaluation identifies what the method got wrong. A new playbook is proposed, reviewed, approved, versioned, and retrieved in a later task. The team-learning path is built.
 
