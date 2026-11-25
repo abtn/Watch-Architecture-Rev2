@@ -153,7 +153,7 @@ The exact test nodes must be named before RW-4 implementation authorization unde
 - One disposition per Signal/Team pair; the same Signal may be triaged independently by multiple eligible Teams.
 - Cross-Team and cross-domain Signal, Thread, duplicate, and disposition references are rejected.
 - Every disposition is Task-attributed and has a durable reason; no Signal is silently dropped.
-- The accepted v1 decision surface is duplicate, matched to an eligible existing active Thread, or terminal deferred. D5 must freeze the complete reference matrix and reason/Event semantics.
+- The accepted v1 decision surface is duplicate, matched to an eligible existing Thread, or terminal deferred. D5.1–D5.4 already freeze the disposition vocabulary, reference matrix, deferred reasons, and TaskRuntime-owned terminal Event semantics; RW4-1 physical persistence remains separately gated.
 - Exact raw content-hash duplicate detection is Team-scoped and origin-independent; the first committed Team/hash association is canonical. Prove database arbitration and stability with two PostgreSQL sessions.
 - No automatic Thread creation, automatic noise classification, or near-duplicate classification occurs in v1.
 - Ties, weak/insufficient evidence, provenance corruption, incompatible pins, and candidate/evidence overflow defer; no semantic tie is broken by UUID or incidental order.
