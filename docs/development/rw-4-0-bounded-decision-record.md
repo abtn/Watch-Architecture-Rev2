@@ -1,15 +1,15 @@
 # RW4-0 — Bounded triage decision record
 
-**Status:** D1/all six D2, D3-A/B/C, D4.1/D4.1a/D4.2/D4.3, and D5.1–D5.4 are accepted. D4 evidence/design closure and D6 remain open. No implementation is authorized by this record.
+**Status:** D1/all six D2, D3-A/B/C, D4.1/D4.1a/D4.2/D4.3, D5.1–D5.4, and D6.1–D6.6 are accepted. D4 evidence/design closure and implementation gates remain open. No implementation is authorized by this record.
 
-> **Current reconciliation (2026-11-25):** D4.1/D4.1a/D4.2/D4.3 and D5.1–D5.4 are accepted. Exact raw-hash duplicate scope is same-Team regardless of origin, with the first committed Team/hash Signal canonical; the matcher shape is accepted but numeric parameters/query-cost evidence remain open; automatic Thread creation and noise classification are excluded. D5 freezes exactly three disposition values, the reference matrix, deferred reason codes, and TaskRuntime-owned atomic terminal evidence. D6 reactivation remains open. Follow the [RW-4 Readiness and Delivery Plan](rw-4-readiness-and-delivery-plan.md) for consolidated gates.
+> **Current reconciliation (2026-11-25):** D4.1/D4.1a/D4.2/D4.3, D5.1–D5.4, and D6.1–D6.6 are accepted. Exact raw-hash duplicate scope is same-Team regardless of origin, with the first committed Team/hash Signal canonical; matcher shape is accepted but numeric parameters/query-cost evidence remain open; automatic Thread creation and noise classification are excluded. D5 freezes the three disposition values, reference matrix, deferred reason codes, and TaskRuntime-owned atomic terminal evidence. D6 accepts matched-only dormant reactivation, unchanged Thread timestamps, Team revision increment, the frozen RW-5 lock order, atomic TaskRuntime commit, and DB-enforced replay/recovery. Implementation remains a separate RW4-5 gate. Follow the [RW-4 Readiness and Delivery Plan](rw-4-readiness-and-delivery-plan.md) for consolidated gates.
 ## RW4-2 D2 Operator decision — canonical Task identity (2026-11-24)
 
 **ACCEPTED:** use UUIDv5 directly as `Task.id` for `triage_signal`, with identity version `triage_identity_v1`. Frozen namespace: `383bbdde-37be-4895-8fb7-1afa196b5cf7`. Exact canonical name: `triage_identity_v1|triage_signal|team:<team-uuid>|signal:<signal-uuid>`, using lowercase canonical UUID text and no whitespace. Accepted golden vector: Team `00000000-0000-4000-8000-000000000001`, Signal `00000000-0000-4000-8000-000000000002`, expected Task ID `5b45ed53-a50f-51e8-ba81-ce52512aa922`.
 
 This is separate from the already accepted Task-schema requirement to persist `signal_id` and `identity_version` and enforce unique `(team_id, signal_id, identity_version)`. All six D2 decisions are design decisions only; no migration or creator implementation is authorized. Decisions 3–6 were accepted on 2026-11-24 and are summarized below.
 
-**Scope:** First, narrow `triage_signal` slice only. D1/all D2, D3-A/B/C, and D4.1/D4.1a/D4.2/D4.3 are accepted; D4 evidence closure and D6 reactivation remain separate gates; D5.1–D5.4 are accepted. No implementation is authorized by this record.
+**Scope:** First, narrow `triage_signal` slice only. D1/all D2, D3-A/B/C, D4.1/D4.1a/D4.2/D4.3, D5.1–D5.4, and D6.1–D6.6 are accepted; D4 evidence closure and separately authorized implementation gates remain. No implementation is authorized by this record.
 **Current reconciliation baseline:** main after PR #190 squash merge `4d9c3f3b51cc8f3176aca4ab30b367cb4271686d` (2026-11-25). PR #184 is the earlier D1/D2 proposal baseline; historical proposal origins remain PRs #174 and #176. D3 decisions are recorded in [issue #189](https://github.com/abtn/Watch-Architecture-Rev2/issues/189); D4 decisions are recorded in [issue #191](https://github.com/abtn/Watch-Architecture-Rev2/issues/191).
 **Authority:** `PLAN.md` remains authoritative for milestone status and implementation authorization. Existing accepted ADRs, Task contracts, and write-scope matrix remain binding unless explicitly amended.
 
@@ -25,7 +25,7 @@ The model is not involved in triage. Triage does not create or enqueue `update_t
 
 ## 2. Accepted D1/D2/D3/D4/D5 decisions and remaining D6 proposal
 
-D1 and all six D2 decisions are accepted as recorded below. D3-A/B/C and D4.1/D4.1a/D4.2/D4.3 are accepted on 2026-11-25 and reconciled in §7. D4's policy shape is closed, but its canonical Team/hash persistence design and measured matcher evidence remain engineering gates. D5 is accepted; D6 remains a separate Operator decision.
+D1 and all six D2 decisions are accepted as recorded below. D3-A/B/C, D4.1/D4.1a/D4.2/D4.3, D5.1–D5.4, and D6.1–D6.6 are accepted on 2026-11-25 and reconciled in §7. D4's policy shape is closed, but its canonical Team/hash persistence design and measured matcher evidence remain engineering gates. D6 implementation remains a separate RW4-5 engineering and authorization gate.
 
 ### D1 — Control Room is the single Task-creation authority
 
@@ -113,7 +113,7 @@ D4 acceptance does not authorize RW4-1 persistence, RW4-3 implementation, RW4-2 
 | `reason_code` | NULL | NULL | Required |
 | `decided_by_task_id` | Required | Required | Required |
 
-- A matched Thread must be same-Team, same-Domain, and active at commit. Dormant candidates may be evaluated but cannot receive a v1 matched disposition before D6; if a dormant candidate would otherwise win and no active candidate wins, the result is terminal deferred with `dormant_thread_requires_reactivation`. No status/timestamp change or reactivation Event is permitted.
+- A matched Thread must be same-Team and same-Domain. Under accepted D6, a dormant winner may be referenced only when the same TaskRuntime-owned transaction changes it to active, records one immutable Task-attributed `thread_reactivated` Event, writes the matched disposition, and terminalizes the Task. Until RW4-5 implementation is separately authorized and proven, dormant would-be winners still defer with `dormant_thread_requires_reactivation`. Reactivation does not mutate `last_updated_at`.
 - A duplicate reference must identify the canonical Signal for the same Team and exact raw content hash; it cannot reference itself. Team association is established through ingestion history, not a Signal.team_id column.
 - Deferred carries neither a Thread nor a duplicate reference.
 - Every disposition references exactly one canonical `triage_signal` Task for the same Team and Signal. References are validated against persisted records, never caller/model assertions.
@@ -140,22 +140,20 @@ The disposition, Task-attributed evidence, Outcome, terminal Task status, and co
 
 No disposition may mutate Hypothesis, EvidenceLink, ConfidenceChange, TeamPolicy, or enqueue follow-up Tasks. D5 acceptance does not authorize RW4-1 persistence or any production code/schema/migration. RW4-1 still requires a reviewed physical design, proof subset, and explicit implementation authorization. D4 evidence closure remains required for RW4-3; D6 remains separate for dormant-Thread reactivation.
 
-### D6 — Reactivation is a matched-only atomic transition with defined race outcomes
+### D6 — Accepted dormant Thread reactivation contract (2026-11-25)
 
-**Proposal:** Only a committed `matched` disposition to the deterministically selected dormant Thread may reactivate it, by the transition `dormant → active`.
+**Accepted decisions:** D6.1–D6.6 (issue #195). This is a frozen decision contract, not implementation authorization.
 
-- Revalidate the Thread's Team/domain and current lifecycle state inside the business commit; do not rely on candidate-search state read earlier.
-- Decay and triage must use a consistent lock order for the Thread and any associated disposition/Task records. The exact lock set must be derived from the existing RW-5 transaction design before implementation, not invented here.
-- Both operations re-check the current Thread state under lock. A stale decay decision must not mark a Thread dormant after a later committed reactivation; a stale triage decision must not reactivate a Thread whose state has changed incompatibly.
-- If decay commits first, a subsequent valid matched triage may observe the dormant state and reactivate it once.
-- If triage commits first, a concurrent decay operation must re-evaluate against the post-reactivation state and current decay basis; it may decay only if the newly committed state is independently eligible under the agreed timestamp/decay rules. It must not apply a pre-reactivation stale decision.
-- Concurrent/replayed triage requests resolve to the canonical Task/disposition and produce at most one reactivation Event. A repeated request does not toggle state or emit a second transition Event.
-- `new_thread`, `noise`, `duplicate`, and `deferred` do not reactivate a Thread.
-- Record the transition in the Task-attributed Event committed with the disposition.
+- **D6.1 — matched-only trigger (Option A):** only a valid `triage_signal` may reactivate a dormant Thread, when the deterministic matcher selects it as the unambiguous winner and no active candidate wins. Reactivation is part of that Task's Kernel commit. No standalone Operator, background, `update_thread`, `operator_update`, decay, or model-directed reactivation.
+- **D6.2 — timestamp (Option A):** do not mutate `Thread.last_updated_at` or add a reactivation timestamp projection. Preserve existing timestamp semantics; the immutable DB-timestamped `thread_reactivated` Event is authoritative history.
+- **D6.3 — atomicity:** Thread `dormant → active`, one Task-attributed reactivation Event, matched SignalDisposition, TaskRuntime `task_execution` Outcome, terminal Task status/completion time, and `task_completed` Event commit or roll back together in one TaskRuntime-owned transaction. Kernel persistence participates in the active Session and never commits independently.
+- **D6.4 — revision/stale fencing:** use the frozen RW-5 PostgreSQL clock and Team revision protocol; increment `world_memory_revision` because the transition changes the candidate set. Revalidate Team eligibility, Thread Team/domain/status, matcher winner, and relevant Hypothesis/evidence watermarks under the canonical locks. A stale assessment receipt cannot authorize the transition.
+- **D6.5 — locking/races:** use only the canonical RW-5 helper and order: Task `FOR UPDATE` → Team `FOR NO KEY UPDATE` → sorted Thread `FOR NO KEY UPDATE` → sorted Hypothesis `FOR NO KEY UPDATE`. No bespoke lock path. Prove decay-first and triage-first interleavings on disposable PostgreSQL, including revision and Hypothesis-watermark observations. RW-5 first-release decay remains confidence-only and does not own Thread lifecycle.
+- **D6.6 — replay/recovery:** committed replay returns the canonical disposition and Task result without another transition/Event; DB boundary enforces at-most-one reactivation Event. Lost responses resolve to the committed result; pre-commit failure leaves no partial bundle; inconsistent status/Event/Task history fails closed without repair or synthesized history. TaskRuntime alone owns retry, interruption recovery, and terminalization.
 
-**Open gate:** timestamp semantics (including which field, if any, resets the decay clock) must be agreed with RW-5 before implementation. This record does not authorize changing `last_updated_at`, `last_touched_at`, or any decay basis by assumption. RW-5 must define its eligibility calculation against the same committed lifecycle/timestamp contract.
+Exact Event schema/identity and uniqueness, cross-record Team/domain/Task/Signal integrity, stale-receipt fencing, complete lock-row set, both PostgreSQL race proofs, commit/rollback/lost-response/replay/interruption/inconsistency proofs, review of RW3.4 residuals touched, independent requirement-to-test review, exact-head CI, disposable-PostgreSQL local verification, and separate explicit RW4-5 implementation authorization remain required. Any future transition that makes a Thread unavailable to triage needs its own durable recovery/reconsideration path before shipping. D6 does not authorize a dormancy writer.
 
-**Reason:** reactivation must not accidentally bypass or conflict with the independently implementable RW-5 decay contract. Locking alone is insufficient unless both sides re-evaluate state and stale decisions cannot overwrite the winner.
+**Reason:** this preserves one TaskRuntime lifecycle authority, avoids overloading Thread activity timestamps, and serializes the candidate-set change against the frozen RW-5 clock/revision/lock protocol.
 
 ## 3. Explicitly outside this bounded record
 
