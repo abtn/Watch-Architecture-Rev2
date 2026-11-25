@@ -195,7 +195,7 @@ Team. `extracted_summary` is optional/non-authoritative; `embedding` and
 - **Shared contract:** Operator and model paths use the same proposal and commit-validation contract. RW-2 implemented and accepted the deterministic human entry. RW3.1 is implementing the host Task creator and bounded Context; the model worker remains unimplemented and separately gated.
 - **RW-2 implemented writes:** Hypothesis creation/transitions, EvidenceLink addition from Signal/Outcome, and evidence-caused ConfidenceChange. The Task's `allowed_writes` are exactly `["EvidenceLink", "Hypothesis", "ConfidenceChange"]`; the target Thread is bound by the immutable `operator_update_requested` Event. Event and Outcome writes are Kernel/TaskRuntime side effects, not worker `allowed_writes`.
 - **Commit-time validation:** exact Snapshot reference/hash/quote offsets (INV-04), stance rule (INV-06), cause pairing (INV-05), legal transitions with reasons (INV-07), Team/Thread ownership, idempotency, replay, concurrency, and atomic proposal-set commit (INV-14/INV-15). Every new Hypothesis starts at `low`; higher confidence requires a later Task-attributed ConfidenceChange.
-- **Explicit deferrals:** SignalDisposition refinement and triage remain RW-4; Thread summaries and retrieval projections remain deferred to the retrieval slice; Artifact/Consultation sources remain staged until their canonical entities and validation paths exist.
+- **Explicit deferrals:** creating/refining SignalDisposition remains RW-4-owned; `update_thread` and `operator_update` cannot refine a triage disposition, including terminal deferred. Thread summaries and retrieval projections remain deferred to the retrieval slice; Artifact/Consultation sources remain staged until their canonical entities and validation paths exist.
 - **Failure:** invalid proposals are rejected with attributable Events; the Task fails only when every proposal is rejected. Human identity is never a validation exemption (INV-15).
 ### `apply_decay` — deterministic Task; periodic host trigger separately gated
 
@@ -328,8 +328,7 @@ transitions. Superscripts there additionally permit only the named Task
 enqueue operation. `—` means that the Task type cannot cause that
 business/domain write through the worker-proposal channel; it does not disable
 the separately governed `K` lifecycle side effects described below.
-All Task, Snapshot, and Event writes are performed by application code, never
-by a worker. For `triage_signal`, the proposed SignalDisposition and any separately gated Thread effect are Kernel-managed (`K`), not worker-proposal writes; the Task's worker `allowed_writes` is empty. These cells remain subject to the RW4 D3/D5/D6 acceptance gates and do not authorize implementation.
+All Task, Snapshot, and Event writes are performed by application code, never by a worker. For `triage_signal`, SignalDisposition and any separately gated Thread effect are Kernel-managed (`K`), not worker-proposal writes; the Task's worker `allowed_writes` is empty. D3 is accepted: a deferred disposition is immutable/terminal in v1 and cannot be refined by `update_thread`, `operator_update`, or background processing. Therefore those two Task types have no SignalDisposition write permission. The triage `K` cell remains subject to D5's vocabulary/reference matrix, D6's reactivation decision, and separate implementation authorization.
 
 The `Outcome` column covers worker-proposed or domain-level Outcome writes,
 such as the `record_outcome` operation. It does not govern the terminal
@@ -347,8 +346,8 @@ side effect in footnote ¹; footnote ¹ grants no worker Snapshot permission.
 | `ingest_source` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K²⁵ | K¹ | K²⁵ |
 | `manual_signal_ingest` | — | W | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | K | K¹ | K |
 | `triage_signal` | — | — | K | K² | — | — | — | — | — | — | — | — | — | — | — | — | — | K | — | K |
-| `update_thread` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
-| `operator_update` | — | — | W³ | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
+| `update_thread` | — | — | — | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
+| `operator_update` | — | — | — | W⁴ | W | W | W | — | — | — | — | — | — | — | — | — | — | K | — | K |
 | `apply_decay` | — | — | — | — | K | — | K | — | — | — | — | — | — | — | — | — | — | K | — | K |
 | `check_triggers` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | W | — | — | K²⁰ | — | K |
 | `review_knowledge` | — | — | — | — | — | — | — | — | — | — | W⁶ | — | — | — | — | — | — | K | — | K |
@@ -375,7 +374,7 @@ described in footnote ¹⁹ and ADR-0030, not under this `Snapshot (K) = K¹`
 cell; it is an application-managed lifecycle record committed atomically with
 the Outcome, terminal Task status, and corresponding terminal Event.
 ² Create on `new_thread`; reactivate `dormant → active` (reactivation remains separately D6-gated).
-³ Refine `deferred` only. ⁴ Summary projection and explicit resolution only.
+⁴ Summary projection and explicit resolution only. SignalDisposition refinement is not granted to `update_thread` or `operator_update`; D3 makes deferred terminal/immutable in v1.
 ⁶ `active → needs_review` only.
 ⁷ Store only the Snapshot for the Artifact produced by this operation.
 ⁸ Store only the observation Snapshot when the Outcome type has an observation.
