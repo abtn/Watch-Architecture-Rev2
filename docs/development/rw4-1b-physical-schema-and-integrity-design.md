@@ -462,6 +462,20 @@ The D2 migration's own preflight, transactional behavior, rollback, single-head 
 6. **Proof and remaining conditions:** inspect repository timestamp/trigger conventions and prove effective grants, role memberships, owner separation, trigger definitions, partition behavior, direct/CASCADE TRUNCATE rejection, and surviving rows using real disposable PostgreSQL. The checked-in development topology's `watch` superuser arrangement is not evidence of a valid runtime boundary. If the required role boundary cannot be established, conditional Option A is not viable and work must stop for a separately scoped alternative.
 
 This acceptance does not prove production role separation, approve exact trigger/function SQL, grant a privileged maintenance exception, or authorize any implementation. It does not change D4.1a's first-successful-commit rule or permit timestamp-based winner selection.
+### Decision 6 — TaskRuntime terminal evidence and replay contract (ACCEPTED)
+
+**Operator decision (2026-11-25):** accept the existing §8 contract as written, with the explicit boundary that the new behavior is triage-specific and must not broaden or rewrite replay behavior for other Task types.
+
+Accepted requirements:
+1. Use one success category, `success_signal_triaged`, for matched, duplicate, and deferred. The typed observation carries the disposition; deferred remains successful and completes the Task as `done`.
+2. Add the frozen typed `SignalTriageObservation` and exact seven-key `signal_triage` JSON object, schema version 1, canonical lowercase UUIDs, explicit nulls for inapplicable fields, exact D5.2 reference matrix, and exact D5.3 deferred reason vocabulary.
+3. Reuse the existing `task_execution` Outcome and immutable observation Snapshot. Do not add a second Outcome or generic callback framework.
+4. Emit exactly one triage-specific `task_completed` Event with the §8.3 payload. Require `Task.completed_at = Outcome.observed_at = Event.payload.completed_at`; Event `created_at` remains a separate insertion timestamp.
+5. TaskRuntime owns the existing Session and finalization transaction. Disposition, Outcome, Task terminal state/completion timestamp, and terminal Event commit or roll back together.
+6. Triage replay validates canonical observation bytes, typed nested shape, disposition row and references, Outcome attribution/hash, complete terminal Event key set and values, Event cardinality, and completion-time equality. Replay is read-only; missing, duplicated, malformed, extra, or inconsistent evidence fails closed without repair or synthesis.
+7. Apply the stricter validation only to `triage_signal` and `success_signal_triaged`; do not silently change legacy replay behavior for unrelated Task types.
+
+This acceptance is a design decision only. It does not authorize TaskRuntime code, schema, migration, tests, or runtime changes. The existing RW4-1 implementation gates and separate implementation authorization still apply.
 ## 12. Explicit non-authorization
 
 RW4-1B is a design proposal only. It does not authorize:
