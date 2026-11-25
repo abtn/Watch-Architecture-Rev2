@@ -368,7 +368,7 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 
 ## 11. Decision record — D1 and all D2 decisions accepted
 
-| Decision | Recommendation | Status |
+| Decision | Accepted contract | Status |
 |---|---|---|
 | D1 Task-creation authority and trusted invocation | Control Room is the sole application Task-creation authority; typed principal and exact Team/`triage_signal` grant; only `active` Teams; host authentication required before production use and scheduled after R8 test; URL normalization deferred until after R8 test (exact matching meanwhile); greatest-version TeamPolicy under Team lock, fail closed | Accepted 2026-11-24 |
 | D2 canonical UUIDv5 Task identity | Use UUIDv5 directly as `Task.id`; identity version `triage_identity_v1`; namespace `383bbdde-37be-4895-8fb7-1afa196b5cf7`; canonical name `triage_identity_v1|triage_signal|team:<team-uuid>|signal:<signal-uuid>`; accepted golden vector Team `00000000-0000-4000-8000-000000000001` + Signal `00000000-0000-4000-8000-000000000002` → Task `5b45ed53-a50f-51e8-ba81-ce52512aa922` | **Accepted — 2026-11-24** |
@@ -380,7 +380,6 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 | D2 creation watermark | Immutable first-writer `as_of` and Team revision stored in request Event; validated/returned unchanged on replay, excluded from semantic fingerprint; RW4-3 revalidates current state | **Accepted — 2026-11-24** |
 | D2 request Event cardinality | Partial unique index on `events(task_id)` for `triage_signal_requested`, plus atomic Task/Event creation and replay validation; index enforces at-most-one | **Accepted — 2026-11-24; migration/proof still gated** |
 | Risk acceptance — canonical Task identity uniqueness migration | Persisted `signal_id`/`identity_version` and database unique constraint on `(team_id, signal_id, identity_version)`; audited schema requires Task migration | **Accepted — 2026-11-24; implementation still gated** |
-
 | RW4-2 implementation | Requires accepted D1/D2, reviewed proof subset, lock-order compatibility, and explicit authorization | Not authorized |
 
 **No implementation authorization is requested or implied by this draft or PR #187.**
