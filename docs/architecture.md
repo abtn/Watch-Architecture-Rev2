@@ -79,6 +79,16 @@ Humans enter the loop through three channels, all of which pass the same validat
 | Loop requests opinion | `Consultation` + `request_consultation` / `answer_consultation` | The answer is an immutable hashed snapshot, citable as evidence (`source_kind="consultation"`); waiting happens between Tasks, never inside one (ADR-0020) |
 | Human administers | Manual Operator Task types, created through a host-invoked in-repository application adapter | The host authenticates and authorizes the Operator, then passes a trusted principal context; Watch creates an ordinary Task and applies the same scope/commit gates. No separate deployed Watch API/CLI or Watch-owned authentication system is implied (ADR-0011). R6-F Checkpoint 3 implements `approve_learning_change`; RW-2 adds `operator_update` through the same boundary. |
 
+### Task creation authority — accepted D1 boundary (2026-11-24)
+
+The application **Control Room is the single authority permitted to create and persist Tasks**. Host-facing adapters, manual Operator entrypoints, triggers, and feature-specific services may request work, but they delegate to a named Control Room operation. Workers, models, ingestion code, and domain-feature modules do not create Tasks directly and must not introduce parallel Task factories.
+
+Control Room is the logical application boundary/owner in this decision; this does not claim that a dedicated Control Room module or service already exists in the current repository. Existing Task-creation paths must be represented as Control Room operations, but this decision alone does not authorize refactoring existing RW-3 code.
+
+Task creation and Task execution remain separate responsibilities: Control Room validates the request and creates/resolves the durable Task and request provenance; TaskRuntime remains the sole authority for admission, attempts, retry, interruption, recovery, and finalization; Kernel/application commit paths validate and persist permitted business changes.
+
+For RW4-2 triage, only Teams whose persisted state is exactly `active` are eligible. Production host authentication is a required prerequisite before production use and is scheduled after the R8 test; the repository does not currently prove end-to-end host authentication. RW4-2 URL normalization is also deferred until after the R8 test; exact persisted URL/source matching remains the current rule. The proposed later minimum treats DNS hostname case as insignificant while preserving scheme, port, path, query, fragment, and trailing-slash distinctions. See the [RW4-2 D1 decision](development/rw-4-2-decision-and-specification-draft.md#3-d1--trusted-host-invocation).
+
 ## 3. Entity reference
 
 These sketches are narrative. **Migrations are the authoritative schema**; when this section and a migration disagree, the migration wins and this section is a bug.
