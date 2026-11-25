@@ -336,6 +336,8 @@ The receipt contract comes from D4.2 and must contain, within a hard payload bou
 - the selected Thread or canonical duplicate Signal reference, if any;
 - a canonical assessment fingerprint over the request, pins, revision, candidate evidence, and selected result.
 
+Candidate evidence must obey the Task's immutable creation-time `as_of` and `world_memory_revision` watermark stored in its request Event. `assessment_team_revision` is a separate current-state serialization fence captured under the Team lock; it does not replace or rewrite the Task's immutable creation watermark.
+
 Scores are canonical decimal strings with a fixed precision/rounding rule. Do not store vectors or copy source text into the receipt. Candidate Thread, evidence Signal, chunk, and total payload bounds must be measured and frozen by the D4.2 evidence gate.
 
 The receipt identity is derived from Task ID plus a fixed assessment kind/schema version, not attempt number. The database must enforce at most one canonical receipt per triage Task. Concurrent attempts that race to insert must load the winner and verify Task ID, request fingerprint, schema version, and assessment fingerprint; mismatch, multiple receipts, or corruption is an integrity failure. The exact Event type, schema/version keys, unique-index predicate/name, and receipt payload limit remain D4.2/RW4-3 prerequisites and must be accepted before implementation; do not invent them in the RW4-1 disposition migration.
