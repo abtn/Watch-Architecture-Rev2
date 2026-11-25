@@ -10,7 +10,7 @@
 This is separate from the already accepted Task-schema requirement to persist `signal_id` and `identity_version` and enforce unique `(team_id, signal_id, identity_version)`. All six D2 decisions are design decisions only; no migration or creator implementation is authorized. Decisions 3–6 were accepted on 2026-11-24 and are summarized below.
 
 **Scope:** First, narrow `triage_signal` slice only. D1/all D2 and D3-A/B/C are accepted; D4–D6 remain separate decisions. No implementation is authorized by this record.
-**Current reconciliation baseline:** main after PR #184 squash merge `3fd27167e7e77eeed2110d9a2028a9ecaa005bc3` (2026-11-24). Historical proposal origins remain PRs #174 and #176.
+**Current reconciliation baseline:** main after PR #187 squash merge `94563be9e551ebf73faee626d952e9b839b57946` (2026-11-25). PR #184 is the earlier D1/D2 proposal baseline; historical proposal origins remain PRs #174 and #176. D3 decisions are recorded in [issue #189](https://github.com/abtn/Watch-Architecture-Rev2/issues/189).
 **Authority:** `PLAN.md` remains authoritative for milestone status and implementation authorization. Existing accepted ADRs, Task contracts, and write-scope matrix remain binding unless explicitly amended.
 
 ## 1. Purpose and non-goal
