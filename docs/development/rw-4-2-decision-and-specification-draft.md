@@ -565,7 +565,7 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 8. Obtain one named independent review from someone other than the implementation author.
 9. Reconcile `PLAN.md` and the authoritative Task/architecture documents only after implementation and evidence are accepted.
 
-## 11. Decision record — D1, all D2, D3-A/B/C, and D5 accepted
+## 11. Decision record — D1–D6 accepted
 
 | Decision | Accepted contract | Status |
 |---|---|---|
