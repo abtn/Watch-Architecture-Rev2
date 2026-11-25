@@ -109,6 +109,43 @@ To retain Option A, the physical design and migration must include all of the fo
 
 **Costs:** requires DB trigger/privilege design and ingestion-path regression proof. It is not merely a service-layer validation change.
 
+### 4.0.1 Current-source and deployment feasibility audit (2026-11-25)
+
+This audit was performed against the merged-main source following PR #198. It is source/configuration inspection only; no deployed database, live role catalog, or historical rows were inspected.
+
+**Observed writer and lock path**
+
+- The only production writer found for `signal_ingested` and `fetch_no_change` is `IngestionService._commit()` in `core/ingestion.py`.
+- It opens one transaction, locks the Task `FOR UPDATE`, then locks the Team `FOR SHARE` through `with_for_update(read=True)`. It validates the running `ingest_source` Task, active Team, and pinned TeamPolicy.
+- On a new Signal, it inserts the Signal first and then the `signal_ingested` Event in the same transaction. Existing-Signal and ON CONFLICT winner paths insert `fetch_no_change` Events in that transaction. A same-Task `prior_outcome` replay inserts no new Event and relies on the original committed Event.
+- The Event payload currently contains `origin_url`, `source_type`, `content_hash`, `signal_id`, and `snapshot_ref`. `Event.created_at` is supplied by application code using `datetime.now(timezone.utc)`; it is not a database commit-order witness.
+- The Event model has only its Task FK, type, JSONB payload, and timestamp. It has no typed Signal FK and no Event immutability trigger in the current migration chain.
+- Signal has no Team FK or Team ID. Its provenance fields are ordinary mutable columns with no current immutability trigger. Team.domain and Task.team_id/task_type likewise have no current database immutability trigger.
+
+**Observed database protection and role topology**
+
+- Migration `0017_r7b_assessments` demonstrates a reusable PostgreSQL trigger pattern: a shared rejecting trigger function plus row-level UPDATE/DELETE and statement-level TRUNCATE triggers. It applies only to three R7-B assessment/provenance tables; it does not protect Events, Signals, Tasks, or Teams.
+- That migration does not establish a runtime-versus-migration role split or grant/revoke policy.
+- Checked-in `compose.yaml` creates PostgreSQL user `watch` as `POSTGRES_USER`. The checked-in Alembic environment defaults to `postgresql+psycopg://watch:watch@localhost:5432/watch`. The repository does not define a distinct least-privilege application runtime role and migration owner role. With the standard PostgreSQL image, the initial `POSTGRES_USER` is a superuser. Therefore the checked-in development topology cannot demonstrate that the application runtime is unable to disable triggers, change grants, or bypass the protections.
+- No production deployment role catalog or production connection configuration is present in this repository. We cannot claim the production role boundary exists.
+
+**Historical provenance limitation**
+
+The proposed migration preflight can validate the current Event/Task/Signal/Team values and reject malformed or inconsistent rows. It cannot prove that those values were never changed before the protection triggers existed. A current equality check is not evidence of historical immutability. RW4-1A did not inspect deployed rows, and the source schema does not preserve prior values for these fields.
+
+The bounded source search found no production code path that updates the Signal provenance fields or rewrites an intake Event after insertion. That is useful application-level evidence, but it does not prove that historical rows were never modified through SQL, a privileged maintenance session, or an out-of-repository writer.
+
+**Conclusion and design consequence**
+
+Option A is **not presently proven feasible in the checked-in deployment topology**. Its trigger design is technically plausible, and the current ingestion lock order offers a compatible starting point, but two prerequisites are unresolved:
+
+1. A real role boundary must be designed and demonstrated: a non-owner, non-superuser runtime role with no membership or privilege path to the migration/table-owner role, no trigger-disabling capability, and no ability to set replication-role bypass. Migrations must use a separate restricted owner role. The same role model must be used in disposable PostgreSQL proof.
+2. The design must state which historical intake Events are eligible. Preflight validation alone cannot retroactively establish immutability. Either the Operator explicitly accepts a documented trusted-history assumption backed by deployment/audit evidence, or only post-cutover DB-attested intake Events may establish eligibility. If using a post-cutover boundary, the DB must stamp an unforgeable-by-runtime witness marker (or equivalent typed DB-owned marker) at Event insertion; legacy Events without that marker are not eligible. Do not infer the boundary from the existing application-supplied `created_at`.
+
+The minimum-change recommendation remains **conditional Option A**, but only if both prerequisites can be satisfied and reviewed. Do not accept Option A on the current `watch`-superuser development topology or on a preflight-only argument. If the role split or historical cutover cannot be made reliable, stop and return with a separately scoped Option B design. Option B still requires a non-owner runtime role and immutable database enforcement; it is not a bypass around the role boundary. It does, however, replace the generic Event-payload witness with an explicit relational Team/Signal/Task/Event association and can give the migration a clearer forward-only provenance boundary.
+
+No schema, ORM, migration, application, test, database, or runtime change was made by this audit.
+
 ### Option B — relational intake-witness representation
 
 If the Option A trigger/immutability boundary cannot be made reliable under the actual runtime-role model, stop and propose a separate typed relational intake-witness relation. It must carry explicit Team, Signal, Task, and source Event references with enforceable FKs and immutable association semantics.
