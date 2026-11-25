@@ -529,12 +529,13 @@ Transitions not listed are forbidden. Every transition emits an Event (INV-13).
 |---|---|---|---|
 | — | created (triage, update commit, or `activate_team` starter Threads) | `active` | |
 | `active` | all active Hypotheses at `low` for one decay window | `dormant` | set by `apply_decay` |
-| `dormant` | matched Signal arrives | `active` | set by triage commit |
 | `active` / `dormant` | explicit resolution (reason given) | `resolved` | terminal; via update commit |
+
+> **D6 gate:** dormant-Thread reactivation is not an accepted lifecycle transition. The former `dormant → active` on matched Signal target is excluded from this table; RW4-3 must not reactivate a dormant Thread unless and until D6 is explicitly accepted and the separately authorized implementation/recovery path is proven.
 
 ### SignalDisposition
 
-> **D3 lifecycle semantics accepted 2026-11-25; persistence and vocabulary remain gated.** Signal has no lifecycle/status column. Eligibility is derived from canonical Signal/Snapshot integrity and provenance plus active-Team, authorization, and source/domain/policy checks. An existing Team/Signal disposition excludes another v1 decision. D3 makes a deferred disposition terminal and immutable in v1; its Task completes successfully as `done`. Technical execution failure follows TaskRuntime retry/recovery and may end `failed`. D5 still owns the complete disposition vocabulary and reference matrix; D4 matching eligibility and D6 reactivation remain separate decisions. RW4-1 owns persistence and is not authorized by this decision.
+> **D3 lifecycle semantics accepted 2026-11-25; persistence and vocabulary remain gated.** Signal has no lifecycle/status column. Eligibility is derived from canonical Signal/Snapshot integrity and provenance plus active-Team, authorization, and source/domain/policy checks. An existing Team/Signal disposition excludes another v1 decision. If the disposition exists without exactly one valid canonical Task/request Event, replay fails closed without repair or replacement. D3 makes a deferred disposition terminal and immutable in v1; its Task completes successfully as `done`. The disposition, Task attribution/reason, TaskRuntime Outcome, terminal Task status, and terminal Event commit or roll back in one TaskRuntime-owned transaction. Technical execution failure follows TaskRuntime retry/recovery and may end `failed`. D5 still owns the complete disposition vocabulary and reference matrix; D4 matching eligibility and D6 reactivation remain separate decisions. RW4-1 owns persistence and is not authorized by this decision.
 
 
 ### Artifact
