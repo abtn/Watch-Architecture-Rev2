@@ -147,7 +147,7 @@ Therefore:
 - no existing Thread match does not imply `new_thread`;
 - this matcher never creates a Thread;
 - absence of a candidate, insufficient evidence, or an unmatchable Thread set results in `deferred`;
-- `new_thread` remains disabled until a separate canonical title source and eligibility rule are demonstrated and accepted.
+- `new_thread` remains disabled for v1; any later automatic Thread creation requires a separate source-backed design and Operator decision, not title extraction alone.
 
 ## 5. First-slice disposition vocabulary
 
@@ -159,7 +159,7 @@ Therefore:
 
 The first slice does not automatically emit:
 
-- `new_thread`: no safe title source or strong new-Thread rule;
+- new Thread creation: excluded by accepted D4.3; a future capability needs a separate design and Operator decision;
 - `noise`: no deterministic, source-backed noise classifier is established;
 - near-duplicate `duplicate`: no validated near-duplicate policy or numeric threshold.
 
