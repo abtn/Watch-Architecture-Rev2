@@ -278,11 +278,15 @@ This preserves the approved serial order: RW4-1 design/schema preparation → RW
 
 ## 7. Immutability and timestamp
 
-**Recommended immutability:** a narrow PostgreSQL trigger that rejects UPDATE and DELETE on the disposition table. A role/privilege solution is acceptable only if the actual production runtime role model is inspected and shown to prevent mutation by every supported writer. Do not assume that model.
+**SignalDisposition immutability:** install an unconditional database trigger that rejects every UPDATE and DELETE on `signal_dispositions`; also withhold runtime UPDATE/DELETE privileges. The trigger is defense in depth against accidental grants and all supported runtime writers. No caller-controlled bypass or maintenance exception is exposed to the application. Any repair is a separately audited owner/break-glass operation and does not rewrite immutable history.
 
-**Recommended timestamp:** created_at TIMESTAMPTZ NOT NULL with a PostgreSQL-controlled insertion-time assignment using clock_timestamp(). A DEFAULT alone is insufficient because a caller can explicitly supply a value; use an insert trigger that overwrites the supplied value or a proven column-privilege boundary. The exact mechanism and repository convention must be confirmed during design review. This records database insertion time, not commit order. It is not the D2 immutable Task as_of, the D4.1a first-commit arbitration key, or the RW-5 Team revision watermark.
+**Timestamp:** `created_at TIMESTAMPTZ NOT NULL` is assigned by a `BEFORE INSERT` trigger using `clock_timestamp()`. The trigger overwrites any caller-supplied value. Do not rely on a DEFAULT alone because an INSERT caller can supply a value. This records database insertion time, not commit order; it is not the D2 immutable Task `as_of`, the D4.1a first-commit arbitration key, or the RW-5 Team revision watermark.
 
-No cascading deletes. If a referenced Signal, Team, Thread, or Task is subject to deletion, restrictive FK behavior should prevent destroying immutable disposition history. Verify the actual deletion policies and migration conventions before freezing the exact FK actions.
+**TRUNCATE:** revoke effective runtime TRUNCATE from runtime, inherited roles, and PUBLIC on `events`, `signals`, `signal_dispositions`, `tasks`, and `teams`; install unconditional statement-level `BEFORE TRUNCATE` rejection triggers on each. Prove direct and CASCADE paths. For `threads`, a matched disposition's restrictive composite FK prevents direct TRUNCATE; `TRUNCATE threads CASCADE` must reach the protected `signal_dispositions` table and be rejected by its trigger. The runtime cannot disable/replace these triggers or assume the owner role.
+
+**Partitions/inheritance:** at cutover, inspect `pg_partitioned_table` and `pg_inherits` for all protected tables. The current design expects these tables to be non-partitioned/non-inherited. If any protected table has partitions or inheritance children, stop unless every leaf has the unconditional rejection trigger and the partition-creation/attach workflow installs and verifies the trigger before a new leaf becomes writable. Test direct leaf TRUNCATE as well as parent/CASCADE attempts.
+
+No cascading deletes. Every SignalDisposition FK uses restrictive delete/update behavior so referenced Signal, Team, Thread, or Task history cannot be destroyed or have its key rewritten. The Event/Signal identity guards cover relationships that are not expressible as ordinary FKs (notably Event payload → Signal).
 
 ## 8. TaskRuntime integration and terminal evidence contract
 
