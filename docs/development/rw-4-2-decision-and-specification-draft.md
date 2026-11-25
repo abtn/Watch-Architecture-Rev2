@@ -1,6 +1,6 @@
 # RW4-2 — Trusted Task boundary and canonical identity
 
-**Status:** D1 and all six D2 decisions accepted 2026-11-24; D3-A/B/C and D4.1/D4.1a/D4.2/D4.3 accepted 2026-11-25. D4's policy shape is frozen, while canonical Team/hash persistence design, measured matcher thresholds/margins/bounds/query cost, score serialization, and actual v1 matching-pin values remain open evidence/design gates. Migration compatibility, PostgreSQL implementation proof, and independent review remain outstanding. This document remains a design/specification artifact; no creator or matching implementation is authorized.
+**Status:** D1 and all six D2 decisions accepted 2026-11-24; D3-A/B/C and D4.1/D4.1a/D4.2/D4.3 accepted 2026-11-25 (D3 decision record: [issue #189](https://github.com/abtn/Watch-Architecture-Rev2/issues/189); D4 decision record: [issue #191](https://github.com/abtn/Watch-Architecture-Rev2/issues/191)). D4's policy shape is frozen, while canonical Team/hash persistence design, measured matcher thresholds/margins/bounds/query cost, score serialization, and actual v1 matching-pin values remain open evidence/design gates. Migration compatibility, PostgreSQL implementation proof, and independent review remain outstanding. This document remains a design/specification artifact; no creator or matching implementation is authorized.
 
 **Preparation baseline:** `main` after PR #187 squash merge `94563be9e551ebf73faee626d952e9b839b57946` (2026-11-25); PR #184 is the earlier D1/D2 proposal baseline.
 
