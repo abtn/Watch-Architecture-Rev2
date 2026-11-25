@@ -184,7 +184,7 @@ This acceptance selects the historical-boundary direction within conditional Opt
 
 **Required PostgreSQL proof additions:**
 
-1. Runtime role is not superuser/table owner; cannot SET ROLE to owner; cannot alter/drop/disable triggers or functions, grant privileges, change ownership, or set replication-role bypass.
+1. Runtime role is not superuser/table owner; cannot SET ROLE to owner; cannot alter/drop/disable triggers or functions, grant privileges, change ownership, or set replication-role bypass. `PUBLIC` cannot directly execute privileged trigger helpers; the migration owner has the required EXECUTE privilege to create triggers; the runtime can successfully perform an allowed INSERT through the trigger without receiving unnecessary direct EXECUTE on a SECURITY DEFINER helper.
 2. Migration role can install the cutover using the restricted owner role, but application connection configuration never uses that credential.
 3. New valid intake Events receive the current DB marker even if the caller supplies NULL or a forged version; non-intake Events cannot acquire the marker.
 4. Invalid Task type, missing/malformed Signal reference, mismatched origin/source/hash/Snapshot, and domain mismatch are rejected and leave no Event.
