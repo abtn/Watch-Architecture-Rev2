@@ -1,6 +1,6 @@
 # RW4-2 — Trusted Task boundary and canonical identity
 
-**Status:** D1 accepted by the Operator on 2026-11-24; all six D2 decisions were accepted by the Operator on 2026-11-24: UUIDv5 identity, Task-schema logical-pair uniqueness, request-Event cardinality, replay/provenance/re-triage, immutable watermark semantics, and v1 matching-pin ownership. Exact migration/preflight/backfill and compatibility design, D4b actual pin values, and implementation proof remain outstanding. This document remains a design/specification artifact. No creator implementation is authorized.
+**Status:** D1 accepted by the Operator on 2026-11-24; all six D2 decisions were accepted by the Operator on 2026-11-24: UUIDv5 identity, Task-schema logical-pair uniqueness, request-Event cardinality, replay/provenance/re-triage, immutable watermark semantics, and v1 matching-pin ownership. Migration shape and the source-level existing-writer inventory are documented in the Stage A migration/compatibility audit; target-database preflight/backfill evidence, independent audit review, D4b actual pin values, and implementation proof remain outstanding. This document remains a design/specification artifact. No creator implementation is authorized.
 
 **Preparation baseline:** `main` after PR #184 squash merge `3fd27167e7e77eeed2110d9a2028a9ecaa005bc3` (2026-11-24).
 
@@ -54,6 +54,8 @@ The current ORM and application contracts establish the following:
 7. The production host composition/authentication boundary is absent. Watch-side validation of a supplied in-process principal is not proof of end-to-end authentication.
 
 These are source observations, not acceptance of the proposed RW4 contract.
+
+**Stage A migration and writer audit (2026-11-25):** [Task migration and existing-writer compatibility audit](rw4-2-migration-and-writer-compatibility-audit.md) records the proposed nullable-column/check/FK/composite-unique/partial-index design, fail-closed preflight and conditional backfill strategy, all identified production Task producers, and required PostgreSQL proof. It is a source audit only; deployed database contents remain unverified and no implementation is authorized.
 
 ## 3. D1 — Trusted host invocation
 
