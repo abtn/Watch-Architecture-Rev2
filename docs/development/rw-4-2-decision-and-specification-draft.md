@@ -557,7 +557,7 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 
 1. D1, all six D2 decisions, and D3-A/B/C are accepted. Reconcile and review the complete creator contract and proof subset; finish exhaustive migration preflight/abort policy, separate historical-repair policy, strict Task identity-column ownership, and the complete nine-writer Control Room/session-bound transaction design before D4b or implementation authorization.
 2. Keep this PR documentation-only. Do not implement or enable the Task creator in this stage.
-3. Proceed to RW4-1 persistence only after D5's complete vocabulary/reference matrix, its reviewed proof subset, and explicit authorization; D3 is accepted and reconciled.
+3. Proceed to RW4-1 persistence only after its reviewed physical design (including cross-record integrity enforcement), requirement-to-test proof subset, and explicit authorization; D3 and D5 are accepted and reconciled.
 4. Proceed to the separately authorized RW-5 canonical lock-helper/Team-revision/writer retrofit and prove the helper on real PostgreSQL.
 5. Return to RW4-2 creator implementation only after RW4-1 and the RW-5 helper/retrofit have landed; freeze the exact adapter/request/principal types and Task/Event schema, then obtain separate implementation authorization.
 6. Implement the narrow creator/replay path test-first, using the canonical helper paths in §6; no new framework or bespoke lock implementation.
