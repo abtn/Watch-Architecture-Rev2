@@ -47,6 +47,7 @@ Recommended logical row (names illustrative until review):
 | duplicate_of_signal_id | UUID NULL | Required only for duplicate. |
 | reason_code | text NULL | Required only for deferred; exact D5.3 values. |
 | decided_by_task_id | UUID NOT NULL | Canonical triage Task attribution. |
+| identity_version | text NOT NULL | Fixed to `triage_identity_v1`; binds this disposition to the D2 Task identity contract. |
 | created_at | timestamptz NOT NULL | Database-assigned immutable creation timestamp. |
 
 Recommended row-level constraints:
@@ -59,11 +60,11 @@ Recommended row-level constraints:
 - FK team_id → teams.id.
 - FK signal_id → signals.id; FK duplicate_of_signal_id → signals.id.
 - Composite FK (thread_id, team_id) → threads(id, team_id).
-- Composite FK (decided_by_task_id, team_id) → tasks(id, team_id).
+- Composite FK (decided_by_task_id, team_id, signal_id, identity_version) → tasks(id, team_id, signal_id, identity_version). This FK is installed by the separate D2-dependent migration after its referenced columns and unique support key exist.
 - Restrictive delete behavior; no cascade deletion of immutable decision history.
 - No updated_at.
 
-The unique pair enforces at most one row per Team/Signal. A same Signal may have separate rows for different Teams. A FK to Signal alone proves existence only; it does not prove Team intake provenance, domain equality, or duplicate canonicality.
+The unique pair enforces at most one row per Team/Signal. A same Signal may have separate rows for different Teams. The composite Task FK proves the attributed Task belongs to this exact Team/Signal/identity-version tuple, not merely to the same Team. A Signal FK alone still does not prove Team intake provenance, domain equality, or duplicate canonicality.
 
 ### 3.1 Deferred vocabulary source
 
@@ -94,7 +95,7 @@ To retain Option A, the physical design and migration must include all of the fo
 1. **Intake Event insert validation:** a PostgreSQL trigger for signal_ingested and fetch_no_change validates that the referenced Task exists and is an ingest_source Task; the payload contains a valid Signal ID; the Signal exists; and payload origin_url, source_type, content_hash, and snapshot_ref agree with the stored Signal. It also validates Signal.domain == Task.team.domain. The trigger rejects malformed or cross-domain new intake Events from the ordinary fetch_no_change and ON CONFLICT-winner paths. The prior_outcome replay path creates no new Event; it relies on the original Event having passed this validation (or the exhaustive migration preflight) and on the protected Event, Signal, Task, and Team fields remaining immutable.
 2. **Intake Event immutability:** a PostgreSQL trigger rejects UPDATE and DELETE of either intake Event type. It must also prevent changing an Event into or out of either protected type. The trigger is exercised under the actual runtime role, which must not own the table, be superuser, or be able to disable/replace the trigger.
 3. **Referenced identity stability:** database enforcement prevents changing the Signal provenance fields used by the witness (domain, source_type, origin_url, content_hash, and snapshot_ref) after an intake Event exists. It also prevents changing the owning Task's team_id or task_type while a protected intake Event exists, and prevents changing Team.domain while protected intake provenance or a disposition exists. If the repository requires legitimate domain or Signal corrections, those require a separately designed versioned correction path; silently updating the witness is not permitted.
-4. **Locking:** ingestion Event insertion follows Task → Team → Signal ordering: the existing ingestion path locks Task first; the trigger then serializes on Team and reads/locks Signal while validating the intake payload. Disposition finalization follows Task → Team → Thread under the canonical RW-5 modes/order. Signal provenance and intake Event rows are protected against later mutation by the database rules above, so disposition finalization does not introduce a Signal lock between Team and Thread or invent a competing lock order.
+4. **Locking:** ingestion Event insertion follows Task → Team → Signal ordering. The current `_commit()` path already holds Task `FOR UPDATE` and Team `FOR SHARE` (`with_for_update(read=True)`). The Event trigger must use compatible, non-upgrading row locks: Task `FOR SHARE`, Team `FOR SHARE`, then Signal `FOR SHARE`. Reacquiring a compatible lock already held by the same transaction does not upgrade Team from SHARE to NO KEY UPDATE. `FOR SHARE` conflicts with updates to protected non-key identity fields, keeping those values stable through Event insertion. Do not use Team `FOR NO KEY UPDATE` in this trigger: concurrent same-Team ingestions can each hold SHARE and then deadlock trying to upgrade. Disposition finalization follows Task → Team → Thread under canonical RW-5 modes/order and does not lock Signal between Team and Thread.
 5. **Role boundary:** document the trigger owner/function security model, fixed search_path, schema-qualified references, and runtime grants. A table owner/superuser can bypass ordinary trigger protection; operationally excluding that principal from application runtime is part of the proof.
 
 **Advantages:** preserves the current Task-attributed intake Event as the source of provenance and avoids a second Team/Signal association registry.
@@ -156,13 +157,13 @@ Recommendation:
 
 The current Task schema lacks persisted signal_id and identity_version. The accepted [D2 identity contract](https://github.com/abtn/Watch-Architecture-Rev2/issues/186) requires both, unique (team_id, signal_id, identity_version), and recomputation of the canonical UUIDv5 Task ID from persisted request data.
 
-A composite FK to (tasks.id, tasks.team_id) proves same-Team Task ownership, not that this is the canonical Task for this Signal. There is no acceptable caller-supplied, request-Event-only, or unpersisted transitional substitute for the accepted D2 identity contract.
+A composite FK to (tasks.id, tasks.team_id) proves same-Team Task ownership, not that this is the canonical Task for this Signal. The disposition must carry `identity_version='triage_identity_v1'` and reference the four-column Task key `(id, team_id, signal_id, identity_version)`. The separate D2 migration must create a unique support key on those four Task columns in addition to the accepted unique `(team_id, signal_id, identity_version)` identity key, then install the deferred composite FK from SignalDisposition. This is a separately versioned D2-dependent migration step, not a change to the RW4-1 initial migration. There is no acceptable caller-supplied, request-Event-only, or unpersisted transitional substitute for the accepted D2 identity contract.
 
 Required boundary:
 - Do not add D2 columns/indexes in the RW4-1 disposition migration.
 - Do not weaken Task attribution to caller-provided IDs or a task-type-only check.
-- The accepted D2 Task identity migration is a hard prerequisite before any triage Task can be created and before any disposition write or replay can be enabled.
-- At disposition insert and replay, recompute and verify canonical Task UUIDv5 ID, Team, Signal, operation, identity_version, and exactly-one valid triage_signal_requested Event from persisted data.
+- The accepted D2 Task identity migration is a hard prerequisite before any triage Task can be created and before any disposition write or replay can be enabled. It must add `UNIQUE (id, team_id, signal_id, identity_version)` as the composite-FK support key and install the deferred FK from `signal_dispositions(decided_by_task_id, team_id, signal_id, identity_version)` to `tasks(id, team_id, signal_id, identity_version)`. Install the FK only after a preflight confirms no pre-existing disposition rows or malformed triage Tasks; the write gate remains closed until the migration commits.
+- At disposition insert and replay, the composite FK enforces Task/Team/Signal/identity-version equality. TaskRuntime must additionally recompute and verify canonical Task UUIDv5 ID, operation, and exactly-one valid triage_signal_requested Event from persisted data. The FK enforces relational correspondence; application validation enforces deterministic UUID identity.
 - The D2 migration remains a separately reviewed and separately authorized migration. Sequence it as a required schema/preflight step before RW4-2 Stage B enables the triage creator. RW4-1 may prepare its own schema and persistence code earlier, but that path remains disabled until D2 identity is present and verified.
 - Do not reopen a transitional-proof alternative in implementation. If the accepted D2 schema contract itself is changed, that requires a new Operator decision before implementation.
 
