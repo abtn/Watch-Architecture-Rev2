@@ -534,12 +534,7 @@ Transitions not listed are forbidden. Every transition emits an Event (INV-13).
 
 ### SignalDisposition
 
-> **Legacy target lifecycle — not an accepted RW-4 contract.** This table predates PR #176 and conflicts with its proposed terminal-deferred first slice. D3 remains open; neither this table nor PR #176 is implementation authority. Reconcile this table and the Task matrix together after explicit Operator acceptance.
-
-| From | Event | To |
-|---|---|---|
-| — | triage commit | legacy target vocabulary: `matched` / `new_thread` / `noise` / `duplicate` / `deferred` |
-| `deferred` | legacy update/operator_update refinement | legacy target outcomes only; not authorized for RW-4 |
+> **D3 lifecycle semantics accepted 2026-11-25; persistence and vocabulary remain gated.** Signal has no lifecycle/status column. Eligibility is derived from canonical Signal/Snapshot integrity and provenance plus active-Team, authorization, and source/domain/policy checks. An existing Team/Signal disposition excludes another v1 decision. D3 makes a deferred disposition terminal and immutable in v1; its Task completes successfully as `done`. Technical execution failure follows TaskRuntime retry/recovery and may end `failed`. D5 still owns the complete disposition vocabulary and reference matrix; D4 matching eligibility and D6 reactivation remain separate decisions. RW4-1 owns persistence and is not authorized by this decision.
 
 
 ### Artifact
