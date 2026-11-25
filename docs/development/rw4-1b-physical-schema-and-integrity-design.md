@@ -42,7 +42,7 @@ Recommended logical row (names illustrative until review):
 | id | UUID primary key | Stable disposition record identity. |
 | team_id | UUID NOT NULL | Team whose intake is being decided. |
 | signal_id | UUID NOT NULL | Global Signal being decided. |
-| disposition | text/enum NOT NULL | One of the three accepted values. |
+| disposition | TEXT NOT NULL | One of the three accepted values; use CHECK, not a PostgreSQL ENUM, so future separately accepted vocabulary changes do not require enum-type surgery. |
 | thread_id | UUID NULL | Required only for matched. |
 | duplicate_of_signal_id | UUID NULL | Required only for duplicate. |
 | reason_code | text NULL | Required only for deferred; exact D5.3 values. |
@@ -50,20 +50,22 @@ Recommended logical row (names illustrative until review):
 | identity_version | text NOT NULL | Fixed to `triage_identity_v1`; binds this disposition to the D2 Task identity contract. |
 | created_at | timestamptz NOT NULL | Database-assigned immutable creation timestamp. |
 
-Recommended row-level constraints:
+Required row-local constraints and names:
 
-- Unique (team_id, signal_id).
-- CHECK for the exact three disposition values.
-- CHECK for the complete D5.2 nullability/reference matrix.
-- CHECK requiring `identity_version = 'triage_identity_v1'`.
-- CHECK rejecting duplicate_of_signal_id = signal_id.
-- CHECK restricting deferred reason to the six accepted D5.3 codes and requiring NULL otherwise.
-- FK team_id → teams.id.
-- FK signal_id → signals.id; FK duplicate_of_signal_id → signals.id.
-- Composite FK (thread_id, team_id) → threads(id, team_id).
-- Composite FK (decided_by_task_id, team_id, signal_id, identity_version) → tasks(id, team_id, signal_id, identity_version). This FK is installed by the separate D2-dependent migration after its referenced columns and unique support key exist.
-- Restrictive delete behavior; no cascade deletion of immutable decision history.
-- No updated_at.
+- `pk_signal_dispositions` — primary key on `id`.
+- `uq_signal_dispositions_team_signal` — unique `(team_id, signal_id)`.
+- `ck_signal_dispositions_disposition` — exact three disposition values.
+- `ck_signal_dispositions_reference_matrix` — complete D5.2 nullability/reference matrix.
+- `ck_signal_dispositions_identity_version` — `identity_version = 'triage_identity_v1'`.
+- `ck_signal_dispositions_not_self_duplicate` — `duplicate_of_signal_id IS NULL OR duplicate_of_signal_id <> signal_id`.
+- `ck_signal_dispositions_deferred_reason` — exact six accepted D5.3 codes only for deferred and NULL otherwise.
+- `fk_signal_dispositions_team` — `team_id → teams.id`.
+- `fk_signal_dispositions_signal` — `signal_id → signals.id`.
+- `fk_signal_dispositions_duplicate_signal` — `duplicate_of_signal_id → signals.id`.
+- `fk_signal_dispositions_thread_team` — `(thread_id, team_id) → threads(id, team_id)`.
+- `fk_signal_dispositions_task_identity` — `(decided_by_task_id, team_id, signal_id, identity_version) → tasks(id, team_id, signal_id, identity_version)`. This FK is installed by the separate D2-dependent migration after its referenced columns and unique support key exist.
+- All foreign keys use restrictive delete/update behavior; no cascade deletion or key rewrite of immutable decision history.
+- No `updated_at`.
 
 The unique pair enforces at most one row per Team/Signal. A same Signal may have separate rows for different Teams. The composite Task FK proves the attributed Task belongs to this exact Team/Signal/identity-version tuple, not merely to the same Team. A Signal FK alone still does not prove Team intake provenance, domain equality, or duplicate canonicality.
 
