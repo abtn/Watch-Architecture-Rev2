@@ -1,19 +1,19 @@
 # RW-4 Readiness and Delivery Plan
 
-**Status:** Active staged-delivery baseline. D1 and all six D2 decisions were accepted on 2026-11-24: UUIDv5 identity, Task-schema logical-pair uniqueness, partial unique request-Event index, replay/provenance/re-triage, immutable first-writer watermark semantics, and code-owned v1 matching-pin ownership. Exact migration design/proofs and D4b actual pin values remain outstanding. The 2026-11-24 RW3.4 sequencing exception is recorded; no individual production slice is blanket-authorized.
-**Planning baseline:** `main` after PR #184 squash merge `3fd27167e7e77eeed2110d9a2028a9ecaa005bc3` (2026-11-24).
+**Status:** Active staged-delivery baseline. D1 and all six D2 decisions were accepted on 2026-11-24. D3-A/B/C were accepted on 2026-11-25 and reconciled: no invented Signal lifecycle state; eligibility derives from canonical Signal/Snapshot provenance plus active-Team, authorization, and source/domain/policy checks; existing Team/Signal disposition excludes another v1 decision; TaskRuntime owns lifecycle; terminal deferred is immutable and completes its Task as done, while technical failure remains failed/retryable under TaskRuntime. D4/D5/D6 and D4b actual pin values remain outstanding. Exact migration design/proofs remain outstanding. No individual production slice is blanket-authorized.
+**Planning baseline:** `main` after PR #187 squash merge `94563be9e551ebf73faee626d952e9b839b57946` (2026-11-25); PR #184 is the earlier D1/D2 proposal baseline.
 **Status authority:** `PLAN.md` remains the only authority for milestone status and authorization. This document owns the dependency-aware RW-4 readiness checklist and delivery sequence.
 **Sequencing decision:** [RW-4/RW-5 sequencing decision](rw-4-rw-5-sequencing-decision.md) records the approved 2026-11-24 RW4-2-first serial order.
 **Scope:** Reconcile the evidence audit in PR #175, the bounded RW4-0 proposal in PR #174, the minimal matching proposal in PR #176, the RW-4 design plan, Task specifications, and architecture.
 
 ## 1. Executive decision
 
-The Operator's 2026-11-24 sequencing exception satisfies the overall RW3.4 sequencing gate while preserving formal acceptance as deferred and all seven PARTIAL qualifications. RW4-0 remains open. PR #176 is a merged design proposal, not acceptance of its experimental matcher or closure of D1–D6. No individual RW-4 slice is blanket-authorized: each must satisfy its own prerequisites, independently reviewed proof subset, and explicit Operator authorization. PR #175's evidence findings are incorporated here; its audit branch is closed and is not a current baseline.
+The Operator's 2026-11-24 sequencing exception satisfies the overall RW3.4 sequencing gate while preserving formal acceptance as deferred and all seven PARTIAL qualifications. RW4-0 remains open. PR #176 is a merged design proposal, not acceptance of its experimental matcher or closure of D4–D6; D1/D2 and D3 are accepted, with implementation gates still separate. No individual RW-4 slice is blanket-authorized: each must satisfy its own prerequisites, independently reviewed proof subset, and explicit Operator authorization. PR #175's evidence findings are incorporated here; its audit branch is closed and is not a current baseline.
 
 The delivery path is deliberately serial. The updated Operator order supersedes the earlier RW-5-first order:
 
 1. **RW4-2 design/decision stage:** D1 is accepted: the Control Room is the single Task-creation authority; only active Teams are eligible; production host authentication is required before production use and scheduled after the R8 test; URL normalization is deferred until after the R8 test (exact comparison remains current, with hostname-case-only normalization proposed for later); greatest-version TeamPolicy selection under the canonical Team lock fails closed. All D1/D2 decisions are accepted. Reconcile the accepted contract across the specification and proof matrix, then review/freeze the exact Task-creator specification and implementation proof subset. This remains documentation/decision work only; it does not implement or enable the creator. The frozen creator protocol must explicitly require PostgreSQL READ COMMITTED and reject REPEATABLE READ/SERIALIZABLE before application data access. The triage-only BEFORE INSERT trigger guarantees Team-lock participation only; it does not enforce Control Room-only creation or attest writer origin. D1 remains a trusted-application-code boundary, with out-of-band SQL writers operationally excluded. Migration design, existing-writer compatibility, and PostgreSQL proof remain required before separate authorization.
-2. **RW4-1 — SignalDisposition persistence:** follow the RW4-2 D1/D2 design gate; D3/D5 must be accepted first. Implement the bounded persistence slice and preserve linear Alembic history.
+2. **RW4-1 — SignalDisposition persistence:** follow the RW4-2 D1/D2/D3 design gates; D3 is accepted, but D5's complete disposition vocabulary/reference matrix remains required before implementation. Implement only the bounded persistence slice and preserve linear Alembic history. D3 acceptance does not authorize this migration or implementation.
 3. **RW-5 canonical lock helper, Team revision, and writer retrofit:** separately authorize the migration and RW3.4-adjacent WorldMemoryCommitService/Operator compatibility changes; prove every supported writer through real entrypoints. This must land before the RW4-2 creator and RW4-3.
 4. **RW4-2 creator implementation:** return to the RW4-2 implementation stage only after RW4-1 and the canonical helper/Team-revision/writer retrofit have landed and passed real PostgreSQL lock tests. Reuse the one canonical helper; no bespoke lock path.
 5. **RW4-3 — deterministic matching and commit:** requires the RW4-2 creator, accepted D4/C1/D5, and the helper from step 3. No dormant reactivation, new Thread creation, noise classification, or near-duplicate classification.
@@ -92,11 +92,9 @@ Keep three identities distinct: (a) business identity `(signal_id, team_id)`; (b
 
 Separately freeze SignalDisposition uniqueness for `(signal_id, team_id)`, its canonical persisted identity, Task attribution, reason, timestamp fields, and database constraints. The immutable Task request must pin Team ID, Signal ID, canonical Signal Snapshot reference and hash, TeamPolicy version, matcher identifier/version, embedding-space key, and chunking version. Same-request replay compares semantic pins while excluding requester identity and first-writer `as_of`/Team revision metadata; it validates and returns the original provenance and watermark unchanged. A changed semantic pin conflicts. The existing `update_thread` idempotency namespace is precedent for transaction/replay shape only; it must not be reused as triage identity.
 
-### D3 — Deferred lifecycle and Task write-scope reconciliation
+### D3 — Deferred lifecycle and Task write-scope reconciliation — ACCEPTED 2026-11-25
 
-The proposed first release makes `deferred` terminal. The current architecture lifecycle table still permits `deferred → matched/new_thread/noise/duplicate` through `update_thread` or `operator_update`, and the Task matrix still grants those Task types SignalDisposition writes. This is a real contract conflict, not a documentation detail.
-
-If terminal deferred is accepted, reconcile the architecture lifecycle table, F1 narrative, Task specification, and Task/write-scope matrix together: remove deferred-refinement transitions and the corresponding SignalDisposition write permission from `update_thread` and `operator_update`; define triage's exact SignalDisposition and permitted Thread effects. Do not implement against contradictory authority documents. This plan does not silently accept terminal deferred.
+D3-A/B/C are accepted and reconciled across the RW4-2 specification, Task definition, architecture lifecycle summary, and Task/write-scope matrix. Signal has no lifecycle/status column; eligibility derives from canonical Signal/Snapshot integrity and provenance plus active-Team, caller-authorization, and source/domain/policy checks. Existing Team/Signal disposition excludes another first-release decision; missing or inconsistent canonical Task/request-Event history fails closed without repair or replacement. TaskRuntime owns lifecycle; `done`/`failed` are terminal and v1 identity remains occupied. A valid deferred disposition is immutable/terminal and its Task completes successfully as `done`; the disposition, Task attribution/reason, TaskRuntime Outcome, terminal Task status, and terminal Event commit or roll back together in one TaskRuntime-owned transaction. Technical failures follow TaskRuntime retry/recovery and may end `failed`. Stale-pin supersession uses the existing TaskRuntime terminal non-success path and requires an RW4-3 no-retry proof. The `update_thread` and `operator_update` SignalDisposition write permissions are removed. D5 still owns the complete vocabulary/reference matrix; dormant-Thread reactivation is prohibited until D6 is accepted and its implementation is separately authorized. D3 acceptance does not authorize RW4-1 persistence or RW4-2 creator implementation.
 
 ### D4 — Minimal matching representation and evidence
 
@@ -173,7 +171,10 @@ At minimum map:
 - each allowed and prohibited disposition/reference combination;
 - duplicate canonicalization and matching thresholds/ties/overflow;
 - receipt uniqueness, separate transaction durability, and recovery;
-- atomic disposition/Thread/Event commit and rollback;
+- atomic deferred disposition, Task attribution/reason, TaskRuntime Outcome, terminal Task status, and terminal Event commit/rollback in one TaskRuntime-owned transaction;
+- fail-closed replay when a disposition exists without exactly one valid canonical Task/request Event; no synthesized history or replacement;
+- TaskRuntime terminal supersession of stale-pin queued Tasks using the existing failed/terminal_failure path and a stable non-technical supersession reason;
+- no dormant-Thread reactivation before D6 acceptance;
 - dormant reactivation and decay races;
 - Context membership, provenance, ordering, bounds, and replay;
 - no direct Task lifecycle writes, unapproved follow-up Task creation, or dispatcher expansion;
@@ -186,8 +187,8 @@ At minimum map:
 | Slice | Required decisions/evidence before that slice |
 |---|---|
 | **RW4-2 — Task boundary** | **Design/decision stage:** D1/D2, immutable request pins, identity/replay contract, Task envelope, and proof subset accepted; no production creator code. **Creator implementation stage:** after RW4-1 and the RW-5 canonical helper/Team-revision/writer retrofit have landed, with PostgreSQL lock proof; then separately authorize the creator. The two stages are serial and must not be collapsed. |
-| **RW4-1 — persistence** | D3 terminal-deferred lifecycle and Task/write-scope reconciliation accepted; D5 disposition vocabulary, reference matrix, uniqueness scope, and physical constraints accepted. No matching algorithm, D6 decay contract, receipt, or Context decision is required for this persistence-only slice. |
-| **RW4-3 — matching and commit** | D4 matching/duplicate evidence and measured query cost accepted, or a narrower deterministic subset explicitly accepted; C1 receipt/recovery contract accepted; D6 shared decay/reactivation timestamp, lock order, and revalidation contract accepted before any reactivation implementation. If reactivation is explicitly deferred from the slice, the D6 gate applies before adding it, not to unrelated matching/commit work. |
+| **RW4-1 — persistence** | D3 lifecycle semantics are accepted. Before implementation, D5 disposition vocabulary/reference matrix, uniqueness scope, and physical constraints must be accepted; the persistence design must integrate deferred disposition writes into the existing TaskRuntime-owned terminal transaction (same Session/commit as Task Outcome/status/Event), with rollback proof and no independent disposition commit. No matching algorithm, D6 reactivation, receipt, or Context decision is required for this persistence-only slice. |
+| **RW4-3 — matching and commit** | D4 matching/duplicate evidence and measured query cost accepted, or a narrower deterministic subset explicitly accepted; C1 receipt/recovery contract accepted; stale-pin TaskRuntime supersession mapping and no-retry proof accepted before enabling execution. D6 shared timestamp/lock/revalidation contract is required before any dormant-Thread reactivation; if reactivation is excluded, D6 does not block unrelated matching/commit work. |
 | **RW4-4 — Context** | Named later Task consumer, existing assembler, eligible records, provenance, bounds, overflow, snapshot/manifest and replay contract accepted; Experiment A result or explicit Operator disposition recorded before representation freeze. |
 | **RW4-5 — integration** | RW4-1 through RW4-4 accepted as applicable, RW-5 decay implementation available, D6 accepted for reactivation, and integrated race/post-decay retrieval proof completed. |
 
@@ -273,7 +274,7 @@ Do not build these merely to unblock RW-4:
 - automatic noise classification;
 - automatic triage after ingestion;
 - second scheduler/runtime or TaskDispatcher expansion;
-- deferred refinement through RW-2/RW-3 Task types without an accepted scope change;
+- deferred refinement through RW-2/RW-3 Task types is prohibited by accepted D3; no v1 refinement path exists;
 - parallel Context subsystem;
 - live provider calls or scored newsroom runs.
 
@@ -284,7 +285,7 @@ Reconsider only when a concrete scenario and evidence justify a separate design 
 1. **Reconcile docs and evidence:** bring PR #175 findings onto current main; update architecture, Task matrix, PLAN, README, CHANGE_MAP, and historical labels.
 2. **Apply the sequencing exception:** retain all seven RW3.4 PARTIAL rows and formal acceptance deferred; do not require their unrelated closure before RW-4/RW-5 work.
 3. **Prepare RW4-2 Stage A:** close D1/D2 and review the design/proof subset; no creator implementation is included in this stage.
-4. **Continue the serial implementation order:** after RW4-2 Stage A decisions are accepted, RW4-1 may begin when D3/D5, its reviewed proof subset, and explicit authorization are satisfied. After RW4-1, separately authorize and implement the RW-5 canonical lock helper/Team revision/writer retrofit, including real PostgreSQL lock proof. Only then separately authorize RW4-2 Stage B creator implementation. RW4-3 follows after the creator/helper are reviewed/closed and D4/C1/D5 are accepted. RW-5 decay follows RW4-3. RW4-0 remains open unless separately closed.
+4. **Continue the serial implementation order:** after RW4-2 Stage A decisions are accepted, RW4-1 may begin when D5, its reviewed proof subset, and explicit authorization are satisfied; D3 is accepted and reconciled. After RW4-1, separately authorize and implement the RW-5 canonical lock helper/Team revision/writer retrofit, including real PostgreSQL lock proof. Only then separately authorize RW4-2 Stage B creator implementation. RW4-3 follows after the creator/helper are reviewed/closed and D4/C1/D5 are accepted. RW-5 decay follows RW4-3. RW4-0 remains open unless separately closed.
 5. **Close umbrella RW4-0:** reconcile and explicitly accept all D1–D6 and cross-cutting contracts, including matching evidence/query cost, receipt/recovery, and Context representation. This is a separate design-closure milestone; it does not retroactively authorize implementation.
 6. **Implement RW4-3 and RW4-4 when their own gates are met:** RW4-3 matching/commit without reactivation requires D4, C1, and D5; dormant reactivation is a separately gated addition requiring D6. RW4-4 requires its named Context consumer/contracts and an accepted Experiment A result or explicit Operator disposition before representation freeze.
 7. **Integrate and accept:** complete RW4-5 with RW-5 race and post-decay retrieval proofs; decide RW4-KU; complete foundation-exit evidence and explicit acceptance.
@@ -294,7 +295,7 @@ Reconsider only when a concrete scenario and evidence justify a separate design 
 - [x] RW3.4 sequencing exception recorded with all seven PARTIAL qualifications retained; formal acceptance remains deferred.
 - [x] D1 trusted invocation/authority accepted before RW4-2.
 - [x] All six D2 decisions accepted: canonical UUIDv5 identity; Task-schema logical-pair uniqueness; partial unique request-Event index with atomic creation/replay validation; replay/provenance/re-triage rules; immutable first-writer watermarks; code-owned v1 matching pins (actual values deferred to D4b).
-- [ ] D3 terminal-deferred lifecycle and Task/write-scope reconciliation accepted.
+- [x] D3-A/B/C lifecycle and terminal-deferred semantics accepted and reconciled; deferred is immutable/terminal and TaskRuntime completes the Task as `done`; technical failure remains distinct; no Signal lifecycle column is added.
 - [ ] D4 matching and duplicate representation supported by independent fixtures and measured query cost before RW4-3.
 - [ ] D5 disposition vocabulary/reference matrix and new-Thread/noise exclusions accepted.
 - [ ] D6 shared decay/reactivation timestamp, lock order, and race outcomes accepted before reactivation and integrated proof.

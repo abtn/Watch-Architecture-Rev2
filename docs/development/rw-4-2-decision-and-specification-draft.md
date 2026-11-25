@@ -2,9 +2,9 @@
 
 **Status:** D1 accepted by the Operator on 2026-11-24; all six D2 decisions were accepted by the Operator on 2026-11-24: UUIDv5 identity, Task-schema logical-pair uniqueness, request-Event cardinality, replay/provenance/re-triage, immutable watermark semantics, and v1 matching-pin ownership. Migration shape and the source-level existing-writer inventory are documented in the Stage A migration/compatibility audit; target-database preflight/backfill evidence, independent audit review, D4b actual pin values, and implementation proof remain outstanding. This document remains a design/specification artifact. No creator implementation is authorized.
 
-**Preparation baseline:** `main` after PR #184 squash merge `3fd27167e7e77eeed2110d9a2028a9ecaa005bc3` (2026-11-24).
+**Preparation baseline:** `main` after PR #187 squash merge `94563be9e551ebf73faee626d952e9b839b57946` (2026-11-25); PR #184 is the earlier D1/D2 proposal baseline.
 
-**Authority:** `PLAN.md` remains the sole milestone/authorization status authority. This document is the bounded RW4-2 Stage A specification artifact. PR #187 records the accepted D1/D2 documentation reconciliation; neither this PR nor this document authorizes Stage B implementation.
+**Authority:** `PLAN.md` remains the sole milestone/authorization status authority. Accepted D3 decisions are recorded in [issue #189](https://github.com/abtn/Watch-Architecture-Rev2/issues/189). This document is the bounded RW4-2 Stage A specification artifact. PR #187 records the accepted D1/D2 documentation reconciliation; neither this PR nor this document authorizes Stage B implementation.
 
 ## 1. Purpose and boundary
 
@@ -360,6 +360,50 @@ All four fields are required, non-empty where strings, type-checked, and immutab
 
 The Team revision watermark is separate from this creation-time matching pin object. The Task creator captures it under the canonical Team lock and stores it in the immutable request basis. RW4-3 reacquires the same lock chain and captures/revalidates the current watermark for its execution manifest; it does not overwrite the Task's original cutoff. It is not part of Task identity or semantic replay equivalence.
 
+## 7.5 D3 — Signal eligibility, Task terminality, and terminal-deferred behavior (ACCEPTED 2026-11-25)
+
+**Decision status: D3-A, D3-B, and D3-C are accepted.** This section defines lifecycle semantics only. It does not authorize RW4-1 persistence, RW4-2 creator implementation, a Signal/Task schema change, or a new dispatcher/runtime.
+
+### D3-A — Signal eligibility
+
+A Signal has no lifecycle/status field in the current canonical model. Do not add a speculative Signal state such as pending, processed, or deferred. Eligibility is derived from canonical Signal integrity and provenance plus Team/source authorization:
+
+- The Signal and its referenced immutable Snapshot must exist and pass integrity checks; the Signal's canonical provenance must be attributable to the selected Team and its source/domain policy.
+- The persisted Team state must be exactly `active`; the caller must be independently authorized, and the applicable source/domain/policy checks must pass. Creation and replay retain the accepted D1 fail-closed behavior.
+- A pre-existing SignalDisposition for the same Team/Signal pair means the first-release decision has already been recorded; do not create another triage decision or replacement Task to reconsider it. An authorized request may still resolve the canonical D2 Task as a replay, but it must return the recorded result without re-execution or disposition mutation.
+- If a disposition exists but its canonical D2 Task or exactly-one valid `triage_signal_requested` Event is missing, duplicated, malformed, or inconsistent, fail closed as an integrity/provenance error. Do not create a replacement Task/Event, synthesize missing history, or mutate the disposition. Replay must recompute and validate canonical Task identity and the complete immutable request Event before returning the recorded result.
+- Eligibility is revalidated at the execution/commit boundary under the accepted lock protocol. Creation-time watermark is evidence of the original request basis, not a substitute for current-state validation.
+- This does not freeze D4 matching eligibility, D5 disposition vocabulary/reference combinations, or D6 Thread reactivation.
+
+### D3-B — Task terminality and identity occupancy
+
+TaskRuntime remains the sole authority for Task admission, attempt transitions, retry, interruption recovery, and finalization.
+
+| Persisted Task status | D3 behavior |
+|---|---|
+| `pending` | Eligible for normal TaskRuntime admission only when the supported dispatcher/worker path exists and all current admission checks pass. |
+| `running` | Owned by its current TaskRuntime attempt; never independently start a second execution. Recovery/retry follows existing TaskRuntime rules. |
+| `done` | Terminal; return the recorded result on authorized replay; never execute again. |
+| `failed` | Terminal; return the recorded failure on authorized replay; never create a replacement under `triage_identity_v1`. |
+
+A retryable attempt failure may return a nonterminal Task to `pending` only through existing TaskRuntime behavior. Exhaustion or a non-retryable technical failure may finalize it as `failed`. A terminal `done` or `failed` Task permanently occupies its D2 `triage_identity_v1` identity. Ordinary retry/replay cannot create a replacement Task or Event. A future identity generation requires a separate Operator decision and documented transition. This does not add a new Task status or terminal category.
+
+A queued Task whose immutable matching pins are no longer supported must be terminally superseded by TaskRuntime, never left pending or retried indefinitely. Use the existing terminal non-success path: Task status `failed`, result category `terminal_failure`, and a distinct stable reason `matching_pins_superseded` in the Task-attributed terminal Outcome/Event. This reason identifies a deliberate business supersession, not a technical execution fault or retryable attempt failure. Do not add a Task status or result category. RW4-3 must define and test this exact mapping, replay behavior, and the no-retry/no-replacement invariant before enabling triage execution; RW4-2 does not implement it.
+
+### D3-C — terminal deferred business outcome
+
+When the accepted first-release decision logic reaches a valid business conclusion that it cannot safely make a stronger disposition, it may record a terminal `deferred` disposition with a durable, validated reason. The exact allowed disposition vocabulary and reference combinations remain D5 decisions; this section accepts the lifecycle semantics of the deferred outcome, not every proposed D4/D5 category.
+
+- The deferred disposition is immutable and terminal in v1. No ordinary triage replay, `update_thread`, `operator_update`, or background process may refine, reopen, overwrite, or replace it.
+- The business decision is successful execution: the triage Task finalizes through TaskRuntime as `done`, not `failed`. The durable Task-attributed terminal evidence must distinguish the deferred business disposition and reason from a technical failure.
+- The disposition row, its Task attribution and validated reason, the TaskRuntime `task_execution` Outcome, Task status/`completed_at`, and `task_completed` Event form one database transaction. TaskRuntime owns that transaction and remains the sole writer of Task lifecycle state and terminal Events; the Kernel disposition-persistence operation receives the active Session and participates in that transaction without beginning, committing, or rolling it back independently. Any validation, persistence, or finalization failure rolls back the entire bundle. A separately committed disposition or a `done` Task without its disposition is forbidden.
+- Technical failures (for example corrupt/missing provenance, database/provider/runtime failure, or interrupted execution) are not deferred business decisions. They follow existing TaskRuntime retry/recovery rules and may ultimately produce terminal `failed`.
+- A future reconsideration requires a separately authorized operation with its own identity/replay contract, actor attribution, immutable provenance, and explicit transition rules. It is not an automatic retry, a v1 identity replacement, or a mutable deferred row.
+
+### D3 write-scope and persistence boundary
+
+RW4-1 owns SignalDisposition persistence and must implement the accepted immutable/terminal semantics, with Task-attributed provenance. For a terminal deferred result, RW4-1's Kernel persistence operation must use the active Session supplied by TaskRuntime finalization; the disposition, Task-attributed reason, `task_execution` Outcome, terminal Task status, and `task_completed` Event must commit or roll back together. It must not open or commit a separate transaction. TaskRuntime owns the transaction and remains the only Task lifecycle writer. D3 acceptance does not authorize RW4-1 code/schema/migration. D5 must still define the complete disposition vocabulary and reference matrix before RW4-1 implementation. RW4-2 creator remains a later separately authorized slice.
+
 ## 8. TaskRuntime boundary
 
 The adapter creates or resolves a pending Task only. It does not call TaskRuntime admission or write Task lifecycle Events beyond the one request Event.
@@ -393,6 +437,12 @@ Exact test node IDs are to be added after the implementation plan is reviewed. T
 | RW42-LOCK-01 | Every triage insert participates in Team serialization | A PostgreSQL BEFORE INSERT trigger for triage_signal acquires Team `FOR NO KEY UPDATE`; a direct SQL `INSERT ... ON CONFLICT DO NOTHING` that omits the application lock still runs the BEFORE trigger and blocks behind a creator-held Team lock. Verify trigger rollback/error behavior for missing Team, non-triage inserts unaffected, the runtime role cannot alter/disable the trigger, own the table, or inherit table-owner/superuser privileges, and the function obtains the Team lock without broadening runtime Team mutation privileges; if SECURITY DEFINER is used, verify owner, safe fixed `search_path`, schema-qualified references, and grants. This trigger enforces lock participation only; it does not grant Control Room authority or replace application validation. |
 | RW42-RACE-03 | Final Task-PK conflict is terminal | Force the final `ON CONFLICT DO NOTHING RETURNING` no-row path after the protected recheck; assert terminal protocol/integrity failure, no retry-required result, no fresh-transaction replay, and no request Event from the losing transaction. The ordinary post-Team-lock recheck remains the only retry-required path. |
 | RW42-RUNTIME-01 | Lifecycle ownership | Creator leaves Task pending; no direct start/finalization/Outcome |
+| RW42-D3-01 | Signal eligibility without invented lifecycle state | Signal has no status column; valid canonical Signal/Snapshot/provenance, active Team, caller authorization, and source/domain/policy scope are required. Existing same-Team/Signal disposition excludes another first-release Task/decision. Revalidate at execution/commit. |
+| RW42-D3-02 | Task terminality and identity occupancy | Prove pending admission and running-attempt ownership through TaskRuntime; done/failed replay returns recorded terminal result without re-execution; retryable attempt failure returns to pending only through TaskRuntime; terminal failure does not create a replacement Task/Event under triage_identity_v1. A stale-pin Task is terminally superseded through TaskRuntime as status failed with result category terminal_failure and stable reason matching_pins_superseded; prove no retry, replay execution, or replacement. |
+| RW42-D3-03 | Terminal deferred is a successful business result | Persist one immutable deferred disposition with durable reason and Task-attributed terminal evidence; TaskRuntime finalizes Task as done. Replay does not rewrite it. Technical failure follows ordinary retry/recovery and may end failed; it is never represented as deferred. |
+| RW42-D3-04 | No v1 deferred refinement | Attempt ordinary triage replay, update_thread, operator_update, and background refinement against a deferred disposition; all must leave disposition/provenance unchanged and create no replacement Task/Event. Future reconsideration is rejected absent a separately authorized operation/identity contract. |
+| RW42-D3-05 | Deferred disposition and Task finalization are atomic | On PostgreSQL, prove one TaskRuntime-owned transaction commits the SignalDisposition row, Task attribution/reason, task_execution Outcome, Task status=done, and task_completed Event together. Inject failures before commit and prove none of the bundle is durable; prove no independent disposition commit/session/transaction is opened. |
+| RW42-D3-06 | Existing disposition without canonical Task history fails closed | Seed an existing Team/Signal disposition with a missing canonical Task, missing request Event, duplicate/malformed Event, or identity/fingerprint mismatch. An authorized request returns an integrity/provenance failure without creating/replacing Task/Event, synthesizing history, or mutating the disposition. |
 | RW42-DISPATCH-01 | Unsupported Task kind remains queued and ignored | With only a pending `triage_signal` Task, `find_eligible_task()` returns `None`; direct dispatch raises `TaskNotDispatchable` before admission; Task remains pending with zero attempts and no lifecycle Events; dispatcher does not crash or loop |
 | RW42-CR-01 | D1 single Task-creation authority and transaction ownership | All nine inventoried production Task writers delegate to named Control Room operations; each receives the caller's active Session, preserves existing authorization/transaction semantics, and never commits/rolls back independently. TaskRuntime follow-on creation uses its existing Session. Only the protected post-Team-lock recheck is surfaced as a typed retry-required outcome to the outer transaction owner, which rolls back and reinvokes in a fresh Session/transaction; at most three total invocations are permitted, then a typed retry-exhausted failure is terminal. A final Task-PK conflict is a separate terminal integrity failure and is never retried. |
 | RW42-DB-01 | Logical-pair composite uniqueness | The Task-schema migration adds persisted `signal_id` and `identity_version` columns, a check requiring both for triage_signal and both NULL for every other Task type, plus the unique constraint on `(team_id, signal_id, identity_version)`. In a separate PostgreSQL proof, insert a row with a fabricated, different Task UUID but the same logical tuple and verify this composite constraint rejects it; demonstrate the composite constraint is responsible, independently of the Task primary key. Migration is required on the current audited schema. |
@@ -406,9 +456,9 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 
 ## 10. Implementation sequence after decision acceptance
 
-1. D1 and all six D2 decisions are accepted. Reconcile and review the complete creator contract and proof subset; finish exhaustive migration preflight/abort policy, separate historical-repair policy, strict Task identity-column ownership, and the complete nine-writer Control Room/session-bound transaction design before D4b or implementation authorization.
+1. D1, all six D2 decisions, and D3-A/B/C are accepted. Reconcile and review the complete creator contract and proof subset; finish exhaustive migration preflight/abort policy, separate historical-repair policy, strict Task identity-column ownership, and the complete nine-writer Control Room/session-bound transaction design before D4b or implementation authorization.
 2. Keep this PR documentation-only. Do not implement or enable the Task creator in this stage.
-3. Proceed to RW4-1 persistence only after its independent D3/D5 gate, reviewed proof subset, and explicit authorization.
+3. Proceed to RW4-1 persistence only after D5's complete vocabulary/reference matrix, its reviewed proof subset, and explicit authorization; D3 is accepted and reconciled.
 4. Proceed to the separately authorized RW-5 canonical lock-helper/Team-revision/writer retrofit and prove the helper on real PostgreSQL.
 5. Return to RW4-2 creator implementation only after RW4-1 and the RW-5 helper/retrofit have landed; freeze the exact adapter/request/principal types and Task/Event schema, then obtain separate implementation authorization.
 6. Implement the narrow creator/replay path test-first, using the canonical helper paths in §6; no new framework or bespoke lock implementation.
@@ -416,7 +466,7 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 8. Obtain one named independent review from someone other than the implementation author.
 9. Reconcile `PLAN.md` and the authoritative Task/architecture documents only after implementation and evidence are accepted.
 
-## 11. Decision record — D1 and all D2 decisions accepted
+## 11. Decision record — D1, all D2, and D3-A/B/C accepted
 
 | Decision | Accepted contract | Status |
 |---|---|---|
@@ -429,6 +479,9 @@ Tests must include tampered/missing/duplicate Event evidence and rollback/crash-
 | D2 re-triage | Terminal v1 Task continues to occupy identity; changed pins conflict; v2 requires separate Operator decision and documented transition | **Accepted — 2026-11-24** |
 | D2 creation watermark | Immutable first-writer `as_of` and Team revision stored in request Event; validated/returned unchanged on replay, excluded from semantic fingerprint; RW4-3 revalidates current state | **Accepted — 2026-11-24** |
 | D2 request Event cardinality | Partial unique index on `events(task_id)` for `triage_signal_requested`, plus atomic Task/Event creation and replay validation; index enforces at-most-one | **Accepted — 2026-11-24; migration/proof still gated** |
+| D3-A Signal eligibility | No Signal lifecycle/status column; eligibility derives from canonical Signal/Snapshot integrity and provenance plus active-Team, caller-authorization, and source/domain/policy checks; existing Team/Signal disposition excludes another v1 decision | **Accepted — 2026-11-25** |
+| D3-B Task terminality | TaskRuntime owns lifecycle; pending/running follow runtime admission/recovery; done/failed are terminal; terminal v1 identity remains occupied | **Accepted — 2026-11-25** |
+| D3-C terminal deferred | Deferred disposition is immutable/terminal in v1; its Task completes `done`; technical failures remain TaskRuntime retry/recovery and may end `failed`; no ordinary refinement | **Accepted — 2026-11-25** |
 | Risk acceptance — canonical Task identity uniqueness migration | Persisted `signal_id`/`identity_version` and database unique constraint on `(team_id, signal_id, identity_version)`; audited schema requires Task migration | **Accepted — 2026-11-24; implementation still gated** |
 | RW4-2 implementation | Requires accepted D1/D2, reviewed proof subset, lock-order compatibility, and explicit authorization | Not authorized |
 
