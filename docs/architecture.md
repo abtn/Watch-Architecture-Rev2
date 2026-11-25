@@ -528,10 +528,10 @@ Transitions not listed are forbidden. Every transition emits an Event (INV-13).
 | From | Event | To | Notes |
 |---|---|---|---|
 | — | created (triage, update commit, or `activate_team` starter Threads) | `active` | |
-| `active` | all active Hypotheses at `low` for one decay window | `dormant` | set by `apply_decay` |
+| `active` | no Thread-status transition in RW-5 first-release decay | `dormant` | Dormant is a valid stored status, but RW-5 first release is confidence-only; no dormancy writer is authorized. |
 | `active` / `dormant` | explicit resolution (reason given) | `resolved` | terminal; via update commit |
 
-> **D6 accepted; implementation gated:** a dormant Thread may be reactivated only by a valid matched triage decision under the D6 contract. The transition, immutable Task-attributed `thread_reactivated` Event, matched disposition, and TaskRuntime terminal result must commit atomically. `last_updated_at` is unchanged; Team `world_memory_revision` increments under the canonical RW-5 lock protocol. RW4-3 must not reactivate a dormant Thread until the separately authorized RW4-5 implementation and recovery path are proven.
+> **D6 accepted; implementation gated:** RW-5 first-release decay is confidence-only and does not make active Threads dormant; D6 does not authorize a dormancy writer. A dormant Thread may be reactivated only by a valid matched triage decision under the D6 contract. The transition, immutable Task-attributed `thread_reactivated` Event, matched disposition, and TaskRuntime terminal result must commit atomically. `last_updated_at` is unchanged; Team `world_memory_revision` increments under the canonical RW-5 lock protocol. RW4-3 must not reactivate a dormant Thread until the separately authorized RW4-5 implementation and recovery path are proven.
 
 ### SignalDisposition
 
@@ -626,7 +626,7 @@ The following broader F2 behaviors are not part of the RW-3 contract and remain 
 
 1. Scheduled `apply_decay` Task selects active Hypotheses whose `last_touched_at` is older than the Domain's (or team-overridden) `decay_window`.
 2. Band lowered one step per the `decay_action`; ConfidenceChange recorded with `cause_kind="decay"` and the Task reference; Event emitted.
-3. When all of a Thread's active Hypotheses have been `low` for one window, the Thread becomes `dormant`.
+3. RW-5 first-release decay does not change `Thread.status`; a future dormancy transition requires a separate accepted design and implementation authorization.
 4. Decay never rejects a Hypothesis and never touches `last_touched_at` (INV-08).
 
 ### F4 — Render
