@@ -211,7 +211,7 @@ This matrix identifies proof obligations, not existing tests or implementation e
 - R8 remains unscheduled.
 - This record is a documentation proposal only. It authorizes no code, schema, migration, test-only follow-up, dispatcher change, provider execution, persistent-database operation, or scored experiment.
 
-## 7. Remaining Operator decisions and closure gate
+## 7. Accepted Operator decisions and remaining engineering closure gates
 
 D1 and all six D2 decisions were explicitly accepted on 2026-11-24; D3-A/B/C were explicitly accepted on 2026-11-25. They are closed as Operator decisions and must not be presented as awaiting acceptance. Their implementation requirements, migration design, Control Room writer conformance, and PostgreSQL proof remain separate engineering/review gates; acceptance did not authorize code or schema changes.
 
