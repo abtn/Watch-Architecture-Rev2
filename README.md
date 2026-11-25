@@ -1,10 +1,10 @@
-# Watch — Persistent Team Experience
+# Watch — A Persistent Cognitive Architecture
 
-Watch is an architecture for building persistent teams of AI-assisted workers.
+Watch is a persistent cognitive architecture for AI-assisted teams. It is designed to bring reasoning, memory, experience, evaluation, and coordinated work together in a system whose continuity does not depend on any individual model or worker.
 
-Most AI workers are temporary. They can research, reason, write code, use tools, and complete tasks, but their knowledge of previous work is often fragmented across conversations, prompts, and files. Watch addresses a different problem: how can a team preserve what it has observed, what it believes, what it has learned, and why it reached those conclusions—even when its workers and models change?
+Most AI workers are temporary. They can interpret information, reason, plan, use tools, and complete tasks, but their working context and knowledge of previous work are often fragmented across conversations, prompts, and files. Watch addresses a broader problem: how can a system preserve what it has observed, what it currently believes, what it has learned, how it reached those conclusions, and how that experience should inform later work—even as its workers and models change?
 
-Watch separates temporary intelligence from persistent experience. Models and people do the work; the system preserves the evidence, decisions, outcomes, and lessons that make future work more informed.
+Watch treats models as components of intelligence, not as the system's source of identity or authority. Multiple LLMs, specialized AI components, deterministic mechanisms, and people can contribute different capabilities. Watch coordinates their bounded work and preserves the evidence, decisions, outcomes, and lessons that give the system continuity.
 
 > **Model intelligence is temporary. Watch experience is persistent.**
 
@@ -14,19 +14,35 @@ For current milestone status and authorization (maintained only in [PLAN.md](PLA
 
 ## What Watch is designed to do
 
-Watch treats an AI-assisted team as a persistent organization rather than a collection of independent conversations.
+Watch treats an AI-assisted team as a persistent organization and cognitive system rather than a collection of independent conversations or a model surrounded by tools.
 
-A Team has a domain, mission, policies, working history, and memory. It can observe a subject, develop and revise beliefs about it, carry out tasks, evaluate results, and retain useful experience for future work.
+A Team has a domain, mission, policies, working history, and memory. It can observe a subject, develop and revise beliefs about it, carry out tasks, evaluate results, and retain useful experience for future work. Its cognitive capabilities are distributed across bounded workers, specialized AI components, persistent records, and deterministic application mechanisms.
 
 The central principle is:
 
 **Workers propose. Application code validates. The system commits.**
 
-A model or human may suggest a new belief, evidence link, action, or lesson. That suggestion does not become durable state simply because a worker produced it. Watch checks it against the applicable rules, permissions, source records, and existing state. Accepted changes are committed with provenance so that the system can reconstruct what happened and why.
+A model or human may suggest a new belief, evidence link, action, plan, or lesson. That suggestion does not become durable state simply because a worker produced it. Watch checks it against applicable rules, permissions, source records, and existing state. Accepted changes are committed with provenance so that the system can reconstruct what happened and why.
 
-Watch is not intended to replace agent frameworks or language models. It provides the persistent memory, governance, and learning architecture through which temporary workers can operate as part of a continuing team.
+Watch is not a single model with memory attached, nor is it a replacement for language models or specialized AI. It provides the persistent cognitive, memory, governance, and coordination architecture through which different forms of intelligence can contribute to a continuing system.
 
-## The memory architecture
+## Watch as a cognitive architecture
+
+The term *cognitive architecture* describes how Watch organizes the capabilities and processes needed for sustained, coherent work. It is an architectural description, not a claim that Watch is conscious, human-like, or generally intelligent.
+
+Watch does not assume that one LLM is the system's brain or permanent central coordinator. Different models and AI components can be assigned bounded responsibilities according to the task. Coordination, state transitions, validation, permissions, and durable commits remain responsibilities of Watch's application architecture.
+
+This distinction separates three concerns:
+
+- **Cognitive contribution:** Models, people, and specialized components interpret information, reason within assigned scopes, generate hypotheses, evaluate alternatives, and propose work.
+- **Cognitive continuity:** Watch preserves memory, evidence, decisions, outcomes, and accepted experience so that later work can build on earlier work.
+- **System authority:** Deterministic application mechanisms enforce ownership, policy, validation, write boundaries, and execution. A model's output is a proposal, not permission to change authoritative state.
+
+There is no architecturally privileged *primary LLM*. A model may be assigned a coordinating or reasoning-heavy role for a particular workflow, but that is a replaceable operational assignment. Watch itself owns coordination and system authority. Multiple models may collaborate, and model providers may change, without making any one model the identity or indispensable center of the system.
+
+The biological brain is a useful source of questions about memory, reasoning, coordination, and specialized functions, but it is not a literal implementation blueprint. Watch does not need a one-to-one mapping between software components and brain regions. Its design should be guided by explicit responsibilities, evidence, and testable system properties.
+
+### The memory architecture
 
 Watch distinguishes between different kinds of memory because they represent different things and must not be changed in the same way.
 
@@ -77,19 +93,19 @@ The three roles are therefore distinct:
 
 ## How the system works
 
-The intended operating cycle connects observation, reasoning, action, and learning:
+The intended operating cycle connects observation, distributed reasoning, action, evaluation, and learning:
 
 1. **Observe:** Watch receives information from configured sources and preserves immutable source Snapshots.
-2. **Reason:** Workers examine relevant context and propose observations, Hypotheses, evidence links, or changes.
-3. **Validate:** Application code checks source integrity, ownership, permissions, proposal structure, and applicable invariants.
-4. **Act:** The existing Task and Kernel architecture governs execution and durable commits.
-5. **Evaluate:** Outcomes are recorded and assessed against the task's intent and available evidence.
-6. **Learn:** Useful lessons can enter the Team Experience Core through the approved learning path.
-7. **Reuse:** Relevant world knowledge and accepted experience can be retrieved into later Task Contexts.
+2. **Contextualize:** Watch assembles bounded Task Context from eligible world knowledge, accepted team experience, current state, objectives, and policies.
+3. **Reason:** One or more workers examine that context. LLMs, specialized AI components, and deterministic mechanisms can contribute different forms of analysis and propose observations, Hypotheses, plans, evidence links, or changes.
+4. **Coordinate and validate:** Watch's application architecture routes bounded work, checks source integrity, ownership, permissions, proposal structure, and applicable invariants, and determines which proposals are eligible for acceptance.
+5. **Act:** The existing Task and Kernel architecture governs authorized execution and durable commits.
+6. **Evaluate:** Outcomes are recorded and assessed against the task's intent and available evidence.
+7. **Learn and reuse:** Useful lessons can enter the Team Experience Core through the approved learning path. Relevant world knowledge and accepted experience can then inform later Task Contexts.
 
-The architecture separates strategic intent from execution. Objectives describe what a Team is trying to achieve. Assessments provide a deterministic view of its current state. Strategy proposals express possible directions, Plans organize accepted work, and ordinary Tasks carry out that work.
+The architecture separates cognitive contribution from system authority. Workers may reason, recommend, and coordinate within assigned responsibilities, but they do not acquire authority over durable state by producing an answer. Objectives describe what a Team is trying to achieve. Assessments provide a deterministic view of its current state. Strategy proposals express possible directions, Plans organize accepted work, and ordinary Tasks carry out that work.
 
-A model can help produce proposals at several points in this cycle, but it cannot bypass the application rules or write authoritative state directly.
+No single model is required to own this cycle. Watch coordinates the work and enforces its rules; individual models and other components contribute bounded capabilities.
 
 ## Technical foundations
 
@@ -101,11 +117,12 @@ The architecture is built around a few important engineering principles:
 - **Explicit provenance:** durable changes identify their originating Tasks and causes.
 - **Team and domain isolation:** one Team's records and experience must not silently become another Team's authoritative knowledge.
 - **Competing explanations:** multiple Hypotheses can coexist, with supporting and challenging evidence preserved.
+- **Distributed, replaceable intelligence:** multiple models and specialized components can contribute bounded capabilities without becoming authoritative owners of system state.
 - **Deterministic rules around probabilistic workers:** model output is treated as an untrusted proposal, not as an authority.
 - **Rebuildable retrieval:** indexes and embeddings improve access to information but never replace canonical records.
 - **Tested failure behavior:** replay, concurrency, invalid references, partial failures, and recovery are part of the architecture—not afterthoughts.
 
-The implementation uses Python, PostgreSQL, and pgvector, with Alembic for schema migrations and automated tests for application and database behavior. The architecture deliberately keeps model providers behind defined interfaces so that durable experience is not tied to one model or vendor.
+The implementation uses Python, PostgreSQL, and pgvector, with Alembic for schema migrations and automated tests for application and database behavior. Model providers sit behind defined interfaces so that cognitive contributions can be replaced or expanded without tying durable experience, coordination, or system authority to one model or vendor.
 
 For the detailed system design, see [Architecture](docs/architecture.md), [Invariants](docs/invariants.md), [Control Model](docs/control-model.md), and the [Architecture Decision Records](docs/decisions/).
 
