@@ -1,6 +1,6 @@
 # RW4-1B — SignalDisposition physical schema and relational-integrity design
 
-**Status:** Proposed design for review; no physical design decisions accepted by this document.  
+**Status:** Proposed physical design for review. Operator-accepted decisions are limited to the logical SignalDisposition row shape and conditional Option A with a forward-only DB-attested provenance cutover; exact physical enforcement remains subject to review and proof.  
 **Depends on:** accepted D3-A/B/C, D5.1–D5.4, D6.1–D6.6; completed RW4-1A source audit.  
 **Design baseline:** RW4-1A audited main baseline d2a6f7d4f939a7c18ea00ad6c77574c7b1f63ec3; implementation must re-audit the actual merge base and current Alembic head.  
 **Scope:** SignalDisposition row representation, database constraints, cross-record integrity strategy, immutable evidence, TaskRuntime transaction/replay seam, migration boundary, and a bounded PostgreSQL proof matrix.  
@@ -404,7 +404,7 @@ This proposal intentionally separates recommendations from accepted decisions. R
 6. TaskRuntime seam: accept one success_signal_triaged category for matched/duplicate/deferred; the typed observation fields, existing task_execution Outcome, task_completed Event index fields, atomic transaction, and exact replay equality rules in §8; no generic callback abstraction.
 7. Outcome rollout and proof matrix: decide whether RW4-1 may initially enable matched/deferred while duplicate remains disabled pending D4.1a, or whether all three disposition outcomes must become available together; accept the bounded disposable-PostgreSQL cases in §10, with any additions/removals stated explicitly.
 
-No response to this proposal is inferred. Until the Operator accepts the design and separately authorizes implementation, no ORM, SQL, migration, TaskRuntime, ingestion, or test changes may be made.
+The Operator has accepted the row shape and conditional Option A/forward-only cutover direction only. Decisions 3–7 remain open. The remaining physical design must receive independent review and explicit acceptance, and implementation still requires separate authorization. No ORM, SQL, migration, TaskRuntime, ingestion, or test changes may be made.
 
 ## 12. Explicit non-authorization
 
