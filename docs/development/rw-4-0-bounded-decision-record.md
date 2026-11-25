@@ -81,66 +81,28 @@ TaskRuntime remains the sole lifecycle authority. `pending` and `running` follow
 
 A valid `deferred` business disposition is immutable/terminal in v1 and its Task completes successfully as `done`. The disposition row, Task attribution/reason, TaskRuntime `task_execution` Outcome, terminal Task status, and `task_completed` Event must commit or roll back together in one TaskRuntime-owned database transaction. The Kernel persistence operation uses the active Session and cannot open/commit a separate transaction. Technical failures remain distinct and follow TaskRuntime retry/recovery; no `update_thread`, `operator_update`, or background refinement may change the disposition. D5 still owns the complete disposition vocabulary/reference matrix; D6 alone may authorize dormant-Thread reactivation. D3 acceptance authorizes no code/schema/migration.
 
-### D4 — Separate deduplication, existing-Thread matching, and new-Thread eligibility
+### D4 — Duplicate identity, existing-Thread matching, and no automatic Thread creation
 
-**Proposal:** The first release uses deterministic application rules only. It does not call a model and does not introduce Thread embeddings, a new Domain ORM/configuration subsystem, or a general-purpose domain-pack framework unless a source/fixture audit proves an existing supported path is insufficient.
+**Decision status: D4.1, D4.1a, D4.2, and D4.3 ACCEPTED by the Operator on 2026-11-25.** The decision rules below are accepted; evidence-backed implementation parameters and persistence design remain open.
 
-These are three distinct decisions and must not be collapsed into one similarity threshold:
+1. **D4.1 — Duplicate Signal detection (Option A):** exact raw content-hash equality within the same Team's intake history, regardless of origin. Cross-Team equality is not a duplicate. Near-duplicate, syndicated-copy, and semantic duplicate detection are excluded. Duplicate detection identifies a canonical Signal and does not select or mutate a Thread.
+2. **D4.1a — Canonical duplicate winner:** the first Signal successfully committed into the Team's intake history for that exact content hash wins. PostgreSQL must arbitrate concurrent first arrivals and the Team/hash association must remain stable. Do not select by fetched_at, application timestamps, UUID order, or origin. This is a decision, not an implemented persistence mechanism: Signal is not Team-owned and Team association is represented by ingestion Events; current origin_url + content_hash ingestion uniqueness does not provide cross-origin Team/hash canonicalization. RW4-3 requires a separately reviewed persistence design and real two-session PostgreSQL proof.
+3. **D4.2 — Existing-Thread matching (Option A shape):** derive evidence profiles at read time through Team-scoped EvidenceLink → Hypothesis → Thread; consider same-Team/same-Domain active or dormant Threads and exclude resolved; only supports/challenges EvidenceLinks count (mentions alone is insufficient); validate same-Team ingestion provenance and exact Signal/Snapshot/hash and EvidenceLink Snapshot/hash associations; use only compatible existing KnowledgeChunk projections under the immutable embedding/chunking pins. No Thread embeddings, model calls, re-embedding, summary/alias subsystem, or recency bonus. Maximum pairwise chunk cosine similarity remains an experimental baseline subject to outlier/profile-size bias. Minimum threshold and runner-up margin, score serialization, candidate/evidence bounds, actual pins, fixture performance and PostgreSQL query cost remain open and must be measured. Ambiguity, ties, insufficient evidence, corruption, incompatibility, or overflow defers; no incidental UUID/order tie-break. A dormant candidate is not reactivated; until D6 and separate authorization, a dormant would-be match resolves to terminal deferred rather than a matched result implying reactivation.
+4. **D4.3 — New Thread eligibility (Option A):** automatic Thread creation is disabled in v1. No qualifying existing match, ambiguous/insufficient evidence, or a dormant candidate blocked by the no-reactivation gate resolves to terminal deferred. Do not derive titles from URLs or use model-generated titles. Future automatic Thread creation requires a separate source-backed design and Operator decision.
 
-1. **Duplicate Signal detection:** determine whether this Signal is a duplicate of another canonical Signal within the approved Team/domain scope and time/identity rules. A duplicate result references the canonical duplicate Signal; it does not select or mutate a Thread.
-2. **Existing Thread match:** determine whether exactly one existing same-Team/domain Thread is a valid destination for this Signal. A valid match may be active or dormant; dormant reactivation is governed separately by D6.
-3. **New Thread eligibility:** determine whether no existing Thread is a valid match **and** the Signal independently satisfies a strong-enough, explicit condition to justify creating a new Thread. “No candidate matched” is not sufficient evidence to create one.
+D4 acceptance does not close D5's disposition/reference matrix, authorize RW4-1 persistence, RW4-3 implementation, RW4-2 Stage B, or D6 reactivation. It excludes new-Thread creation, near-duplicate detection, and automatic noise classification from the first-release scope.
 
-Candidate and decision outcomes must be explicit:
+### D5 — Disposition vocabulary and reference matrix (OPEN)
 
-- No candidate / no valid existing Thread match: evaluate the separate new-Thread eligibility rule; otherwise defer.
-- Exactly one valid existing Thread match: `matched`.
-- Multiple candidates with a deterministic, contractually valid winner: select only if the frozen tie-break rule establishes a unique winner; otherwise defer.
-- Equal/tied candidates, weak match, incompatible evidence, missing required inputs, or ambiguous scope: defer; never pick by incidental database/vector ordering.
-- A duplicate Signal is handled as `duplicate` before Thread creation/mutation; it cannot become `new_thread` merely because no Thread candidate exists.
+D5 remains an Operator decision. D4.3 has already excluded automatic new_thread creation in v1; D5 must not re-open it by implication. Automatic noise classification remains excluded absent a separate deterministic, source-backed rule. The proposed first-release business outcomes are matched, duplicate, and terminal deferred, but the complete allowed/prohibited reference combinations, reason vocabulary, and Task-attributed Event semantics are not yet accepted.
 
-Input constraints:
+Before RW4-1, freeze every disposition/reference combination and enforce it at persistence/commit:
+- matched: one existing same-Team/domain Thread; dormant candidates cannot produce a matched result that implies reactivation before D6.
+- duplicate: one canonical same-Team exact-content duplicate Signal reference.
+- deferred: a validated durable reason and no Thread or duplicate reference.
+- no new_thread in v1; no automatic noise outcome in this slice.
 
-- Reuse existing canonical Signal, Thread, Team, and immutable Snapshot records.
-- Signal KnowledgeChunk embeddings are candidate evidence only; they are not automatically authoritative Thread-matching inputs. Their source identity, chunk-to-Signal mapping, model identity, and rebuild behavior must be verified before any use.
-- Do not create Thread embeddings solely to satisfy the older target description.
-- Do not overload TeamPolicy with matching/dedup configuration.
-- Missing, incompatible, or ambiguous matching inputs fail closed to the approved non-match/deferred path; they never authorize a new Thread.
-
-**Open gate:** the actual deterministic candidate, match, dedup, and new-Thread eligibility rules are not frozen here. Before RW4-0 closes, a concrete newsroom fixture and source audit must demonstrate the smallest supported rule for all three decisions. The rule must specify scope, version/identity, required source fields, thresholds if any, tie-breaking, stable ordering, candidate limits, and threshold-boundary behavior. If the existing canonical data cannot support those rules without a new projection/configuration contract, stop and bring that smallest required addition back for review. A narrower first-release scenario is preferable to speculative infrastructure.
-
-**Reason:** a similarity score or empty candidate list cannot independently authorize a new Thread. Separating the decisions makes false deduplication, false matching, and unnecessary Thread creation independently testable.
-
-### D5 — Limit first-release dispositions and define minimum Thread creation
-
-**Proposal:** Preserve the documented disposition vocabulary, with these first-release effects:
-
-| Disposition | Required effect |
-|---|---|
-| `matched` | Reference one deterministically selected existing same-Team/domain Thread. |
-| `new_thread` | Create one minimally valid Thread only when the separate strong new-Thread eligibility condition passes. |
-| `noise` | Record the Team-specific disposition; no Thread mutation. |
-| `duplicate` | Record the Team-specific disposition and a validated same-scope canonical duplicate Signal reference; no Thread mutation. |
-| `deferred` | Record an explicit reason; no Thread mutation and no later refinement in this release. |
-
-Minimum `new_thread` contract:
-
-- Team and domain come from the canonical, validated Signal/Team relationship; they are not model- or caller-selected.
-- Initial status is `active`, unless the current accepted Thread lifecycle contract requires a different explicit initial state. This must be checked against the current model and transition rules before schema/code work.
-- Title is deterministic and non-model-generated, derived only from a canonical Signal field whose presence, stability, and normalization are demonstrated by the source audit. The exact source field and normalization remain an open RW4-0 item; if no safe stable field exists, disable `new_thread` in the first slice rather than invent a title source.
-- Application code supplies timestamps under the repository's established UTC convention.
-- The creation Event records the source Signal, created Thread, Team, and creating Task so provenance is durable even if the Thread schema has no direct source-Signal column.
-- The first slice does not require an initial Hypothesis, EvidenceLink, summary, embedding, or Team Experience projection. Do not add those writes to make a new Thread appear populated.
-
-Disposition and commit rules:
-
-- A disposition is attributed to the creating Task and has a durable reason.
-- Reference combinations are closed and validated at commit: `matched` requires one existing same-Team/domain Thread; `new_thread` requires the newly created Thread; `duplicate` requires one canonical same-scope duplicate Signal; `noise` and `deferred` carry neither Thread nor duplicate reference. No unlisted combination is valid.
-- References are validated at commit for Team/domain scope and canonical existence.
-- The disposition, any permitted Thread creation/reactivation, and the required business Event commit atomically.
-- No other entity writes, follow-up Tasks, Hypothesis/EvidenceLink changes, or Team Experience changes are included.
-
-**Reason:** the Thread ORM currently exposes Team, domain, title, status, and timestamps. A minimum creation contract must make those required fields and provenance explicit without silently adding projections or a knowledge graph write.
+No disposition may mutate Hypothesis, EvidenceLink, ConfidenceChange, TeamPolicy, or enqueue follow-up Tasks. The disposition, permitted references, Task attribution, and required Event semantics must be closed and validated. RW4-1 remains gated on D5 acceptance, its reviewed proof subset, and explicit authorization.
 
 ### D6 — Reactivation is a matched-only atomic transition with defined race outcomes
 
