@@ -23,7 +23,7 @@ The intended first-slice boundary is:
 
 The model is not involved in triage. Triage does not create or enqueue `update_thread` Tasks.
 
-## 2. Proposed decisions for Operator review
+## 2. Accepted D1/D2 decisions and remaining D3–D6 proposals
 
 D1 and all six D2 decisions are accepted as recorded below. D3–D6 remain separate proposals and require separate Operator decisions.
 
@@ -179,12 +179,12 @@ The following are not part of this first triage slice and are not authorized her
 
 ## 4. Required reconciliation before RW4-0 can close
 
-If the Operator accepts the proposals, the following documentation work must be completed before implementation authorization:
+D1 and all six D2 decisions are already accepted and must not be reopened by this reconciliation section. The following remaining D3–D6 and cross-cutting documentation work must be completed before RW4-0 can close; acceptance of D1/D2 does not itself authorize implementation:
 
 1. Reconcile the `triage_signal` Task definition and Task/write-scope matrix with terminal deferred semantics and the exact writes in D5/D6.
-2. Define the trusted host-to-adapter identity and Team-authorization boundary without claiming a production host-auth system exists; identify the trusted principal fields and exact Team/operation grant that the adapter validates.
+2. Preserve the accepted D1 trusted-host/Control Room boundary as historical decision text: the application Control Room is the sole logical Task-creation authority; supported producers delegate to named Control Room operations; the host supplies the typed principal and exact Team/action grant; production authentication remains a post-R8 prerequisite. Reconcile implementation evidence and the nine-writer conformance plan without reopening or relabeling D1 as pending. The boundary is trusted application code, not a database-enforced authorization claim.
 3. Freeze the separate duplicate-Signal, existing-Thread match, and new-Thread eligibility rules from a concrete fixture and source audit, or explicitly narrow the first implementation to a smaller supported scenario. Specify all no-candidate, unique-candidate, multiple/tied-candidate, weak, ambiguous, and insufficient-input outcomes.
-4. Specify the disposition fields/constraints, valid reference combinations, uniqueness, canonical Task identity, request Event identity/fingerprint, requester and policy binding, Task attribution, business Event identity, and commit/replay/conflict behavior. For recommended v1 Task identity, require the persisted `signal_id`/`identity_version` fields and composite unique constraint on `(team_id, signal_id, identity_version)`; keep canonical UUID primary-key arbitration as a distinct guarantee. A single-creator invariant does not substitute for the composite database constraint. Implement the accepted exact-one request Event contract: PostgreSQL partial unique index for `triage_signal_requested` (at-most-one), atomic Task/Event creation, and replay validation (existence, exactly-one, shape, and consistency).
+4. Treat the accepted D2 identity and request-Event decisions as fixed historical inputs, not open proposals: UUIDv5 directly as `Task.id` with the frozen v1 namespace/name/golden vector; persisted `signal_id` and `identity_version` with composite unique `(team_id, signal_id, identity_version)`; partial unique request-Event index (at-most-one) plus atomic Task/Event creation and replay validation (exactly-one); accepted requester provenance/replay/re-triage rules; immutable first-writer watermarks excluded from semantic replay equivalence; and code-owned v1 matching pins with actual values deferred to D4b. Reconcile their implementation/proof requirements and cross-document wording without asking the Operator to accept these decisions again. The accepted schema/creator requirements remain unimplemented and do not authorize a migration or Stage B.
 5. Define the minimum Thread creation contract, including deterministic title source/normalization, initial status, canonical Team/domain derivation, timestamp source, and Task/Signal provenance. If any required field cannot be supplied safely, remove `new_thread` from the first release.
 6. Agree with RW-5 on reactivation timestamps, lock order, revalidation rules, and the decay-first/triage-first race outcomes.
 7. Produce a requirement-to-test matrix for every disposition, cross-Team/domain rejection, canonical Task creation races, same-request replay, conflicting-request rejection, disposition uniqueness, reference combinations, atomic rollback, concurrent triage/decay orderings, Task recovery, and single reactivation Event behavior.
@@ -220,8 +220,10 @@ This matrix identifies proof obligations, not existing tests or implementation e
 - R8 remains unscheduled.
 - This record is a documentation proposal only. It authorizes no code, schema, migration, test-only follow-up, dispatcher change, provider execution, persistent-database operation, or scored experiment.
 
-## 7. Operator response required
+## 7. Remaining Operator decisions and closure gate
 
-Review D1–D6 individually. Acceptance of this record should mean acceptance of the proposed first-slice boundaries, not automatic closure of every open gate in §4. In particular, D4's concrete matching/dedup/new-Thread eligibility rules, D5's deterministic title source, and D6's decay timestamp/locking semantics remain unresolved until supported by evidence and explicitly frozen.
+D1 and all six D2 decisions were explicitly accepted on 2026-11-24. They are closed as Operator decisions and must not be presented as awaiting acceptance. Their implementation requirements, migration design, Control Room writer conformance, and PostgreSQL proof remain separate engineering/review gates; acceptance did not authorize code or schema changes.
 
-No implementation stage begins until the reconciled RW4-0 decision record, requirement-to-test matrix, and sequencing gate have been independently reviewed and explicitly authorized.
+The remaining Operator decisions are D3–D6 only. In particular, D3's terminal-deferred lifecycle and Task/write-scope reconciliation; D4's concrete matching/dedup/new-Thread eligibility rules and measured evidence; D5's disposition/reference matrix and deterministic title source; and D6's decay/reactivation timestamp, locking, and race semantics remain unresolved until supported by evidence and explicitly accepted. Cross-cutting assessment receipt/recovery and later Context-consumer contracts also remain separate closure items.
+
+No implementation stage begins until the remaining D3–D6 and cross-cutting contracts are independently reviewed, explicitly accepted where required, and the slice-specific proof subset and implementation authorization are recorded. This does not reopen D1/D2 and does not make their accepted design requirements implementation-ready by implication.
