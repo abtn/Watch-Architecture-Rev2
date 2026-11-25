@@ -146,6 +146,46 @@ The minimum-change recommendation remains **conditional Option A**, but only if 
 
 No schema, ORM, migration, application, test, database, or runtime change was made by this audit.
 
+### 4.0.2 Operator-accepted historical boundary: forward-only DB-attested cutover
+
+**Decision:** On 2026-11-25, the Operator accepted the forward-only cutover recommendation. Do not rely on an unverified trusted-history assumption and do not retroactively attest legacy intake Events.
+
+This acceptance selects the historical-boundary direction within conditional Option A. It does not prove the runtime-role prerequisite, accept every physical trigger detail, or authorize implementation.
+
+**Proposed physical mechanism for detailed review:**
+
+- Add a nullable, database-owned witness-version column to `events` (proposed name: `intake_witness_version`, small integer). This is provenance metadata on the existing Event witness, not a Team/Signal registry and not a SignalDisposition field.
+- A `BEFORE INSERT` trigger recognizes only `signal_ingested` and `fetch_no_change`. It validates the Task is an eligible `ingest_source` Task, resolves its Team, validates the referenced Signal and exact payload fields (`signal_id`, `origin_url`, `source_type`, `content_hash`, `snapshot_ref`), and validates Signal.domain equals Team.domain. Only after successful validation does it set the current witness version (initially proposed as `1`).
+- The trigger owns the marker value. It overwrites any caller-supplied value for these protected Event types; callers cannot choose a version, suppress attestation, or mark an unrelated Event. The migration installs the column and trigger atomically. Events committed before that cutover remain NULL; there is no UPDATE/backfill that labels legacy rows as attested.
+- An intake Event with NULL or unsupported witness version cannot establish RW4-1 Team–Signal provenance. Eligibility also requires all protected Event, Task, Team, and Signal identity checks to pass; a marker is not a substitute for those checks.
+- Protect the marker against UPDATE, and protect both intake Event types against UPDATE, DELETE, and type changes into or out of the protected set. Protect the referenced Signal identity fields, Task `team_id`/`task_type`, and Team `domain` while the witness exists. Runtime must not own these objects or bypass their triggers.
+- Existing ingestion `prior_outcome` replay remains an ingestion idempotency behavior; it must not manufacture a marker for a legacy Event. A legacy replay may still return its original ingestion result, but that Event remains ineligible as RW4-1 provenance. New triage eligibility must require the DB marker.
+- The migration must not rewrite historical Event payloads or infer a marker from application-supplied `created_at`. It must retain legacy rows and their original timestamps unchanged.
+
+**Cutover semantics:** the transaction that installs the marker column, validation trigger, immutability protections, grants, and role boundary is the cutover. No writer can insert an unmarked protected Event after the trigger is active and no runtime caller can assign a trusted marker directly. Migration ordering and table-locking must prevent an insertion gap. If the deployment cannot establish this atomic cutover and role boundary, stop Option A and return to the Operator with the separately scoped Option B design.
+
+**Role topology required for the proof:**
+
+- A `NOLOGIN` owner role owns protected tables and trigger functions; it is not used by application processes.
+- A distinct runtime login is neither a table owner nor superuser and has only required application DML privileges. It has no direct or inherited membership that permits `SET ROLE` to owner/migration roles.
+- A separate migration credential may assume the narrowly scoped owner role for reviewed migrations; it is never supplied to runtime services.
+- Runtime has no ability to alter protected tables/functions, create/replace/disable triggers, grant/revoke privileges, change ownership, or set `session_replication_role` to bypass triggers. Effective privileges and all membership paths must be checked in PostgreSQL.
+- Trigger functions that need elevated read access use a narrowly scoped `SECURITY DEFINER` function owned by the non-login owner, with a fixed safe `search_path` and schema-qualified object references. Function EXECUTE grants are limited to the runtime operation that needs them. No caller-controlled GUC or bypass flag is permitted.
+- Revoke effective runtime `TRUNCATE` on `events`, `signals`, `signal_dispositions`, `tasks`, and `teams`, including inherited/PUBLIC grants, and retain unconditional statement-level `BEFORE TRUNCATE` rejection triggers. Verify direct, CASCADE, and partition/leaf attempts under the runtime role.
+
+**Required PostgreSQL proof additions:**
+
+1. Runtime role is not superuser/table owner; cannot SET ROLE to owner; cannot alter/drop/disable triggers or functions, grant privileges, change ownership, or set replication-role bypass.
+2. Migration role can install the cutover using the restricted owner role, but application connection configuration never uses that credential.
+3. New valid intake Events receive the current DB marker even if the caller supplies NULL or a forged version; non-intake Events cannot acquire the marker.
+4. Invalid Task type, missing/malformed Signal reference, mismatched origin/source/hash/Snapshot, and domain mismatch are rejected and leave no Event.
+5. Legacy Events remain NULL after migration and are rejected as RW4-1 provenance; newly inserted valid Events are marked and eligible only after the full witness validation.
+6. Runtime cannot change marker, Event type/payload, protected Signal identity, Task team/type, or Team domain; runtime cannot TRUNCATE protected tables.
+7. Migration-first and writer-first interleavings prove no insertion gap: the migration holds the required table locks through commit; a conflicting writer either completes before migration lock acquisition or waits until the protected trigger is committed. The existing NOWAIT preflight policy must fail cleanly rather than hold partial locks.
+8. Repeat role, marker, and immutability tests after migration from a populated legacy fixture containing both valid and malformed historical Events. Legacy rows are retained, not silently repaired or promoted.
+
+The marker column name/type/version and exact function/trigger SQL remain design details for the independent review; this accepted direction must not be mistaken for their physical acceptance.
+
 ### Option B — relational intake-witness representation
 
 If the Option A trigger/immutability boundary cannot be made reliable under the actual runtime-role model, stop and propose a separate typed relational intake-witness relation. It must carry explicit Team, Signal, Task, and source Event references with enforceable FKs and immutable association semantics.
@@ -357,7 +397,7 @@ All constraint, concurrency, lock, trigger, and transaction claims require dispo
 This proposal intentionally separates recommendations from accepted decisions. Review the following:
 
 1. Row shape: accept or amend the proposed one-row-per-(team_id, signal_id) shape and D5.2 reference matrix.
-2. Cross-record enforcement: accept Option A only if its lock/isolation proof is feasible; otherwise authorize a separate relational-witness scope. Do not accept application validation without a concrete race proof.
+2. Cross-record enforcement: conditional Option A is accepted as the design direction, subject to the mandatory non-owner runtime/migration-owner role boundary and the Operator-accepted forward-only DB-attested cutover in §4.0.2. The exact marker/trigger/role implementation remains subject to physical review and PostgreSQL proof; if either prerequisite cannot be enforced, stop and return with a separately scoped Option B design.
 3. Duplicate gate: accept that duplicate disposition writes remain disabled until D4.1a canonical arbitration is implemented and proven.
 4. Task identity and sequencing gate: confirm the accepted D2 migration is a hard prerequisite before RW4-2 Stage B creates triage Tasks and before any disposition write/replay is enabled. Keep it separate from the RW4-1 migration; do not accept a transitional proof or caller/Event-only substitute.
 5. Immutability/timestamp: accept trigger-based UPDATE/DELETE rejection, statement-level TRUNCATE rejection on protected history/identity tables, effective runtime-role TRUNCATE revocation, and database-assigned clock_timestamp(), subject to the explicit privileged-maintenance boundary and repository convention verification.
