@@ -58,7 +58,7 @@ The RW-5 contract's final bounded regression review was performed by the editing
 - **PR #175** found: D1 host-invoked Task-creator precedent but no production host composition/authentication; D2 canonical Task identity needs DB uniqueness and is not the existing `update_thread` identity; D3 conflict between deferred-refinement prose and the proposed terminal-deferred contract; D4 matching inputs are not source-ready; D5 no safe canonical Signal title for Thread creation; D6 no shared RW-5 timestamp/lock contract.
 - **PR #176** proposes a minimal representation: derive Thread evidence from EvidenceLink → Hypothesis → Thread; require same-Team ingestion provenance and matching Snapshot provenance; exact-hash duplicate detection within one Team; reuse KnowledgeChunk projections; keep maximum-pairwise cosine experimental only; first-slice outcomes `matched`, `duplicate`, `deferred`; disable `new_thread` and automatic `noise`; and require a separately committed canonical assessment receipt before the Kernel business commit.
 - **RW3.4** implementation and corrective proofs are merged, but formal acceptance is deferred. The ledger remains 28 PASS / 7 PARTIAL / 0 OPEN. The bounded residual proof work and external integration limitations remain as recorded in `PLAN.md`.
-- **RW-5** is independently implementable. Its integration with triage is blocked on D6 timestamp and concurrency decisions, not on all RW-5 work.
+- **RW-5** is independently implementable. The D6 timestamp, revision, and canonical lock decisions are accepted; triage/reactivation integration remains gated on the RW-5 helper/retrofit, RW4-5 implementation, and the required PostgreSQL race/recovery proofs.
 - **Experiment A** informs RW4-4 representation only. Its canonical fixtures are offline artifacts; the experiment has not been executed. It does not block RW4-0 through RW4-3 or RW-5.
 - **RWN-01** is a separate newsroom value-harness package and is not a substitute for matching fixtures or Experiment A.
 
@@ -78,7 +78,7 @@ The bounded proof questions remain recorded for possible later disposition: broa
 
 ### Gate B — RW4-0 decision closure
 
-RW4-0 closes only after D1–D6 are reconciled, evidence-backed, and explicitly accepted. PR #174 and #176 preserve proposals; neither substitutes for this gate. The staged slice gates below allow bounded implementation to proceed before umbrella RW4-0 closure only where explicitly stated; they do not imply that the remaining decisions are accepted.
+RW4-0 closes only after D1–D6 and the cross-cutting contracts are reconciled and evidence-backed. D1–D6 are accepted; remaining evidence/design gates are not thereby closed. PR #174 and #176 preserve earlier proposals and do not substitute for this gate. The staged slice gates below allow bounded implementation to proceed before umbrella RW4-0 closure only where explicitly stated.
 
 #### D1 — Trusted host invocation and authority
 
@@ -185,9 +185,9 @@ At minimum map:
 |---|---|
 | **RW4-2 — Task boundary** | **Design/decision stage:** D1/D2, immutable request pins, identity/replay contract, Task envelope, and proof subset accepted; no production creator code. **Creator implementation stage:** after RW4-1 and the RW-5 canonical helper/Team-revision/writer retrofit have landed, with PostgreSQL lock proof; then separately authorize the creator. The two stages are serial and must not be collapsed. |
 | **RW4-1 — persistence** | D3 lifecycle semantics are accepted. Before implementation, D5 disposition vocabulary/reference matrix and uniqueness scope are accepted; the physical constraints and cross-record integrity design must be reviewed and proven; the persistence design must integrate deferred disposition writes into the existing TaskRuntime-owned terminal transaction (same Session/commit as Task Outcome/status/Event), with rollback proof and no independent disposition commit. No matching algorithm, D6 reactivation, receipt, or Context decision is required for this persistence-only slice. |
-| **RW4-3 — matching and commit** | Accepted D4.1/D4.1a/D4.2/D4.3 rules plus the canonical Team/hash persistence design, measured fixture thresholds/margin/score serialization/bounds/query cost and actual D4b pins; C1 receipt/recovery contract; accepted D5 reference matrix; and stale-pin TaskRuntime supersession/no-retry proof. No automatic Thread creation, noise, near-duplicate classification, or dormant reactivation in the initial slice. D6 is required only for a separately authorized reactivation slice. |
+| **RW4-3 — matching and commit** | Accepted D4.1/D4.1a/D4.2/D4.3 rules plus the canonical Team/hash persistence design, measured fixture thresholds/margin/score serialization/bounds/query cost and actual D4b pins; C1 receipt/recovery contract; accepted D5 reference matrix; and stale-pin TaskRuntime supersession/no-retry proof. No automatic Thread creation, noise, near-duplicate classification, or dormant reactivation in the initial slice. D6 is accepted; dormant reactivation is confined to RW4-5 and requires its separate authorization and proof. |
 | **RW4-4 — Context** | Named later Task consumer, existing assembler, eligible records, provenance, bounds, overflow, snapshot/manifest and replay contract accepted; Experiment A result or explicit Operator disposition recorded before representation freeze. |
-| **RW4-5 — integration** | RW4-1 through RW4-4 accepted as applicable, RW-5 decay implementation available, D6 accepted for reactivation, and integrated race/post-decay retrieval proof completed. |
+| **RW4-5 — integration** | RW4-1 through RW4-4 accepted as applicable, RW-5 decay implementation available, and the accepted D6 contract implemented under separate RW4-5 authorization, with integrated race/recovery/post-decay retrieval proof completed. |
 
 RW4-0 umbrella closure remains a separate milestone requiring D1–D6 and cross-cutting contracts to be fully reconciled and accepted. A staged implementation does not close RW4-0 by implication.
 
@@ -297,7 +297,8 @@ Reconsider only when a concrete scenario and evidence justify a separate design 
 - [ ] D4 evidence/design closure before RW4-3: Team/hash persistence and concurrent-winner proof; independent labeled fixtures; measured threshold/margin, score serialization, candidate/evidence bounds, actual D4b pin values, and disposable-PostgreSQL query-plan/cost evidence.
 - [x] D5.1–D5.4 disposition vocabulary/reference matrix, deferred reason vocabulary, and Task-attributed terminal Event semantics accepted; `new_thread` and `noise` excluded.
 - [ ] RW4-1 physical persistence design, cross-record integrity enforcement, migration/constraint/rollback proof subset, and explicit implementation authorization.
-- [ ] D6 shared decay/reactivation timestamp, lock order, and race outcomes accepted before reactivation and integrated proof.
+- [x] D6.1–D6.6 dormant-reactivation decisions accepted: preserve Thread timestamps; use the canonical RW-5 timestamp/revision/lock protocol; increment Team revision; commit atomically; enforce replay/recovery.
+- [ ] RW4-5 implementation closure: exact Event identity/DB uniqueness, cross-record integrity, stale-receipt fencing, affected lock rows, decay-first and triage-first disposable-PostgreSQL race proofs, rollback/lost-response/replay/recovery proofs, independent proof review, and separate explicit implementation authorization.
 - [ ] Assessment receipt transaction/recovery accepted before RW4-3; later Task Context consumer/bounds accepted before RW4-4.
 - [ ] Architecture lifecycle and Task/write-scope matrix reconciled.
 - [ ] Requirement-to-test matrix independently reviewed.
