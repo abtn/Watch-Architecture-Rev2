@@ -8,7 +8,7 @@
 
 ## 1. Executive decision
 
-The Operator's 2026-11-24 sequencing exception satisfies the overall RW3.4 sequencing gate while preserving formal acceptance as deferred and all seven PARTIAL qualifications. RW4-0 remains open. PR #176 is a merged design proposal, not acceptance of its experimental matcher or closure of D4–D6; D1/D2 and D3 are accepted, with implementation gates still separate. No individual RW-4 slice is blanket-authorized: each must satisfy its own prerequisites, independently reviewed proof subset, and explicit Operator authorization. PR #175's evidence findings are incorporated here; its audit branch is closed and is not a current baseline.
+The Operator's 2026-11-24 sequencing exception satisfies the overall RW3.4 sequencing gate while preserving formal acceptance as deferred and all seven PARTIAL qualifications. RW4-0 remains open. PR #176 is a supporting design/evidence artifact; D1/D2, D3, and D4.1/D4.1a/D4.2/D4.3 are accepted, while D4 evidence closure, D5, D6, and implementation gates remain separate. No individual RW-4 slice is blanket-authorized: each must satisfy its own prerequisites, independently reviewed proof subset, and explicit Operator authorization. PR #175's evidence findings are incorporated here; its audit branch is closed and is not a current baseline.
 
 The delivery path is deliberately serial. The updated Operator order supersedes the earlier RW-5-first order:
 
