@@ -46,7 +46,7 @@ The biological brain is a useful source of questions about memory, reasoning, co
 
 Watch distinguishes between different kinds of memory because they represent different things and must not be changed in the same way.
 
-### 1. World memory — what the team knows about its subject
+#### 1. World memory — what the team knows about its subject
 
 World memory represents the team's evolving understanding of the world it observes.
 
@@ -63,7 +63,7 @@ A Thread can contain several competing Hypotheses. Watch does not assume that th
 
 World memory is revisable. New evidence can strengthen, weaken, challenge, or supersede an existing belief. The design also includes confidence decay so that beliefs can lose strength when they are no longer supported by new observations.
 
-### 2. Team experience — what the team has learned from its work
+#### 2. Team experience — what the team has learned from its work
 
 Team experience is different from knowledge about the outside world.
 
@@ -73,7 +73,7 @@ A lesson does not become accepted team experience merely because a model suggest
 
 Unlike world beliefs, accepted team practices do not simply lose confidence because time has passed. They are reviewed and revised through an explicit learning process.
 
-### 3. Task Context — what matters right now
+#### 3. Task Context — what matters right now
 
 A worker should not receive the team's entire history every time it performs a task.
 
