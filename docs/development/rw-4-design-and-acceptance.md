@@ -71,7 +71,7 @@ The current canonical SignalDisposition representation is still conceptual and n
 - Technical execution failures remain distinct and follow TaskRuntime retry/recovery.
 - Missing, duplicate, malformed, or inconsistent canonical Task/request-Event history fails closed without repair, replacement, or disposition mutation.
 
-D5 still must accept the complete disposition vocabulary/reference matrix, durable reason vocabulary, and Task-attributed Event semantics before RW4-1 persistence. This document does not freeze physical columns, constraints, or migration details and authorizes no persistence implementation.
+D5.1–D5.4 are accepted. RW4-1 still requires a reviewed physical persistence design, cross-record integrity strategy, proof subset, and separate implementation authorization. This document does not freeze physical columns, constraints, or migration details and authorizes no persistence implementation.
 
 ### 4.3 Duplicate detection and existing-Thread matching — accepted D4 shape; evidence gates remain
 
@@ -157,7 +157,7 @@ The exact test nodes must be named before RW-4 implementation authorization unde
 - Exact raw content-hash duplicate detection is Team-scoped and origin-independent; the first committed Team/hash association is canonical. Prove database arbitration and stability with two PostgreSQL sessions.
 - No automatic Thread creation, automatic noise classification, or near-duplicate classification occurs in v1.
 - Ties, weak/insufficient evidence, provenance corruption, incompatible pins, and candidate/evidence overflow defer; no semantic tie is broken by UUID or incidental order.
-- A dormant candidate does not reactivate; until D6 and separate authorization, a dormant would-be match resolves to terminal deferred.
+- D6.1–D6.6 are accepted. Until the separately authorized and proven RW4-5 implementation is available, a dormant would-be winner with no active winner resolves to terminal deferred with `dormant_thread_requires_reactivation`; RW4-3 does not reactivate or match a dormant Thread.
 - A disposition replay returns/reuses the canonical result without duplicate Thread, disposition, or Event writes. A changed request under the same idempotency identity conflicts without mutation.
 - Thread creation/reactivation, disposition persistence, and the required Event are atomic. A failed commit leaves no partial state.
 - Deferred is terminal and immutable in v1; no ordinary Task or background process may refine it. TaskRuntime atomically commits the disposition and terminal Task evidence.
@@ -193,19 +193,10 @@ RW-4 may be requested for acceptance only when:
 
 This design PR does not authorize RW-4 implementation, a migration, a test-only follow-up, dispatcher expansion, live provider calls, persistent-database access, R7-C as a separate milestone, scored RWN-01 execution, RW-5, or R8. Those remain separately gated.
 
-## 8. Operator decisions still required
+## 8. Remaining design and engineering closure gates
 
-The bounded first-slice proposals are collected in [RW4-0 bounded decision record](rw-4-0-bounded-decision-record.md). That record is pending Operator review and does not authorize implementation.
+D1–D6 decisions are accepted and reconciled in the [RW4-0 bounded decision record](rw-4-0-bounded-decision-record.md) and the authoritative Stage A specification. That decision record remains design-only and does not authorize implementation.
 
-Before RW4-0 can close, review and decide:
+The remaining cross-cutting design work includes freezing the later Task type(s), Context assembler, eligible world-memory records, and justified retrieval bounds; confirming the RW4-KU relationship to the foundation exit gate; and approving the remaining Experiment A protocol decisions before EA-0 closes. The accepted Experiment A dependency mapping in §4.6 is not reopened by those protocol decisions. D4 matching evidence closure and the individual RW4-1/RW4-3/RW4-5 engineering gates remain as described in the readiness plan; they are not pending Operator decisions to redefine D1–D6.
 
-1. The trusted creator/trigger and immutable request identity for triage_signal.
-2. The source and versioning boundary for matching/dedup rules, including whether existing Signal chunk embeddings are sufficient and how candidate Threads are represented.
-3. The disposition transition/refinement owner, especially the current deferred contract gap with RW-2/RW-3.
-4. The exact new-Thread title/source rule and the dormant-Thread reactivation condition.
-5. The later Task type(s), Context assembler, and justified bounds for world-memory retrieval.
-6. Whether RW4-KU is an RW-4 acceptance prerequisite or a separately accepted sub-slice before the foundation exit gate.
-7. The accepted Experiment A dependency rule is fixed as described in §4.6. Separately, approve the remaining Experiment A protocol decisions in its execution plan before EA-0 closes; those protocol decisions do not reopen the accepted RW4-4/RW-5 dependency mapping.
-8. Whether RW-4 implementation waits for RW3.4 formal acceptance or proceeds only under an explicit sequencing exception.
-
-No implementation stage should begin by treating an unresolved item above as an implicit default.
+No implementation stage should begin by treating an unresolved design or proof item as an implicit default.
