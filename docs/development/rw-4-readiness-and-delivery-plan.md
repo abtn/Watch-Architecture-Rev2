@@ -171,7 +171,10 @@ At minimum map:
 - each allowed and prohibited disposition/reference combination;
 - duplicate canonicalization and matching thresholds/ties/overflow;
 - receipt uniqueness, separate transaction durability, and recovery;
-- atomic disposition/Thread/Event commit and rollback;
+- atomic deferred disposition, Task attribution/reason, TaskRuntime Outcome, terminal Task status, and terminal Event commit/rollback in one TaskRuntime-owned transaction;
+- fail-closed replay when a disposition exists without exactly one valid canonical Task/request Event; no synthesized history or replacement;
+- TaskRuntime terminal supersession of stale-pin queued Tasks using the existing failed/terminal_failure path and a stable non-technical supersession reason;
+- no dormant-Thread reactivation before D6 acceptance;
 - dormant reactivation and decay races;
 - Context membership, provenance, ordering, bounds, and replay;
 - no direct Task lifecycle writes, unapproved follow-up Task creation, or dispatcher expansion;
@@ -184,8 +187,8 @@ At minimum map:
 | Slice | Required decisions/evidence before that slice |
 |---|---|
 | **RW4-2 — Task boundary** | **Design/decision stage:** D1/D2, immutable request pins, identity/replay contract, Task envelope, and proof subset accepted; no production creator code. **Creator implementation stage:** after RW4-1 and the RW-5 canonical helper/Team-revision/writer retrofit have landed, with PostgreSQL lock proof; then separately authorize the creator. The two stages are serial and must not be collapsed. |
-| **RW4-1 — persistence** | D3 terminal-deferred lifecycle and Task/write-scope reconciliation accepted; D5 disposition vocabulary, reference matrix, uniqueness scope, and physical constraints accepted. No matching algorithm, D6 decay contract, receipt, or Context decision is required for this persistence-only slice. |
-| **RW4-3 — matching and commit** | D4 matching/duplicate evidence and measured query cost accepted, or a narrower deterministic subset explicitly accepted; C1 receipt/recovery contract accepted; D6 shared decay/reactivation timestamp, lock order, and revalidation contract accepted before any reactivation implementation. If reactivation is explicitly deferred from the slice, the D6 gate applies before adding it, not to unrelated matching/commit work. |
+| **RW4-1 — persistence** | D3 lifecycle semantics are accepted. Before implementation, D5 disposition vocabulary/reference matrix, uniqueness scope, and physical constraints must be accepted; the persistence design must integrate deferred disposition writes into the existing TaskRuntime-owned terminal transaction (same Session/commit as Task Outcome/status/Event), with rollback proof and no independent disposition commit. No matching algorithm, D6 reactivation, receipt, or Context decision is required for this persistence-only slice. |
+| **RW4-3 — matching and commit** | D4 matching/duplicate evidence and measured query cost accepted, or a narrower deterministic subset explicitly accepted; C1 receipt/recovery contract accepted; stale-pin TaskRuntime supersession mapping and no-retry proof accepted before enabling execution. D6 shared timestamp/lock/revalidation contract is required before any dormant-Thread reactivation; if reactivation is excluded, D6 does not block unrelated matching/commit work. |
 | **RW4-4 — Context** | Named later Task consumer, existing assembler, eligible records, provenance, bounds, overflow, snapshot/manifest and replay contract accepted; Experiment A result or explicit Operator disposition recorded before representation freeze. |
 | **RW4-5 — integration** | RW4-1 through RW4-4 accepted as applicable, RW-5 decay implementation available, D6 accepted for reactivation, and integrated race/post-decay retrieval proof completed. |
 
