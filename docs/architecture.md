@@ -528,7 +528,7 @@ Transitions not listed are forbidden. Every transition emits an Event (INV-13).
 | From | Event | To | Notes |
 |---|---|---|---|
 | — | created (triage, update commit, or `activate_team` starter Threads) | `active` | |
-| `active` | no Thread-status transition in RW-5 first-release decay | `dormant` | Dormant is a valid stored status, but RW-5 first release is confidence-only; no dormancy writer is authorized. |
+| `active` | future dormancy transition (not authorized in RW-5 v1) | `dormant` | No current writer; dormant rows may be pre-existing/seeded. |
 | `active` / `dormant` | explicit resolution (reason given) | `resolved` | terminal; via update commit |
 
 > **D6 accepted; implementation gated:** RW-5 first-release decay is confidence-only and does not make active Threads dormant; D6 does not authorize a dormancy writer. A dormant Thread may be reactivated only by a valid matched triage decision under the D6 contract. The transition, immutable Task-attributed `thread_reactivated` Event, matched disposition, and TaskRuntime terminal result must commit atomically. `last_updated_at` is unchanged; Team `world_memory_revision` increments under the canonical RW-5 lock protocol. RW4-3 must not reactivate a dormant Thread until the separately authorized RW4-5 implementation and recovery path are proven.
