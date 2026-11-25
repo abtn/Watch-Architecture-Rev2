@@ -4,7 +4,7 @@
 **Planning baseline:** main after PR #173, merge commit `126063199c919a9576e20f4909781f0776d1ca87` (2026-11-23).
 **Authority:** PLAN.md owns current milestone status and authorization. Accepted RW decisions and the Task/write-scope matrix remain binding.
 
-> **Reconciliation note (2026-11-23):** This document is the earlier broad RW-4 design proposal. Its original `new_thread`, `noise`, matching, and deferred-refinement language is not the current narrowed proposal where it conflicts with PR #176. Use the [RW-4 Readiness and Delivery Plan](rw-4-readiness-and-delivery-plan.md) for the reconciled prerequisite gates and delivery sequence. PR #176 remains a proposal; D1–D6 are not accepted and implementation is not authorized.
+> **Reconciliation note (2026-11-25):** This document is the earlier broad RW-4 design proposal and is historical where it conflicts with later accepted decisions. D1/D2, D3-A/B/C, and D4.1/D4.1a/D4.2/D4.3 are now accepted and reconciled in the [RW4-2 Stage A specification](rw-4-2-decision-and-specification-draft.md), [bounded decision record](rw-4-0-bounded-decision-record.md), and [Readiness and Delivery Plan](rw-4-readiness-and-delivery-plan.md). In particular, automatic Thread creation is disabled in v1; a non-match or ambiguous/insufficient evidence is terminal deferred; duplicate identity is exact raw hash within a Team with first-committed canonical association; and the accepted existing-Thread matcher shape is evidence-based but its thresholds, bounds, pin values, and query-cost proof remain open. The broad `new_thread`, noise, and deferred-refinement target language below is superseded. This document does not authorize implementation.
 
 ## 1. Purpose
 
@@ -12,19 +12,19 @@ RW-4 connects an ingested canonical Signal to a Team-specific world-memory Threa
 
 The intended path is:
 
-Signal → Team-scoped triage_signal disposition → existing or newly created/reactivated Thread → later Task Context containing eligible active Hypotheses and verified EvidenceLinks.
+Signal → Team-scoped triage_signal disposition → qualifying existing Thread or terminal deferred/duplicate outcome → later Task Context containing eligible active Hypotheses and verified EvidenceLinks. Automatic Thread creation is excluded from v1; dormant reactivation remains D6-gated.
 
-Triage is deterministic application behavior. It is not model reasoning, and a similarity score is not authority to create a Thread by itself. A new_thread decision requires the accepted strong-match rule. Ambiguous or failed matching remains explicit as deferred; a Signal must never disappear silently.
+Triage is deterministic application behavior. It is not model reasoning, and a similarity score is not authority to create a Thread by itself. A non-match does not create a Thread. Ambiguous or failed matching remains explicit as terminal deferred; a Signal must never disappear silently.
 
 ## 2. Accepted constraints and dependencies
 
 The following are existing constraints, not new decisions in this document:
 
-- RW-D16: triage_signal is the only canonical Thread-creation path in the first newsroom slice, with scoped new_thread permission. update_thread and operator_update refine existing Threads only.
+- Historical RW-D16 proposal: triage_signal was previously described as the canonical Thread-creation path with scoped new_thread permission. This is superseded for v1 by accepted D4.3: automatic Thread creation is disabled. update_thread and operator_update refine existing Threads only.
 - RW-D21: preserve the shared EvidenceLink model and existing Evaluation/distillation behavior. Do not add automatic Hypothesis-to-Evaluation linkage or new distillation behavior without a demonstrated scenario requirement.
 - RW-D134: every implementation slice needs an explicit requirement-to-test proof matrix, exact-head verification, and disposable-PostgreSQL evidence where applicable.
 - RW-D135: documentation closeout and decision approval do not authorize implementation or scored execution.
-- RW-5 decay is an independently implementable slice: its design, implementation, and unit-level decay proofs do not wait for RW-4 triage or Experiment A. The integration boundary is narrower: the combined RW-4/RW-5 proof must exercise a deterministically matched Signal reactivating the selected dormant Thread and then verify decay behavior and retrieval against the resulting post-decay state. RW-4 must define and prove the reactivation transition and freeze its matching conditions before RW-4 coding; that freeze is not a prerequisite for independent RW-5 implementation. Experiment A informs RW4-4 representation only and does not block RW-5 planning or implementation.
+- RW-5 decay is an independently implementable slice: its design, implementation, and unit-level decay proofs do not wait for RW-4 triage or Experiment A. The integration boundary is narrower: the combined RW-4/RW-5 proof must exercise a deterministically matched Signal reactivating the selected dormant Thread and then verify decay behavior and retrieval against the resulting post-decay state. RW-4 must define and prove any separately authorized reactivation transition under D6 before reactivation coding; accepted D4.2 matching shape alone does not authorize reactivation. Experiment A informs RW4-4 representation only and does not block RW-5 planning or implementation.
 - The RW-3 update_thread Task creator remains the host-authorized Operator operation. Triage must not create or enqueue update_thread Tasks. Any future application-authored follow-up creator requires a separate actor, authorization, attribution, request-Event, idempotency, and replay design and explicit approval.
 - The existing TaskRuntime remains the sole Task lifecycle authority. The current TaskDispatcher remains limited to configured-source ingest_source work unless a separate dispatcher change is designed and authorized.
 
