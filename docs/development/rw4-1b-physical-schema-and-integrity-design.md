@@ -154,7 +154,7 @@ Recommendation:
 
 ## 6. D2 Task identity is a hard write-enable prerequisite
 
-The current Task schema lacks persisted signal_id and identity_version. The accepted D2 contract requires both, unique (team_id, signal_id, identity_version), and recomputation of the canonical UUIDv5 Task ID from persisted request data.
+The current Task schema lacks persisted signal_id and identity_version. The accepted [D2 identity contract](https://github.com/abtn/Watch-Architecture-Rev2/issues/186) requires both, unique (team_id, signal_id, identity_version), and recomputation of the canonical UUIDv5 Task ID from persisted request data.
 
 A composite FK to (tasks.id, tasks.team_id) proves same-Team Task ownership, not that this is the canonical Task for this Signal. There is no acceptable caller-supplied, request-Event-only, or unpersisted transitional substitute for the accepted D2 identity contract.
 
@@ -266,7 +266,7 @@ This proposal intentionally separates recommendations from accepted decisions. R
 1. Row shape: accept or amend the proposed one-row-per-(team_id, signal_id) shape and D5.2 reference matrix.
 2. Cross-record enforcement: accept Option A only if its lock/isolation proof is feasible; otherwise authorize a separate relational-witness scope. Do not accept application validation without a concrete race proof.
 3. Duplicate gate: accept that duplicate disposition writes remain disabled until D4.1a canonical arbitration is implemented and proven.
-4. Task identity and sequencing gate: accept D2 migration as a hard prerequisite for disposition writes/replay, and decide whether its implementation must precede RW4-1 or whether a separately reviewed equivalent persisted proof is possible without reordering the accepted serial plan.
+4. Task identity and sequencing gate: confirm the accepted D2 migration is a hard prerequisite before RW4-2 Stage B creates triage Tasks and before any disposition write/replay is enabled. Keep it separate from the RW4-1 migration; do not accept a transitional proof or caller/Event-only substitute.
 5. Immutability/timestamp: accept trigger-based UPDATE/DELETE rejection and database-assigned clock_timestamp(), subject to runtime-role and repository convention verification.
 6. TaskRuntime seam: accept a narrow explicit triage-specific in-session finalization/replay path, with no generic callback abstraction.
 7. Outcome rollout and proof matrix: decide whether RW4-1 may initially enable matched/deferred while duplicate remains disabled pending D4.1a, or whether all three disposition outcomes must become available together; accept the bounded disposable-PostgreSQL cases in §10, with any additions/removals stated explicitly.
