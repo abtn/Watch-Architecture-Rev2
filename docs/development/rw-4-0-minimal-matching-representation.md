@@ -201,7 +201,7 @@ Before the business commit, persist one immutable, versioned Task-attributed mat
 - the selected Thread or canonical duplicate Signal reference, if any;
 - a canonical assessment fingerprint over the request, pins, Team revision, candidate-profile/projection fingerprints, scores, and selected result.
 
-Persist scores as canonical decimal strings with a specified precision/rounding rule. Candidate bounds and payload size must be frozen before implementation.
+Persist scores as canonical decimal strings with a specified precision/rounding rule. Candidate bounds, payload size, and the finalizer's candidate-profile/projection revalidation query cost must be frozen before implementation.
 
 #### Assessment receipt identity and recovery contract
 
