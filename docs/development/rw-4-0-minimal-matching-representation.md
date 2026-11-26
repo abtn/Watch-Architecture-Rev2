@@ -98,7 +98,7 @@ This check is necessary because the EvidenceLink model permits both snapshot fie
 
 A Thread with no eligible Signal-backed EvidenceLink, no compatible chunk projection, or no common embedding space has no usable profile in this matcher. It is **unmatchable**, not evidence that a new Thread should be created.
 
-Resolved Threads are excluded. Active and dormant Threads are both candidates; the dormant transition is handled separately under D6/RW-5.
+Resolved Threads are excluded. Active and dormant Threads may be assessed as candidates, but a matched disposition requires the selected Thread to be `active` at the serialized decision-commit point. Under D6, a dormant candidate can qualify only when the same TaskRuntime-owned transaction reactivates it before inserting the matched disposition; until RW4-5 is separately authorized and proven, dormant would-be winners defer. After a matched disposition commits, later valid transitions to dormant or resolved do not invalidate or rewrite that historical decision or its replay.
 
 ## 4. Three separate decisions
 
@@ -160,7 +160,7 @@ Therefore:
 | Result | Required durable reference | Side effect |
 |---|---|---|
 | `duplicate` | canonical same-Team duplicate Signal | disposition only |
-| `matched` | one existing same-Team/domain active Thread; under accepted D6, a dormant Thread only when the same TaskRuntime transaction reactivates it and records `thread_reactivated` | disposition only for active Thread; atomic lifecycle transition/Event/TaskRuntime commit for dormant Thread. Until separately authorized and proven RW4-5, dormant would-be matches remain deferred |
+| `matched` | one existing same-Team/domain Thread that is active at the serialized decision commit point; under accepted D6, a dormant candidate only after same-transaction reactivation and `thread_reactivated` | disposition only for an already-active Thread; atomic reactivation/Event/disposition/TaskRuntime commit for a dormant candidate. Later status transitions do not invalidate the disposition. Until separately authorized and proven RW4-5, dormant would-be matches remain deferred |
 | `deferred` | explicit reason code | disposition only |
 
 The first slice does not automatically emit:
@@ -231,13 +231,13 @@ At commit, validate again:
 - for every selected evidence link, EvidenceLink snapshot pair exactly matches its canonical Signal Snapshot/hash; absent or mismatched provenance is not silently repaired;
 - Team active status and exact Domain equality;
 - disposition uniqueness for `(signal_id, team_id)`;
-- selected Thread belongs to the same Team and Domain and is not resolved;
+- selected Thread belongs to the same Team and Domain and is `active` at the matched-disposition commit point (a dormant candidate must first be reactivated in the same transaction under D6);
 - selected duplicate Signal is canonical and belongs to the same Team's intake history;
 - assessment Event belongs to the same Task and has not already been committed.
 
-A replay of an already committed assessment returns the original business result and emits no second disposition, transition, or Event.
+A replay of an already committed assessment returns the original business result and emits no second disposition, transition, or Event. It validates the immutable receipt, disposition, Task attribution, and terminal evidence; it does not require the referenced Thread to remain active after the original decision. No `thread_status_snapshot` or `thread_domain_snapshot` columns are added to SignalDisposition.
 
-**D6.1–D6.6 are accepted; RW4-5 implementation remains gated.** A dormant Thread may receive a `matched` disposition only when the same valid triage Task atomically reactivates it, records exactly one immutable Task-attributed `thread_reactivated` Event, preserves `Thread.last_updated_at`, increments Team `world_memory_revision`, and commits the disposition plus TaskRuntime terminal evidence in the same transaction. Use the accepted RW-5 canonical lock order; do not invent a second helper or lock path. Until separately authorized and proven RW4-5 implementation, a dormant would-be winner remains terminal deferred with `dormant_thread_requires_reactivation`. Do not mutate Hypothesis `last_touched_at`.
+**D6.1–D6.6 are accepted; RW4-5 implementation remains gated.** A dormant Thread may receive a `matched` disposition only when the same valid triage Task atomically reactivates it before disposition insertion, records exactly one immutable Task-attributed `thread_reactivated` Event, preserves `Thread.last_updated_at`, increments Team `world_memory_revision`, and commits the disposition plus TaskRuntime terminal evidence in the same transaction. The Thread is therefore active at the matched decision point. Later valid transitions to dormant/resolved do not invalidate or rewrite the historical disposition; replay does not recheck current status. `Thread.domain` must equal `Team.domain` at decision time and becomes immutable after a matched disposition references the Thread, enforced by a database guard. No status/domain snapshot columns are added to SignalDisposition. Use the accepted RW-5 canonical lock order; do not invent a second helper or lock path. Until separately authorized and proven RW4-5 implementation, a dormant would-be winner remains terminal deferred with `dormant_thread_requires_reactivation`. Do not mutate Hypothesis `last_touched_at`.
 
 ## 8. Required fixture evidence before D4 can close
 
@@ -270,6 +270,9 @@ At minimum include:
 23. The same relevant evidence distributed across differently sized profiles, to measure profile-size bias.
 24. EvidenceLinks whose snapshot pair is absent, disagrees with the canonical Signal Snapshot, or matches it exactly; only the exact-match case may contribute. Separately verify that the database rejects a partially populated snapshot pair.
 25. Supporting and challenging links attached to active, superseded, and rejected Hypotheses, with independent labels to determine whether historical lifecycle states improve or degrade Thread identity.
+26. A matched disposition followed by valid `active → dormant` and `active → resolved` transitions; exact Task replay after each transition must return the original result without requiring current Thread status to be active.
+27. Thread.domain change before the first matched reference (allowed only when it still equals Team.domain at commit), attempted change after a matched reference (rejected), and concurrent domain-update/matched-insert races in both PostgreSQL lock orders.
+28. Assert the SignalDisposition schema contains no Thread status/domain snapshot columns.
 
 The fixture must label the intended Thread or duplicate identity independently of the matcher. Report false-positive and false-negative cases, not just aggregate accuracy. Report the max-score outlier cases and stratify results by evidence-profile size and Hypothesis lifecycle state. Numeric threshold, margin, candidate/evidence bounds, score precision, and acceptable query cost remain open until this evidence is reviewed. D4's decision shape is accepted; if no defensible threshold or cost bound exists, the affected matching cases remain deferred and RW4-3 cannot enable them.
 
