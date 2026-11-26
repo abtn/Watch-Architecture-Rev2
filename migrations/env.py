@@ -1,7 +1,7 @@
 import os
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 config = context.config
 
@@ -12,6 +12,18 @@ database_url = os.environ.get(
 config.set_main_option("sqlalchemy.url", database_url)
 
 target_metadata = None
+
+
+def _assume_migration_owner(connection) -> None:
+    """Use the non-login owner role only for the dedicated migration login."""
+    session_user = connection.scalar(text("SELECT session_user"))
+    if session_user == "watch_migrator":
+        connection.execute(text("SET ROLE watch_owner"))
+        current_user = connection.scalar(text("SELECT current_user"))
+        if current_user != "watch_owner":
+            raise RuntimeError(
+                "watch_migrator did not successfully assume watch_owner"
+            )
 
 
 def run_migrations_offline() -> None:
@@ -27,6 +39,7 @@ def run_migrations_offline() -> None:
 
 
 def _run_migrations(connection, version_table_schema: str | None = None) -> None:
+    _assume_migration_owner(connection)
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
