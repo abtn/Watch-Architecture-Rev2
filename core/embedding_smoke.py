@@ -11,6 +11,7 @@ removes those rows in a finally block. Its temporary SnapshotStore is deleted to
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,7 +33,10 @@ def main() -> int:
     try:
         database_url = resolve_test_database_url(os.environ)
     except ValueError as error:
-        print(f"Embedding smoke database configuration error: {error}", file=sys.stderr)
+        print(
+            f"Embedding smoke database configuration error: {error}",
+            file=sys.stderr,
+        )
         return 2
 
     engine = create_engine(database_url)
