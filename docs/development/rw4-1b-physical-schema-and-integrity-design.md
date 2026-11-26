@@ -485,7 +485,7 @@ A separately controlled break-glass principal, if operationally required, is not
 | `signals` | Only the audited ingestion operations (currently SELECT/INSERT); no TRUNCATE. No broad UPDATE/DELETE unless a separately reviewed supported writer requires it. | Owner owns table and identity guards. |
 | `signal_dispositions` | SELECT only until D2 composite FK and every Decision 7 prerequisite are installed and verified; then SELECT/INSERT only. Never UPDATE/DELETE/TRUNCATE. | Owner owns table, constraints, and immutable-history guards. |
 | `tasks`, `teams` | Only source-audited DML, with protected identity columns excluded from runtime UPDATE. No TRUNCATE. | Owner owns tables and protected-field guards. |
-| `threads` | SELECT by default; no direct INSERT/DELETE, no UPDATE of `domain`, and no broad `status` UPDATE for the generic runtime role. A narrowly scoped lifecycle-write capability may be specified only after F2 inventory and lock/revision proof; do not grant generic runtime broad UPDATE. | Owner owns table and the Thread-domain guard. Thread creation/status writer ownership remains an explicit F2 gate. |
+| `threads` | Grant only the column-level DML required by inventoried Watch application operations; deny TRUNCATE and protect `domain` after a matched reference. A grant to `watch_runtime` does not distinguish Control Room code from other code using that same credential. | Owner owns table and the Thread-domain guard. Thread creation/status writer ownership remains an explicit F2 gate. |
 | Trigger functions | No direct EXECUTE grant to runtime unless a function is an intentional application entry point. | Functions are owned by `watch_owner`; migration role assumes owner for DDL. Revoke PUBLIC EXECUTE at function creation. |
 | Sequences | No blanket grant. Grant USAGE/SELECT only for catalog-confirmed sequences needed by runtime inserts. | Owner owns sequences; migrator changes them only under owner role. |
 | Schema/object DDL, grants, ownership, trigger control, replication-role setting | None | Migration uses explicit SET ROLE owner; runtime must have no direct or inherited path. |
@@ -542,7 +542,7 @@ A repository search cannot substitute for deployment-owner confirmation of out-o
 | `apply_decay` in RW-5 first release | Confidence-only writer | No Thread status/domain change and no dormancy creation. |
 | Host/Control Room | Authenticated caller/delegator | May request approved operations; must not independently write Thread rows. |
 | Seed/bootstrap/import/admin | Restricted initial provisioning or separately audited maintenance only | Separate credential and explicit procedure; not an ongoing alternative lifecycle writer. Ongoing lifecycle work delegates to Watch. |
-| Direct SQL or unregistered external writer | Unsupported | Deny through effective database privileges or retire before matched writes are enabled. |
+| Direct SQL or unregistered external writer | Unsupported | Operationally exclude it from the Watch runtime credential or retire it before matched writes are enabled. If it must be technically isolated despite sharing the runtime environment, design a distinct credential/process or database capability; ordinary grants cannot identify its call site. |
 
 **Canonical transaction and authorization contract**
 
