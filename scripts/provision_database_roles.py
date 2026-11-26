@@ -35,7 +35,10 @@ def main() -> int:
         print(f"Invalid DATABASE_ADMIN_URL: {exc}", file=sys.stderr)
         return 2
     if parsed.get_backend_name() != "postgresql" or not parsed.database:
-        print("DATABASE_ADMIN_URL must target a named PostgreSQL database", file=sys.stderr)
+        print(
+            "DATABASE_ADMIN_URL must target a named PostgreSQL database",
+            file=sys.stderr,
+        )
         return 2
     if parsed.database.casefold() == "watch":
         print(
@@ -52,7 +55,9 @@ def main() -> int:
         # in one transaction. Any failure rolls the entire bootstrap back.
         with psycopg.connect(psycopg_url) as connection:
             with connection.cursor() as cursor:
-                cursor.execute("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
+                cursor.execute(
+                    "SELECT rolsuper FROM pg_roles WHERE rolname = current_user"
+                )
                 row = cursor.fetchone()
                 if row is None or not row[0]:
                     raise RuntimeError("DATABASE_ADMIN_URL must connect as a superuser")
@@ -99,7 +104,9 @@ def main() -> int:
                             JOIN pg_namespace AS namespace
                               ON namespace.oid = relation.relnamespace
                             WHERE namespace.nspname = 'public'
-                              AND relation.relkind IN ('r', 'p', 'v', 'm', 'S', 'f', 'c')
+                              AND relation.relkind IN (
+                                  'r', 'p', 'v', 'm', 'S', 'f', 'c'
+                              )
                         )
                         OR EXISTS (
                             SELECT 1
@@ -119,7 +126,8 @@ def main() -> int:
                 )
                 if cursor.fetchone()[0]:
                     raise RuntimeError(
-                        "Refusing a database that already contains public-schema objects; "
+                        "Refusing a database that already contains public-schema "
+                        "objects; "
                         "this bootstrap is for a fresh database only"
                     )
 
@@ -154,9 +162,13 @@ def main() -> int:
                     )
                 )
                 cursor.execute("REVOKE ALL ON SCHEMA public FROM PUBLIC")
-                cursor.execute("GRANT USAGE ON SCHEMA public TO watch_migrator, watch_runtime")
                 cursor.execute(
-                    sql.SQL("GRANT CONNECT ON DATABASE {} TO watch_migrator, watch_runtime").format(
+                    "GRANT USAGE ON SCHEMA public TO watch_migrator, watch_runtime"
+                )
+                cursor.execute(
+                    sql.SQL(
+                        "GRANT CONNECT ON DATABASE {} TO watch_migrator, watch_runtime"
+                    ).format(
                         sql.Identifier(parsed.database)
                     )
                 )
