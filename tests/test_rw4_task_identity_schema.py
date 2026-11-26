@@ -343,7 +343,7 @@ def test_triage_before_insert_trigger_locks_team_even_for_on_conflict(
             blocker.execute(
                 text(
                     "SELECT id FROM teams WHERE id = :team_id "
-                    "FOR NO KEY UPDATE"
+                    "FOR UPDATE"
                 ),
                 {"team_id": triage_schema_context.team_id},
             )
@@ -358,7 +358,8 @@ def test_triage_before_insert_trigger_locks_team_even_for_on_conflict(
                         with database_engine.connect() as observer:
                             wait_event = observer.execute(
                                 text(
-                                    "SELECT wait_event_type, pg_blocking_pids(pid) "
+                                    "SELECT state, wait_event_type, query, "
+                                    "pg_blocking_pids(pid) "
                                     "FROM pg_stat_activity "
                                     "WHERE application_name = :application_name"
                                 ),
@@ -366,8 +367,10 @@ def test_triage_before_insert_trigger_locks_team_even_for_on_conflict(
                             ).one_or_none()
                         if (
                             wait_event is not None
-                            and wait_event[0] == "Lock"
-                            and blocker_pid in wait_event[1]
+                            and wait_event[0] == "active"
+                            and wait_event[1] == "Lock"
+                            and wait_event[2].lstrip().startswith("INSERT INTO tasks")
+                            and blocker_pid in wait_event[3]
                         ):
                             waiting_for_lock = True
                             break
