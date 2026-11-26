@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
+import json
+
 import pytest
 from sqlalchemy import create_engine, delete, select, text
 from sqlalchemy.exc import DBAPIError
@@ -318,7 +320,7 @@ def test_triage_before_insert_trigger_locks_team_even_for_on_conflict(
         VALUES (
             :id, :team_id, 'triage_signal', 'pending', 1,
             :signal_id, :identity_version, '[]'::jsonb,
-            '{"max_tool_calls":0,"max_cost_usd":0,"deadline_seconds":30}'::jsonb
+            CAST(:budget AS jsonb)
         )
         ON CONFLICT (id) DO NOTHING
         """
@@ -328,14 +330,17 @@ def test_triage_before_insert_trigger_locks_team_even_for_on_conflict(
         "team_id": triage_schema_context.team_id,
         "signal_id": other_signal_id,
         "identity_version": TRIAGE_IDENTITY_VERSION,
+        "budget": json.dumps(
+            {
+                "max_tool_calls": 0,
+                "max_cost_usd": 0,
+                "deadline_seconds": 30,
+            }
+        ),
     }
 
     def attempt_conflicting_insert() -> int:
         with worker_engine.begin() as connection:
-            connection.execute(
-                text("SELECT set_config('application_name', :name, false)"),
-                {"name": application_name},
-            )
             started.set()
             result = connection.execute(statement, params)
             return result.rowcount
