@@ -64,6 +64,23 @@ def test_database_roles_have_separated_effective_privileges() -> None:
             assert connection.scalar(
                 text("SELECT pg_has_role('watch_runtime', 'watch_migrator', 'MEMBER')")
             ) is False
+            memberships = connection.execute(
+                text(
+                    """
+                    SELECT granted.rolname, member.rolname
+                    FROM pg_auth_members AS membership
+                    JOIN pg_roles AS granted ON granted.oid = membership.roleid
+                    JOIN pg_roles AS member ON member.oid = membership.member
+                    WHERE granted.rolname IN (
+                        'watch_owner', 'watch_migrator', 'watch_runtime'
+                    )
+                       OR member.rolname IN (
+                        'watch_owner', 'watch_migrator', 'watch_runtime'
+                    )
+                    """
+                )
+            ).all()
+            assert memberships == [("watch_owner", "watch_migrator")]
 
             assert connection.scalar(
                 text("SELECT pg_get_userbyid(datdba) = 'watch_owner' "
