@@ -485,7 +485,7 @@ A separately controlled break-glass principal, if operationally required, is not
 | `signals` | Only the audited ingestion operations (currently SELECT/INSERT); no TRUNCATE. No broad UPDATE/DELETE unless a separately reviewed supported writer requires it. | Owner owns table and identity guards. |
 | `signal_dispositions` | SELECT only until D2 composite FK and every Decision 7 prerequisite are installed and verified; then SELECT/INSERT only. Never UPDATE/DELETE/TRUNCATE. | Owner owns table, constraints, and immutable-history guards. |
 | `tasks`, `teams` | Only source-audited DML, with protected identity columns excluded from runtime UPDATE. No TRUNCATE. | Owner owns tables and protected-field guards. |
-| `threads` | SELECT; no direct INSERT/DELETE or UPDATE of `domain`. No direct `status` UPDATE unless the complete writer inventory proves every caller uses the accepted canonical lock protocol and the grant is narrowed to that supported path. | Owner owns table and the Thread-domain guard. Thread creation/status writer ownership remains an explicit F2 gate. |
+| `threads` | SELECT by default; no direct INSERT/DELETE, no UPDATE of `domain`, and no broad `status` UPDATE for the generic runtime role. A narrowly scoped lifecycle-write capability may be specified only after F2 inventory and lock/revision proof; do not grant generic runtime broad UPDATE. | Owner owns table and the Thread-domain guard. Thread creation/status writer ownership remains an explicit F2 gate. |
 | Trigger functions | No direct EXECUTE grant to runtime unless a function is an intentional application entry point. | Functions are owned by `watch_owner`; migration role assumes owner for DDL. Revoke PUBLIC EXECUTE at function creation. |
 | Sequences | No blanket grant. Grant USAGE/SELECT only for catalog-confirmed sequences needed by runtime inserts. | Owner owns sequences; migrator changes them only under owner role. |
 | Schema/object DDL, grants, ownership, trigger control, replication-role setting | None | Migration uses explicit SET ROLE owner; runtime must have no direct or inherited path. |
@@ -556,7 +556,7 @@ A repository search cannot substitute for deployment-owner confirmation of out-o
 
 **Database privilege and compatibility requirements**
 
-- Runtime must not have unrestricted Thread INSERT/DELETE or broad status/domain UPDATE privileges that allow bypassing the canonical application boundary.
+- The generic runtime role must not have unrestricted Thread INSERT/DELETE or broad status/domain UPDATE privileges. The resolution operation's eventual database write capability is deliberately unresolved until the deployment inventory is complete; it must be a narrowly scoped capability/entry point that preserves Operator authorization, Task attribution, canonical locks, Team revision, and the atomic Event, not a broad generic-runtime UPDATE grant.
 - Derive least privilege from the complete deployment writer inventory. Where PostgreSQL cannot distinguish an approved caller from arbitrary SQL using the same broad role, use a narrower database capability/credential boundary or ensure DML is available only through a controlled entry point; do not claim application convention alone is enforcement.
 - The owner-controlled F3 trigger rejects matched-referenced Thread domain changes regardless of caller.
 - Bootstrap/migration access remains distinct from runtime access. No application process may use the owner or migration credential.
