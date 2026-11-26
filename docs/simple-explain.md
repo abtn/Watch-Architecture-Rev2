@@ -63,6 +63,8 @@ Skills and beliefs need opposite time policies. A belief such as "leverage is bu
 
 The Belief layer is partially implemented: Thread/Hypothesis/ConfidenceChange persistence and a deterministic Operator commit path exist. RW-3 implementation is merged, but formal RW3.4 acceptance remains deferred with seven PARTIAL qualifications; live provider calls remain unauthorized. Signal triage, decay, and retrieval projections remain unimplemented or deferred.
 
+**Who may create or resolve a Thread?** The intended rule is that Watch's trusted application/Kernel boundary owns Thread creation and lifecycle changes. Operator-approved starter Threads are created during `activate_team`; resolving an existing Thread requires an explicit Operator-authorized Task/application operation, a reason, and an immutable Event recorded in the same transaction. A host may authenticate and request these operations, but it must not write Thread rows directly. This is the accepted target design, not a claim that the paths are already implemented: `activate_team` is still marked not implemented, and the actual deployment's host, seed, admin, and direct-database writers have not yet been inventoried. Model workers can propose knowledge updates for existing Threads; they do not own Thread creation or lifecycle.
+
 ## 3. The research-desk metaphor
 
 Think of a research desk at a newsroom:
