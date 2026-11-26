@@ -1,9 +1,8 @@
 """Provision least-privilege PostgreSQL roles for a fresh Watch database.
 
-Run only against a fresh, disposable database before applying Alembic migrations.
-The bootstrap connection must be a PostgreSQL superuser. This script deliberately
-refuses the persistent database named watch and refuses databases that already
-contain application tables; it is not an ownership-transfer tool.
+Run once per PostgreSQL cluster against a fresh, disposable database before
+applying Alembic migrations. Role names are cluster-global, so this bootstrap
+refuses to reuse or modify any pre-existing Watch role.
 """
 
 from __future__ import annotations
@@ -49,7 +48,9 @@ def main() -> int:
         psycopg_url = parsed.set(drivername="postgresql").render_as_string(
             hide_password=False
         )
-        with psycopg.connect(psycopg_url, autocommit=True) as connection:
+        # Keep cluster-global role changes and database-local grants/ownership
+        # in one transaction. Any failure rolls the entire bootstrap back.
+        with psycopg.connect(psycopg_url) as connection:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
                 row = cursor.fetchone()
@@ -58,55 +59,83 @@ def main() -> int:
 
                 cursor.execute(
                     """
-                    SELECT EXISTS (
-                        SELECT 1
-                        FROM pg_class AS relation
-                        JOIN pg_namespace AS namespace
-                          ON namespace.oid = relation.relnamespace
-                        WHERE namespace.nspname = 'public'
-                          AND relation.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')
-                    )
+                    SELECT rolname
+                    FROM pg_roles
+                    WHERE rolname IN ('watch_owner', 'watch_migrator', 'watch_runtime')
+                    ORDER BY rolname
                     """
                 )
-                if cursor.fetchone()[0]:
+                existing_roles = [row[0] for row in cursor.fetchall()]
+                if existing_roles:
                     raise RuntimeError(
-                        "Refusing a database that already contains public-schema "
-                        "objects; this bootstrap is for a fresh database only"
+                        "Refusing to modify pre-existing cluster-global Watch roles: "
+                        + ", ".join(existing_roles)
+                        + ". Use a fresh PostgreSQL cluster or a separately reviewed "
+                        "role/database provisioning plan."
                     )
 
                 cursor.execute(
                     """
-                    DO $$
-                    BEGIN
-                        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'watch_owner') THEN
-                            CREATE ROLE watch_owner NOLOGIN NOSUPERUSER NOCREATEDB
-                                NOCREATEROLE NOREPLICATION NOBYPASSRLS;
-                        END IF;
-                        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'watch_migrator') THEN
-                            CREATE ROLE watch_migrator NOLOGIN NOSUPERUSER NOCREATEDB
-                                NOCREATEROLE NOREPLICATION NOBYPASSRLS;
-                        END IF;
-                        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'watch_runtime') THEN
-                            CREATE ROLE watch_runtime NOLOGIN NOSUPERUSER NOCREATEDB
-                                NOCREATEROLE NOREPLICATION NOBYPASSRLS;
-                        END IF;
-                    END
-                    $$
+                    SELECT nspname
+                    FROM pg_namespace
+                    WHERE nspname NOT IN ('pg_catalog', 'information_schema', 'public')
+                      AND nspname NOT LIKE 'pg_%'
+                    ORDER BY nspname
                     """
                 )
+                extra_schemas = [row[0] for row in cursor.fetchall()]
+                if extra_schemas:
+                    raise RuntimeError(
+                        "Refusing a database with non-system schemas: "
+                        + ", ".join(extra_schemas)
+                    )
+
                 cursor.execute(
-                    "ALTER ROLE watch_owner WITH NOLOGIN NOSUPERUSER NOCREATEDB "
+                    """
+                    SELECT
+                        EXISTS (
+                            SELECT 1
+                            FROM pg_class AS relation
+                            JOIN pg_namespace AS namespace
+                              ON namespace.oid = relation.relnamespace
+                            WHERE namespace.nspname = 'public'
+                              AND relation.relkind IN ('r', 'p', 'v', 'm', 'S', 'f', 'c')
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM pg_proc AS procedure
+                            JOIN pg_namespace AS namespace
+                              ON namespace.oid = procedure.pronamespace
+                            WHERE namespace.nspname = 'public'
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM pg_type AS type
+                            JOIN pg_namespace AS namespace
+                              ON namespace.oid = type.typnamespace
+                            WHERE namespace.nspname = 'public'
+                        )
+                    """
+                )
+                if cursor.fetchone()[0]:
+                    raise RuntimeError(
+                        "Refusing a database that already contains public-schema objects; "
+                        "this bootstrap is for a fresh database only"
+                    )
+
+                cursor.execute(
+                    "CREATE ROLE watch_owner NOLOGIN NOSUPERUSER NOCREATEDB "
                     "NOCREATEROLE NOREPLICATION NOBYPASSRLS"
                 )
                 cursor.execute(
                     sql.SQL(
-                        "ALTER ROLE watch_migrator WITH LOGIN NOINHERIT NOSUPERUSER "
+                        "CREATE ROLE watch_migrator WITH LOGIN NOINHERIT NOSUPERUSER "
                         "NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD {}"
                     ).format(sql.Literal(migrator_password))
                 )
                 cursor.execute(
                     sql.SQL(
-                        "ALTER ROLE watch_runtime WITH LOGIN NOINHERIT NOSUPERUSER "
+                        "CREATE ROLE watch_runtime WITH LOGIN NOINHERIT NOSUPERUSER "
                         "NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD {}"
                     ).format(sql.Literal(runtime_password))
                 )
@@ -131,7 +160,6 @@ def main() -> int:
                         sql.Identifier(parsed.database)
                     )
                 )
-                cursor.execute("REVOKE watch_owner FROM watch_migrator")
                 cursor.execute(
                     "GRANT watch_owner TO watch_migrator WITH INHERIT FALSE, SET TRUE"
                 )
