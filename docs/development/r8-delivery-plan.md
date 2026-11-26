@@ -1,15 +1,16 @@
 # Watch — R8 Delivery Plan
 
-**Planned start:** **TBD — the November 23, 2026 target was withdrawn on 2026-11-23.**
+**R8-ready internal test start:** TBD; no start is authorized by this plan alone.
+**Formal/scored R8 start:** TBD — the November 23, 2026 target was withdrawn on 2026-11-23.
 **Completion date:** not set.
 
-> **Schedule re-baseline (2026-11-23):** The former November 23 start target is withdrawn because RW-4, RW-5, and the formal foundation exit gate are not complete and accepted. No replacement date is assigned without evidence-based estimates and explicit dependency mapping. The R8 entry gate is unchanged; this is a schedule correction, not a scope reduction. `PLAN.md` remains the sole authority for milestone status and authorization.
+> **State and schedule clarification:** The former November 23 formal R8 start target is withdrawn. The project now distinguishes R8-ready internal testing from Full Design and formal/scored R8. A bounded R8-ready test may begin only after its own scope, prerequisites, and authorization are recorded in `PLAN.md`; it does not waive or close the full RW foundation gate. Formal/scored R8 remains gated on Full Design and the complete acceptance criteria below. No date grants permission to start.
 
 ## 1. Objective
 
-R8 is the three-domain pressure test of the completed foundational Watch architecture. It begins only after the required layers—including the world-memory reasoning loop—are implemented, integrated, documented, and verified.
+Formal/scored R8 is the three-domain pressure test of the completed foundational Watch architecture. It begins only after the required layers—including the world-memory reasoning loop—are implemented, integrated, documented, and verified. The earlier R8-ready state is a separate, bounded internal-testing gate intended to expose problems before Full Design is complete.
 
-R8 tests the architecture that exists at its entry baseline. It must not be used to add a missing fundamental layer. Since the former target date has been withdrawn, R8 remains unscheduled until all entry prerequisites can be forecast and accepted. Do not weaken the entry gate, compress RW-4/RW-5, or move unfinished foundational work into the test phase to meet a calendar target.
+R8-ready tests may reveal a missing foundational capability or a flawed design assumption. Pause the affected scenario, record the evidence, and return to design/implementation through a reviewed change; do not conceal the gap or continue scoring against an invalid baseline. Do not weaken formal R8 acceptance or treat exploratory results as scored results. See [R8 development states](r8-development-states.md).
 
 The RW value harness uses **newsroom as its first real-world domain** (Operator-confirmed 2026-11-15). RW-0 decision groups 1–8 were approved on 2026-11-16, freezing the measurement methodology, rubric, thresholds, run design, and execution/reporting rules. The Operator selected **RWN-01**, the LEAP perovskite-additive study, as the newsroom story identity on 2026-11-16. Its source/experiment package remains a draft: the publisher PDF binary and Supplementary Material still require capture/review, and the corpus manifest, task brief, answer key, independent outcome set, story-specific scoring examples, reviewer calibration, and execution configuration must be frozen before scored runs. Any deferred pre-execution item must have a named owner and explicit acceptance gate. Story selection does not authorize scored runs or implementation.
 
@@ -27,7 +28,7 @@ R8 must demonstrate:
 - Poor, conflicting, irrelevant, or insufficient evidence produces safe abstention or rejection rather than unsupported decisions or writes.
 - A later run can demonstrate measurable benefit from retained experience under a predefined value harness.
 
-## 2. Required path before R8
+## 2. Full Design path before formal/scored R8 acceptance
 
 The active path is:
 
@@ -46,7 +47,7 @@ RW-D99 freezes only the minimum R7-C capabilities required for auditable claim-l
 
 The F8 legacy-snapshot retirement question was resolved during the completed B6 audit and closeout; it is not an outstanding R8 entry task. The B6 closeout record documents the test-only proof and confirms that no production, schema, or migration change was required. Do not reopen B6 or introduce speculative schema/lifecycle refactoring without a demonstrated defect and separate authorization.
 
-## 3. R8 entry gate — schedule-independent acceptance
+## 3. Formal/scored R8 entry gate — schedule-independent acceptance
 
 Freeze and record:
 
@@ -61,7 +62,7 @@ Freeze and record:
 - Cross-domain transfer restrictions.
 - Explicit exclusions and unresolved non-critical risks.
 
-**Entry rule:** all foundational exit criteria must pass before the first R8 scenario is run. The start date remains TBD until RW-4/RW-5 estimates, the accepted Experiment A result/residual-risk disposition, newsroom package readiness, and the foundation exit forecast are evidence-based. No date grants permission to start with incomplete foundations.
+**Entry rule:** all foundational exit criteria must pass before the first formal/scored R8 scenario is run. R8-ready exploratory testing uses the separate entry criteria in [R8 development states](r8-development-states.md) and must be explicitly authorized in `PLAN.md`. The formal start date remains TBD until RW-4/RW-5 estimates, the accepted Experiment A result/residual-risk disposition, newsroom package readiness, and the foundation exit forecast are evidence-based. No date grants permission for formal R8 with incomplete foundations.
 
 ## 4. R8 pressure-test domains
 
@@ -140,6 +141,6 @@ If any criterion fails, R8 remains open with the failed criterion, evidence, sev
 3. Domain-specific policy remains outside the shared Kernel.
 4. Evidence, confidence, and lifecycle changes have immutable provenance and valid causes.
 5. Team and domain boundaries are enforced at every read and write.
-6. No foundational architecture is added after R8 starts. A newly discovered fundamental gap stops the pressure test and requires a separately authorized re-plan.
+6. Do not make unreviewed architectural changes during a test run. A newly discovered fundamental gap pauses the affected scenario; record the evidence, reassess the design, obtain the required decision/authorization, implement the smallest correction, and rerun affected proofs before resuming. Preserve the original baseline and distinguish exploratory from scored results.
 7. Use exact SHAs for local and hosted verification; distinguish code/test SHA from documentation-inclusive PR head.
 8. Use disposable PostgreSQL only, dynamic ports, and verified cleanup/environment restoration.
