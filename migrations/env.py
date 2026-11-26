@@ -5,10 +5,9 @@ from sqlalchemy import engine_from_config, pool, text
 
 config = context.config
 
-database_url = os.environ.get(
-    "DATABASE_URL",
-    "postgresql+psycopg://watch:watch@localhost:5432/watch",
-)
+database_url = os.environ.get("DATABASE_URL", "").strip()
+if not database_url:
+    raise RuntimeError("DATABASE_URL must explicitly identify the migration database")
 config.set_main_option("sqlalchemy.url", database_url)
 
 target_metadata = None
