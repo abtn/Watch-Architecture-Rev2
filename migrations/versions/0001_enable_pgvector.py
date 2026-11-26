@@ -20,7 +20,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # pgvector is a server-level prerequisite installed by the bootstrap
+    # pgvector is a database infrastructure prerequisite installed by the bootstrap
     # administrator. The application migration owner does not own the extension
     # and must not attempt to remove shared infrastructure during a downgrade.
     pass
