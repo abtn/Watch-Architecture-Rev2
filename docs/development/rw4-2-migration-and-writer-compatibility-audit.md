@@ -235,3 +235,16 @@ The docs-only CI run for PR #187 cannot satisfy any PostgreSQL migration, index,
 - **Stage B authorization:** remains closed. This audit does not authorize ORM/schema changes, Alembic migration, Task creator, dispatcher changes, or production behavior.
 
 The next Stage A review should independently challenge the migration preflight/backfill failure policy, the Task/Event constraint semantics, and the complete writer inventory before D4b values are selected and the creator contract is frozen.
+
+
+## F2 alignment with the accepted D1 trust boundary (2026-11-26)
+
+The Control Room is a trusted application-code authority, not a PostgreSQL identity that grants can identify. The same database principal used by Control Room code can also issue arbitrary SQL; PostgreSQL table grants and triggers cannot distinguish those call sites. Accordingly, the accepted F2 target is:
+
+- Use a non-owner, non-superuser watch_runtime credential for Watch application processes only; keep owner/migrator credentials separate and unavailable to application runtime.
+- Operationally exclude ad-hoc SQL clients, scripts, host services, and other unsupported processes from receiving or using the runtime credential. Host adapters authenticate and delegate to Watch; they do not write Thread rows.
+- PostgreSQL enforces physical facts (domain guard, immutable history, constraints, protected-field guards, and TRUNCATE/bypass restrictions). Control Room enforces caller authorization, Task attribution, operation mode, and canonical application transaction use.
+- If the threat model requires rejecting arbitrary SQL from a process that already holds watch_runtime, a separate credential/process or narrowly scoped database capability must be designed and reviewed. Do not claim ordinary grants solve this.
+- F2 remains open until deployment-owner attestation and complete writer/credential inventory establish which processes actually exist and which credentials they use.
+
+The accepted resolution design is an exclusive resolve_thread operation mode within the existing operator_update Task, reusing its business-commit marker/recovery path. It does not add a Task type or runtime. The exact transition, Event, idempotency, Team-revision, and split business-commit/TaskRuntime-terminalization contract is specified in the RW4-1B design proposal §10.2.
