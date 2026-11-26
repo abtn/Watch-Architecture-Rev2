@@ -17,7 +17,7 @@ from collections import defaultdict
 from typing import Any, Iterable, Mapping
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from core.models import Event, KnowledgeItem, LearningChange, Outcome, Task, TeamPolicy
 from core.policy import InvalidPolicyError, knowledge_item_review_interval_days
@@ -680,7 +680,30 @@ def _validate_learning_change_approval(
         or change.committed_at is None
     ):
         raise KnowledgeHistoryError("accepted_change_decision_metadata_invalid")
-    task = session.get(Task, change.committed_by_task_id)
+    # This history validator is also exercised against pre-D2 migration
+    # schemas. Load only columns that existed before tasks.signal_id and
+    # tasks.identity_version were introduced; a full ORM entity load would
+    # select those absent columns on a historical schema.
+    task = session.scalar(
+        select(Task)
+        .options(
+            load_only(
+                Task.id,
+                Task.team_id,
+                Task.task_type,
+                Task.status,
+                Task.attempt_count,
+                Task.allowed_writes,
+                Task.objective_id,
+                Task.plan_id,
+                Task.plan_action_id,
+                Task.budget,
+                Task.policy_version,
+                Task.completed_at,
+            )
+        )
+        .where(Task.id == change.committed_by_task_id)
+    )
     if (
         task is None
         or task.team_id != change.team_id
