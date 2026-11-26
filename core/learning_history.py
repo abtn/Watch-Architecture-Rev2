@@ -596,6 +596,21 @@ def reconstruct_knowledge_item_history(
     rows = session.execute(
         select(Event, Task)
         .join(Task, Task.id == Event.task_id)
+        .options(
+            load_only(
+                Task.id,
+                Task.team_id,
+                Task.task_type,
+                Task.status,
+                Task.attempt_count,
+                Task.allowed_writes,
+                Task.objective_id,
+                Task.plan_id,
+                Task.plan_action_id,
+                Task.budget,
+                Task.completed_at,
+            )
+        )
         .where(
             Event.type == "knowledge_items_reviewed",
             Task.team_id == item.team_id,
