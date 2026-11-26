@@ -61,8 +61,8 @@ Only `apply_decay` Tasks lower confidence for staleness, on the Domain's decay w
 ### INV-09 — Triage is recorded
 Every eligible Signal/Team pair receives at most one immutable v1 disposition: `matched`, `duplicate`, or `deferred`. A pair that cannot be decided safely is recorded as deferred with an accepted reason; ineligible pairs are not forced into a disposition. V1 does not create Threads or classify noise.
 **Why:** eligible intake decisions must be explicit and replayable without inventing a stronger result when evidence is insufficient.
-**Enforcement:** one SignalDisposition per (Signal, Team), attributed to the canonical triage Task; reference combinations and terminal evidence follow the accepted D5 contract. See PLAN.md for implementation status.
-**Violation:** a second disposition overwrites the first, a deferred result is refined by another Task, or an unsupported Signal is assigned an invented match.
+**Enforcement:** one SignalDisposition per (Signal, Team), attributed to the canonical triage Task; reference combinations and terminal evidence follow the accepted D5 contract. A matched Thread must be active and same-Team/same-Domain at the serialized decision commit point. Later legal Thread status transitions do not invalidate that historical decision; the Thread domain is immutable after a matched disposition references it and is protected by a database guard. Replay validates immutable decision evidence, not the Thread's current status. See PLAN.md for implementation status.
+**Violation:** a second disposition overwrites the first, a deferred result is refined by another Task, an unsupported Signal is assigned an invented match, replay is rejected solely because the Thread later became dormant/resolved, or a referenced Thread's domain is changed.
 
 ### INV-10 — Artifacts cite what they used, and code writes the citations
 The citation apparatus of an Artifact (sources, quotes, links) is assembled deterministically by code from the EvidenceLinks the render Task actually consumed. The model never authors citation metadata, and rendered bodies contain no bare URLs.
