@@ -90,7 +90,8 @@ def test_database_roles_have_separated_effective_privileges() -> None:
             )
             assert connection.scalar(
                 text(
-                    "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')"
+                    "SELECT EXISTS (SELECT 1 FROM pg_extension "
+                    "WHERE extname = 'vector')"
                 )
             )
             assert connection.scalar(
@@ -124,13 +125,17 @@ def test_database_roles_have_separated_effective_privileges() -> None:
             for table in tables:
                 qualified = f"public.{table}"
                 assert connection.scalar(
-                    text("SELECT has_table_privilege('watch_runtime', :table, 'SELECT')"),
+                    text(
+                        "SELECT has_table_privilege("
+                        "'watch_runtime', :table, 'SELECT')"
+                    ),
                     {"table": qualified},
                 ), f"runtime role cannot read {qualified}"
                 for privilege in ("INSERT", "UPDATE", "DELETE", "TRUNCATE", "TRIGGER"):
                     assert connection.scalar(
                         text(
-                            "SELECT has_table_privilege('watch_runtime', :table, :privilege)"
+                            "SELECT has_table_privilege("
+                            "'watch_runtime', :table, :privilege)"
                         ),
                         {"table": qualified, "privilege": privilege},
                     ) is False, f"runtime unexpectedly has {privilege} on {qualified}"
@@ -145,7 +150,8 @@ def test_database_roles_have_separated_effective_privileges() -> None:
                 qualified = f"public.{sequence}"
                 assert connection.scalar(
                     text(
-                        "SELECT has_sequence_privilege('watch_runtime', :sequence, 'SELECT')"
+                        "SELECT has_sequence_privilege("
+                        "'watch_runtime', :sequence, 'SELECT')"
                     ),
                     {"sequence": qualified},
                 )
