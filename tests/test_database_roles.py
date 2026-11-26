@@ -175,6 +175,9 @@ def test_database_roles_have_separated_effective_privileges() -> None:
             "DELETE FROM teams WHERE false",
             "TRUNCATE TABLE teams",
             "CREATE TABLE public.watch_runtime_forbidden (id integer)",
+            "ALTER TABLE teams DISABLE TRIGGER ALL",
+            "SET ROLE watch_owner",
+            "SET session_replication_role = replica",
         ):
             with runtime_engine.connect() as connection:
                 with pytest.raises(DBAPIError):
