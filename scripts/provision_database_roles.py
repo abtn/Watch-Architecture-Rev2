@@ -116,6 +116,11 @@ def main() -> int:
                     )
                 )
                 cursor.execute("ALTER SCHEMA public OWNER TO watch_owner")
+                cursor.execute(
+                    sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(
+                        sql.Identifier(parsed.database)
+                    )
+                )
                 cursor.execute("REVOKE ALL ON SCHEMA public FROM PUBLIC")
                 cursor.execute("GRANT USAGE ON SCHEMA public TO watch_migrator, watch_runtime")
                 cursor.execute(
