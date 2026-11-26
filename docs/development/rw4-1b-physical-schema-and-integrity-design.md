@@ -786,6 +786,20 @@ Control Room is the single logical application authority for supported Task crea
 
 
 
+### 10.3 Team revision for Thread lifecycle/profile changes
+
+The canonical RW-5 world-memory lock helper remains the only Team-revision allocator. Extend its defined change set to include matcher-relevant Thread lifecycle/profile changes:
+
+| Accepted transaction | Team revision behavior |
+|---|---|
+| activate_team commits approved starter Thread creation | Increment once for the activation transaction, regardless of the number of starter Threads created. |
+| Operator resolve_thread mode commits an actual active/dormant → resolved transition | Increment once in the same business transaction as the status change and thread_resolved Event. |
+| A separately supported pre-match Thread.domain change commits | Increment once in the same transaction; the resulting domain must still satisfy the Team/domain invariant for any later match. |
+| Exact replay, rejected request, no-op assignment/transition, or rollback | No increment. |
+
+The canonical revision protocol applies to any future supported Thread creation, status, or matcher-relevant profile writer. It does not authorize a dormancy writer in RW-5 first release, does not change the accepted D6 reactivation gate, and does not make Thread.last_updated_at a matcher input or revision substitute. A matched disposition does not freeze status; later supported lifecycle transitions remain valid historical changes. A matched disposition does freeze the referenced Thread's domain under the F3 database guard.
+
+**Required proof addition:** test activation creating multiple starter Threads with one revision increment; resolution with one increment and one Event; exact replay with no second increment/Event; rejected/no-op/rollback with no increment; and a pre-match domain update serialized against receipt/finalization. These tests belong to the separately authorized RW-5 compatibility/Team-revision proof, not to RW4-1B physical-schema implementation.
 ### 10.4 Development-only database credential, process, and Thread-writer inventory (2026-11-26)
 
 **Deployment status:** The Operator explicitly confirmed that Watch remains in development and has no production deployment. There is therefore no production host, production service credential, or production external-writer inventory to enumerate at this stage. This is an Operator-provided project fact, not an inference from the repository.
@@ -854,17 +868,3 @@ It does **not** currently provide the physical protections required by RW4-1B:
 
 **Scope:** this inventory is a source/configuration audit. It does not provision roles, modify migrations, change ORM/application/test code, inspect a live local database, or authorize matched/duplicate/deferred writes.
 
-### 10.3 Team revision for Thread lifecycle/profile changes
-
-The canonical RW-5 world-memory lock helper remains the only Team-revision allocator. Extend its defined change set to include matcher-relevant Thread lifecycle/profile changes:
-
-| Accepted transaction | Team revision behavior |
-|---|---|
-| activate_team commits approved starter Thread creation | Increment once for the activation transaction, regardless of the number of starter Threads created. |
-| Operator resolve_thread mode commits an actual active/dormant → resolved transition | Increment once in the same business transaction as the status change and thread_resolved Event. |
-| A separately supported pre-match Thread.domain change commits | Increment once in the same transaction; the resulting domain must still satisfy the Team/domain invariant for any later match. |
-| Exact replay, rejected request, no-op assignment/transition, or rollback | No increment. |
-
-The canonical revision protocol applies to any future supported Thread creation, status, or matcher-relevant profile writer. It does not authorize a dormancy writer in RW-5 first release, does not change the accepted D6 reactivation gate, and does not make Thread.last_updated_at a matcher input or revision substitute. A matched disposition does not freeze status; later supported lifecycle transitions remain valid historical changes. A matched disposition does freeze the referenced Thread's domain under the F3 database guard.
-
-**Required proof addition:** test activation creating multiple starter Threads with one revision increment; resolution with one increment and one Event; exact replay with no second increment/Event; rejected/no-op/rollback with no increment; and a pre-match domain update serialized against receipt/finalization. These tests belong to the separately authorized RW-5 compatibility/Team-revision proof, not to RW4-1B physical-schema implementation.
