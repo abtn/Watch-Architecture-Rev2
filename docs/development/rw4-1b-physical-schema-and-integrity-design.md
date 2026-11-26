@@ -457,6 +457,152 @@ The immutable observation Snapshot is stored outside PostgreSQL. A failed DB tra
 
 All constraint, concurrency, lock, trigger, and transaction claims require disposable PostgreSQL. SQLite/in-memory substitutes are not accepted for those proofs. Record PostgreSQL version, Alembic head, exact tested SHA, isolation level, session count, and observed blocking/commit outcomes.
 
+## 10.1 Independent-review corrections and executable proof contract (2026-11-26)
+
+This section resolves the four findings from the independent review. It tightens the design and its acceptance evidence; it does not claim that the production deployment has been inspected or that PostgreSQL proofs have run. The accepted Thread lifecycle/domain decision is unchanged.
+
+### F1 — Runtime/migration-owner separation: freeze the target role contract
+
+The current repository configuration is not an acceptable proof topology: `compose.yaml` initializes PostgreSQL with `POSTGRES_USER=watch`, and `migrations/env.py` defaults Alembic to `watch:watch`. Under the standard PostgreSQL image, that bootstrap user is a superuser. These settings may remain a local development convenience, but no production or acceptance proof may use the same principal as both application runtime and migration owner.
+
+The target topology has three distinct principals. Names below are illustrative stable role names; deployment-specific credentials and connection secret names belong to the deployment configuration.
+
+| Principal | Login | Ownership / purpose | Required attributes and memberships |
+|---|---|---|---|
+| `watch_owner` | NOLOGIN | Owns the application schema objects whose integrity is protected: protected tables, their indexes/constraints, trigger functions and triggers; owns any sequences actually used by those tables. | NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOREPLICATION, NOBYPASSRLS. No application login. |
+| `watch_runtime` | LOGIN | Application/worker connection only. | NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOREPLICATION, NOBYPASSRLS. No direct or transitive membership in `watch_owner`, `watch_migrator`, or any role that can assume them. No ownership of protected objects. |
+| `watch_migrator` | LOGIN | Dedicated migration connection, used only with application processes stopped and drained. | NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOREPLICATION, NOBYPASSRLS, NOINHERIT. It may explicitly `SET ROLE watch_owner` for reviewed migrations; membership must not be inherited by runtime. It is not supplied to application services. |
+
+A separately controlled break-glass principal, if operationally required, is not part of routine runtime or migration access. Its use must be time-bounded, audited, and separately approved. Do not grant routine maintenance users ownership or trigger-bypass capability.
+
+**Protected-object grant matrix**
+
+| Object / capability | Runtime grant | Owner / migration treatment |
+|---|---|---|
+| Database | CONNECT only; TEMP only if a source audit proves it is required | Owner and migration credentials receive only required database access. |
+| Application schema | USAGE; no CREATE, ALTER, or ownership | Owner owns schema; migrator can SET ROLE owner for migration. |
+| `events` | SELECT, INSERT; no UPDATE, DELETE, TRUNCATE | Owner owns table and guards. Event UPDATE/DELETE remains unavailable to runtime, including terminal Events. |
+| `signals` | Only the audited ingestion operations (currently SELECT/INSERT); no TRUNCATE. No broad UPDATE/DELETE unless a separately reviewed supported writer requires it. | Owner owns table and identity guards. |
+| `signal_dispositions` | SELECT only until D2 composite FK and every Decision 7 prerequisite are installed and verified; then SELECT/INSERT only. Never UPDATE/DELETE/TRUNCATE. | Owner owns table, constraints, and immutable-history guards. |
+| `tasks`, `teams` | Only source-audited DML, with protected identity columns excluded from runtime UPDATE. No TRUNCATE. | Owner owns tables and protected-field guards. |
+| `threads` | SELECT; no direct INSERT/DELETE or UPDATE of `domain`. No direct `status` UPDATE unless the complete writer inventory proves every caller uses the accepted canonical lock protocol and the grant is narrowed to that supported path. | Owner owns table and the Thread-domain guard. Thread creation/status writer ownership remains an explicit F2 gate. |
+| Trigger functions | No direct EXECUTE grant to runtime unless a function is an intentional application entry point. | Functions are owned by `watch_owner`; migration role assumes owner for DDL. Revoke PUBLIC EXECUTE at function creation. |
+| Sequences | No blanket grant. Grant USAGE/SELECT only for catalog-confirmed sequences needed by runtime inserts. | Owner owns sequences; migrator changes them only under owner role. |
+| Schema/object DDL, grants, ownership, trigger control, replication-role setting | None | Migration uses explicit SET ROLE owner; runtime must have no direct or inherited path. |
+
+This is a protected-object matrix, not a claim that the entire application currently needs only these grants. Before deployment, enumerate every application table/column and sequence used by the current runtime and grant only those observed operations. In particular, do not infer that revoking broad privileges from `threads` is safe until the actual Thread creation and lifecycle writers are identified. If a supported writer needs a privilege that conflicts with this matrix, stop and revise the role design rather than widening runtime to owner-like authority.
+
+**Function and trigger execution contract**
+
+- Every privileged trigger function is owned by `watch_owner`, uses `SECURITY DEFINER` only where elevated reads are required, is explicitly `VOLATILE` where it must observe the current READ COMMITTED state, fixes `search_path` to trusted schemas (prefer `pg_catalog` plus the one explicitly named application schema), and schema-qualifies every non-catalog relation and function reference.
+- Revoke `EXECUTE` from PUBLIC in the same transaction that creates each function. Grant EXECUTE to the migration/owner principal needed to create the trigger. Trigger firing does not justify granting runtime direct EXECUTE on a trigger-only function; prove an allowed runtime DML statement fires the trigger successfully without that unnecessary grant.
+- No caller-settable GUC, session variable, application flag, temporary table, or `session_replication_role` setting may bypass a guard.
+- Runtime must not own protected objects, be a member (directly or transitively) of owner/migration roles, have CREATEROLE/CREATEDB/SUPERUSER/REPLICATION/BYPASSRLS, create objects in trusted schemas, or alter grants/ownership/functions/triggers.
+- Verify effective privileges, not just direct ACLs: role attributes, `pg_auth_members` membership paths, `has_table_privilege`, `has_schema_privilege`, `has_sequence_privilege`, `has_function_privilege`, ownership, PUBLIC grants, and `SET ROLE` attempts. Include inherited grants and default privileges for future objects. Revoke PUBLIC schema CREATE and any PUBLIC TEMP privilege unless specifically required; document every exception.
+- A bootstrap administrator may provision the initial roles and grant the migration membership. That bootstrap identity is not an application or routine migration credential and must not be present in runtime configuration.
+
+**Cutover proof**
+
+Provision the roles and runtime DSN before the window. Stop and drain all application/worker processes and all old owner/superuser sessions; run the migration using `watch_migrator` with an explicit `SET ROLE watch_owner`; commit the forward-only cutover; restart application processes only with `watch_runtime`; then inspect active sessions and effective privileges. The migration cannot prove or atomically change an external service's secret/DSN. The cutover is not complete until the deployment operator verifies the restarted services use the runtime login and no application session uses owner, superuser, or migration credentials.
+
+**F1 exit evidence:** a checked-in reproducible disposable-PostgreSQL bootstrap script or test fixture must create these roles and grants from a clean database, install the proposed objects, and assert the positive and negative privilege cases above. It must prove runtime can perform each required application operation and cannot SET ROLE owner/migrator, update/delete immutable Events or dispositions, truncate protected tables, change ownership/grants, replace/disable triggers/functions, create in the application schema, or set replication-role bypass. It must also prove the migration credential can SET ROLE owner but cannot act as superuser. A prose role diagram alone does not close F1.
+
+### F2 — Thread writer boundary: inventory first, then restrict
+
+The repository audit did not find a production Python Thread insert/create path or a production assignment to `Thread.status` or `Thread.domain`. It did find lifecycle/evidence readers and other world-memory writers, and the project documents describe starter Thread creation under an operation that is not implemented in the inspected source. The actual deployment/host/seed/direct-SQL owner is therefore unknown. This is an unresolved fact, not evidence that no writer exists.
+
+Before matched writes can be enabled, produce a writer inventory covering:
+- application services, host/Control Room adapters, worker processes, scheduled jobs, seed/bootstrap jobs, importers, admin scripts, maintenance commands, and migrations;
+- direct SQL and ORM INSERT/UPDATE/DELETE paths, including dynamic SQL and external services outside this repository;
+- every writer of Thread identity (`team_id`, `domain`), lifecycle (`status`), and matcher-relevant profile state (Hypothesis membership/lifecycle/confidence and EvidenceLink membership/stance/snapshot references);
+- the owner of Thread creation and the credential used by each writer in every deployed environment.
+
+For each writer record: owner/team, executable entry point, database principal, affected columns, transaction boundary, lock order, whether it increments Team revision, and the test/proof that covers it. Search results from this repository alone cannot complete the external deployment inventory; the deployment owner must attest the out-of-repository list.
+
+**Required boundary after inventory**
+
+- All matched-decision-relevant lifecycle/profile writers must acquire the accepted canonical Task → Team → sorted Thread → sorted Hypothesis lock order before changing the relevant state, increment Team revision in the same transaction as required by RW-5, and hold locks through commit. No independent lock helper or alternate lock order is introduced here.
+- No writer may update Thread.domain outside the database guard. A matched-referenced Thread domain change is rejected regardless of caller. Before the first matched reference, a domain change is permissible only if the final matched decision still validates exact equality with Team.domain.
+- No direct runtime privilege may permit an unreviewed Thread INSERT or status UPDATE. If creation/status changes are required, expose them only through the already accepted writer boundary after its owner and lock retrofit are identified; do not invent a new bypass function in RW4-1.
+- Until every writer and credential is accounted for and the privilege/lock boundary is proven, matched disposition writes remain disabled under Decision 7. This gate does not freeze Thread.status: valid later lifecycle transitions remain allowed after a committed match.
+
+**F2 exit evidence:** inventory with explicit deployment-owner confirmation; role-to-writer mapping; source and deployment configuration search record; proof that unsupported direct writes are denied or cannot bypass the canonical lock/revision protocol; and real PostgreSQL interleavings for every supported writer. If an external writer cannot be changed or constrained, matched writes remain blocked.
+
+### F3 — Thread.domain database guard: freeze the trigger contract
+
+The accepted rule is conditional immutability: before any matched disposition references a Thread, its domain is not frozen by this rule; once a matched reference exists, an actual domain change is rejected. Status is not frozen.
+
+The physical guard contract is:
+
+1. Install a narrow row-level `BEFORE UPDATE OF domain` trigger on `threads`. If `NEW.domain IS NOT DISTINCT FROM OLD.domain`, allow the no-op update. Otherwise, test for an existing `signal_dispositions` row with `disposition = 'matched'` and the same `thread_id`; reject the update with a stable integrity exception if one exists.
+2. Use one owner-controlled trigger function. It is `SECURITY DEFINER` only if the runtime role is intentionally denied SELECT on `signal_dispositions`; in that case it is owned by `watch_owner`, explicitly `VOLATILE`, has the fixed safe search_path and schema-qualified references defined under F1, and has PUBLIC EXECUTE revoked. The runtime role receives no direct execute privilege merely to fire the trigger. The function performs no writes and accepts no caller-controlled bypass.
+3. Retain/use the supporting partial index `ix_signal_dispositions_thread_id_team_id` (or replace it only with an independently justified index that supports the exact `thread_id` matched-reference lookup). The guard's predicate must be exact; a deferred or duplicate disposition does not freeze Thread.domain.
+4. Every matched-disposition finalizer must acquire the Thread row `FOR NO KEY UPDATE` after Team and before Hypothesis locks, refresh the locked Thread state from PostgreSQL, validate `Thread.team_id`, `Thread.domain = Team.domain`, and `Thread.status = 'active'`, insert the matched disposition, and hold the Thread lock through commit. This is the same row lock the competing domain UPDATE must obtain.
+5. Use READ COMMITTED for this protocol. The guard must execute its matched-reference lookup after PostgreSQL has obtained the Thread row lock. The VOLATILE trigger's SPI query must observe the committed disposition after a wait; this is a required measured PostgreSQL property, not an assumption to infer from the design. If the test does not observe the committed row, the guard implementation is not accepted and must be redesigned before implementation.
+6. The finalizer must not validate a previously loaded SQLAlchemy identity-map object after waiting for the row lock. Re-select the locked candidate with `populate_existing=True` or explicitly `Session.refresh()` the instance after the lock is acquired; then validate the refreshed `status`, `domain`, `team_id`, and matcher-profile fields. Do not rely on autoflush or object identity to refresh stale scalar values.
+
+**Required race orders (two independent PostgreSQL sessions, actual runtime and trigger-owner roles)**
+
+- **Match-first:** Session A locks Thread `FOR NO KEY UPDATE`, validates active/same-domain, inserts matched disposition and commits. Session B's domain UPDATE blocks on that same Thread row; after A commits, B's trigger sees the committed matched reference and rejects the domain change. Assert B receives the intended integrity error and the original domain remains.
+- **Domain-update-first:** Session B locks/updates Thread.domain and commits before Session A obtains the Thread lock. Session A's lock statement waits; after it obtains the lock, its ORM refresh/reselect must read the committed new domain. If it no longer equals Team.domain, A must reject without inserting a disposition. If it still equals Team.domain, A may proceed. Assert no stale pre-wait ORM value is used.
+- **No-op update:** with a matched reference present, `UPDATE threads SET domain = domain` (or equivalent equal-value assignment) succeeds; a distinct actual value change fails.
+- **Pre-reference update:** a domain change before any matched reference may succeed, but a later matched insert must validate the then-current domain against Team.domain.
+- **Non-matched reference:** duplicate/deferred dispositions do not activate the Thread-domain guard.
+- **Status transition:** after matched commit, valid status changes to dormant/resolved remain permitted; no status immutability trigger is introduced.
+
+### F4 — ORM locked-row freshness: explicit finalizer rule
+
+The database row lock serializes writes; it does not automatically refresh an already-loaded SQLAlchemy identity-map object's scalar attributes. Every finalizer path that makes a matched eligibility decision must therefore:
+- acquire the Thread row lock in canonical order;
+- force a database refresh after the lock has been granted (`SELECT ... FOR NO KEY UPDATE` with `populate_existing=True`, or `Session.refresh(instance, with_for_update=...)` using the already held transaction);
+- validate all decision-relevant values from that refreshed row, not from a candidate object loaded before a concurrent writer committed;
+- ensure the refresh uses the same transaction/session and holds the lock until disposition commit.
+
+**F4 exit evidence:** two-session test where the finalizer reads an active Thread into the identity map, another session changes status or domain and commits, and the finalizer then waits for/acquires the row lock. The finalizer must observe the committed new values. Assert both stale-domain rejection and stale-status ineligibility; also assert no disposition, Outcome, or terminal success Event is written on either rejected path.
+
+### Exact replay after later lifecycle transitions — preserve the accepted history model
+
+For a successfully committed matched disposition:
+- replay validates the immutable D4.2 receipt, immutable SignalDisposition row and references, Task identity/attribution, typed terminal observation/Snapshot, Outcome attribution/hash, exact terminal Event payload/cardinality, and completion-time equality;
+- replay does not rerun candidate search, matching, thresholding, or current lifecycle eligibility;
+- replay must not require `Thread.status = 'active'`. A later valid `active → dormant` or `active → resolved` transition leaves the original matched result replayable and unchanged;
+- replay does not add or require `thread_status_snapshot` or `thread_domain_snapshot` columns on SignalDisposition. The immutable receipt is the decision evidence; the Thread-domain guard preserves the identity premise after a matched reference.
+- A later status transition must not rewrite the receipt, disposition, Outcome, terminal Event, or completion time. A corrupted/missing immutable record still fails closed; the lifecycle transition itself is not corruption.
+
+### Consolidated PostgreSQL proof matrix additions
+
+Run against the exact candidate SHA on a disposable PostgreSQL instance using the production-target role topology, not the development `watch` superuser. Use independent connections for concurrency cases and record PostgreSQL version, isolation level (READ COMMITTED for the specified interleavings), role used by each session, session count, blocking statement, commit order, observed row values, and final rows.
+
+| ID | Proof | Required assertion |
+|---|---|---|
+| RW4-1B-F1-01 | Clean role bootstrap | Owner is NOLOGIN and owns protected objects; runtime is non-owner/non-superuser; migrator can SET ROLE owner but runtime cannot SET ROLE owner/migrator. |
+| RW4-1B-F1-02 | Effective grants and inheritance | Assert role attributes, direct/transitive memberships, PUBLIC/default privileges, schema/table/column/sequence/function privileges; no runtime DDL, ownership, grant, trigger-control, or replication bypass. |
+| RW4-1B-F1-03 | Trigger function execution | PUBLIC cannot EXECUTE privileged helpers; runtime allowed DML fires triggers successfully without unnecessary direct helper EXECUTE; fixed search_path/schema qualification verified. |
+| RW4-1B-F1-04 | Runtime DML boundary | Every source-audited required operation succeeds; forbidden Event/Disposition UPDATE/DELETE and protected-table TRUNCATE fail. |
+| RW4-1B-F1-05 | Cutover session identity | Stopped-writer migration with old owner sessions drained; post-restart application sessions are runtime-only. |
+| RW4-1B-F2-01 | Writer inventory/role map | Every Thread insert/status/domain/profile writer is named, assigned a principal and lock protocol; external deployment owner confirms no unlisted writer. |
+| RW4-1B-F2-02 | Unsupported writer denial | Direct/unapproved Thread INSERT/status/domain/profile writes are denied or demonstrably forced through the accepted canonical writer path. |
+| RW4-1B-F2-03 | Lifecycle writer serialization | Each supported status/profile writer races with finalization in both orders and follows Task → Team → sorted Thread → sorted Hypothesis; Team revision is atomic where required. |
+| RW4-1B-F3-01 | Guard no-op / predicate | Equal-value domain update succeeds; actual change after matched reference fails; duplicate/deferred references do not freeze domain. |
+| RW4-1B-F3-02 | Match-first race | Matched insert commits first; waiting domain update sees committed reference and rejects. |
+| RW4-1B-F3-03 | Domain-first race | Domain update commits first; waiting finalizer refreshes row, validates new domain, and rejects mismatch without writing disposition. |
+| RW4-1B-F3-04 | Pre-reference domain change | Domain may change before matched reference; subsequent match checks current equality with Team.domain. |
+| RW4-1B-F4-01 | Stale identity-map refresh | Finalizer preloads Thread, loses race, waits for lock, refreshes, and observes committed status/domain; stale ORM scalar values are not used. |
+| RW4-1B-RP-01 | Replay after dormant | Commit matched while active; transition to dormant; replay returns the original result read-only and emits no writes. |
+| RW4-1B-RP-02 | Replay after resolved | Commit matched while active; transition to resolved; replay returns the original result read-only and emits no writes. |
+| RW4-1B-RP-03 | Replay integrity remains strict | Corrupt/missing/duplicate receipt, disposition, Outcome, or terminal Event still fails closed; ignoring current status does not weaken immutable evidence checks. |
+
+These rows augment rather than replace the existing §10 proof matrix. Run all existing row constraints, FK/uniqueness, provenance marker, TRUNCATE/CASCADE/partition, migration rollback/cutover, receipt durability, KnowledgeChunk projection, TaskRuntime atomicity, and exact-replay proofs. SQLite and in-memory substitutes are not acceptable for database enforcement or concurrency.
+
+### Finding disposition and remaining gate
+
+- **F1:** design contract specified here; implementation-level closure requires the reproducible role bootstrap and effective-privilege proof.
+- **F2:** **OPEN / BLOCKING.** The deployment/host Thread writer owner is not established by repository source. Documentation cannot close this fact. Obtain the external writer inventory and owner confirmation before accepting the lock/privilege boundary or enabling matched writes.
+- **F3:** design contract specified here; physical closure requires the actual trigger/function implementation and both independent PostgreSQL race orders.
+- **F4:** design contract specified here; closure requires the ORM refresh implementation and stale-identity-map PostgreSQL/SQLAlchemy proof.
+
+No schema, ORM, migration, application, test, database, or runtime changes are authorized by this section. The accepted distinction remains: status is historical-at-decision and may later change; domain becomes immutable after a matched reference; SignalDisposition receives no Thread status/domain snapshot columns.
+
 ## 11. Decisions requested from the Operator
 
 This proposal intentionally separates recommendations from accepted decisions. Review the following:
