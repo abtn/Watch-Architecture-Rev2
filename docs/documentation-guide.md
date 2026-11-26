@@ -36,6 +36,7 @@ Use CONTEXT.md and README.md for orientation, not as additional authorities. Do 
 - AGENTS.md — repository operating contract.
 - docs/development/r7-b-b6-legacy-lifecycle-hardening-plan.md — canonical B6 audit, scope-freeze, implementation, verification, and acceptance sequence.
 - docs/development/r8-delivery-plan.md — canonical R8 scope and acceptance criteria; the former November 23, 2026 start target was withdrawn and the replacement date is TBD. B6 and the RW foundation exit gate precede it.
+- docs/development/r8-development-states.md — canonical definitions of R8-ready internal testing and Full Design, including the scope boundary and instructions for developers/coding agents. PLAN.md remains the sole current-state authority.
 - docs/development/rw-0-decision-record.md — records Operator-confirmed RW decisions, accepted ADR constraints, and unresolved RW-0 questions. It does not authorize implementation.
 - docs/development/rw-implementation-plan.md — RW-1–RW-5 slice boundaries, proof matrix, stop conditions, and foundation exit gate.
 - docs/development/rw-4-design-and-acceptance.md — RW-4 signal-triage/retrieval design proposal, source audit, open decisions, proposed implementation sequence, and proof obligations; documentation only, not implementation authorization.
