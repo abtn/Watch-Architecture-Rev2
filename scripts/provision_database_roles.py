@@ -131,6 +131,7 @@ def main() -> int:
                         sql.Identifier(parsed.database)
                     )
                 )
+                cursor.execute("REVOKE watch_owner FROM watch_migrator")
                 cursor.execute(
                     "GRANT watch_owner TO watch_migrator WITH INHERIT FALSE, SET TRUE"
                 )
