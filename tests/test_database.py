@@ -1,13 +1,11 @@
 import os
 
+from _database_config import resolve_test_database_url
 from sqlalchemy import create_engine, text
 
 
 def test_postgresql_has_vector_extension() -> None:
-    database_url = os.environ.get(
-        "DATABASE_URL",
-        "postgresql+psycopg://watch:watch@127.0.0.1:5432/watch",
-    )
+    database_url = resolve_test_database_url(os.environ)
     engine = create_engine(database_url)
 
     try:
