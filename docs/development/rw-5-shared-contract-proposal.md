@@ -341,3 +341,17 @@ The contract gate is closed after the bounded regression review and exact-head C
 - R7-C, persistent-database operations, and R8 remain separately gated.
 
 The one bounded regression review is complete and found no blocker. Record future findings only if they are regressions, factual contradictions, or demonstrated blockers under the agreed rubric; other concerns belong in the residual-risk register with a trigger. Do not begin the canonical helper, migration, or RW3.4-adjacent writer/lock-mode retrofit without their respective explicit authorizations. A further review round requires explicit Operator authorization and a named blocker.
+
+
+## Thread lifecycle participation in Team revision (accepted RW4-1B refinement, 2026-11-26)
+
+The canonical RW-5 Team lock/revision helper also covers matcher-relevant Thread changes; it is not limited to Hypothesis history. The helper allocates exactly one revision per accepted transaction that changes the candidate profile:
+
+- activate_team creates its approved starter Thread set and increments Team revision once for the activation transaction, not once per Thread.
+- The exclusive Operator resolve_thread mode within operator_update increments once for an actual active/dormant → resolved transition, in the same business transaction as the status update and immutable thread_resolved Event.
+- A supported pre-match Thread.domain change increments once in its transaction. The F3 database guard rejects an actual domain change after a matched disposition references the Thread.
+- Exact replay, rejected/no-op operations, and rollback do not increment revision.
+
+The resolution operation uses Task → Team → Thread locking and does not lock Hypotheses because it changes no Hypothesis/evidence rows. Other writer paths retain the canonical Task → Team → sorted Thread → sorted Hypothesis order. Thread.last_updated_at is not a revision, ordering, or D4.2 matcher-recency input. RW-5 first-release decay remains confidence-only and introduces no dormancy writer.
+
+These are compatibility requirements for the separately authorized RW-5 lock/revision/writer-retrofit slice. They do not authorize implementing the helper or changing the existing RW3.4 writer in this design phase.
