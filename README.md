@@ -12,6 +12,8 @@ For a non-technical introduction to the overall idea, see [Watch in plain langua
 
 For current milestone status and authorization (maintained only in [PLAN.md](PLAN.md)), see the approved [RW-4/RW-5 sequencing decision](docs/development/rw-4-rw-5-sequencing-decision.md), the frozen [RW-5 shared clock, decay, and locking contract](docs/development/rw-5-shared-contract-proposal.md), and the [RW-4 Readiness and Delivery Plan](docs/development/rw-4-readiness-and-delivery-plan.md) for staged prerequisites. These planning documents do not themselves authorize implementation.
 
+For the current PostgreSQL owner/migrator/runtime role setup and its development-only limitations, see [database role separation](docs/development/database-role-separation.md).
+
 ## What Watch is designed to do
 
 Watch treats an AI-assisted team as a persistent organization and cognitive system rather than a collection of independent conversations or a model surrounded by tools.
