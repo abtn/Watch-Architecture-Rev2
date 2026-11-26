@@ -43,6 +43,18 @@ For programmer-facing Windows PowerShell sync, migration, and test scripts, foll
 
 ## 4. Milestone and design gates
 
+### R8 development-state rule
+
+For every R8-related task, read [the R8 development-state definitions](docs/development/r8-development-states.md) and the current state in `PLAN.md`.
+
+- `PLAN.md` identifies whether the project is preparing for R8-ready, testing in R8-ready, or completing Full Design. Do not infer the state from the existence of code or a prior conversation.
+- In **R8-ready**, implement only the smallest valid capability needed for the authorized internal scenario. Do not pull in Full Design-only features merely because they are specified or accepted for the longer-term target.
+- Never weaken a required invariant, provenance rule, authority boundary, or transaction guarantee to make a smaller slice pass. If a required invariant makes the slice too large, stop and propose a smaller valid scenario or a design change.
+- In **Full Design**, implement the remaining accepted architecture only through its named slice, proof, and authorization gates.
+- R8 findings may justify simplifying or changing accepted decisions, but test evidence does not amend a contract by itself. Record the finding, impact, proposed decision, approval, and regression proof; preserve superseded decision history.
+- Distinguish exploratory internal results from scored value-harness results and formal R8 acceptance.
+
+
 - Code presence does not authorize a milestone or prove formal closure.
 - A recorded test result proves only the named command, environment, and snapshot; it does not prove unrun checks or satisfy a separate phase-boundary gate by itself.
 - Do not start a later phase while `PLAN.md` says its entry gate is blocked or paused.
