@@ -754,7 +754,8 @@ If any dependency is missing, unsupported, or fails proof, keep all three dispos
 RW4-1B is a design proposal only. It does not authorize:
 - SignalDisposition model/table/migration/service implementation;
 - TaskRuntime or ingestion code changes;
-- D2 Task identity migration;
+- any further D2 Task identity schema migration (the accepted schema migration is already merged by PR #203);
+- the later D2-dependent SignalDisposition-to-Task composite-FK migration;
 - D4.1a canonical Team/hash arbitration;
 - RW-5 locks, Team revision, decay, or writer retrofit;
 - RW4-2 Stage B creator implementation;
