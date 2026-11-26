@@ -46,7 +46,10 @@ def main() -> int:
         return 2
 
     try:
-        with psycopg.connect(admin_url, autocommit=True) as connection:
+        psycopg_url = parsed.set(drivername="postgresql").render_as_string(
+            hide_password=False
+        )
+        with psycopg.connect(psycopg_url, autocommit=True) as connection:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
                 row = cursor.fetchone()
@@ -90,6 +93,10 @@ def main() -> int:
                     END
                     $$
                     """
+                )
+                cursor.execute(
+                    "ALTER ROLE watch_owner WITH NOLOGIN NOSUPERUSER NOCREATEDB "
+                    "NOCREATEROLE NOREPLICATION NOBYPASSRLS"
                 )
                 cursor.execute(
                     sql.SQL(
