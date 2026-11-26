@@ -130,3 +130,15 @@ Planned for M0; each row is a named test module under `tests/invariants/`. Tests
 | INV-14 | out-of-scope write rejected and recorded |
 | INV-15 | operator quote mismatch rejected; consultation answer requires snapshot; operator identity present in Event payload |
 | INV-16 | Plan-linked Task cannot start before prerequisite action Tasks are done; failed prerequisites keep dependents ineligible |
+
+## Accepted Thread lifecycle and resolution invariants (RW4-1B, 2026-11-26)
+
+- **Single application authority:** supported Thread creation and lifecycle writes pass through the trusted Watch application/Kernel boundary. Host integrations authenticate and delegate; they do not write Thread rows directly.
+- **Creation owner:** activate_team is the canonical intended path for Operator-approved starter Threads. No other routine creator is permitted.
+- **Resolution authority:** only the exclusive resolve_thread operation mode of an existing operator_update Task may resolve a Thread. It requires the exact Team grant and trusted Operator identity. update_thread and model workers cannot resolve or otherwise change Thread lifecycle.
+- **Resolution transition:** only active → resolved and dormant → resolved are allowed; resolved is terminal. The request must carry a non-empty reason and immutable Task attribution.
+- **Atomic business evidence:** the Thread status change, one Team revision increment, and exactly one immutable thread_resolved Event commit or roll back together. TaskRuntime owns the separate Task terminalization/recovery boundary; replay after a committed business transaction must not repeat these effects.
+- **Team revision:** each accepted transaction changing matcher-relevant Thread creation, status, or pre-match domain increments Team revision exactly once. Exact replay, no-op, rejection, and rollback do not increment it.
+- **Historical disposition:** later legal status changes do not invalidate an earlier matched disposition or its exact replay. A matched reference makes Thread.domain immutable under the F3 database guard, but does not freeze Thread.status.
+- **No timestamp inference:** Thread.last_updated_at is not a substitute for the immutable lifecycle Event, Team revision, or matcher evidence and is not introduced as a D4.2 recency input.
+- **Database trust boundary:** PostgreSQL enforces physical invariants and role separation; it cannot distinguish approved application code from arbitrary SQL issued using the same runtime credential. Deployment controls must exclude unsupported writers from that credential or use a separately designed capability boundary.
