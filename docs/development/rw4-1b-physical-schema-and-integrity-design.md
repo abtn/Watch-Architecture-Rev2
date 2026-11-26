@@ -620,7 +620,7 @@ Run against the exact candidate SHA on a disposable PostgreSQL instance using th
 | RW4-1B-F1-03 | Trigger function execution | PUBLIC cannot EXECUTE privileged helpers; runtime allowed DML fires triggers successfully without unnecessary direct helper EXECUTE; fixed search_path/schema qualification verified. |
 | RW4-1B-F1-04 | Runtime DML boundary | Every source-audited required operation succeeds; forbidden Event/Disposition UPDATE/DELETE and protected-table TRUNCATE fail. |
 | RW4-1B-F1-05 | Cutover session identity | Stopped-writer migration with old owner sessions drained; post-restart application sessions are runtime-only. |
-| RW4-1B-F2-01 | Writer inventory/role map | Every Thread insert/status/domain/profile writer is named, assigned a principal and lock protocol; external deployment owner confirms no unlisted writer. |
+| RW4-1B-F2-01 | Writer inventory/role map | Checked-in development/bootstrap/CI/migration/test/smoke/application paths are inventoried; Operator confirms no production deployment; local untracked processes/roles are reconciled and every supported writer is assigned a principal and lock protocol. |
 | RW4-1B-F2-02 | Unsupported writer denial | Direct/unapproved Thread INSERT/status/domain/profile writes are denied or demonstrably forced through the accepted canonical writer path. |
 | RW4-1B-F2-03 | Lifecycle writer serialization | Each supported status/profile writer races with finalization in both orders and follows Task → Team → sorted Thread → sorted Hypothesis; Team revision is atomic where required. |
 | RW4-1B-F3-01 | Guard no-op / predicate | Equal-value domain update succeeds; actual change after matched reference fails; duplicate/deferred references do not freeze domain. |
