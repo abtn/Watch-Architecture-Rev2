@@ -181,7 +181,9 @@ def test_database_roles_have_separated_effective_privileges() -> None:
     if admin_url:
         parsed_admin_url = make_url(admin_url)
         probe_database = f"watch_role_probe_{uuid4().hex[:12]}"
-        admin_psycopg_url = parsed_admin_url.set(drivername="postgresql").render_as_string(
+        admin_psycopg_url = parsed_admin_url.set(
+            drivername="postgresql"
+        ).render_as_string(
             hide_password=False
         )
         with psycopg.connect(admin_psycopg_url, autocommit=True) as connection:
