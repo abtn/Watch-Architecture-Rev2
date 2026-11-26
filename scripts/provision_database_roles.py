@@ -115,6 +115,9 @@ def main() -> int:
                         sql.Identifier(parsed.database)
                     )
                 )
+                # pgvector is not a trusted extension; install it with the bootstrap
+                # administrator before migrations run under the non-superuser owner.
+                cursor.execute("CREATE EXTENSION IF NOT EXISTS vector")
                 cursor.execute("ALTER SCHEMA public OWNER TO watch_owner")
                 cursor.execute(
                     sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(
