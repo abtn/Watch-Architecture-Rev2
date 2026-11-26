@@ -122,13 +122,15 @@ INV-05, INV-06, INV-08.
 
 # ADR-0006: Decay as scheduled maintenance
 
-**Status:** accepted  **Date:** 2025-01-15
+**Status:** accepted as the original architecture decision; Thread-dormancy effect superseded for RW-5 first release by D6.5 on 2026-11-25.  **Original date:** 2025-01-15
+
+> **Current scope clarification:** `apply_decay` lowers Hypothesis confidence only. It does not change `Thread.status` or create dormant Threads in RW-5 first release. A dormancy writer requires a separate accepted design and implementation authorization. The original Thread-dormancy statement below is retained as historical context, not the current RW-5 operational contract.
 
 ## Context
 Silence is not disproof, but stale assessments must lose standing automatically or the world model ossifies. The tension: automatic yet accountable.
 
 ## Decision
-Only scheduled `apply_decay` Tasks lower bands for staleness, per the domain's `decay_window` and `decay_action`. Decay never rejects a Hypothesis and never updates `last_touched_at` — only newly accepted evidence does that. When all of a Thread's active hypotheses have been `low` for one window, the Thread becomes `dormant` (reversible by triage).
+Only scheduled `apply_decay` Tasks lower bands for staleness, per the domain's `decay_window` and `decay_action`. Decay never rejects a Hypothesis and never updates `last_touched_at` — only newly accepted evidence does that. The original design also proposed making a Thread `dormant` when all active hypotheses had been `low` for one window; that Thread-status effect is superseded as stated above.
 
 ## Alternatives considered
 - **Model-decided decay inside update tasks** — rejected: unaccountable judgment wearing maintenance clothing; would violate INV-05.

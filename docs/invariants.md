@@ -61,8 +61,8 @@ Only `apply_decay` Tasks lower confidence for staleness, on the Domain's decay w
 ### INV-09 — Triage is recorded
 Every eligible Signal/Team pair receives at most one immutable v1 disposition: `matched`, `duplicate`, or `deferred`. A pair that cannot be decided safely is recorded as deferred with an accepted reason; ineligible pairs are not forced into a disposition. V1 does not create Threads or classify noise.
 **Why:** eligible intake decisions must be explicit and replayable without inventing a stronger result when evidence is insufficient.
-**Enforcement:** one SignalDisposition per (Signal, Team), attributed to the canonical triage Task; reference combinations and terminal evidence follow the accepted D5 contract. See PLAN.md for implementation status.
-**Violation:** a second disposition overwrites the first, a deferred result is refined by another Task, or an unsupported Signal is assigned an invented match.
+**Enforcement:** one SignalDisposition per (Signal, Team), attributed to the canonical triage Task; reference combinations and terminal evidence follow the accepted D5 contract. A matched Thread must be active and same-Team/same-Domain at the serialized decision commit point. Later legal Thread status transitions do not invalidate that historical decision; the Thread domain is immutable after a matched disposition references it and is protected by a database guard. Replay validates immutable decision evidence, not the Thread's current status. See PLAN.md for implementation status.
+**Violation:** a second disposition overwrites the first, a deferred result is refined by another Task, an unsupported Signal is assigned an invented match, replay is rejected solely because the Thread later became dormant/resolved, or a referenced Thread's domain is changed.
 
 ### INV-10 — Artifacts cite what they used, and code writes the citations
 The citation apparatus of an Artifact (sources, quotes, links) is assembled deterministically by code from the EvidenceLinks the render Task actually consumed. The model never authors citation metadata, and rendered bodies contain no bare URLs.
@@ -130,3 +130,15 @@ Planned for M0; each row is a named test module under `tests/invariants/`. Tests
 | INV-14 | out-of-scope write rejected and recorded |
 | INV-15 | operator quote mismatch rejected; consultation answer requires snapshot; operator identity present in Event payload |
 | INV-16 | Plan-linked Task cannot start before prerequisite action Tasks are done; failed prerequisites keep dependents ineligible |
+
+## Accepted Thread lifecycle and resolution invariants (RW4-1B, 2026-11-26)
+
+- **Single application authority:** supported Thread creation and lifecycle writes pass through the trusted Watch application/Kernel boundary. Host integrations authenticate and delegate; they do not write Thread rows directly.
+- **Creation owner:** activate_team is the canonical intended path for Operator-approved starter Threads. No other routine creator is permitted.
+- **Resolution authority:** only the exclusive resolve_thread operation mode of an existing operator_update Task may resolve a Thread. It requires the exact resolve_thread Team grant and trusted Operator identity, bound by a typed ResolveThreadRequest and the existing operator_update Task identity/replay namespace. update_thread and model workers cannot resolve or otherwise change Thread lifecycle.
+- **Resolution transition:** only active → resolved and dormant → resolved are allowed; resolved is terminal. The request must carry a non-empty reason and immutable Task attribution.
+- **Atomic business evidence:** the Thread status change, one Team revision increment, and exactly one immutable thread_resolved Event commit or roll back together. TaskRuntime owns the separate Task terminalization/recovery boundary; replay after a committed business transaction must not repeat these effects.
+- **Team revision:** each accepted transaction changing matcher-relevant Thread creation, status, or pre-match domain increments Team revision exactly once. Exact replay, no-op, rejection, and rollback do not increment it.
+- **Historical disposition:** later legal status changes do not invalidate an earlier matched disposition or its exact replay. A matched reference makes Thread.domain immutable under the F3 database guard, but does not freeze Thread.status.
+- **No timestamp inference:** Thread.last_updated_at is not a substitute for the immutable lifecycle Event, Team revision, or matcher evidence and is not introduced as a D4.2 recency input.
+- **Database trust boundary:** PostgreSQL enforces physical invariants and role separation; it cannot distinguish approved application code from arbitrary SQL issued using the same runtime credential. Deployment controls must exclude unsupported writers from that credential or use a separately designed capability boundary.

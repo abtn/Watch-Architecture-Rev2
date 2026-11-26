@@ -235,3 +235,30 @@ The docs-only CI run for PR #187 cannot satisfy any PostgreSQL migration, index,
 - **Stage B authorization:** remains closed. This audit does not authorize ORM/schema changes, Alembic migration, Task creator, dispatcher changes, or production behavior.
 
 The next Stage A review should independently challenge the migration preflight/backfill failure policy, the Task/Event constraint semantics, and the complete writer inventory before D4b values are selected and the creator contract is frozen.
+
+
+## F2 alignment with the accepted D1 trust boundary (2026-11-26)
+
+The Control Room is a trusted application-code authority, not a PostgreSQL identity that grants can identify. The same database principal used by Control Room code can also issue arbitrary SQL; PostgreSQL table grants and triggers cannot distinguish those call sites. Accordingly, the accepted F2 target is:
+
+- Use a non-owner, non-superuser watch_runtime credential for Watch application processes only; keep owner/migrator credentials separate and unavailable to application runtime.
+- Operationally exclude ad-hoc SQL clients, scripts, host services, and other unsupported processes from receiving or using the runtime credential. Host adapters authenticate and delegate to Watch; they do not write Thread rows.
+- PostgreSQL enforces physical facts (domain guard, immutable history, constraints, protected-field guards, and TRUNCATE/bypass restrictions). Control Room enforces caller authorization, Task attribution, operation mode, and canonical application transaction use.
+- If the threat model requires rejecting arbitrary SQL from a process that already holds watch_runtime, a separate credential/process or narrowly scoped database capability must be designed and reviewed. Do not claim ordinary grants solve this.
+- F2 is partially resolved as of 2026-11-26: the Operator confirmed there is no production deployment, and the checked-in development/bootstrap, CI, migration, test, smoke-script, and Thread-writer inventory is recorded in [RW4-1B §10.4](rw4-1b-physical-schema-and-integrity-design.md). F2 remains OPEN/BLOCKING because the checked-in development topology uses bootstrap superusers, does not separate runtime/migration/test principals, and has no installed Thread domain/lifecycle guards or effective-privilege proof. The repository audit cannot enumerate untracked processes or manually provisioned local credentials.
+
+The accepted resolution design is an exclusive resolve_thread operation mode within the existing operator_update Task, reusing its business-commit marker/recovery path. It does not add a Task type or runtime. The exact transition, Event, idempotency, Team-revision, and split business-commit/TaskRuntime-terminalization contract is specified in the RW4-1B design proposal §10.2.
+
+## Development-only F2 inventory reconciliation (2026-11-26)
+
+The Operator confirmed Watch has no production deployment. The checked-in source/configuration inventory is recorded in [RW4-1B physical design §10.4](rw4-1b-physical-schema-and-integrity-design.md#104-development-only-database-credential-process-and-thread-writer-inventory-2026-11-26). Key results:
+
+- No production Thread row creator or `Thread.status`/`Thread.domain` writer exists in the audited application source. `activate_team` and Operator `resolve_thread` are accepted future owners, not implemented writers.
+- Current application services receive injected sessions; the repository does not contain a runnable Watch host process/adapter composition that provisions a runtime database identity.
+- Compose `watch`, Alembic's default `DATABASE_URL`, the local disposable runner, and CI all use bootstrap PostgreSQL superusers. CI is ephemeral, but not least-privilege.
+- The main pytest fixture fails closed on `TEST_DATABASE_URL`, but migration tests need elevated disposable-database privileges. `tests/test_database.py` and `core/embedding_smoke.py` retain unsafe persistent-`watch` fallbacks through `DATABASE_URL`.
+- The base Thread schema has Team FK/unique/check constraints only. No Thread domain immutability guard, lifecycle transition guard, restricted runtime grants, owner/migrator role split, or physical bypass protection has been implemented.
+- Consequently, repository inventory is complete for the checked-in tree, production deployment uncertainty is resolved, but F2 remains blocking pending local process/credential reconciliation and actual PostgreSQL role/trigger implementation and proof.
+
+The two fallback paths above are narrow developer-tool safety defects and should be hardened in a separately authorized change. This RW4-1B audit remains documentation-only; it does not silently change application, test, migration, or database behavior.
+

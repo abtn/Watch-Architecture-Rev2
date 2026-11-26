@@ -70,11 +70,11 @@ The immutable stored content behind a Signal, an Outcome observation, an Artifac
 *Banned synonyms:* cache, blob (implementation term only).
 
 ### SignalDisposition
-An immutable per-Team record of how a Signal was handled. V1 values are `matched` (to one existing eligible active Thread; a dormant Thread may be matched only when the same valid triage Task atomically reactivates it and records the required Task-attributed `thread_reactivated` Event under D6), `duplicate` (exact raw-content-hash match to the Team's canonical Signal), or `deferred` (no safe, sufficiently supported business decision). Until RW4-5 reactivation is separately authorized, implemented, and proven, dormant would-be winners remain deferred and cannot receive a matched disposition. Corrupt or inconsistent provenance is an integrity failure, not a deferred disposition. One row per (Signal, Team), attributed to its canonical triage Task. V1 does not create Threads or classify noise.
+An immutable per-Team record of how a Signal was handled. V1 values are `matched` (to a same-Team/same-Domain Thread that is active at the decision commit point; under D6, a dormant candidate can qualify only after same-transaction reactivation), `duplicate` (exact raw-content-hash match to the Team's canonical Signal), or `deferred` (no safe, sufficiently supported business decision). Later Thread status transitions do not invalidate a matched disposition. The referenced Thread's domain is immutable after the match. Until RW4-5 reactivation is separately authorized, implemented, and proven, dormant would-be winners remain deferred and cannot receive a matched disposition. Corrupt or inconsistent provenance is an integrity failure, not a deferred disposition. One row per (Signal, Team), attributed to its canonical triage Task. V1 does not create Threads or classify noise.
 *Banned synonyms:* classification (loose), routing.
 
 ### Thread
-An ongoing situation or shift a Team tracks. Holds competing Hypotheses and is the unit that decays, renders, and resolves.
+An ongoing situation or shift a Team tracks. Holds competing Hypotheses and is the unit that decays, renders, and resolves. Its `status` is mutable lifecycle state: a matched disposition requires it to be active at the decision commit point, but later dormancy or resolution does not invalidate that historical decision. Its `domain` is semantic identity and cannot change after a matched disposition references it.
 *Not the same as:* a conversation or chat thread. *Banned synonyms:* topic, story (informal use only), case.
 
 ### Hypothesis

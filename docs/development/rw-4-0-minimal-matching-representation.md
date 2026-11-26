@@ -98,7 +98,7 @@ This check is necessary because the EvidenceLink model permits both snapshot fie
 
 A Thread with no eligible Signal-backed EvidenceLink, no compatible chunk projection, or no common embedding space has no usable profile in this matcher. It is **unmatchable**, not evidence that a new Thread should be created.
 
-Resolved Threads are excluded. Active and dormant Threads are both candidates; the dormant transition is handled separately under D6/RW-5.
+Resolved Threads are excluded. Active and dormant Threads may be assessed as candidates, but a matched disposition requires the selected Thread to be `active` at the serialized decision-commit point. Under D6, a dormant candidate can qualify only when the same TaskRuntime-owned transaction reactivates it before inserting the matched disposition; until RW4-5 is separately authorized and proven, dormant would-be winners defer. After a matched disposition commits, later valid transitions to dormant or resolved do not invalidate or rewrite that historical decision or its replay.
 
 ## 4. Three separate decisions
 
@@ -160,7 +160,7 @@ Therefore:
 | Result | Required durable reference | Side effect |
 |---|---|---|
 | `duplicate` | canonical same-Team duplicate Signal | disposition only |
-| `matched` | one existing same-Team/domain active Thread; under accepted D6, a dormant Thread only when the same TaskRuntime transaction reactivates it and records `thread_reactivated` | disposition only for active Thread; atomic lifecycle transition/Event/TaskRuntime commit for dormant Thread. Until separately authorized and proven RW4-5, dormant would-be matches remain deferred |
+| `matched` | one existing same-Team/domain Thread that is active at the serialized decision commit point; under accepted D6, a dormant candidate only after same-transaction reactivation and `thread_reactivated` | disposition only for an already-active Thread; atomic reactivation/Event/disposition/TaskRuntime commit for a dormant candidate. Later status transitions do not invalidate the disposition. Until separately authorized and proven RW4-5, dormant would-be matches remain deferred |
 | `deferred` | explicit reason code | disposition only |
 
 The first slice does not automatically emit:
@@ -190,15 +190,18 @@ The matcher identifier/version owns the scoring rule, threshold, winner margin, 
 
 Before the business commit, persist one immutable, versioned Task-attributed match-assessment Event. It should contain:
 
-- the exact input Signal/Snapshot identity and matcher version;
+- the exact input Signal/Snapshot identity and immutable Task request fingerprint (including the Task creation `as_of` and `world_memory_revision` watermark);
 - embedding-space and chunking identities;
+- the current Team `world_memory_revision` observed under the canonical lock as `assessment_team_revision`;
 - disposition result and reason;
-- bounded, deterministically ordered candidate Thread evidence;
-- for each retained candidate, the supporting evidence Signal/Snapshot identity, chunk index/hash, and score;
+- bounded, deterministically ordered candidate Thread evidence, including each candidate's Team/domain/status-at-assessment;
+- for each retained candidate, the supporting evidence Signal/Snapshot identity, chunk index/hash, embedding-space/chunking metadata, canonical embedding-vector fingerprint, and score (a `KnowledgeChunk.id` may be diagnostic only, never semantic identity);
+- a candidate-profile fingerprint over candidate Thread/domain/status and eligible EvidenceLink/Hypothesis membership/lifecycle;
+- a Signal-projection fingerprint over input/evidence Signal IDs and stable chunk identity/metadata/vector fingerprints, excluding surrogate row IDs;
 - the selected Thread or canonical duplicate Signal reference, if any;
-- a canonical assessment fingerprint.
+- a canonical assessment fingerprint over the request, pins, Team revision, candidate-profile/projection fingerprints, scores, and selected result.
 
-Persist scores as canonical decimal strings with a specified precision/rounding rule. Candidate bounds and payload size must be frozen before implementation.
+Persist scores as canonical decimal strings with a specified precision/rounding rule. Candidate bounds, payload size, and the finalizer's candidate-profile/projection revalidation query cost must be frozen before implementation.
 
 #### Assessment receipt identity and recovery contract
 
@@ -209,11 +212,11 @@ The assessment Event is an immutable, versioned recovery receipt, not merely an 
 3. **Durable-before-business transaction boundary.** Receipt insertion and its canonical identity must be committed atomically in a transaction that completes before the separate business-commit transaction begins. This ordering is required by the recovery claim: after the receipt transaction commits, a crash before business commit must leave the receipt durable for exact replay. If receipt and business mutation share one transaction, the receipt is not durable independently and cannot serve as the promised pre-commit recovery receipt; that alternative is therefore not supported by this proposal. The implementation must define how a Task remains recoverable between these two commits and how a failed business commit is retried from the receipt. Do not describe an uncommitted Event as a durable recovery receipt.
 4. **Kernel authorization.** Define the exact Task type / Kernel write scope and the single authorized Kernel path for this Event. Do not widen a generic Event allow-list without an explicit scope decision. TaskRuntime continues to own attempts, interruption, recovery, and terminal outcomes.
 5. **Recovery states.** No receipt means assessment has not durably completed and recovery follows the Task's existing retry/recovery policy. One valid receipt means replay that exact assessment without rerunning similarity. A corrupt receipt, multiple receipts, or a receipt whose request/fingerprint does not match the immutable Task is an integrity failure and must fail closed. A receipt already committed to a business disposition returns the original result without a second disposition, Thread transition, or business Event.
-6. **No attempt-specific semantic drift.** A new Task attempt cannot change matcher version, projection identity, or candidate result. Those are pinned by the immutable request and receipt. If canonical references are no longer valid at commit, fail closed; do not rerun matching or choose a replacement candidate.
+6. **No attempt-specific semantic drift.** A new Task attempt cannot change matcher version, projection identity, or candidate result. Those are pinned by the immutable request and receipt. The business finalizer reacquires the canonical locks. It always recomputes the bounded candidate-profile fingerprint under locks without cosine scoring and requires equality, regardless of Team revision; it always locks the input/evidence Signal rows `FOR SHARE` in sorted order and verifies the stable KnowledgeChunk identity/metadata/vector fingerprints; a surrogate row-ID replacement with identical stable content/embedding projection is not a semantic change. `KnowledgeIndexService.index_signal()` locks the parent Signal `FOR UPDATE` before deleting/recreating chunks, so the Signal read locks serialize with the current projection writer. A changed candidate profile, Signal projection, or canonical reference fails closed; do not rerun matching or choose replacement evidence. **ACCEPTED Operator rule:** a changed candidate profile, Signal projection, or canonical reference is a non-retryable technical stale-receipt failure through TaskRuntime's existing terminal non-success path (`Task.status=failed`, `result_category=terminal_failure`, stable technical reason `assessment_receipt_stale`). It is not deferred. The receipt is not refreshed, similarity is not rerun, replacement evidence/Task is not selected, and the failed `triage_identity_v1` identity remains permanently occupied with no v1 reassessment. The TaskRuntime implementation and PostgreSQL proof remain required.
 
-The document does not prescribe a particular Event table migration or invent a generic idempotency framework. The exact Event type, schema version, unique key representation, transaction boundary, and recovery tests are implementation prerequisites and remain open for review.
+The document does not prescribe a particular Event table migration or invent a generic idempotency framework. The high-level transaction boundary in this proposal is durable-before-business: the receipt commits in its own TaskRuntime-owned transaction before the separate business-commit transaction begins. The exact Event type, schema version, unique key representation, TaskRuntime recovery mechanics between commits, candidate-profile and Signal-projection fingerprint fields, the accepted `assessment_receipt_stale` TaskRuntime terminal-failure/replay mapping, and proof tests remain implementation gates. `Event.created_at` is not a commit-order key; transaction commit and receipt-row visibility establish durable-before-business ordering. Team revision is an immutable assessment watermark, not the sole stale test: the finalizer always compares the bounded candidate-profile fingerprint, so confidence-only `apply_decay` need not stale the receipt when confidence is not a matcher input. The current `KnowledgeIndexService` projection writer does not increment Team revision, so Signal row locks and stable chunk/vector fingerprints are independently required. Changing to a same-transaction receipt would reopen the D4.2 decision because it removes the promised durable receipt across a crash before business commit.
 
-The matcher must not store vectors or copy full source text into Event payloads. Snapshot references, hashes, chunk identities, and scores provide bounded provenance.
+The matcher must not store vectors or copy full source text into Event payloads. The vector fingerprint must use a frozen canonical byte encoding (dimension, float width, endianness, and rounding); do not hash Python `repr()` or an unstable database text rendering. The exact encoding is a D4.2 prerequisite. Snapshot references, hashes, chunk identities, vector fingerprints, and scores provide bounded provenance. The receipt stores a deterministic vector fingerprint, not the vector itself.
 
 ## 7. Commit and concurrency boundary
 
@@ -228,13 +231,13 @@ At commit, validate again:
 - for every selected evidence link, EvidenceLink snapshot pair exactly matches its canonical Signal Snapshot/hash; absent or mismatched provenance is not silently repaired;
 - Team active status and exact Domain equality;
 - disposition uniqueness for `(signal_id, team_id)`;
-- selected Thread belongs to the same Team and Domain and is not resolved;
+- selected Thread belongs to the same Team and Domain and is `active` at the matched-disposition commit point (a dormant candidate must first be reactivated in the same transaction under D6);
 - selected duplicate Signal is canonical and belongs to the same Team's intake history;
 - assessment Event belongs to the same Task and has not already been committed.
 
-A replay of an already committed assessment returns the original business result and emits no second disposition, transition, or Event.
+A replay of an already committed assessment returns the original business result and emits no second disposition, transition, or Event. It validates the immutable receipt, disposition, Task attribution, and terminal evidence; it does not require the referenced Thread to remain active after the original decision. No `thread_status_snapshot` or `thread_domain_snapshot` columns are added to SignalDisposition.
 
-**D6.1–D6.6 are accepted; RW4-5 implementation remains gated.** A dormant Thread may receive a `matched` disposition only when the same valid triage Task atomically reactivates it, records exactly one immutable Task-attributed `thread_reactivated` Event, preserves `Thread.last_updated_at`, increments Team `world_memory_revision`, and commits the disposition plus TaskRuntime terminal evidence in the same transaction. Use the accepted RW-5 canonical lock order; do not invent a second helper or lock path. Until separately authorized and proven RW4-5 implementation, a dormant would-be winner remains terminal deferred with `dormant_thread_requires_reactivation`. Do not mutate Hypothesis `last_touched_at`.
+**D6.1–D6.6 are accepted; RW4-5 implementation remains gated.** A dormant Thread may receive a `matched` disposition only when the same valid triage Task atomically reactivates it before disposition insertion, records exactly one immutable Task-attributed `thread_reactivated` Event, preserves `Thread.last_updated_at`, increments Team `world_memory_revision`, and commits the disposition plus TaskRuntime terminal evidence in the same transaction. The Thread is therefore active at the matched decision point. Later valid transitions to dormant/resolved do not invalidate or rewrite the historical disposition; replay does not recheck current status. `Thread.domain` must equal `Team.domain` at decision time and becomes immutable after a matched disposition references the Thread, enforced by a database guard. No status/domain snapshot columns are added to SignalDisposition. Use the accepted RW-5 canonical lock order; do not invent a second helper or lock path. Until separately authorized and proven RW4-5 implementation, a dormant would-be winner remains terminal deferred with `dormant_thread_requires_reactivation`. Do not mutate Hypothesis `last_touched_at`.
 
 ## 8. Required fixture evidence before D4 can close
 
@@ -267,6 +270,9 @@ At minimum include:
 23. The same relevant evidence distributed across differently sized profiles, to measure profile-size bias.
 24. EvidenceLinks whose snapshot pair is absent, disagrees with the canonical Signal Snapshot, or matches it exactly; only the exact-match case may contribute. Separately verify that the database rejects a partially populated snapshot pair.
 25. Supporting and challenging links attached to active, superseded, and rejected Hypotheses, with independent labels to determine whether historical lifecycle states improve or degrade Thread identity.
+26. A matched disposition followed by valid `active → dormant` and `active → resolved` transitions; exact Task replay after each transition must return the original result without requiring current Thread status to be active.
+27. Thread.domain change before the first matched reference (allowed only when it still equals Team.domain at commit), attempted change after a matched reference (rejected), and concurrent domain-update/matched-insert races in both PostgreSQL lock orders.
+28. Assert the SignalDisposition schema contains no Thread status/domain snapshot columns.
 
 The fixture must label the intended Thread or duplicate identity independently of the matcher. Report false-positive and false-negative cases, not just aggregate accuracy. Report the max-score outlier cases and stratify results by evidence-profile size and Hypothesis lifecycle state. Numeric threshold, margin, candidate/evidence bounds, score precision, and acceptable query cost remain open until this evidence is reviewed. D4's decision shape is accepted; if no defensible threshold or cost bound exists, the affected matching cases remain deferred and RW4-3 cannot enable them.
 

@@ -148,16 +148,16 @@ This dependency decision does not authorize Experiment A provider execution or R
 
 Experiment A has no direct technical dependency on RW-5. RW-5 is a deterministic maintenance operation, not a model-facing representation choice.
 
-The current Task/architecture contract says apply_decay:
+The current accepted RW-5 first-release contract (superseding the earlier architecture wording) says `apply_decay`:
 
 - selects active Hypotheses whose last_touched_at exceeds the configured decay_window;
 - lowers confidence according to decay_action, recording a Task-attributed ConfidenceChange with cause_kind=decay;
 - never rejects a Hypothesis and never updates last_touched_at;
-- marks a Thread dormant when all its active Hypotheses have been low for one window.
+- does not change `Thread.status` or make active Threads dormant. D6.5 explicitly keeps Thread lifecycle ownership out of RW-5 first release; any future dormancy writer requires a separate accepted design and authorization.
 
 Experiment A does not exercise elapsed-time decay, dormancy, reactivation, or decay/retrieval races. It must not be used as RW-5 proof.
 
-RW-5 can be planned independently of Experiment A. The integrated RW-4/RW-5 proof must nevertheless demonstrate that RW-4 retrieval respects the canonical post-decay Hypothesis/Thread status and that triage reactivation does not race or conflict with decay in a way that violates the accepted transition rules. The original milestone order RW-4 → RW-5 remains unless the Operator explicitly changes it.
+RW-5 can be planned independently of Experiment A. The integrated RW-4/RW-5 proof must demonstrate that RW-4 retrieval respects post-decay Hypothesis confidence state; any future Thread-status writer must be separately designed and serialized with triage under the canonical lock protocol. The original milestone order RW-4 → RW-5 remains unless the Operator explicitly changes it.
 
 ## 8. Relationship to RW3.4 acceptance and the foundation exit
 
