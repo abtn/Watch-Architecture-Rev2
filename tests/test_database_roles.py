@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
+from uuid import uuid4
 
+import psycopg
 import pytest
+from psycopg import sql
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
@@ -171,6 +176,42 @@ def test_database_roles_have_separated_effective_privileges() -> None:
     runtime_password = os.environ.get("WATCH_RUNTIME_PASSWORD")
     if not runtime_password:
         pytest.skip("WATCH_RUNTIME_PASSWORD is not configured for login verification")
+
+    admin_url = os.environ.get("DATABASE_ADMIN_URL")
+    if admin_url:
+        parsed_admin_url = make_url(admin_url)
+        probe_database = f"watch_role_probe_{uuid4().hex[:12]}"
+        admin_psycopg_url = parsed_admin_url.set(drivername="postgresql").render_as_string(
+            hide_password=False
+        )
+        with psycopg.connect(admin_psycopg_url, autocommit=True) as connection:
+            connection.execute(
+                sql.SQL("CREATE DATABASE {}").format(sql.Identifier(probe_database))
+            )
+        try:
+            probe_env = os.environ.copy()
+            probe_env["DATABASE_ADMIN_URL"] = parsed_admin_url.set(
+                database=probe_database
+            ).render_as_string(hide_password=False)
+            probe_env["WATCH_MIGRATOR_PASSWORD"] = "must-not-replace-existing-password"
+            probe_env["WATCH_RUNTIME_PASSWORD"] = "must-not-replace-existing-password"
+            result = subprocess.run(
+                [sys.executable, "scripts/provision_database_roles.py"],
+                env=probe_env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert result.returncode == 1
+            assert "pre-existing cluster-global Watch roles" in result.stderr
+        finally:
+            with psycopg.connect(admin_psycopg_url, autocommit=True) as connection:
+                connection.execute(
+                    sql.SQL("DROP DATABASE {} WITH (FORCE)").format(
+                        sql.Identifier(probe_database)
+                    )
+                )
+
     runtime_url = make_url(database_url).set(
         username="watch_runtime", password=runtime_password
     )
@@ -194,3 +235,32 @@ def test_database_roles_have_separated_effective_privileges() -> None:
                     connection.execute(text(statement))
     finally:
         runtime_engine.dispose()
+
+
+def test_alembic_cli_rejects_non_migrator_login() -> None:
+    try:
+        database_url = resolve_test_database_url(os.environ)
+    except ValueError as exc:
+        raise pytest.UsageError(str(exc)) from exc
+
+    with create_engine(database_url).connect() as connection:
+        roles = connection.scalar(
+            text(
+                "SELECT count(*) FROM pg_roles "
+                "WHERE rolname IN ('watch_owner', 'watch_migrator', 'watch_runtime')"
+            )
+        )
+    if roles != 3:
+        pytest.skip("Watch database roles have not been provisioned")
+
+    env = os.environ.copy()
+    env["DATABASE_URL"] = database_url
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "current"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "requires DATABASE_URL to authenticate as watch_migrator" in result.stderr
