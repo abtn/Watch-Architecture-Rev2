@@ -77,6 +77,10 @@ def test_database_roles_have_separated_effective_privileges() -> None:
                 text("SELECT has_database_privilege('watch_runtime', "
                      "current_database(), 'CREATE')")
             ) is False
+            assert connection.scalar(
+                text("SELECT has_database_privilege('watch_runtime', "
+                     "current_database(), 'TEMP')")
+            ) is False
 
             tables = connection.scalars(
                 text(
