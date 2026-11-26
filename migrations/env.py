@@ -14,15 +14,16 @@ target_metadata = None
 
 
 def _assume_migration_owner(connection) -> None:
-    """Use the non-login owner role only for the dedicated migration login."""
+    """Require the dedicated migrator login and assume the non-login owner role."""
     session_user = connection.scalar(text("SELECT session_user"))
-    if session_user == "watch_migrator":
-        connection.execute(text("SET ROLE watch_owner"))
-        current_user = connection.scalar(text("SELECT current_user"))
-        if current_user != "watch_owner":
-            raise RuntimeError(
-                "watch_migrator did not successfully assume watch_owner"
-            )
+    if session_user != "watch_migrator":
+        raise RuntimeError(
+            "Alembic requires DATABASE_URL to authenticate as watch_migrator"
+        )
+    connection.execute(text("SET ROLE watch_owner"))
+    current_user = connection.scalar(text("SELECT current_user"))
+    if current_user != "watch_owner":
+        raise RuntimeError("watch_migrator did not successfully assume watch_owner")
 
 
 def run_migrations_offline() -> None:
@@ -37,8 +38,14 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def _run_migrations(connection, version_table_schema: str | None = None) -> None:
-    _assume_migration_owner(connection)
+def _run_migrations(
+    connection,
+    version_table_schema: str | None = None,
+    *,
+    require_migrator: bool = False,
+) -> None:
+    if require_migrator:
+        _assume_migration_owner(connection)
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
@@ -51,7 +58,8 @@ def _run_migrations(connection, version_table_schema: str | None = None) -> None
 
 def run_migrations_online() -> None:
     # Programmatic callers can supply a connection and version-table schema
-    # when they need precise transaction or schema isolation.
+    # when they need precise transaction or schema isolation. Those callers
+    # retain responsibility for the identity and privileges of that connection.
     supplied_connection = config.attributes.get("connection")
     if supplied_connection is not None:
         _run_migrations(
@@ -70,7 +78,7 @@ def run_migrations_online() -> None:
         # The role check/SET ROLE starts SQLAlchemy's transaction. Keep the
         # migration run inside an explicit owner transaction so it commits.
         with connection.begin():
-            _run_migrations(connection)
+            _run_migrations(connection, require_migrator=True)
 
 
 if context.is_offline_mode():
