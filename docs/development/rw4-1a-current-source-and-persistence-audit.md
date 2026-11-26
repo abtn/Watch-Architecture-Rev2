@@ -173,6 +173,27 @@ The exact database timestamp expression remains a physical-design choice. Do not
 
 No SignalDisposition-specific model, migration, persistence, immutability, replay, or TaskRuntime atomicity tests exist.
 
+## 6.1 Thread creation and lifecycle writer ownership — F2 follow-up (2026-11-26)
+
+The follow-up source review and Operator decisions distinguish the intended owner from the actual deployment state.
+
+**Accepted target ownership**
+- Watch's trusted application/Kernel boundary owns Thread creation and supported lifecycle writes.
+- `activate_team` is the canonical intended creator for Operator-approved starter Threads. The trusted host authenticates the Operator and requests activation; it does not write Thread rows directly.
+- Thread resolution is an explicit Operator-authorized Task/application operation. Watch validates the reason and target, applies the status transition, and appends one immutable Task-attributed Event in the same transaction.
+- Model workers and the existing `update_thread` / `operator_update` knowledge-update paths do not gain Thread creation or lifecycle authority.
+- RW-5 first-release decay remains confidence-only. No dormancy writer is authorized here; dormant reactivation remains the separately gated RW4-5 path.
+
+**Implementation/deployment facts**
+- `activate_team` is documented in `docs/tasks.md` as not implemented in Checkpoint 3.
+- The inspected source has no production Python Thread insert/create path and no production assignment to `Thread.status` or `Thread.domain`.
+- Existing update paths target an existing Thread; `WorldMemoryCommitService` writes Hypotheses, EvidenceLinks, and ConfidenceChanges.
+- The actual deployed host, bootstrap, seed, import, admin, direct-SQL, and external writer inventory has not been supplied. Its status is explicitly UNKNOWN, not “none”.
+
+**F2 disposition:** target owner and resolution design are accepted, but F2 remains OPEN/BLOCKING. Before matched disposition writes are enabled, the deployment owner must attest a complete writer/credential inventory; each writer must be classified as canonical Watch application writer, trusted host caller delegating to Watch, restricted bootstrap/migration-only path, or unsupported path to deny/retire. Each supported status/profile writer must use Task → Team → sorted Thread → sorted Hypothesis locking, required Team-revision stamping, and one transaction through commit. Runtime privileges must deny unregistered direct Thread writes; the F3 database guard must reject domain changes after a matched reference. The resolution operation also requires exact authorization, reason, Event identity/cardinality, rollback, and replay tests.
+
+This follow-up is a source/documentation decision record only. It does not implement `activate_team`, a resolution Task/operation, database grants, SQL, ORM, migrations, or lifecycle writers.
+
 ## 7. Required RW4-1 proof subset
 
 The physical-design review should freeze a requirement-to-test matrix covering at least:
