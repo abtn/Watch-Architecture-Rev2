@@ -637,7 +637,7 @@ These rows augment rather than replace the existing §10 proof matrix. Run all e
 ### Finding disposition and remaining gate
 
 - **F1:** design contract specified here; implementation-level closure requires the reproducible role bootstrap and effective-privilege proof.
-- **F2:** **OPEN / BLOCKING.** The deployment/host Thread writer owner is not established by repository source. Documentation cannot close this fact. Obtain the external writer inventory and owner confirmation before accepting the lock/privilege boundary or enabling matched writes.
+- **F2:** **PARTIALLY RESOLVED; OPEN / BLOCKING.** The Operator has confirmed Watch has no production deployment. The checked-in development/bootstrap, CI, migration, test, smoke-script, and application-service paths have now been inventoried in §10.4. That closes the production-deployment uncertainty and the repository-source inventory task, but it does not establish an enforced runtime/owner boundary: the current Compose and CI bootstrap users are superusers, migration and test credentials are not separated by role, no protected Thread trigger/grant topology is installed, and no disposable-PostgreSQL privilege proof exists. Do not enable matched writes or claim F2 closure until the accepted role/credential topology and physical protections are implemented and proven. The inventory cannot enumerate untracked processes or credentials on the Operator's workstation.
 - **F3:** design contract specified here; physical closure requires the actual trigger/function implementation and both independent PostgreSQL race orders.
 - **F4:** design contract specified here; closure requires the ORM refresh implementation and stale-identity-map PostgreSQL/SQLAlchemy proof.
 
@@ -782,7 +782,77 @@ Control Room is the single logical application authority for supported Task crea
 2. The deployment must ensure that only the Watch application processes implementing the trusted Control Room/Kernel boundary receive and use that runtime credential. Host adapters authenticate and delegate; they do not connect to PostgreSQL to write Thread rows. Unsupported scripts, external processes, ad-hoc SQL clients, and administrative tools must not share the runtime credential.
 3. If a deployment requirement includes protection against a hostile or nonconforming process that already possesses the same runtime credential, the shared-role model is insufficient. Stop and separately design a narrower database capability, function boundary, or distinct credential/process. Do not imply that ordinary table grants or triggers can identify the calling Python module.
 4. PostgreSQL remains responsible for physical invariants that are independent of caller identity: immutable Event/disposition history, row-local constraints/FKs, the matched-Thread domain guard, protected-field guards, and effective TRUNCATE/trigger-bypass protections. Control Room/Kernel remains responsible for caller authorization, Task provenance, allowed operation mode, and use of the canonical transaction path.
-5. F2 remains OPEN/BLOCKING until the deployment owner attests the complete writer/credential inventory. If no production deployment exists, an explicit deployment-owner attestation of that fact plus a complete inventory of development/bootstrap credentials and processes may satisfy the deployment-status portion. Repository source search alone does not establish absence of out-of-repository writers.
+5. F2 remains OPEN/BLOCKING until the complete development writer/credential inventory is reconciled with the actual local environment and the accepted enforcement proof passes. The Operator confirmed on 2026-11-26 that Watch has no production deployment; §10.4 records the checked-in development/bootstrap inventory. This closes the production-deployment-status question, not the local-machine inventory or privilege-enforcement requirements. Repository source search cannot prove absence of untracked processes, manually provisioned roles, or out-of-repository scripts.
+
+
+
+### 10.4 Development-only database credential, process, and Thread-writer inventory (2026-11-26)
+
+**Deployment status:** The Operator explicitly confirmed that Watch remains in development and has no production deployment. There is therefore no production host, production service credential, or production external-writer inventory to enumerate at this stage. This is an Operator-provided project fact, not an inference from the repository.
+
+**Scope and evidence boundary:** The following inventory was performed against branch `rw4-1b-physical-persistence-design-20261125` at the audited source tree. It covers checked-in repository paths. It cannot inspect local PostgreSQL catalogs, the Operator's process list, untracked scripts, manually created roles, shell history, local environment variables, or processes outside the repository. No live database or local workstation was queried in this audit.
+
+#### Credential and role inventory
+
+| Purpose | Checked-in configuration / principal | Effective capability and finding |
+|---|---|---|
+| Development PostgreSQL bootstrap | `compose.yaml`: database `watch`, bootstrap user `watch`, password `watch` | The official PostgreSQL image's `POSTGRES_USER` bootstrap account is a superuser. It is not a least-privilege application role. The Compose file defines only PostgreSQL; it does not define a Watch application container or a separate runtime login. |
+| Development migration | `migrations/env.py`: `DATABASE_URL`, defaulting to `postgresql+psycopg://watch:watch@localhost:5432/watch` | Alembic uses the same bootstrap credential by default. No `watch_owner` NOLOGIN owner, `watch_migrator` login, or separate migration DSN is provisioned in the repository. |
+| Application runtime | No checked-in production or development application DSN/role bootstrap; core services receive injected SQLAlchemy `sessionmaker` instances | A future host can construct these services with any supplied credential. The repository does not prove which process constructs them or which principal it supplies. No `watch_runtime` role or restricted grant set exists in checked-in SQL/migrations. |
+| PostgreSQL-backed tests | `tests/_database_config.py` requires explicit `TEST_DATABASE_URL`, PostgreSQL, and a database name other than `watch`; `tests/conftest.py` uses it | This resolver fails closed against the persistent database name `watch`. Migration tests use the test URL for schema creation/drop and migration execution, so the test principal must have elevated privileges inside the disposable test database. Tests are not using a distinct restricted runtime principal. |
+| CI database | `.github/workflows/ci.yml`: `watch_ci` / `watch_ci`; both `DATABASE_URL` and `TEST_DATABASE_URL` point to `watch_ci` | CI's PostgreSQL service is ephemeral, but the image bootstrap account is also the migration/test principal. This is test isolation, not least-privilege role separation. |
+| Local disposable test runner | `scripts/test-disposable-postgres.ps1`: ephemeral container, database `watch_local_disposable`, user/password `watch_test` | The runner isolates the database/container and restores environment variables. Its bootstrap user is still the database superuser; it does not prove restricted runtime privileges. |
+| Embedding smoke utility | `core/embedding_smoke.py`: `TEST_DATABASE_URL` or fallback to `DATABASE_URL` | It creates a SQLAlchemy engine directly, inserts temporary Team/TeamPolicy/Signal rows, indexes/retrieves, then attempts cleanup. It has no explicit database-name guard of its own; if both variables are absent or misconfigured it can use the migration default/persistent `watch` database. It does not write Threads. |
+| Database extension smoke test | `tests/test_database.py`: `DATABASE_URL` or fallback to `postgresql+psycopg://watch:watch@127.0.0.1:5432/watch` | It opens a direct engine and reads the vector extension version. Unlike the main test fixture, this test has a persistent-`watch` fallback. CI overrides it with the ephemeral CI URL; local invocations without an explicit disposable `DATABASE_URL` can target the Compose database. |
+
+**Credential conclusion:** the checked-in environment has no separate bootstrap/owner, migration, runtime, test-maintenance, and runtime-service roles. Development Compose, Alembic, and the disposable test runner use bootstrap users with superuser capability; CI uses an ephemeral bootstrap superuser. This is a material least-privilege gap, not a merely undocumented role topology.
+
+#### Database-capable process inventory
+
+| Process / code group | Database access pattern | Thread write authority observed |
+|---|---|---|
+| Core application services (`core/ingestion.py`, `dispatcher.py`, `task_runtime.py`, `operator_application.py`, `world_memory.py`, `update_thread_context.py`, `update_thread_worker.py`, and other service modules) | Receive injected SQLAlchemy `Session`/`sessionmaker`; no engine creation or process bootstrap is defined in these modules | No production `Thread` INSERT, `Thread.status` assignment, or `Thread.domain` assignment was found. Existing paths read Thread rows, validate Team/status/domain, and update related Hypothesis/EvidenceLink/ConfidenceChange records. |
+| Host / Control Room adapter | Operator application boundary exists in `core/operator_application.py`; no runnable host server/adapter composition or process entrypoint is checked in | Intended authority boundary only. The repository does not contain a production host process that provisions sessions or writes Thread lifecycle state. |
+| Alembic migration process | `uv run alembic upgrade head`, using `DATABASE_URL` in `migrations/env.py` | Migration `0019_rw1_world_memory.py` creates the `threads` table and its base indexes/constraints. It does not seed Thread rows or install Thread status/domain guards. |
+| Pytest process | `tests/conftest.py` creates an engine/sessionmaker from `TEST_DATABASE_URL`; tests directly insert fixture Threads and delete them during teardown | Test-only fixture writes. `tests/test_update_thread.py` also directly sets a fixture's `thread.status = "resolved"` to exercise rejection behavior. Other Thread fixtures occur in `tests/test_evaluations.py` and `tests/test_world_memory.py`. These are not supported application writers and rely on the test database's elevated principal. |
+| Embedding smoke process | `python -m core.embedding_smoke`; direct engine from environment | Inserts Team, TeamPolicy, Signal, and KnowledgeChunk-related projection data; no Thread writes. |
+| Local disposable-PostgreSQL PowerShell runner | Starts/removes an ephemeral PostgreSQL container, runs Alembic, Ruff, Mypy, pytest | Does not implement Watch runtime behavior. It provisions a superuser test database. |
+| GitHub Actions CI runner | Starts ephemeral PostgreSQL service, runs Alembic, Ruff, Mypy, pytest | Same elevated bootstrap principal for migration and tests; no production service process. |
+| Compose PostgreSQL service | Persistent local volume and host port 5432; database process only | Does not run Watch application code. |
+| External/third-party processes | No checked-in host adapter, scheduler, importer, admin UI, seed service, or production worker process identified | No external writer can be inferred from source. Production deployment absence is Operator-confirmed; untracked local processes remain outside this repository audit. |
+
+#### Thread row write-path inventory
+
+| Writer / candidate | Insert | `status` update | `domain` update | Disposition |
+|---|---:|---:|---:|---|
+| Production Watch application source | None found | None found | None found | No current supported production Thread writer is implemented in this repository. |
+| `activate_team` | Intended canonical creator for approved starter Threads | — | — | Accepted architecture target; not implemented in the audited source tree. |
+| Operator `resolve_thread` mode | — | Intended active/dormant → resolved | — | Accepted design in §10.2; not implemented. |
+| `update_thread` worker / `operator_update` proposal commit | Existing Thread only | No lifecycle assignment found | No assignment found | Reads/updates knowledge attached to an existing Thread; must not acquire lifecycle authority. |
+| RW-4 triage | Explicitly prohibited in v1 | No | No | Matches existing Threads or defers; automatic Thread creation remains disabled. |
+| Migration `0019_rw1_world_memory.py` | Creates table, not rows | No | No | Schema DDL only. |
+| Test fixtures | Yes | Test-only direct mutation in `tests/test_update_thread.py` | No assignment found | Test setup/teardown only; isolated disposable DB required. |
+| Ad hoc SQL / local admin / untracked scripts | Not discoverable from repository | Not discoverable | Not discoverable | Unsupported and not proven absent on the local workstation. Must not receive the future runtime credential. |
+
+#### Enforcement assessment
+
+The current schema does provide row-local checks and relational integrity: `threads.team_id → teams.id`, unique `(id, team_id)`, status membership in `active/dormant/resolved`, and non-empty `domain/title`. The composite Hypothesis-to-Thread FK protects same-Team ownership.
+
+It does **not** currently provide the physical protections required by RW4-1B:
+
+- No Thread `BEFORE UPDATE OF domain` guard exists. An actual `Thread.domain` change is not blocked after a matched disposition because SignalDisposition does not yet exist and no future-reference trigger is installed.
+- No Thread status transition guard or lifecycle audit Event trigger exists. The CHECK constraint validates allowed status values, not who may change status or which transition is legal.
+- No restricted runtime role, NOLOGIN object owner, separate migration credential, grant/revoke matrix, membership fence, or effective-privilege test exists.
+- The current development bootstrap credential can bypass ordinary trigger/grant protections as superuser. A Python Control Room boundary cannot be enforced against arbitrary SQL using that same credential.
+- No Event/SignalDisposition immutability or protected-table TRUNCATE protections from the proposed RW4-1B design have been installed in the migration chain.
+
+**Required enforcement target:** provision a NOLOGIN `watch_owner`, separate `watch_migrator` credential, and non-owner/non-superuser `watch_runtime`; make the runtime DSN available only to the trusted Watch application host; isolate tests and maintenance under disposable-database credentials; install the reviewed domain/immutability/guard triggers and least-privilege grants; then prove direct forbidden DML, UPDATE/DELETE/TRUNCATE, trigger bypass, role membership, and both Thread-domain/match lock race orders on real disposable PostgreSQL using the actual runtime and migration principals.
+
+**Specific development-tool safety defects to address before routine local use:** change `tests/test_database.py` to use the fail-closed `resolve_test_database_url` rather than its persistent `watch` fallback, and change `core/embedding_smoke.py` to require an explicit disposable test URL and reject the persistent database name rather than falling back to `DATABASE_URL`. These are separate, narrow developer-tool hardening changes; no such code change is made in this RW4-1B documentation audit.
+
+**F2 disposition:** the repository-source inventory is complete for the checked-in tree and the Operator has confirmed no production deployment. F2 is still **OPEN / BLOCKING** because the current development topology does not enforce the accepted trusted application boundary or the PostgreSQL physical invariants, and because untracked local processes/credentials cannot be enumerated remotely. The absence of a production deployment is not equivalent to successful privilege enforcement.
+
+**Scope:** this inventory is a source/configuration audit. It does not provision roles, modify migrations, change ORM/application/test code, inspect a live local database, or authorize matched/duplicate/deferred writes.
 
 ### 10.3 Team revision for Thread lifecycle/profile changes
 
