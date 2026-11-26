@@ -507,26 +507,66 @@ Provision the roles and runtime DSN before the window. Stop and drain all applic
 
 **F1 exit evidence:** a checked-in reproducible disposable-PostgreSQL bootstrap script or test fixture must create these roles and grants from a clean database, install the proposed objects, and assert the positive and negative privilege cases above. It must prove runtime can perform each required application operation and cannot SET ROLE owner/migrator, update/delete immutable Events or dispositions, truncate protected tables, change ownership/grants, replace/disable triggers/functions, create in the application schema, or set replication-role bypass. It must also prove the migration credential can SET ROLE owner but cannot act as superuser. A prose role diagram alone does not close F1.
 
-### F2 — Thread writer boundary: inventory first, then restrict
+### F2 — Thread writer ownership: accepted target, deployment inventory still open
 
-The repository audit did not find a production Python Thread insert/create path or a production assignment to `Thread.status` or `Thread.domain`. It did find lifecycle/evidence readers and other world-memory writers, and the project documents describe starter Thread creation under an operation that is not implemented in the inspected source. The actual deployment/host/seed/direct-SQL owner is therefore unknown. This is an unresolved fact, not evidence that no writer exists.
+**Operator decisions (2026-11-26)**
+- **Creation and supported lifecycle ownership — ACCEPTED, Option A:** Watch's trusted application/Kernel boundary owns Thread creation and lifecycle writes. `activate_team` is the canonical intended creator for Operator-approved starter Threads. The trusted host authenticates the Operator and requests activation; it does not write Thread rows directly. Watch validates the approved Team configuration, starter Thread definitions, Team/Domain consistency, and authorization, then commits Team activation, starter Threads, and attributable Event through the governed application path.
+- **Resolution — ACCEPTED, Option A:** resolution is an explicit Operator-authorized Task/application operation. It validates the target Thread and reason, performs the status transition through trusted Watch code, and appends one immutable Task-attributed Event in the same transaction. It is not a model-worker write, direct SQL operation, or background side effect. The exact Task envelope/operation contract must be specified before implementation; this decision does not silently create a new Task type or second Task runtime.
+- **Actual external writer status — UNKNOWN, Option D:** the deployment inventory has not been supplied or verified. The target owner is decided, but no claim is made that the current deployment already conforms.
 
-Before matched writes can be enabled, produce a writer inventory covering:
-- application services, host/Control Room adapters, worker processes, scheduled jobs, seed/bootstrap jobs, importers, admin scripts, maintenance commands, and migrations;
-- direct SQL and ORM INSERT/UPDATE/DELETE paths, including dynamic SQL and external services outside this repository;
-- every writer of Thread identity (`team_id`, `domain`), lifecycle (`status`), and matcher-relevant profile state (Hypothesis membership/lifecycle/confidence and EvidenceLink membership/stance/snapshot references);
-- the owner of Thread creation and the credential used by each writer in every deployed environment.
+**Current repository evidence**
+- The bounded audit found no production Python Thread INSERT/create path and no production assignment to `Thread.status` or `Thread.domain`.
+- `docs/tasks.md` describes `activate_team` as the Operator path that writes approved starter Threads, but explicitly marks it not implemented in Checkpoint 3.
+- `create_update_thread_task()` and `operator_update()` target an existing Thread; they are not Thread creators or general lifecycle authorities.
+- `WorldMemoryCommitService` writes Hypotheses, EvidenceLinks, and ConfidenceChanges, not Thread rows/status/domain.
+- RW-5 first-release `apply_decay` is confidence-only and does not create Thread dormancy. Dormancy/reactivation remains separately gated by RW4-5.
+- The checked-in development database configuration is not evidence of production credentials or production writer ownership.
 
-For each writer record: owner/team, executable entry point, database principal, affected columns, transaction boundary, lock order, whether it increments Team revision, and the test/proof that covers it. Search results from this repository alone cannot complete the external deployment inventory; the deployment owner must attest the out-of-repository list.
+This source result is bounded. It does not establish that host services, seed/bootstrap jobs, importers, admin tools, direct SQL, dynamic SQL, or out-of-repository processes do not write Thread rows.
 
-**Required boundary after inventory**
+**Required deployment inventory before F2 closure**
 
-- All matched-decision-relevant lifecycle/profile writers must acquire the accepted canonical Task → Team → sorted Thread → sorted Hypothesis lock order before changing the relevant state, increment Team revision in the same transaction as required by RW-5, and hold locks through commit. No independent lock helper or alternate lock order is introduced here.
-- No writer may update Thread.domain outside the database guard. A matched-referenced Thread domain change is rejected regardless of caller. Before the first matched reference, a domain change is permissible only if the final matched decision still validates exact equality with Team.domain.
-- No direct runtime privilege may permit an unreviewed Thread INSERT or status UPDATE. If creation/status changes are required, expose them only through the already accepted writer boundary after its owner and lock retrofit are identified; do not invent a new bypass function in RW4-1.
-- Until every writer and credential is accounted for and the privilege/lock boundary is proven, matched disposition writes remain disabled under Decision 7. This gate does not freeze Thread.status: valid later lifecycle transitions remain allowed after a committed match.
+The deployment owner must identify and attest every actual Thread writer, including application/Kernel services; host/Control Room adapters and API/CLI integrations; workers and scheduled jobs; seed/bootstrap and Team provisioning; importers, maintenance commands, admin scripts and runbooks; migrations and break-glass procedures; direct SQL/ORM paths and external processes.
 
-**F2 exit evidence:** inventory with explicit deployment-owner confirmation; role-to-writer mapping; source and deployment configuration search record; proof that unsupported direct writes are denied or cannot bypass the canonical lock/revision protocol; and real PostgreSQL interleavings for every supported writer. If an external writer cannot be changed or constrained, matched writes remain blocked.
+For each writer record: (1) environment and deployment owner; (2) executable entry point and purpose; (3) database principal/credential and provisioning; (4) operation and exact affected columns; (5) transaction boundary and Task/Event attribution; (6) lock order, Team-revision behavior, and lock hold through commit; (7) source/configuration evidence and covering test/proof; and (8) disposition as canonical Watch writer, trusted host caller delegating to Watch, restricted bootstrap/migration-only path, or unsupported writer to deny/retire.
+
+A repository search cannot substitute for deployment-owner confirmation of out-of-repository writers. If the deployment owner cannot provide the inventory, record the unknown writer as an unresolved blocker; do not infer absence.
+
+**Target writer disposition**
+
+| Path | Accepted disposition | Required boundary |
+|---|---|---|
+| Approved starter Thread creation | `activate_team` through Watch application/Kernel | Operator authenticated by trusted host; Watch validates and commits Team activation, approved starter Threads, and provenance. No direct host SQL. |
+| Thread resolution | Explicit Operator-authorized Task/application operation | Validate authorization, reason, current state and Team; use canonical locks; update status and append one immutable Task-attributed Event in the same transaction. |
+| `update_thread` / `operator_update` | Existing-Thread knowledge writers only | May change only their specified Hypothesis/EvidenceLink/ConfidenceChange scope; no Thread creation or lifecycle authority. |
+| `apply_decay` in RW-5 first release | Confidence-only writer | No Thread status/domain change and no dormancy creation. |
+| Host/Control Room | Authenticated caller/delegator | May request approved operations; must not independently write Thread rows. |
+| Seed/bootstrap/import/admin | Restricted initial provisioning or separately audited maintenance only | Separate credential and explicit procedure; not an ongoing alternative lifecycle writer. Ongoing lifecycle work delegates to Watch. |
+| Direct SQL or unregistered external writer | Unsupported | Deny through effective database privileges or retire before matched writes are enabled. |
+
+**Canonical transaction and authorization contract**
+
+- Every supported status/profile writer that can affect triage eligibility or matcher evidence must use the accepted canonical Task → Team → sorted Thread → sorted Hypothesis lock order, acquire locks before reading decision-relevant state, increment Team revision in the same transaction as required by RW-5, and hold locks through commit. The exact RW-5 helper remains the only supported lock implementation; this F2 decision does not authorize implementing it early.
+- The resolution operation must be Operator-authorized at the trusted application boundary. The caller cannot create authority by fabricating model output or a request payload. Watch validates the grant against the Team derived from the locked Thread.
+- Resolution reason and status transition are validated by Watch. The status update and exactly one immutable Event carrying Task/Operator attribution, previous/new status, and reason commit or roll back together. Event identity/cardinality and exact replay behavior must be specified and tested before implementation.
+- Resolution does not rewrite prior SignalDispositions, receipts, Outcomes, or Events. A later legal status transition does not invalidate an earlier matched decision.
+- `Thread.domain` remains governed by the F3 database guard: after a matched disposition references the Thread, an actual domain change is rejected. This does not freeze status.
+- No general dormancy writer is introduced. RW-5 first-release decay remains confidence-only; dormant reactivation remains the separately gated RW4-5 path.
+- The host may authenticate and initiate an operation, but Watch owns validation, transaction, and durable writes. Do not create a second persistence boundary or direct host database writer.
+
+**Database privilege and compatibility requirements**
+
+- Runtime must not have unrestricted Thread INSERT/DELETE or broad status/domain UPDATE privileges that allow bypassing the canonical application boundary.
+- Derive least privilege from the complete deployment writer inventory. Where PostgreSQL cannot distinguish an approved caller from arbitrary SQL using the same broad role, use a narrower database capability/credential boundary or ensure DML is available only through a controlled entry point; do not claim application convention alone is enforcement.
+- The owner-controlled F3 trigger rejects matched-referenced Thread domain changes regardless of caller.
+- Bootstrap/migration access remains distinct from runtime access. No application process may use the owner or migration credential.
+- Existing writers that legitimately need status/profile mutations must be migrated to the canonical lock/revision protocol before matched disposition writes are enabled.
+
+**F2 exit evidence**
+
+F2 closes only when all are present: (1) deployment-owner-confirmed inventory of every in-repository and out-of-repository Thread writer and credential; (2) each writer classified and reconciled with the accepted target owner; (3) exact role-to-writer/column grant matrix, including effective and inherited privileges; (4) proof unsupported direct writes are denied and supported operations cannot bypass authorization, lock order, revision stamping, or provenance; (5) real disposable-PostgreSQL interleavings for each supported writer and competing matched-decision/domain-update orders; (6) exact replay and rollback proof for the resolution status/Event transaction; and (7) integrated review confirming no dormancy transition or new Thread creator was accidentally introduced.
+
+Until then, **F2 remains OPEN/BLOCKING** and matched disposition writes remain disabled under the accepted all-three-outcomes-together gate. The decision does not freeze `Thread.status`: valid later lifecycle transitions remain permitted through the proven supported writer boundary.
 
 ### F3 — Thread.domain database guard: freeze the trigger contract
 
