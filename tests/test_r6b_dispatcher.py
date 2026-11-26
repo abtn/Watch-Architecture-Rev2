@@ -36,6 +36,7 @@ from core.source_fetch import (
     validate_source_url,
 )
 from core.task_runtime import SignalEvidence, TerminalObservation
+from core.triage_identity import TRIAGE_IDENTITY_VERSION, canonical_triage_task_id
 
 _BUDGET = {"max_tool_calls": 0, "max_cost_usd": 0.0, "deadline_seconds": 60}
 _CONTENT = b"<html><body>Configured source content</body></html>"
@@ -114,6 +115,10 @@ def dispatch_fixture(
         action_id,
         task_id,
     ) = (uuid4() for _ in range(7))
+    task_type = overrides.get("task_type", "ingest_source")
+    signal_id = uuid4() if task_type == "triage_signal" else None
+    if signal_id is not None:
+        task_id = canonical_triage_task_id(team_id, signal_id)
     origin_url = f"https://news.example.test/feed/{uuid4()}"
     source_type = "rss"
     context = DispatchFixture(
@@ -131,6 +136,19 @@ def dispatch_fixture(
     with session_factory.begin() as session:
         session.add(Team(id=team_id, domain="r6b_test", status="active"))
         session.flush()
+        if signal_id is not None:
+            session.add(
+                Signal(
+                    id=signal_id,
+                    domain="r6b_test",
+                    source_type="test_feed",
+                    origin_url=f"https://example.test/{signal_id}",
+                    fetched_at=datetime.now(timezone.utc),
+                    content_hash=f"sha256:{'d' * 64}",
+                    snapshot_ref=f"snap://sha256/{'d' * 64}",
+                )
+            )
+            session.flush()
         session.add(
             TeamPolicy(
                 id=policy_id,
@@ -214,7 +232,11 @@ def dispatch_fixture(
                 objective_id=objective_id,
                 plan_id=plan_id,
                 plan_action_id=action_id,
-                task_type=overrides.get("task_type", "ingest_source"),
+                task_type=task_type,
+                signal_id=signal_id,
+                identity_version=(
+                    TRIAGE_IDENTITY_VERSION if signal_id is not None else None
+                ),
                 status="pending",
                 policy_version=1,
                 allowed_writes=["Signal"],
@@ -270,10 +292,12 @@ def dispatch_fixture(
             session.execute(
                 delete(Outcome).where(Outcome.recorded_by_task_id == task_id)
             )
-            session.execute(delete(Signal).where(Signal.origin_url == origin_url))
-            # Events reference their Task, so the Task's Events go first.
+            # Events and the Task must be removed before its optional Signal FK.
             session.execute(delete(Event).where(Event.task_id == task_id))
             session.execute(delete(Task).where(Task.id == task_id))
+            if signal_id is not None:
+                session.execute(delete(Signal).where(Signal.id == signal_id))
+            session.execute(delete(Signal).where(Signal.origin_url == origin_url))
             session.execute(delete(PlanAction).where(PlanAction.plan_id == plan_id))
             # The Plan references its accepted Event, so the Plan goes first.
             session.execute(delete(Plan).where(Plan.id == plan_id))

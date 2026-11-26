@@ -9,7 +9,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import Engine, select, text
+from sqlalchemy import Engine, select, text, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import sessionmaker
 from test_r7b_history_migration import (
@@ -97,11 +97,21 @@ def pre_0016_schema(
         ):
             change = session.get(LearningChange, current_change_id)
             assert change is not None
-            approval_task = session.get(Task, change.committed_by_task_id)
+            approval_task = session.execute(
+                select(Task.id, Task.created_at).where(
+                    Task.id == change.committed_by_task_id
+                )
+            ).one_or_none()
             assert approval_task is not None
-            approval_task.task_type = "approve_learning_change"
-            approval_task.allowed_writes = ["LearningChange", "KnowledgeItem"]
-            approval_task.completed_at = change.committed_at
+            session.execute(
+                update(Task)
+                .where(Task.id == approval_task.id)
+                .values(
+                    task_type="approve_learning_change",
+                    allowed_writes=["LearningChange", "KnowledgeItem"],
+                    completed_at=change.committed_at,
+                )
+            )
             proposal_hash = "sha256:" + "c" * 64
             change.proposed_state = {
                 **change.proposed_state,
