@@ -316,3 +316,17 @@ Reconsider only when a concrete scenario and evidence justify a separate design 
 - [ ] First bounded implementation PR explicitly authorized after its own gate and reviewed proof subset.
 
 No R8 date is assigned here. R8 remains TBD until RW-0 through RW-5 and the formal foundation exit gate are complete and accepted.
+
+
+## RW4-1B accepted Thread lifecycle refinements (2026-11-26)
+
+The Operator accepted the second architecture investigation recommendations and the resolution design. Reconcile the RW4-1B design and dependent documents around these frozen points:
+
+1. Thread resolution is an exclusive resolve_thread operation mode within the existing operator_update Task. Do not add a new Task type, TaskRuntime, dispatcher path, or worker allowed_writes. It reuses the existing Operator update business-commit marker/recovery boundary.
+2. The resolution business transaction updates Thread.status (active/dormant → resolved only), increments Team revision once, and appends exactly one immutable Task-attributed thread_resolved Event. TaskRuntime terminalizes/replays the Task separately; do not claim both transactions are atomic together.
+3. activate_team is the canonical intended creator for Operator-approved starter Threads. Host authentication and delegation are external integration requirements; the host does not write Thread rows.
+4. Correct D1/F2 trust language: PostgreSQL cannot distinguish Control Room code from arbitrary SQL using the same runtime credential. Keep owner/migrator separate from the non-owner runtime credential, and operationally exclude unsupported writers from the runtime credential. A stronger same-credential adversary model needs a separate capability/credential design.
+5. The canonical RW-5 Team revision helper covers Thread creation, actual status transitions, and permitted pre-match domain changes: one bump per accepted transaction; no bump on replay/no-op/rejection/rollback.
+6. F2 remains OPEN/BLOCKING pending deployment-owner attestation and complete writer/credential inventory. Do not close F2 based on repository search alone.
+
+The refinement is design/documentation only. RW4-1B remains not implementation-authorized; D2, D4.1a, RW-5 helper/revision retrofit, TaskRuntime triage seam, and PostgreSQL proofs remain separately gated. Decision 7's all-three-outcomes-together write-enable rule is unchanged.
