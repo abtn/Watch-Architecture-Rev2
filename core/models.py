@@ -180,6 +180,22 @@ class Task(Base):
         ),
         UniqueConstraint("plan_id", "plan_action_id", name="uq_tasks_plan_action"),
         UniqueConstraint("id", "team_id", name="uq_tasks_id_team"),
+        UniqueConstraint(
+            "team_id", "signal_id", "identity_version",
+            name="uq_tasks_team_signal_identity",
+        ),
+        UniqueConstraint(
+            "id", "team_id", "signal_id", "identity_version",
+            name="uq_tasks_id_team_signal_identity",
+        ),
+        CheckConstraint(
+            "(task_type = 'triage_signal' AND signal_id IS NOT NULL "
+            "AND identity_version IS NOT NULL "
+            "AND identity_version = 'triage_identity_v1') "
+            "OR (task_type <> 'triage_signal' AND signal_id IS NULL "
+            "AND identity_version IS NULL)",
+            name="ck_tasks_triage_identity",
+        ),
         CheckConstraint(
             "(plan_id IS NULL) = (plan_action_id IS NULL)",
             name="ck_tasks_plan_action_pair",
@@ -191,6 +207,12 @@ class Task(Base):
         Uuid(as_uuid=True), ForeignKey("teams.id"), nullable=False
     )
     task_type: Mapped[str] = mapped_column(String, nullable=False)
+    signal_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("signals.id", name="fk_tasks_signal"),
+        nullable=True,
+    )
+    identity_version: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False)
     attempt_count: Mapped[int] = mapped_column(
         nullable=False, default=0, server_default="0"
@@ -242,6 +264,12 @@ class Event(Base):
     __table_args__ = (
         UniqueConstraint("id", "task_id", name="uq_events_id_task"),
         Index("ix_events_task_id_type", "task_id", "type"),
+        Index(
+            "uq_events_triage_signal_requested_task",
+            "task_id",
+            unique=True,
+            postgresql_where=sa.text("type = 'triage_signal_requested'"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)

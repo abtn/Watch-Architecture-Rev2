@@ -11,7 +11,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select, text
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, load_only, sessionmaker
 
 from core.embeddings import EmbeddingBatch, EmbeddingProvider, EmbeddingSpace
 from core.learning_history import (
@@ -462,7 +462,21 @@ def _accepted_learning_change_is_canonical(
     ):
         return False
 
-    approval_task = session.get(Task, learning_change.committed_by_task_id)
+    approval_task = session.scalar(
+        select(Task)
+        .options(
+            load_only(
+                Task.id,
+                Task.team_id,
+                Task.task_type,
+                Task.status,
+                Task.attempt_count,
+                Task.policy_version,
+                Task.completed_at,
+            )
+        )
+        .where(Task.id == learning_change.committed_by_task_id)
+    )
     if (
         approval_task is None
         or approval_task.team_id != item.team_id
