@@ -135,6 +135,28 @@ def main() -> int:
                     "GRANT watch_owner TO watch_migrator WITH INHERIT FALSE, SET TRUE"
                 )
                 cursor.execute(
+                    """
+                    SELECT count(*)
+                    FROM pg_auth_members AS membership
+                    JOIN pg_roles AS granted ON granted.oid = membership.roleid
+                    JOIN pg_roles AS member ON member.oid = membership.member
+                    WHERE
+                        (granted.rolname = 'watch_owner'
+                         AND member.rolname <> 'watch_migrator')
+                        OR member.rolname = 'watch_owner'
+                        OR granted.rolname = 'watch_runtime'
+                        OR member.rolname = 'watch_runtime'
+                        OR (member.rolname = 'watch_migrator'
+                            AND granted.rolname <> 'watch_owner')
+                        OR granted.rolname = 'watch_migrator'
+                    """
+                )
+                if cursor.fetchone()[0]:
+                    raise RuntimeError(
+                        "Watch roles have unexpected role memberships; "
+                        "manual privilege reconciliation is required"
+                    )
+                cursor.execute(
                     "ALTER DEFAULT PRIVILEGES FOR ROLE watch_owner IN SCHEMA public "
                     "GRANT SELECT ON TABLES TO watch_runtime"
                 )
