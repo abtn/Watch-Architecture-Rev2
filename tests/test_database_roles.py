@@ -82,7 +82,9 @@ def test_database_roles_have_separated_effective_privileges() -> None:
                     """
                 )
             ).all()
-            assert memberships == [("watch_owner", "watch_migrator", False, False, True)]
+            assert memberships == [
+                ("watch_owner", "watch_migrator", False, False, True)
+            ]
 
             assert connection.scalar(
                 text("SELECT pg_get_userbyid(datdba) = 'watch_owner' "
