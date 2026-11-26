@@ -537,7 +537,7 @@ A repository search cannot substitute for deployment-owner confirmation of out-o
 | Path | Accepted disposition | Required boundary |
 |---|---|---|
 | Approved starter Thread creation | `activate_team` through Watch application/Kernel | Operator authenticated by trusted host; Watch validates and commits Team activation, approved starter Threads, and provenance. No direct host SQL. |
-| Thread resolution | Explicit Operator-authorized Task/application operation | Validate authorization, reason, current state and Team; use canonical locks; update status and append one immutable Task-attributed Event in the same transaction. |
+| Thread resolution | operator_update Task in the exclusive resolve_thread operation mode | Control Room admits the Operator-authorized request; the existing Operator update commit path validates the locked Thread and reason, updates status, and appends one immutable Task-attributed Event in the same business transaction. TaskRuntime retains sole admission, terminalization, recovery, and replay ownership. |
 | `update_thread` / `operator_update` | Existing-Thread knowledge writers only | May change only their specified Hypothesis/EvidenceLink/ConfidenceChange scope; no Thread creation or lifecycle authority. |
 | `apply_decay` in RW-5 first release | Confidence-only writer | No Thread status/domain change and no dormancy creation. |
 | Host/Control Room | Authenticated caller/delegator | May request approved operations; must not independently write Thread rows. |
@@ -557,14 +557,14 @@ A repository search cannot substitute for deployment-owner confirmation of out-o
 **Database privilege and compatibility requirements**
 
 - The generic runtime role must not have unrestricted Thread INSERT/DELETE or broad status/domain UPDATE privileges. The resolution operation's eventual database write capability is deliberately unresolved until the deployment inventory is complete; it must be a narrowly scoped capability/entry point that preserves Operator authorization, Task attribution, canonical locks, Team revision, and the atomic Event, not a broad generic-runtime UPDATE grant.
-- Derive least privilege from the complete deployment writer inventory. Where PostgreSQL cannot distinguish an approved caller from arbitrary SQL using the same broad role, use a narrower database capability/credential boundary or ensure DML is available only through a controlled entry point; do not claim application convention alone is enforcement.
+- Derive least privilege from the complete deployment writer inventory. PostgreSQL cannot distinguish an approved Control Room call from arbitrary SQL issued with the same runtime credential. The accepted D1 boundary is trusted application code: unsupported direct SQL and external writers must be operationally excluded from holding or using the runtime credential. If the deployment requires protection against a nonconforming process that holds that same credential, stop and design a separate credential/process or narrowly scoped database capability; do not claim that grants alone distinguish the callers.
 - The owner-controlled F3 trigger rejects matched-referenced Thread domain changes regardless of caller.
 - Bootstrap/migration access remains distinct from runtime access. No application process may use the owner or migration credential.
 - Existing writers that legitimately need status/profile mutations must be migrated to the canonical lock/revision protocol before matched disposition writes are enabled.
 
 **F2 exit evidence**
 
-F2 closes only when all are present: (1) deployment-owner-confirmed inventory of every in-repository and out-of-repository Thread writer and credential; (2) each writer classified and reconciled with the accepted target owner; (3) exact role-to-writer/column grant matrix, including effective and inherited privileges; (4) proof unsupported direct writes are denied and supported operations cannot bypass authorization, lock order, revision stamping, or provenance; (5) real disposable-PostgreSQL interleavings for each supported writer and competing matched-decision/domain-update orders; (6) exact replay and rollback proof for the resolution status/Event transaction; and (7) integrated review confirming no dormancy transition or new Thread creator was accidentally introduced.
+F2 closes only when all are present: (1) deployment-owner-confirmed inventory of every in-repository and out-of-repository Thread writer and credential; (2) each writer classified and reconciled with the accepted target owner; (3) exact role-to-writer/column grant matrix, including effective and inherited privileges; (4) proof unsupported external/direct-SQL writers are operationally excluded or isolated behind a distinct credential/capability, and supported operations cannot bypass application authorization, lock order, revision stamping, or provenance; (5) real disposable-PostgreSQL interleavings for each supported writer and competing matched-decision/domain-update orders; (6) exact replay and rollback proof for the resolution status/Event business transaction and its TaskRuntime recovery boundary; and (7) integrated review confirming no dormancy transition or new Thread creator was accidentally introduced.
 
 Until then, **F2 remains OPEN/BLOCKING** and matched disposition writes remain disabled under the accepted all-three-outcomes-together gate. The decision does not freeze `Thread.status`: valid later lifecycle transitions remain permitted through the proven supported writer boundary.
 
@@ -754,3 +754,46 @@ RW4-1B is a design proposal only. It does not authorize:
 - RW4-2 Stage B creator implementation;
 - RW4-3 matching/commit;
 - RW4-5 dormant Thread reactivation.
+
+
+## 10.2 Accepted Thread lifecycle operation and trust-boundary refinement (2026-11-26)
+
+The Operator accepted the following refinement after the second architecture investigation. It resolves the previously open resolution envelope and corrects the database trust claim in F2. This is a design/documentation change only; it does not authorize code, ORM, SQL, migration, TaskRuntime, or test implementation.
+
+### Resolution is an operation mode of the existing Operator Task
+
+- Keep the existing task_type=operator_update. Do not add a resolve_thread Task type, a second TaskRuntime, or a parallel lifecycle service.
+- Add a typed, mutually exclusive resolve_thread operation mode to the existing Operator update request/commit boundary. The existing proposal-commit mode remains unchanged. A request must be either the existing proposal commit or a resolution operation; it must not combine resolution with Hypothesis/EvidenceLink/ConfidenceChange proposals.
+- The resolution mode is a Kernel/application-managed effect. It is not worker output, does not appear in allowed_writes, and does not grant a model or worker Thread lifecycle authority. update_thread remains limited to its existing Hypothesis/EvidenceLink/ConfidenceChange scope.
+- The trusted host authenticates the Operator and supplies a trusted principal. Control Room validates the exact resolve_thread grant against the Team derived from the locked target Thread. A caller-supplied Team ID, Operator ID, or permission assertion is not authoritative.
+- The immutable operator_update_requested request provenance must bind operation mode, target Thread ID, reason, trusted Operator identity, and idempotency key. Reuse the existing operator_update Task creation/replay namespace and commit-marker/recovery mechanism; do not invent a second identity or recovery system. Exact semantic replay returns the original Task/result. Reuse of the same idempotency key with a different target, reason, operation mode, or Operator principal is a conflict.
+- Resolution is permitted only for active → resolved or dormant → resolved. resolved is terminal; repeated exact replay returns the prior result and does not append another Event. A resolved Thread cannot be reopened through this operation. The Team must satisfy the existing operator_update active-Team admission rule. The Thread must belong to that Team. Thread.domain is not changed.
+- The resolution business transaction acquires the canonical Task → Team → Thread locks (no Hypothesis lock is needed because the operation does not touch Hypotheses), refreshes the locked Thread from PostgreSQL, validates its current status and Team ownership, updates Thread.status, increments Team revision exactly once, and appends exactly one immutable thread_resolved Event. The Event records Task ID, Team ID, Thread ID, trusted Operator ID, previous status, new status resolved, and the non-empty reason. Status, revision increment, and Event commit or roll back together.
+- The existing Operator update business-commit marker remains the durable recovery boundary. As in the current Operator update architecture, the business transaction that changes Thread status and writes thread_resolved is distinct from subsequent TaskRuntime terminalization. TaskRuntime remains the sole owner of Task terminal state and terminal Events; after a crash, its existing recovery path must detect the committed business marker and finish/replay without repeating the status transition, revision increment, or thread_resolved Event. Do not claim that Thread status/Event and Task terminalization are one database transaction.
+- Do not update Thread.last_updated_at as a side effect unless a separate accepted contract defines that field's semantics. The immutable Event is the lifecycle chronology.
+- A real status transition increments Team revision once. Exact replay, a rejected transition, a no-op, and a rolled-back transaction do not increment it. The general Team-revision rules are frozen in §10.3 below.
+
+### Corrected D1/F2 trust model
+
+Control Room is the single logical application authority for supported Task creation and for authorized Thread lifecycle operations. This is an application-code boundary, not a database identity boundary. PostgreSQL grants can distinguish roles and credentials; they cannot distinguish two code paths using the same database principal. Therefore:
+
+1. watch_runtime is a non-owner, non-superuser runtime credential with only the application DML needed by the inventoried Watch paths. It cannot assume owner/migrator roles, alter schema/privileges, disable triggers, or bypass protected physical invariants.
+2. The deployment must ensure that only the Watch application processes implementing the trusted Control Room/Kernel boundary receive and use that runtime credential. Host adapters authenticate and delegate; they do not connect to PostgreSQL to write Thread rows. Unsupported scripts, external processes, ad-hoc SQL clients, and administrative tools must not share the runtime credential.
+3. If a deployment requirement includes protection against a hostile or nonconforming process that already possesses the same runtime credential, the shared-role model is insufficient. Stop and separately design a narrower database capability, function boundary, or distinct credential/process. Do not imply that ordinary table grants or triggers can identify the calling Python module.
+4. PostgreSQL remains responsible for physical invariants that are independent of caller identity: immutable Event/disposition history, row-local constraints/FKs, the matched-Thread domain guard, protected-field guards, and effective TRUNCATE/trigger-bypass protections. Control Room/Kernel remains responsible for caller authorization, Task provenance, allowed operation mode, and use of the canonical transaction path.
+5. F2 remains OPEN/BLOCKING until the deployment owner attests the complete writer/credential inventory. If no production deployment exists, an explicit deployment-owner attestation of that fact plus a complete inventory of development/bootstrap credentials and processes may satisfy the deployment-status portion. Repository source search alone does not establish absence of out-of-repository writers.
+
+### 10.3 Team revision for Thread lifecycle/profile changes
+
+The canonical RW-5 world-memory lock helper remains the only Team-revision allocator. Extend its defined change set to include matcher-relevant Thread lifecycle/profile changes:
+
+| Accepted transaction | Team revision behavior |
+|---|---|
+| activate_team commits approved starter Thread creation | Increment once for the activation transaction, regardless of the number of starter Threads created. |
+| Operator resolve_thread mode commits an actual active/dormant → resolved transition | Increment once in the same business transaction as the status change and thread_resolved Event. |
+| A separately supported pre-match Thread.domain change commits | Increment once in the same transaction; the resulting domain must still satisfy the Team/domain invariant for any later match. |
+| Exact replay, rejected request, no-op assignment/transition, or rollback | No increment. |
+
+The canonical revision protocol applies to any future supported Thread creation, status, or matcher-relevant profile writer. It does not authorize a dormancy writer in RW-5 first release, does not change the accepted D6 reactivation gate, and does not make Thread.last_updated_at a matcher input or revision substitute. A matched disposition does not freeze status; later supported lifecycle transitions remain valid historical changes. A matched disposition does freeze the referenced Thread's domain under the F3 database guard.
+
+**Required proof addition:** test activation creating multiple starter Threads with one revision increment; resolution with one increment and one Event; exact replay with no second increment/Event; rejected/no-op/rollback with no increment; and a pre-match domain update serialized against receipt/finalization. These tests belong to the separately authorized RW-5 compatibility/Team-revision proof, not to RW4-1B physical-schema implementation.
