@@ -121,6 +121,14 @@ Every disposition references the canonical Task for the same Team/Signal. The di
 
 D5 decision acceptance does not authorize RW4-1 implementation. RW4-1 still requires a reviewed physical design for relational/cross-record integrity, a frozen proof subset, disposable-PostgreSQL migration/constraint/rollback proofs, and explicit authorization.
 
+#### F2 — Thread writer ownership and lifecycle gate (Operator decisions, 2026-11-26)
+
+The target owner is accepted: Watch's trusted application/Kernel boundary owns Thread creation and supported lifecycle writes. `activate_team` is the canonical intended creator for Operator-approved starter Threads; a trusted host authenticates and delegates, but never writes Thread rows directly. Resolution is an explicit Operator-authorized Task/application operation that records a reason and one immutable Task-attributed Event atomically with the status transition. This is a design target, not an implemented path: `activate_team` remains unimplemented in Checkpoint 3, and the actual deployment writer status is UNKNOWN.
+
+F2 remains OPEN/BLOCKING until the deployment owner supplies an attested inventory of all application, host, worker, scheduled, seed/bootstrap, import, admin/maintenance, migration, direct-SQL, and external Thread writers and credentials. Every supported status/profile writer must use Task → Team → sorted Thread → sorted Hypothesis locks, required Team-revision stamping, and one transaction through commit. Runtime privileges must deny unregistered direct writes; F3's database guard protects matched-referenced Thread.domain. Resolution needs exact authorization, reason, Event identity/cardinality, rollback, and replay proof. RW-5 first-release decay remains confidence-only; no dormancy writer is added here, and RW4-5 reactivation remains separately gated.
+
+Closure sequence: (1) deployment-owner inventory; (2) writer/credential classification; (3) role-to-writer/column privilege matrix; (4) canonical application-operation and Task/Event contract; (5) lock/revision and F3 guard compatibility; (6) real PostgreSQL writer/race plus resolution replay/rollback proof; (7) independent F2 closure review. Do not enable matched dispositions before this evidence is complete.
+
 ### D6 — Accepted dormant Thread reactivation contract (2026-11-25)
 
 D6.1–D6.6 are accepted (issue #195). This freezes the lifecycle decision; it does not authorize implementation. Dormant reactivation remains a separately authorized RW4-5 implementation slice after RW4-4 and the required RW-5 helper/retrofit.
