@@ -11,7 +11,7 @@
 | `watch_runtime` | Yes | Intended application runtime identity | Schema usage and SELECT on owner-created tables/sequences only; no DML, DDL, TEMP, owner membership, or migrator membership |
 | Bootstrap administrator | Yes | Provisioning and disposable test administration | Superuser in local/CI bootstrap; never the application runtime identity |
 
-The bootstrap administrator and CI test connection are deliberately not the runtime role. Tests need to create/drop isolated schemas and fixtures, so they use the disposable test database's administrative credential. Do not copy that credential into a Watch runtime process.
+The bootstrap administrator and CI test connection are deliberately not the runtime role. Tests need to create/drop isolated schemas and fixtures, so they use the disposable test database's administrative credential. Do not copy that credential into a Watch runtime process. The bootstrap administrator also installs pgvector before migrations: the extension is not marked trusted by PostgreSQL, so it cannot be installed by the non-superuser migration owner. Migration 0001 therefore treats pgvector as a persistent database prerequisite and does not drop it on downgrade.
 
 ## Provision a fresh development database
 
@@ -39,7 +39,7 @@ export DATABASE_URL='postgresql+psycopg://watch_migrator:<unique-migrator-passwo
 uv run alembic upgrade head
 ```
 
-The Alembic environment recognizes the dedicated `watch_migrator` login, executes `SET ROLE watch_owner`, and verifies the effective `current_user` before running migrations. Programmatic migration tests that connect through `TEST_DATABASE_URL` retain their explicitly supplied administrative connection and isolated-schema behavior.
+The bootstrap preinstalls pgvector with the administrative connection. The Alembic environment recognizes the dedicated `watch_migrator` login, executes `SET ROLE watch_owner`, and verifies the effective `current_user` before running application migrations. Programmatic migration tests that connect through `TEST_DATABASE_URL` retain their explicitly supplied administrative connection and isolated-schema behavior.
 
 A read-only runtime connection can then use:
 
