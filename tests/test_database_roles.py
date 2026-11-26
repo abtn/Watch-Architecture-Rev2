@@ -70,6 +70,17 @@ def test_database_roles_have_separated_effective_privileges() -> None:
                      "FROM pg_database WHERE datname = current_database()")
             )
             assert connection.scalar(
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')"
+                )
+            )
+            assert connection.scalar(
+                text(
+                    "SELECT pg_get_userbyid(extowner) <> 'watch_owner' "
+                    "FROM pg_extension WHERE extname = 'vector'"
+                )
+            )
+            assert connection.scalar(
                 text("SELECT has_schema_privilege('watch_runtime', 'public', 'USAGE')")
             )
             assert connection.scalar(
