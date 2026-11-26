@@ -67,7 +67,10 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        _run_migrations(connection)
+        # The role check/SET ROLE starts SQLAlchemy's transaction. Keep the
+        # migration run inside an explicit owner transaction so it commits.
+        with connection.begin():
+            _run_migrations(connection)
 
 
 if context.is_offline_mode():
