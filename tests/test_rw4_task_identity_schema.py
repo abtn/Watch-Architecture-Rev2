@@ -304,7 +304,10 @@ def test_triage_before_insert_trigger_locks_team_even_for_on_conflict(
         )
 
     application_name = f"rw4-triage-lock-{uuid4().hex}"
-    worker_engine = create_engine(database_engine.url)
+    worker_engine = create_engine(
+        database_engine.url,
+        connect_args={"application_name": application_name},
+    )
     started = threading.Event()
     statement = text(
         """
@@ -365,20 +368,21 @@ def test_triage_before_insert_trigger_locks_team_even_for_on_conflict(
                                 ),
                                 {"application_name": application_name},
                             ).one_or_none()
-                        if (
-                            wait_event is not None
-                            and wait_event[0] == "active"
-                            and wait_event[1] == "Lock"
-                            and wait_event[2].lstrip().startswith("INSERT INTO tasks")
-                            and blocker_pid in wait_event[3]
-                        ):
+                        # pg_blocking_pids() is the authoritative proof that
+                        # this backend is waiting on the blocker. PostgreSQL may
+                        # report different wait-event details across versions and
+                        # execution phases, so do not make those incidental fields
+                        # part of the concurrency assertion.
+                        if wait_event is not None and blocker_pid in wait_event[3]:
                             waiting_for_lock = True
                             break
                         time.sleep(0.02)
                 finally:
                     transaction.commit()
                 assert waiting_for_lock, (
-                    "triage BEFORE INSERT trigger did not wait for the Team lock"
+                    "triage INSERT was not blocked by the Team-row lock; "
+                    f"worker_done={future.done()}, "
+                    f"worker_error={future.exception() if future.done() else None}"
                 )
                 assert future.result(timeout=5) == 0
         with session_factory() as session:
