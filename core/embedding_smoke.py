@@ -1,8 +1,9 @@
 """Run an end-to-end smoke test against the configured embedding API.
 
-Usage on the developer machine:
+Usage on the developer machine (after starting a disposable PostgreSQL instance):
+    $env:TEST_DATABASE_URL = "postgresql+psycopg://watch:watch@127.0.0.1:5432/watch_embedding_smoke"
+    $env:DATABASE_URL = $env:TEST_DATABASE_URL
     uv run alembic upgrade head
-    $env:TEST_DATABASE_URL = "postgresql+psycopg://watch:watch@127.0.0.1:5432/watch"
     uv run python -m core.embedding_smoke
 
 The script inserts a uniquely identified temporary Team, policy, and Signal, then
@@ -22,6 +23,7 @@ from sqlalchemy import create_engine, delete, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
+from core.database_config import resolve_test_database_url
 from core.embeddings import EmbeddingProviderError, embedding_provider_from_env
 from core.knowledge_index import HybridKnowledgeRetriever, SignalIndexer
 from core.models import KnowledgeChunk, Signal, Team, TeamPolicy
@@ -29,12 +31,11 @@ from core.snapshot_store import SnapshotStore
 
 
 def main() -> int:
-    database_url = os.environ.get("TEST_DATABASE_URL") or os.environ.get(
-        "DATABASE_URL"
-    )
-    if not database_url:
+    try:
+        database_url = resolve_test_database_url(os.environ)
+    except ValueError as error:
         print(
-            "Set TEST_DATABASE_URL to a migrated disposable PostgreSQL database.",
+            f"Embedding smoke database configuration error: {error}",
             file=sys.stderr,
         )
         return 2
