@@ -751,7 +751,7 @@ If any dependency is missing, unsupported, or fails proof, keep all three dispos
 
 ## 12. Explicit non-authorization
 
-RW4-1B is a design proposal only. It does not authorize:
+RW4-1B is a design proposal only. Design preparation may continue as the current PLAN.md action, but RW4-1 implementation must also remain behind completion and review of the RW4-2 Stage A creator specification, migration/preflight design, existing-writer compatibility, lock-path contract, and proof subset required by the RW-4 readiness plan. Acceptance of the RW4-1B physical design and a separate explicit RW4-1 implementation authorization are additional gates; none substitutes for the others. It does not authorize:
 - SignalDisposition model/table/migration/service implementation;
 - TaskRuntime or ingestion code changes;
 - any further D2 Task identity schema migration (the accepted schema migration is already merged by PR #203);
