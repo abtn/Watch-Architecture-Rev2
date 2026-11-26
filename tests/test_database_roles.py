@@ -6,6 +6,8 @@ import os
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError
 
 from core.database_config import resolve_test_database_url
 
@@ -127,3 +129,27 @@ def test_database_roles_have_separated_effective_privileges() -> None:
                     ) is False
     finally:
         engine.dispose()
+
+    runtime_password = os.environ.get("WATCH_RUNTIME_PASSWORD")
+    if not runtime_password:
+        pytest.skip("WATCH_RUNTIME_PASSWORD is not configured for login verification")
+    runtime_url = make_url(database_url).set(
+        username="watch_runtime", password=runtime_password
+    )
+    runtime_engine = create_engine(runtime_url)
+    try:
+        with runtime_engine.connect() as connection:
+            assert connection.scalar(text("SELECT current_user")) == "watch_runtime"
+            connection.execute(text("SELECT count(*) FROM teams")).scalar_one()
+
+        for statement in (
+            "UPDATE teams SET status = status WHERE false",
+            "DELETE FROM teams WHERE false",
+            "TRUNCATE TABLE teams",
+            "CREATE TABLE public.watch_runtime_forbidden (id integer)",
+        ):
+            with runtime_engine.connect() as connection:
+                with pytest.raises(DBAPIError):
+                    connection.execute(text(statement))
+    finally:
+        runtime_engine.dispose()
