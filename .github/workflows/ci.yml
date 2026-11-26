@@ -61,8 +61,11 @@ jobs:
           --health-start-period 5s
 
     env:
-      DATABASE_URL: postgresql+psycopg://watch_ci:watch_ci@127.0.0.1:5432/watch_ci
+      DATABASE_ADMIN_URL: postgresql+psycopg://watch_ci:watch_ci@127.0.0.1:5432/watch_ci
+      DATABASE_URL: postgresql+psycopg://watch_migrator:migrator_ci_password@127.0.0.1:5432/watch_ci
       TEST_DATABASE_URL: postgresql+psycopg://watch_ci:watch_ci@127.0.0.1:5432/watch_ci
+      WATCH_MIGRATOR_PASSWORD: migrator_ci_password
+      WATCH_RUNTIME_PASSWORD: runtime_ci_password
 
     steps:
       - name: Check out the exact commit
@@ -81,7 +84,10 @@ jobs:
       - name: Install the locked dependency set
         run: uv sync --locked
 
-      - name: Apply migrations to a fresh database
+      - name: Provision isolated database roles
+        run: uv run python scripts/provision_database_roles.py
+
+      - name: Apply migrations as the migration role
         run: uv run alembic upgrade head
 
       - name: Verify the migration revision is at head
@@ -92,7 +98,7 @@ jobs:
             uv run alembic heads
             exit 1
           fi
-          current="$(uv run alembic current | awk '{print $1}')"
+          current="$(uv run python -c 'import os; from sqlalchemy import create_engine, text; engine = create_engine(os.environ["TEST_DATABASE_URL"]); connection = engine.connect(); print(connection.scalar(text("SELECT version_num FROM alembic_version"))); connection.close(); engine.dispose()')"
           head="$(uv run alembic heads | awk '{print $1}')"
           if [ "$current" != "$head" ]; then
             echo "Database is at '$current', expected head '$head'"
