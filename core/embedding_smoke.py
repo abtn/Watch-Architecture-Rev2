@@ -1,8 +1,9 @@
 """Run an end-to-end smoke test against the configured embedding API.
 
-Usage on the developer machine:
-    uv run alembic upgrade head
+Usage on the developer machine (after starting a disposable PostgreSQL instance):
     $env:TEST_DATABASE_URL = "postgresql+psycopg://watch:watch@127.0.0.1:5432/watch_embedding_smoke"
+    $env:DATABASE_URL = $env:TEST_DATABASE_URL
+    uv run alembic upgrade head
     uv run python -m core.embedding_smoke
 
 The script inserts a uniquely identified temporary Team, policy, and Signal, then
