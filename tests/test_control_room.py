@@ -148,26 +148,25 @@ def test_idempotent_creator_conflict_does_not_create_request_event() -> None:
 def test_invalid_request_event_configuration_does_not_mutate_session() -> None:
     session = RecordingSession()
     db = cast(Session, session)
-    common = {
-        "task_id": uuid4(),
-        "team_id": uuid4(),
-        "task_type": "test_task",
-        "policy_version": 1,
-        "allowed_writes": [],
-        "budget": {},
-        "max_attempts": 1,
-    }
 
     for event_type, payload in (("task_requested", None), (None, {"request": True})):
         try:
             _create_task(
                 db,
-                **common,
+                task_id=uuid4(),
+                team_id=uuid4(),
+                task_type="test_task",
+                policy_version=1,
+                allowed_writes=[],
+                budget={},
+                max_attempts=1,
                 request_event_type=event_type,
                 request_event_payload=payload,
             )
         except ValueError as error:
-            assert str(error) == "request_event_type_and_payload_must_be_provided_together"
+            assert str(error) == (
+                "request_event_type_and_payload_must_be_provided_together"
+            )
         else:
             raise AssertionError("invalid request Event configuration was accepted")
 
