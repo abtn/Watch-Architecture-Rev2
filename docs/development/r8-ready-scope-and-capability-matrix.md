@@ -37,7 +37,21 @@ If a candidate scenario requires SignalDisposition or any other gated capability
 
 - The accepted D1 contract makes the application Control Room the sole logical authority for all supported Task creation. It explicitly says the Control Room is a logical boundary, not a claim that a dedicated implementation already exists.
 - The accepted writer audit inventories nine production Task producers and requires all of them to delegate to named Control Room-owned operations, without direct-persistence fallback. The inventory includes `update_thread`, `operator_update`, `ingest_source` Plan materialization, TaskRuntime follow-ons, and the KnowledgeRevalidation producer.
-- The current source still contains direct Task persistence in `OperatorApplicationAdapter.create_update_thread_task` and `OperatorApplicationAdapter.operator_update`. Current source search did not find a Control Room implementation or the named `create_operator_update_task` / `create_update_thread_task` Control Room operations.
+- The current source still contains direct Task persistence in all nine inventoried producer paths. A current-source check of the actual insert sites confirms the audit inventory:
+  
+  | # | Producer / operation | Current direct insert site | Source blob SHA |
+  |---:|---|---|---|
+  | 1 | OperatorApplicationAdapter `create_update_thread_task` | `core/operator_application.py:294` (`pg_insert(Task)`) | `0cdd5275fc5d33a0633b721a0e91840f0c0988cf` |
+  | 2 | LearningChange decision request | `core/operator_application.py:618` (`pg_insert(Task)`) | `0cdd5275fc5d33a0633b721a0e91840f0c0988cf` |
+  | 3 | Operator update request | `core/operator_application.py:809` (`Task(...)`) | `0cdd5275fc5d33a0633b721a0e91840f0c0988cf` |
+  | 4 | Plan materialization of `ingest_source` | `core/plans.py:239` (`Task(...)`) | `ef63fb9f8f540892a2e90643b7d9812e0fe37b2c` |
+  | 5 | TaskRuntime Knowledge Quality follow-on | `core/task_runtime.py:3283` (`Task(...)`) | `c19c1d6e87137441306cdb454f7ca304297d75d3` |
+  | 6 | TaskRuntime Knowledge Revalidation follow-on | `core/task_runtime.py:3355` (`Task(...)`) | `c19c1d6e87137441306cdb454f7ca304297d75d3` |
+  | 7 | TaskRuntime Knowledge Lifecycle follow-on | `core/task_runtime.py:3423` (`Task(...)`) | `c19c1d6e87137441306cdb454f7ca304297d75d3` |
+  | 8 | TaskRuntime follow-on Evaluation | `core/task_runtime.py:3732` (`Task(...)`) | `c19c1d6e87137441306cdb454f7ca304297d75d3` |
+  | 9 | KnowledgeRevalidationAssessmentService producer | `core/knowledge_revalidation.py:1095` (`Task(...)`) | `38ee4e77ba8dff77f0a1cf174f4321df4cbbb7f2` |
+
+- Current source search did not find a Control Room implementation or the named `create_operator_update_task` / `create_update_thread_task` Control Room operations. The exact nine-site inventory agrees with the accepted [RW4-2 writer compatibility audit](rw4-2-migration-and-writer-compatibility-audit.md) §4.
 - The accepted audit requires all nine producers to conform; implementing a new facade for only one selected scenario would not satisfy D1. The Control Room conformance work is not authorized by this matrix or PR #206.
 
 **Consequence:** candidate scenarios that create Tasks through these existing adapters are currently **Blocked** pending separately authorized D1 conformance (or an explicit Operator decision that changes the accepted boundary). A pre-seeded Task fixture would not prove the real user-facing Task-creation path and must not be presented as end-to-end scenario evidence.
