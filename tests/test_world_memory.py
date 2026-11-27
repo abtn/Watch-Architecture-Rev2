@@ -25,6 +25,7 @@ from core.models import (
     Signal,
     Task,
     Team,
+    TeamExperienceChunk,
     TeamPolicy,
     Thread,
 )
@@ -159,6 +160,23 @@ def world_memory_context(
                 delete(TeamPolicy).where(TeamPolicy.team_id == team_id)
             )
             session.execute(delete(Team).where(Team.id == team_id))
+
+
+@pytest.fixture
+def r8_control_group(
+    session_factory: sessionmaker[Session],
+    world_memory_context: WorldMemoryContext,
+) -> WorldMemoryContext:
+    """Provide the no-retained-experience baseline for R8 internal tests."""
+    with session_factory() as session:
+        assert list(
+            session.scalars(
+                select(TeamExperienceChunk).where(
+                    TeamExperienceChunk.team_id == world_memory_context.team_id
+                )
+            )
+        ) == []
+    return world_memory_context
 
 
 def _principal(team_id: UUID) -> TrustedOperatorPrincipal:
@@ -300,9 +318,9 @@ def _create_pending_task(
     return task_id
 
 def test_operator_update_creates_low_hypothesis_and_verified_evidence(
-    session_factory, snapshot_store, world_memory_context
+    session_factory, snapshot_store, r8_control_group
 ):
-    context = world_memory_context
+    context = r8_control_group
     hypothesis_id = uuid4()
     request = OperatorUpdateRequest(
         thread_id=context.thread_id,
@@ -354,6 +372,13 @@ def test_operator_update_creates_low_hypothesis_and_verified_evidence(
                 Outcome.outcome_type == "task_execution",
             )
         ) is not None
+        assert list(
+            session.scalars(
+                select(TeamExperienceChunk).where(
+                    TeamExperienceChunk.team_id == context.team_id
+                )
+            )
+        ) == []
 
     replay = adapter.operator_update(_principal(context.team_id), request)
     assert replay.replayed
