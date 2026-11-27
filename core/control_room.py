@@ -46,12 +46,14 @@ def _create_task(
     )
     session.add(task)
     if request_event_type is not None:
+        if request_event_payload is None:
+            raise ValueError("request_event_payload_required")
         session.add(
             Event(
                 id=uuid4(),
                 task_id=task_id,
                 type=request_event_type,
-                payload=request_event_payload or {},
+                payload=request_event_payload,
                 created_at=datetime.now(timezone.utc),
             )
         )
