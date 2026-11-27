@@ -40,10 +40,10 @@ Current repository evidence:
 
 Two stale developer instructions were found:
 
-1. `scripts/test-disposable-postgres.ps1` starts a fresh container as `watch_test`, sets that same bootstrap URL as `DATABASE_URL`, then invokes Alembic CLI. Current `migrations/env.py` rejects that login because it requires `session_user = 'watch_migrator'`. The runner must provision roles, use a migrator URL for `DATABASE_URL`, keep the administrative URL for `TEST_DATABASE_URL`, pass the role passwords, and restore every environment variable it changes.
-2. `core/embedding_smoke.py` now calls `resolve_test_database_url`, but its module docstring still tells the user to set `DATABASE_URL = TEST_DATABASE_URL` using the bootstrap login before running Alembic. The usage instructions need to show the same role bootstrap/migrator split.
+1. The pre-correction `scripts/test-disposable-postgres.ps1` used the bootstrap URL as `DATABASE_URL`, which the current Alembic CLI rejects because it requires `session_user = 'watch_migrator'`. The correction in this follow-up changes the runner to provision roles, use a migrator URL for `DATABASE_URL`, retain the administrative URL for `TEST_DATABASE_URL`, and restore all environment variables it changes.
+2. The `core/embedding_smoke.py` usage docstring previously instructed users to set `DATABASE_URL = TEST_DATABASE_URL` with the bootstrap login. The correction in this follow-up documents the same fresh-database role bootstrap/migrator split used by CI.
 
-The current Linux CI path is green; this finding is specifically about the local PowerShell runner and stale smoke-test instructions. Neither was executed on Windows in this review. Keep this tooling correction separate from production RW4-1 code.
+**Verification status:** the source correction is included in this follow-up branch. It has not yet been executed on Windows; hosted Linux CI does not validate PowerShell runtime behavior. Do not mark local disposable verification complete until the script is run on Windows and its migration, test, cleanup, and environment-restoration results are recorded. Keep this tooling correction separate from production RW4-1 code.
 
 ### 2.3 Intake provenance and ingestion lock compatibility
 
@@ -88,7 +88,7 @@ Neither guard nor finalizer refresh exists today. Both require real two-session 
 | F2 | Thread writer ownership | **Open / blocking** | No host/runtime consumer or supported Thread lifecycle writer is implemented. Reconcile local untracked writers/credentials and implement the accepted Watch-owned writer path before write enablement. |
 | F3 | Thread.domain DB guard | **Design only** | Exact trigger/function DDL and match-first/domain-first/no-op/non-matched PostgreSQL tests. |
 | F4 | ORM locked-row freshness | **Design only** | Implement locked-row refresh and stale-identity-map two-session tests. |
-| P1 | Local verification runner | **Tooling defect** | Update PowerShell runner and smoke usage for the current migrator/runtime role setup; execute on Windows before claiming local disposable verification. |
+| P1 | Local verification runner | **Code correction included in follow-up; Windows verification pending** | Execute the corrected PowerShell runner on Windows; verify role bootstrap, migrator CLI, admin test URL, full suite, cleanup, and exact environment restoration. |
 | P2 | Exact physical DDL | **Not frozen** | Freeze exact CHECK expressions, FK actions, index predicates, timestamp assignment, trigger SQL, ownership/grants, and forward-only downgrade refusal. |
 | P3 | All-outcome write gate | **Closed by accepted decision** | Keep matched/duplicate/deferred all disabled until every Decision 7 prerequisite is implemented and independently verified. |
 | P4 | D4.1a / D4.2 / RW-5 dependencies | **Separate workstreams** | Do not implement them inside RW4-1; preserve their accepted sequencing and gates. |
@@ -97,7 +97,7 @@ Neither guard nor finalizer refresh exists today. Both require real two-session 
 
 This is a proposed order, not an authorization:
 
-1. **Tooling compatibility correction:** repair the PowerShell disposable runner and smoke instructions; verify role bootstrap, migrator CLI, admin test URL, environment restoration, and full disposable PostgreSQL suite on Windows.
+1. **Tooling compatibility correction:** source correction is now prepared in the follow-up branch; run it on Windows and verify role bootstrap, migrator CLI, admin test URL, environment restoration, and the full disposable PostgreSQL suite before closing P1.
 2. **Exact DDL freeze:** finalize table columns/types/defaults, row CHECKs, FKs/actions, minimal indexes, timestamp trigger/default, ownership, and downgrade refusal.
 3. **Role/trigger cutover design:** freeze exact SECURITY DEFINER functions, safe search_path, PUBLIC EXECUTE revocation, protected-field guards, marker assignment, TRUNCATE/CASCADE/partition denial, and the role/connection cutover runbook.
 4. **Migration proof design:** preserve the single ordered `LOCK TABLE tasks, teams, signals, events, threads IN ACCESS EXCLUSIVE MODE NOWAIT` statement; prove migration-first blocking, reader/writer-first immediate abort/retry, transactional rollback, and unchanged NULL legacy Events.
