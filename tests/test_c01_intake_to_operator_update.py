@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select
@@ -50,7 +49,7 @@ _QUOTE = "supply increased by 5 percent"
 
 def _task_started_at(
     session_factory: sessionmaker[Session], task_id: UUID
-) -> datetime:
+):
     with session_factory() as session:
         started = session.scalar(
             select(Event).where(
