@@ -48,7 +48,7 @@ Record one row for each capability used or potentially needed by each scenario. 
 | S-01 | Signal/source provenance and Team/domain isolation | Unknown | TBD | TBD | Source integrity, Team/domain scoping, invalid/cross-Team rejection | Trace exact persistence path |
 | S-01 | Thread/Hypothesis/EvidenceLink operations | Unknown | TBD | TBD | Attribution, valid transitions, evidence integrity, confidence cause | Trace exact write path |
 | S-01 | Context retrieval / retained experience | Unknown | TBD | TBD | Consumer contract, bounded retrieval, provenance, snapshot/replay; claim-use attribution only if asserted | Determine whether scenario needs retrieval |
-| S-01 | SignalDisposition / `triage_signal` | Not required under selected Path A unless scenario evidence contradicts the scope | N/A | RW4-1B / RW4-2 accepted design records | No disposition write or partial triage rollout | Deferred Full Design work; reopen only by explicit scope decision |
+| S-01 | SignalDisposition / `triage_signal` | Not required | N/A | RW4-1B / RW4-2 accepted design records | No disposition write or partial triage rollout | Deferred Full Design work; reopen only by explicit scope decision if a frozen scenario proves necessity |
 | S-01 | PostgreSQL roles, migrations, disposable DB isolation | Unknown | TBD | RW4-1B role boundary and R8-ready entry criteria | Non-superuser runtime; separate migration authority; actual DB constraints/locks proven where relied upon | Inspect actual test/runtime path |
 
 Replace the illustrative S-01 rows with the actual candidate scenarios and exact source evidence. Do not leave any `Unknown` classification in a frozen scope.
