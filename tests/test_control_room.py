@@ -51,7 +51,7 @@ def test_all_named_creators_use_the_supplied_session() -> None:
         event_payload=payload,
     ) == task_ids[0]
     assert create_approve_learning_change_task(
-        session,
+        db,
         task_id=task_ids[1],
         team_id=team_id,
         policy_version=1,
@@ -59,14 +59,14 @@ def test_all_named_creators_use_the_supplied_session() -> None:
     ) == task_ids[1]
 
     create_operator_update_task(
-        session,
+        db,
         task_id=task_ids[2],
         team_id=team_id,
         policy_version=1,
         event_payload=payload,
     )
     create_ingest_source_task(
-        session,
+        db,
         team_id=team_id,
         objective_id=objective_id,
         plan_id=plan_id,
@@ -74,28 +74,28 @@ def test_all_named_creators_use_the_supplied_session() -> None:
         policy_version=1,
     )
     create_assess_knowledge_quality_task(
-        session,
+        db,
         task_id=task_ids[3],
         team_id=team_id,
         policy_version=1,
         event_payload=payload,
     )
     create_assess_knowledge_revalidation_task(
-        session,
+        db,
         task_id=task_ids[4],
         team_id=team_id,
         policy_version=1,
         event_payload=payload,
     )
     create_assess_knowledge_lifecycle_task(
-        session,
+        db,
         task_id=task_ids[5],
         team_id=team_id,
         policy_version=1,
         event_payload=payload,
     )
     create_evaluate_outcome_task(
-        session,
+        db,
         task_id=task_ids[6],
         team_id=team_id,
         policy_version=1,
