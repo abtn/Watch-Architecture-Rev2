@@ -14,9 +14,13 @@ from typing import TYPE_CHECKING, Literal
 from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, sessionmaker
 
+from core.control_room import (
+    create_approve_learning_change_task,
+    create_operator_update_task,
+    create_update_thread_task,
+)
 from core.knowledge_approval import (
     KnowledgeApprovalBindingError,
     build_approval_binding,
@@ -290,25 +294,12 @@ class OperatorApplicationAdapter:
                 requested_by_operator_id=operator_id,
                 idempotency_key=request.idempotency_key,
             )
-            inserted_id = session.scalar(
-                pg_insert(Task)
-                .values(
-                    id=task_id,
-                    team_id=team_id,
-                    task_type=TASK_TYPE,
-                    status="pending",
-                    attempt_count=0,
-                    policy_version=policy.version,
-                    objective_id=None,
-                    plan_id=None,
-                    plan_action_id=None,
-                    allowed_writes=list(ALLOWED_WRITES),
-                    budget=dict(TASK_BUDGET),
-                    completed_at=None,
-                    max_attempts=MAX_ATTEMPTS,
-                )
-                .on_conflict_do_nothing(index_elements=[Task.id])
-                .returning(Task.id)
+            inserted_id = create_update_thread_task(
+                session,
+                task_id=task_id,
+                team_id=team_id,
+                policy_version=policy.version,
+                event_payload=event_payload,
             )
             if inserted_id is None:
                 existing = session.get(Task, task_id)
@@ -353,16 +344,6 @@ class OperatorApplicationAdapter:
                     replayed=True,
                 )
 
-            session.add(
-                Event(
-                    id=uuid4(),
-                    task_id=task_id,
-                    type=REQUEST_EVENT_TYPE,
-                    payload=event_payload,
-                    created_at=datetime.now(timezone.utc),
-                )
-            )
-            session.flush()
             return UpdateThreadTaskResult(
                 task_id=task_id,
                 team_id=team_id,
@@ -614,25 +595,12 @@ class OperatorApplicationAdapter:
                 approval_binding=approval_binding,
             )
 
-            inserted_task_id = session.scalar(
-                pg_insert(Task)
-                .values(
-                    id=task_id,
-                    team_id=team_id,
-                    task_type=_APPROVAL_TASK_TYPE,
-                    status="pending",
-                    attempt_count=0,
-                    policy_version=policy.version,
-                    objective_id=None,
-                    plan_id=None,
-                    plan_action_id=None,
-                    allowed_writes=_ALLOWED_WRITES,
-                    budget=_TASK_BUDGET,
-                    completed_at=None,
-                    max_attempts=_TASK_MAX_ATTEMPTS,
-                )
-                .on_conflict_do_nothing(index_elements=[Task.id])
-                .returning(Task.id)
+            inserted_task_id = create_approve_learning_change_task(
+                session,
+                task_id=task_id,
+                team_id=team_id,
+                policy_version=policy.version,
+                event_payload=event_payload,
             )
 
             if inserted_task_id is None:
@@ -680,17 +648,6 @@ class OperatorApplicationAdapter:
                     quality_assessment_id=concurrent_quality_id,
                     quality_assessment_hash=concurrent_quality_hash,
                 )
-
-            session.add(
-                Event(
-                    id=uuid4(),
-                    task_id=task_id,
-                    type=_REQUEST_EVENT_TYPE,
-                    payload=event_payload,
-                    created_at=datetime.now(timezone.utc),
-                )
-            )
-            session.flush()
 
             return OperatorTaskRequestResult(
                 task_id=task_id,
@@ -805,34 +762,13 @@ class OperatorApplicationAdapter:
                     )
                 replayed_request = True
             else:
-                session.add(
-                    Task(
-                        id=task_id,
-                        team_id=team_id,
-                        task_type=TASK_TYPE,
-                        status="pending",
-                        attempt_count=0,
-                        policy_version=policy_version,
-                        objective_id=None,
-                        plan_id=None,
-                        plan_action_id=None,
-                        allowed_writes=list(ALLOWED_WRITES),
-                        budget=dict(TASK_BUDGET),
-                        completed_at=None,
-                        max_attempts=MAX_ATTEMPTS,
-                    )
+                create_operator_update_task(
+                    session,
+                    task_id=task_id,
+                    team_id=team_id,
+                    policy_version=policy_version,
+                    event_payload=event_payload,
                 )
-                session.flush()
-                session.add(
-                    Event(
-                        id=uuid4(),
-                        task_id=task_id,
-                        type=REQUEST_EVENT_TYPE,
-                        payload=event_payload,
-                        created_at=datetime.now(timezone.utc),
-                    )
-                )
-                session.flush()
                 replayed_request = False
 
         runtime = TaskRuntime(self._session_factory, self._snapshot_store)
