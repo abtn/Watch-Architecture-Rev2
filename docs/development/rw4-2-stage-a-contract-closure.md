@@ -98,6 +98,22 @@ Both hashes use the lowercase hexadecimal SHA-256 digest prefixed with `sha256:`
 
 The fingerprint is `"sha256:" + sha256(canonical_json(preimage).encode("utf-8")).hexdigest()`. The `policy_version` shown as `1` is illustrative; the actual positive pinned version is used. UUID strings use canonical lowercase hyphenated form. The domain string and field names are fixed for v1; any semantic change requires an explicit request-schema version change and review, not an additive unknown key.
 
+A fixed synthetic golden vector pins the serializer and both digests. It reuses the accepted D2 Team/Signal/Task UUID vector; the other values below are test-only and are not proposed production matching pins:
+
+| Input | Value |
+|---|---|
+| `team_id` | `00000000-0000-4000-8000-000000000001` |
+| `signal_id` | `00000000-0000-4000-8000-000000000002` |
+| `task_id` | `5b45ed53-a50f-51e8-ba81-ce52512aa922` |
+| `signal_snapshot_ref` | `fixture/snapshot/00000000-0000-4000-8000-000000000003` |
+| `signal_content_hash` | `sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` |
+| `policy_version` | `7` |
+| `matching_pins` | `{"schema_version":1,"matcher_id":"test.matcher","matcher_version":"test.matcher.v1","embedding_space_key":"test.embedding.v1","chunking_version":"test.chunking.v1"}` |
+| Expected `matching_pins_hash` | `sha256:3dc648cc604f2e6c445284e9534390be2c4fa9b14c77da73fc1c9233238d0320` |
+| Expected `request_fingerprint` | `sha256:b38bd0561d14ef37660f54dfc9f5d13c808bc63d8044d19cefb6ff16ae3d66a6` |
+
+Stage B must include a golden test for these exact values and must additionally prove that changing any semantic preimage field changes the fingerprint, while changing `requested_by_principal`, `as_of`, or `team_revision_watermark` does not. This vector tests canonical serialization only; it does not select D4b production pin values.
+
 ### 2.3 Replay equivalence and first-writer metadata
 
 Replay equivalence is defined by the canonical Task identity plus the exact semantic preimage above. Therefore it includes Task/Team/Signal identity, identity version, Task type, snapshot reference, Signal content hash, policy version, and all matching pins.
