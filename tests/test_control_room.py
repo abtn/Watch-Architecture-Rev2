@@ -1,6 +1,9 @@
 """Focused contract tests for the session-bound Control Room Task creators."""
 
+from typing import cast
 from uuid import uuid4
+
+from sqlalchemy.orm import Session
 
 from core.control_room import (
     create_approve_learning_change_task,
@@ -38,9 +41,10 @@ def test_all_named_creators_use_the_supplied_session() -> None:
     task_ids = [uuid4() for _ in range(7)]
     payload = {"request": "bound"}
     session = RecordingSession((task_ids[0], task_ids[1]))
+    db = cast(Session, session)
 
     assert create_update_thread_task(
-        session,
+        db,
         task_id=task_ids[0],
         team_id=team_id,
         policy_version=1,
