@@ -406,9 +406,9 @@ Snapshot-first history reconstruction is conditionally accepted, subject to B1 p
 
 R7-C remains separately gated: retrieval benchmark, label provenance/small-n reporting, application-written per-claim TaskKnowledgeReference, typed KnowledgeUseAssessment, and later-Task outcome evaluation without causal overclaiming. No R7-C implementation is authorized by R7-A completion or R7-B planning.
 
-## R8 — Multi-domain pressure test (start date TBD; re-baselined 2026-11-23)
+## Formal/scored R8 — Multi-domain pressure test (start date TBD; re-baselined 2026-11-23)
 
-The November 23, 2026 start target is withdrawn. No replacement date is set until RW-4 and RW-5 have scoped estimates and accepted predecessor gates, the accepted Experiment A disposition required before foundation exit is recorded, the newsroom package readiness is assessed, and the RW foundation exit gate can be forecast from evidence. Do not skip Experiment A, weaken a proof obligation, or move unfinished foundational work into R8 to preserve a date. R8 tests the completed architecture; it does not add missing foundational layers. See [the canonical R8 delivery plan](docs/development/r8-delivery-plan.md).
+The November 23, 2026 formal/scored start target is withdrawn. No replacement date is set until RW-4 and RW-5 have scoped estimates and accepted predecessor gates, the accepted Experiment A disposition required before foundation exit is recorded, the newsroom package readiness is assessed, and the RW foundation exit gate can be forecast from evidence. Do not skip Experiment A, weaken a proof obligation, or move unfinished foundational work into formal/scored R8 to preserve a date. Formal/scored R8 tests the completed architecture; it does not add missing foundational layers. This gate does not prohibit separately scoped R8-ready exploratory testing after its own prerequisites and explicit authorization are recorded in the current-state section above. See [the canonical R8 delivery plan](docs/development/r8-delivery-plan.md).
 
 ## R9 — Agent-assisted production workflow (future)
 
