@@ -3251,11 +3251,6 @@ class TaskRuntime:
             ExperienceDistillerError,
         )
         from core.knowledge_quality import (
-            ALLOWED_WRITES,
-            REQUEST_EVENT_TYPE,
-            TASK_BUDGET,
-            TASK_MAX_ATTEMPTS,
-            TASK_TYPE,
             build_quality_task_request,
             validate_quality_task_request,
         )
@@ -3301,11 +3296,6 @@ class TaskRuntime:
         learning_change: LearningChange,
     ) -> Task:
         from core.knowledge_revalidation import (
-            ALLOWED_WRITES,
-            REQUEST_EVENT_TYPE,
-            TASK_BUDGET,
-            TASK_MAX_ATTEMPTS,
-            TASK_TYPE,
             KnowledgeRevalidationAssessmentError,
             build_revalidation_task_request,
             validate_revalidation_task_request,
@@ -3352,11 +3342,6 @@ class TaskRuntime:
         learning_change: LearningChange,
     ) -> Task:
         from core.knowledge_lifecycle import (
-            ALLOWED_WRITES,
-            REQUEST_EVENT_TYPE,
-            TASK_BUDGET,
-            TASK_MAX_ATTEMPTS,
-            TASK_TYPE,
             KnowledgeLifecycleAssessmentError,
             build_lifecycle_task_request,
             validate_lifecycle_task_request,
