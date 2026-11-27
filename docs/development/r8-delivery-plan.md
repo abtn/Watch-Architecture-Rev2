@@ -30,7 +30,7 @@ R8 must demonstrate:
 
 ## R8-ready Path A — minimum-scope delivery track
 
-Path A is the selected R8-ready planning direction: defer SignalDisposition and the full `triage_signal` workflow; use only existing, authorized, governed operations. This is not a finding that a suitable path has already been proven. The scenario and capability matrix in [R8-ready scope and capability matrix](r8-ready-scope-and-capability-matrix.md) is the next required deliverable.
+Path A is the selected R8-ready planning direction: defer SignalDisposition and the full `triage_signal` workflow; use only existing, authorized, governed operations. This is not a finding that a suitable path has already been proven. The scenario and capability matrix in [R8-ready scope and capability matrix](r8-ready-scope-and-capability-matrix.md) already exists; the next step is to review it against the current source and accepted architecture, complete any missing capability classifications and proof references, resolve blockers, and freeze the matrix as the controlled R8-ready scope baseline.
 
 1. **Freeze candidate internal scenarios.** State the observable Watch behavior, inputs, expected durable effects, failure/abstention behavior, and what the test is intended to learn. Do not begin with a milestone or a desired schema.
 2. **Map every exercised capability.** For each operation, record the exact existing entrypoint, contract/decision authority, source SHA, Team/domain/provenance boundary, TaskRuntime ownership, replay/concurrency behavior, and PostgreSQL proof. Mark unknowns explicitly.
