@@ -1,6 +1,6 @@
 """C-01: one configured source intake followed by an authenticated Operator update."""
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: I001
 
 from uuid import UUID, uuid4
 
