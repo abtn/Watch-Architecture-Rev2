@@ -1,6 +1,6 @@
 # R8 Development States — R8-ready and Full Design
 
-**Status:** proposed development-control model, pending Operator acceptance through this documentation PR.
+**Status:** accepted development-control model; PR [#205](https://github.com/abtn/Watch-Architecture-Rev2/pull/205) merged on 2026-11-27.
 **Current project state:** pre-R8-ready; preparing the minimum working system for internal testing.
 **Status authority:** `PLAN.md`. This document defines the meaning and rules of the two states; it does not independently change milestone authorization.
 
@@ -68,6 +68,14 @@ Unless the frozen scenarios demonstrate a real dependency, R8-ready may defer:
 - Full scored newsroom value-harness execution until its source corpus, brief, answer key, independent outcome reference, reviewer calibration, and execution configuration are frozen.
 
 Deferral is not deletion or rejection. Record each deferred capability, its reason, the scenario or evidence that would make it necessary, and the owner/next gate. Do not describe a deferred capability as implemented or tested.
+
+### 2.4.1 Selected R8-ready planning direction — Path A
+
+**Operator decision (2026-11-27): Path A is selected.** The R8-ready planning path will defer SignalDisposition and the full `triage_signal` workflow. The initial R8-ready scenarios should use existing, authorized, governed operations; no new disposition write path, caller/Event-only substitute, or partial triage rollout is permitted.
+
+This is a planning direction, not proof that a suitable existing path already satisfies the eventual scenarios. The scenario and capability matrix in [R8-ready scope and capability matrix](r8-ready-scope-and-capability-matrix.md) must identify the exact existing entrypoints, governing contracts, and proofs. Unknown or unproven paths are blockers, not assumed capabilities. If a necessary scenario cannot be completed through an already-authorized governed path, pause and return to the Operator with the evidence; do not silently reclassify SignalDisposition as unnecessary or invent a transitional implementation.
+
+For Path A, RW4-1B through RW4-1F and the SignalDisposition/triage dependency chain remain Full Design work. Their accepted decisions and design records are preserved; their implementation gates are neither closed nor waived. Reopen this selection only through an explicit scope decision supported by the frozen scenario and capability evidence.
 
 ### 2.5 R8-ready entry and exit
 
