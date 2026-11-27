@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-import hashlib
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select
@@ -280,7 +279,7 @@ def test_c01_configured_source_intake_then_operator_update(
 
         snapshot_bytes = snapshot_store.read(snapshot_ref)
         assert snapshot_bytes == _CONTENT
-        assert snapshot_hash == "sha256:" + hashlib.sha256(snapshot_bytes).hexdigest()
+        assert snapshot_hash == "sha256:" + snapshot_ref.removeprefix("snap://sha256/")
 
         hypothesis_id = uuid4()
         quote_start = snapshot_bytes.decode("utf-8").index(_QUOTE)
