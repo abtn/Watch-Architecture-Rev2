@@ -175,3 +175,17 @@ These test names and their relevant fixtures/contracts were inspected at the pos
 - No R8-ready state transition or formal R8 acceptance.
 
 Stop if the selected path requires a deferred capability, if the only way to test it is to bypass an authority boundary, if database isolation cannot be proven, or if the fixture would conceal an unimplemented user-facing entrypoint.
+
+
+## 8. CG-01 evidence-closure record — 2026-11-27
+
+The post-replay no-Team-Experience assertion follow-up is complete.
+
+- Correction PR: [#211](https://github.com/abtn/Watch-Architecture-Rev2/pull/211).
+- Tested PR head: `0bb41974976a8a9a1454cdddb264616848dd97ae`.
+- Merge commit: `97732042fa746f6c60cb48335df244efea79588d`.
+- Exact-head hosted CI: run #2338 (`45976581249`) passed. The run completed PostgreSQL container initialization and isolated role provisioning, migration application and head verification, Ruff, Mypy, patch whitespace, and the full test job.
+- Change scope: one assertion in `tests/test_world_memory.py`; no production code, fixture, schema, migration, or runtime changes.
+- The test now checks the no-`TeamExperienceChunk` invariant before the operation (fixture), after the first successful update, and after exact replay. Existing replay identity, single EvidenceLink, and no-ConfidenceChange assertions remain intact.
+
+**Disposition:** CG-01's explicit no-retained-Team-Experience evidence gap is closed at the tested head above. This closes only the test-only baseline proof; it does not establish full C-01, retrieval/Context, treatment comparison, scored R8, or R8-ready status. Post-merge `main` CI remains a separate verification item.
