@@ -40,7 +40,6 @@ from core.world_memory import (
     HypothesisCreateProposal,
     OperatorUpdateRequest,
 )
-from tests.test_r6b_dispatcher import FakeFetcher
 
 
 _CONTENT = b"Market report: supply increased by 5 percent."
@@ -221,6 +220,8 @@ def test_c01_configured_source_intake_then_operator_update(
 
         # Only the injected fake is contacted. TaskDispatcher resolves the
         # durable source identity from the PlanAction, not caller input.
+        from tests.test_r6b_dispatcher import FakeFetcher
+
         fetcher = FakeFetcher(_CONTENT)
         dispatch_result = TaskDispatcher(
             session_factory, snapshot_store, fetcher
