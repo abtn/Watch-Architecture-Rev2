@@ -58,7 +58,7 @@ Important limitations:
 
 The D4.1a first-successfully-committed Team/hash winner therefore needs its own reviewed database-arbitrated representation and two-session proof. It cannot be inferred from `fetched_at`, Event timestamps, UUID ordering, or the existing origin/hash constraint. Keep that C1/D4.1a engineering gate separate from the disposition table.
 
-There is also a current domain-integrity gap across all three existing-Signal reuse paths in `IngestionService._commit`:
+There is also a current domain-integrity gap across all three existing-Signal reuse paths in `IngestionService._commit`. This older audit records the specific missing domain comparison; the later 2026-11-27 current-source review broadens the required closure to prove the complete fail-closed provenance/eligibility decision on each path, including whether the Event is post-cutover and DB-attested. These are complementary statements, not contradictory coverage claims:
 
 - The ordinary `fetch_no_change` path does not compare `Signal.domain` with the current Task Team's `domain` before writing the Team-attributed Event.
 - The `ON CONFLICT` winner path has the same omission.
