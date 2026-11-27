@@ -276,7 +276,7 @@ The narrow Control Room creator and recompute-on-load validation remain proposed
 
 **Status: ACCEPTED — Option B.**
 
-**Risk:** the current Event schema has no unique constraint for one `triage_signal_requested` Event per Task. The transaction protocol can write the Event only in the Task-winning transaction and replay can validate exactly one Event, but those are application/transaction guarantees; the current database schema does not independently enforce the cardinality.
+**Original risk at the 2026-11-24 decision baseline:** the Event schema had no unique constraint for one `triage_signal_requested` Event per Task. PR #203 subsequently delivered the partial unique index in migration `0020_rw4_task_identity.py`. The index enforces at-most-one cardinality; it does not prove Event existence or payload validity, which remain atomic-creation and Stage B replay-validation obligations.
 
 **Accepted Operator decision; schema delivered by PR #203:** require a PostgreSQL partial unique index on `events(task_id)` for rows whose type is `triage_signal_requested`. The migration's locked zero-history preflight and PostgreSQL proofs are merged. Task insertion and its one request Event must remain one atomic transaction; Stage B replay must reject missing, duplicate, malformed, or inconsistent evidence. The index enforces at-most-one cardinality; transactional creation plus replay validation establish and verify exactly one. The index alone does not prove Event existence or payload validity. Creator implementation remains unauthorized.
 
