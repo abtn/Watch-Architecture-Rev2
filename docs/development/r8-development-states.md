@@ -33,7 +33,7 @@ The R8-ready scope must identify and demonstrate a coherent vertical slice that 
 - A usable Task execution path with explicit ownership of lifecycle, terminal outcomes, and supported replay/recovery behavior.
 - Persistent world-memory records sufficient for the selected scenarios: Signals/source references, Threads, competing Hypotheses, EvidenceLinks, and attributable confidence changes.
 - Source and Team/domain provenance sufficient to reject invalid, cross-Team, or cross-domain writes and transfers.
-- A bounded way to retrieve relevant retained experience into a later Task, and a test that demonstrates whether it changes the controlled result. Do not claim direct knowledge use unless an accepted attribution mechanism is implemented and observed.
+- A bounded way to retrieve relevant retained experience into a later Task, where the selected scenario needs retrieval, and an observable test of retrieval/Context assembly. Record what was retrieved and what the controlled Task did; retrieval alone does not demonstrate that a claim used the material or that it caused an outcome change. Do not claim claim-level knowledge use or downstream attribution without the accepted attribution mechanism and its proofs.
 - Safe behavior for insufficient, irrelevant, contradictory, stale, and invalid evidence: abstain or reject rather than manufacture authority or partial writes.
 - Reproducible internal fixtures, deterministic test doubles where needed, observable outcomes, and a recorded baseline for comparison.
 - An isolated development/test environment using disposable databases and non-production credentials. No scored or persistent-data experiment may silently target the persistent local `watch` database.
@@ -53,7 +53,7 @@ R8-ready does not permit weakened invariants on exercised paths. At minimum:
 - Runtime credentials used in tests must not be superusers. Migration/bootstrap/test-maintenance authority must be separate from the application runtime where the tested boundary depends on that separation.
 - No untrusted or unsupported process may share a credential whose authority is being treated as a trusted application boundary.
 
-If a selected scenario requires SignalDisposition or another gated RW4/RW5 capability, its accepted dependencies and physical proofs become R8-ready prerequisites for that scenario. If the scenario can be validly exercised through an existing governed path without that capability, defer it and record the limitation. Do not partially enable a gated feature or substitute an unaccepted write path.
+If a selected scenario requires SignalDisposition or another gated RW4/RW5 capability, every accepted prerequisite, implementation authorization, and proof for that capability remains mandatory. A scenario-specific proof subset narrows which behaviors are exercised; it does not replace or relax the entry gates of a dependency. A capability may be deferred only when the scenario avoids it and uses an already-authorized governed path; record that limitation. Do not partially enable a gated feature or substitute an unaccepted write path. This R8-ready rule does not authorize implementation of RW4-4 Context retrieval: where a scenario depends on that path, its named consumer contract, own gate, and accepted Experiment A result or explicit Operator disposition before representation freeze remain required. Likewise, RW-D99/D133 attribution capabilities remain mapped to their named RW slice/proofs and separately authorized.
 
 ### 2.4 Explicitly deferrable from R8-ready
 
@@ -72,6 +72,8 @@ Deferral is not deletion or rejection. Record each deferred capability, its reas
 ### 2.5 R8-ready entry and exit
 
 **Entry to internal testing requires:**
+
+The scenario scope may narrow the exercised feature set, but cannot waive a predecessor gate for any capability it uses. Retrieval/Context assembly may be observed without asserting claim-level knowledge use. Any claim that retained experience was used in a claim or contributed to an outcome requires the accepted RW-D99/D133 attribution mechanism, its named RW-slice mapping, authorization, and proofs.
 
 1. A frozen, bounded R8-ready scope and explicit authorization for the implementation/test slice.
 2. A runnable end-to-end path through the shared authority boundary.
