@@ -55,7 +55,7 @@ The current ORM and application contracts establish the following:
 
 These are source observations, not acceptance of the proposed RW4 contract.
 
-**Stage A migration and writer audit (2026-11-25):** [Task migration and existing-writer compatibility audit](rw4-2-migration-and-writer-compatibility-audit.md) records the proposed nullable-column/check/FK/composite-unique/partial-index design, exhaustive operator preflight plus an in-migration zero-history assertion protected by transactional table locks, all nine production Task producers, and the required Control Room transaction/retry boundary. It is a source audit only; deployed database contents remain unverified and no implementation is authorized.
+**Stage A migration and writer audit (2026-11-25; implementation reconciliation 2026-11-27):** [Task migration and existing-writer compatibility audit](rw4-2-migration-and-writer-compatibility-audit.md) records the original source audit and migration design. Its ten-producer inventory was implemented by D1 PR #207/#208; the D2 schema and locked zero-history migration guard were implemented by PR #203. The migration inspected the target database at migration time; this does not attest any separate persistent deployment. The triage creator remains unimplemented.
 
 ## 3. D1 — Trusted host invocation
 
@@ -194,7 +194,7 @@ The winning Task-creation transaction writes exactly one request Event. Task and
 
 Event type: `triage_signal_requested`.
 
-Required payload fields (the exact schema and canonical serialization must be frozen in the implementation specification before implementation):
+Required payload fields (exact types, canonical representations, strict unknown-field rejection, hash preimages, and replay-equivalence rules are frozen in [RW4-2 Stage A contract closure](rw4-2-stage-a-contract-closure.md); Stage B must implement this contract without extending it implicitly):
 
 - `schema_version`
 - `task_id`
@@ -214,7 +214,7 @@ Required payload fields (the exact schema and canonical serialization must be fr
 - `matching_pins` (the complete versioned pin object defined in §7)
 - `matching_pins_hash` (SHA-256 of the canonical serialized `matching_pins` object)
 
-The Event envelope supplies Event ID, Task ID attribution, type, and creation timestamp. Avoid duplicating envelope fields in payload unless the existing Event convention requires them; if duplicated, validate exact equality.
+The Event envelope supplies Event ID, Task ID attribution, type, and creation timestamp. Avoid duplicating envelope fields in payload unless the existing Event convention requires them; if duplicated, validate exact equality. The D2 partial unique index is already merged by PR #203 and enforces at-most-one request Event per Task; it does not prove that the Event exists or that its payload is valid.
 
 The request fingerprint is SHA-256 over canonical compact UTF-8 JSON with a fixed domain tag and schema version. It binds canonical Team/Signal/Task identity, the selected policy version, the Signal snapshot/content identity, and all immutable matching pins (including the complete `matching_pins` object and its content hash). It excludes the fingerprint field itself, requester identity, raw database `as_of`, and the Team revision watermark. The latter two are immutable first-writer cutoff metadata captured under the Team lock; they are validated as part of the stored request Event and returned unchanged on replay, but a later replay attempt must not conflict merely because the current database clock or Team revision has advanced. The raw principal credential/token must never be stored. The matcher/embedding/chunking pins are explicitly not inputs to Task identity; they affect replay equivalence only.
 
