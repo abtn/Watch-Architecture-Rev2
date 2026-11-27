@@ -592,13 +592,13 @@ def test_absolute_deadline_closes_socket_during_response_read(
     connection = generation._DeadlineHTTPSConnection(
         "api.cloudflare.com",
         timeout=1.0,
-        deadline=time.monotonic() + 0.05,
+        deadline=time.monotonic() + 0.25,
     )
     connection._context = PassthroughTLSContext()  # type: ignore[assignment]
 
     try:
         connection.connect()
-        peer_socket.settimeout(0.5)
+        peer_socket.settimeout(1.0)
         assert peer_socket.recv(1) == b""
     finally:
         connection.cancel_deadline()

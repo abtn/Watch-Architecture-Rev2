@@ -1,10 +1,22 @@
 """Run an end-to-end smoke test against the configured embedding API.
 
-Usage on the developer machine (after starting a disposable PostgreSQL instance):
-    $env:TEST_DATABASE_URL = "postgresql+psycopg://watch:watch@127.0.0.1:5432/watch_embedding_smoke"
-    $env:DATABASE_URL = $env:TEST_DATABASE_URL
+Usage on the developer machine (after starting a fresh disposable PostgreSQL
+instance with database "watch_embedding_smoke" and bootstrap administrator
+"watch_test"; never point these variables at the persistent "watch" database):
+
+    $env:DATABASE_ADMIN_URL = "postgresql+psycopg://watch_test:watch_test_only@127.0.0.1:5432/watch_embedding_smoke"
+    $env:WATCH_MIGRATOR_PASSWORD = "local_migrator_only"
+    $env:WATCH_RUNTIME_PASSWORD = "local_runtime_only"
+    uv run python scripts/provision_database_roles.py
+    $env:DATABASE_URL = "postgresql+psycopg://watch_migrator:$($env:WATCH_MIGRATOR_PASSWORD)@127.0.0.1:5432/watch_embedding_smoke"
+    $env:TEST_DATABASE_URL = $env:DATABASE_ADMIN_URL
     uv run alembic upgrade head
     uv run python -m core.embedding_smoke
+
+Alembic CLI migrations use the dedicated watch_migrator login. The smoke utility
+uses the explicit disposable TEST_DATABASE_URL for its temporary data operations.
+The role bootstrap requires a fresh database and a superuser DATABASE_ADMIN_URL;
+it refuses the persistent database name "watch".
 
 The script inserts a uniquely identified temporary Team, policy, and Signal, then
 removes those rows in a finally block. Its temporary SnapshotStore is deleted too.
