@@ -180,11 +180,7 @@ class OperatorApplicationAdapter:
         execution. The caller supplies no Team or model/provider configuration.
         """
         from core.update_thread import (
-            ALLOWED_WRITES,
-            MAX_ATTEMPTS,
             REQUEST_EVENT_TYPE,
-            TASK_BUDGET,
-            TASK_TYPE,
             UpdateThreadTaskError,
             UpdateThreadTaskRequest,
             UpdateThreadTaskResult,
@@ -668,10 +664,7 @@ class OperatorApplicationAdapter:
             TerminalObservation,
         )
         from core.world_memory import (
-            ALLOWED_WRITES,
-            MAX_ATTEMPTS,
             REQUEST_EVENT_TYPE,
-            TASK_BUDGET,
             TASK_TYPE,
             OperatorUpdateRequest,
             WorldMemoryCommitService,
