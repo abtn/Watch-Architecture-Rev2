@@ -1,14 +1,14 @@
 # D1 Existing-Writer Control Room Conformance — Implementation Plan
 
 **Status:** implementation authorized by the Operator on 2026-11-27 as a narrowly scoped sequencing exception.
-**Baseline:** `main` at `d671d066940d0dc06b1198c5ed474dc66653cccb`.
-**Scope:** migrate the nine existing supported Task producers to the accepted Control Room-owned operations. This is not RW4-2 Stage B and does not implement a triage Task creator.
+**Implementation baseline:** Path A merge commit `194e60379a0d1ee1bfd57520391a786edf1c178a`.
+**Scope:** migrate the ten existing supported Task producers to the accepted Control Room-owned operations. This is not RW4-2 Stage B and does not implement a triage Task creator.
 
 ## 1. Authorization and sequencing exception
 
 The accepted Full Design sequence remains RW4-1 → RW-5 helper/Team revision/writer retrofit → RW4-2 Stage B triage creator. The Operator has separately authorized the existing-writer D1 conformance refactor to proceed before RW4-1, as an isolated implementation slice.
 
-This exception applies only to the existing nine producers listed below. It does not reorder or authorize:
+This exception applies only to the ten existing producers listed below. It does not reorder or authorize:
 - SignalDisposition schema, persistence, writes, or replay;
 - a `triage_signal` Task creator or triage request Event;
 - RW-5 lock helper, Team revision, decay, or writer retrofit;
@@ -28,7 +28,7 @@ Each named Control Room operation:
 
 The caller remains responsible for its existing business workflow and outer transaction. TaskRuntime remains the sole authority for admission, attempts, retries, interruption, recovery, terminalization, and finalization. The Control Room must not mutate Task lifecycle state.
 
-## 3. Nine producer migrations
+## 3. Ten producer migrations
 
 | # | Existing producer | Required Control Room operation | Caller-side behavior that must remain |
 |---:|---|---|---|
@@ -41,6 +41,7 @@ The caller remains responsible for its existing business workflow and outer tran
 | 7 | TaskRuntime Knowledge Lifecycle follow-on | `create_assess_knowledge_lifecycle_task` | Existing validation and same TaskRuntime Session/terminal transaction |
 | 8 | TaskRuntime follow-on Evaluation | `create_evaluate_outcome_task` | Existing source-terminal evidence validation and same TaskRuntime Session/terminal transaction |
 | 9 | `KnowledgeRevalidationService` producer | `create_assess_knowledge_revalidation_task` | Its distinct workflow-specific validation/replay remains separate; it converges only at Task persistence |
+| 10 | `KnowledgeLifecycleAssessmentService.create_task` | `create_assess_knowledge_lifecycle_task` | Its LearningChange row lock, deterministic Task ID, existing-task validation/replay, and service-owned transaction remain unchanged; only new Task/Event persistence delegates |
 
 The two Knowledge Revalidation producers must remain separate workflows and use the same named persistence operation. Do not consolidate their business logic.
 
@@ -51,15 +52,16 @@ The two Knowledge Revalidation producers must remain separate workflows and use 
 3. Migrate PlanService child Task materialization inside its existing transaction.
 4. Migrate all four TaskRuntime follow-on producers using the existing Session and transaction. Do not introduce nested sessions or alter terminalization ordering.
 5. Migrate KnowledgeRevalidationService to the shared revalidation persistence operation without merging its workflow with TaskRuntime's workflow.
-6. Add focused unit/integration regression coverage for every operation and caller, including negative/replay/conflict behavior and atomic rollback.
-7. Search the complete production source tree for remaining direct Task construction/persistence. Classify every remaining occurrence as either a migrated Control Room operation or a non-creation lifecycle/load path; no supported producer may retain a direct-persistence fallback.
-8. Run focused tests, the full test suite, Ruff, Mypy, and `git diff --check`; run PostgreSQL-backed tests on the configured disposable database. Do not use the persistent local `watch` database.
-9. Independently review the complete diff against the nine-writer matrix and accepted D1 transaction/authority contract. Reconcile `PLAN.md`, `CHANGE_MAP.md`, the RW4-2 audit, and the Path A capability matrix with exact implementation evidence.
-10. Submit a separate PR. Do not merge it or declare D1 closed until exact-head CI and independent review pass.
+6. Migrate `KnowledgeLifecycleAssessmentService.create_task` to the existing lifecycle persistence operation. Preserve its deterministic identity, `LearningChange` lock, validation/replay branches, and outer service transaction.
+7. Add focused unit/integration regression coverage for every operation and caller, including negative/replay/conflict behavior and atomic rollback.
+8. Search the complete production source tree for remaining direct Task construction/persistence. Classify every remaining occurrence as either a migrated Control Room operation or a non-creation lifecycle/load path; no supported producer may retain a direct-persistence fallback.
+9. Run focused tests, the full test suite, Ruff, Mypy, and `git diff --check`; run PostgreSQL-backed tests on the configured disposable database. Do not use the persistent local `watch` database.
+10. Independently review the complete diff against the ten-writer matrix and accepted D1 transaction/authority contract. Reconcile `PLAN.md`, `CHANGE_MAP.md`, the RW4-2 audit, and the Path A capability matrix with exact implementation evidence.
+11. Submit a separate PR. Do not merge it or declare D1 closed until exact-head CI and independent review pass.
 
 ## 5. Required proof matrix
 
-- **Authority:** all nine callers delegate; no caller constructs/persists a Task; no alternate factory or fallback remains.
+- **Authority:** all ten callers delegate; no caller constructs/persists a Task; no alternate factory or fallback remains.
 - **Transaction:** each operation uses the supplied Session; no internal Session creation, begin, commit, or rollback; Task and required Event roll back together.
 - **Authorization:** each caller's pre-existing principal/grant checks remain in force; payload fields cannot create or override authority.
 - **Identity/replay:** existing deterministic IDs, request fingerprints, Event payloads, pinned policy versions, same-key replay, and conflicting-key behavior remain byte/semantically equivalent.
@@ -77,4 +79,4 @@ Stop and report if a producer cannot preserve its existing authorization or tran
 
 ## 7. Verification reporting
 
-Report exact branch/head, changed files, all nine producer outcomes, focused/full test results, Ruff/Mypy results, PostgreSQL test environment, exact-head CI, and unresolved limitations. A source search alone is not proof of transaction or replay equivalence. Do not call D1 implementation complete until the full proof matrix and independent review pass.
+Report exact branch/head, changed files, all ten producer outcomes, focused/full test results, Ruff/Mypy results, PostgreSQL test environment, exact-head CI, and unresolved limitations. A source search alone is not proof of transaction or replay equivalence. Do not call D1 implementation complete until the full proof matrix and independent review pass.
