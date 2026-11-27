@@ -54,6 +54,13 @@ For every R8-related task, read [the R8 development-state definitions](docs/deve
 - R8 findings may justify simplifying or changing accepted decisions, but test evidence does not amend a contract by itself. Record the finding, impact, proposed decision, approval, and regression proof; preserve superseded decision history.
 - Distinguish exploratory internal results from scored value-harness results and formal R8 acceptance.
 
+### Pull-request review workflow
+
+- Before submitting a GitHub PR review, check whether the authenticated account owns the PR. GitHub does not allow the PR author to submit `REQUEST_CHANGES` on their own PR.
+- For an author-owned PR, publish the findings as a top-level PR Conversation comment using the GitHub issue-comment action. Do not attempt `REQUEST_CHANGES` or `APPROVE` as a substitute; do not describe an unsuccessful review submission as a published review.
+- For a PR not owned by the authenticated account, use the appropriate formal review action when requested and supported. Inline comments may be used when they materially improve precision.
+
+
 
 - Code presence does not authorize a milestone or prove formal closure.
 - A recorded test result proves only the named command, environment, and snapshot; it does not prove unrun checks or satisfy a separate phase-boundary gate by itself.
