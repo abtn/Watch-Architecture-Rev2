@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 from uuid import UUID, uuid4
 
-import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -80,8 +80,6 @@ def test_c01_configured_source_intake_then_operator_update(
     )
     origin_url = f"https://news.example.test/feed/{uuid4()}"
     domain = "c01_test"
-    now = datetime.now(timezone.utc)
-
     # The active Thread is deliberately pre-existing fixture state. Thread
     # creation is not part of this scenario.
     with session_factory.begin() as session:
@@ -282,9 +280,7 @@ def test_c01_configured_source_intake_then_operator_update(
 
         snapshot_bytes = snapshot_store.read(snapshot_ref)
         assert snapshot_bytes == _CONTENT
-        assert snapshot_hash == "sha256:" + __import__("hashlib").sha256(
-            snapshot_bytes
-        ).hexdigest()
+        assert snapshot_hash == "sha256:" + hashlib.sha256(snapshot_bytes).hexdigest()
 
         hypothesis_id = uuid4()
         quote_start = snapshot_bytes.decode("utf-8").index(_QUOTE)
@@ -428,8 +424,11 @@ def test_c01_configured_source_intake_then_operator_update(
                 delete(Outcome).where(Outcome.recorded_by_task_id.in_(team_task_ids))
             )
             session.execute(delete(Signal).where(Signal.origin_url == origin_url))
-            # The Plan-linked source Task must be removed before its Plan.
-            session.execute(delete(Task).where(Task.plan_id.in_(plan_ids)))
+            # Remove source-task Events and Tasks before their Plan; the Plan's
+            # accepted Strategy Event remains until after the Plan is deleted.
+            linked_task_ids = select(Task.id).where(Task.plan_id.in_(plan_ids))
+            session.execute(delete(Event).where(Event.task_id.in_(linked_task_ids)))
+            session.execute(delete(Task).where(Task.id.in_(linked_task_ids)))
             session.execute(delete(PlanAction).where(PlanAction.plan_id.in_(plan_ids)))
             session.execute(delete(Plan).where(Plan.id.in_(plan_ids)))
             session.execute(delete(Event).where(Event.task_id.in_(team_task_ids)))
