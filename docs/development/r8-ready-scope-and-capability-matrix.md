@@ -146,5 +146,5 @@ A stop is a scope/design finding, not permission to improvise a workaround.
 - Required PostgreSQL proof set: not frozen; exact role/migration/concurrency proof remains outstanding
 - Fixtures, baseline, and expected outputs: not frozen
 - Known limitations: D1 ten-producer Control Room conformance gap; live update_thread provider unauthorized; RW3.4 seven PARTIAL qualifications; Team Experience not retrieved by update_thread; no triage/disposition; no disposable DB/role inspection in this audit
-- Implementation authorization: Not granted
+- D1 existing-writer implementation authorization: separately granted on 2026-11-27; PR #207 is in draft review and conformance is not yet verified
 - R8-ready internal-testing authorization: Not granted
