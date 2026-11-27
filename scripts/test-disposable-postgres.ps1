@@ -16,7 +16,14 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { throw "uv is required
 
 # Preserve both the value and whether each process variable existed. An unset
 # variable and a variable set to an empty string are different states.
-$trackedVariables = @("DATABASE_URL", "TEST_DATABASE_URL", "PGPASSWORD")
+$trackedVariables = @(
+    "DATABASE_URL",
+    "TEST_DATABASE_URL",
+    "DATABASE_ADMIN_URL",
+    "WATCH_MIGRATOR_PASSWORD",
+    "WATCH_RUNTIME_PASSWORD",
+    "PGPASSWORD"
+)
 $processEnvironment = [System.Environment]::GetEnvironmentVariables("Process")
 $originalEnvironment = @{}
 foreach ($name in $trackedVariables) {
@@ -29,31 +36,43 @@ foreach ($name in $trackedVariables) {
 
 $containerName = "watch-local-test-" + [guid]::NewGuid().ToString("N").Substring(0, 10)
 $database = "watch_local_disposable"
-$user = "watch_test"
-$password = "watch_test_only"
+$adminUser = "watch_test"
+$adminPassword = "watch_test_only"
+$migratorPassword = [guid]::NewGuid().ToString("N")
+$runtimePassword = [guid]::NewGuid().ToString("N")
 $containerCreated = $false
 
 try {
-    Invoke-Checked -Command "docker" -Arguments @("run", "-d", "--name", $containerName, "-e", "POSTGRES_DB=$database", "-e", "POSTGRES_USER=$user", "-e", "POSTGRES_PASSWORD=$password", "-p", "127.0.0.1::5432", $Image)
+    Invoke-Checked -Command "docker" -Arguments @("run", "-d", "--name", $containerName, "-e", "POSTGRES_DB=$database", "-e", "POSTGRES_USER=$adminUser", "-e", "POSTGRES_PASSWORD=$adminPassword", "-p", "127.0.0.1::5432", $Image)
     $containerCreated = $true
     $portMapping = (& docker port $containerName "5432/tcp").Trim()
     if ($LASTEXITCODE -ne 0 -or -not $portMapping) { throw "Could not determine disposable PostgreSQL host port." }
     $hostPort = ($portMapping -split ":")[-1]
-    $databaseUrl = "postgresql+psycopg://" + $user + ":" + $password + "@127.0.0.1:" + $hostPort + "/" + $database
-    if ($databaseUrl -match "/watch(?:[/?]|$)") { throw "Refusing to use persistent database 'watch'." }
-    $env:DATABASE_URL = $databaseUrl
-    $env:TEST_DATABASE_URL = $databaseUrl
+    $adminDatabaseUrl = "postgresql+psycopg://" + $adminUser + ":" + $adminPassword + "@127.0.0.1:" + $hostPort + "/" + $database
+    $migratorDatabaseUrl = "postgresql+psycopg://watch_migrator:" + $migratorPassword + "@127.0.0.1:" + $hostPort + "/" + $database
+    if ($adminDatabaseUrl -match "/watch(?:[/?]|$)" -or $migratorDatabaseUrl -match "/watch(?:[/?]|$)") {
+        throw "Refusing to use persistent database 'watch'."
+    }
+
+    $env:DATABASE_ADMIN_URL = $adminDatabaseUrl
+    $env:TEST_DATABASE_URL = $adminDatabaseUrl
+    $env:DATABASE_URL = $migratorDatabaseUrl
+    $env:WATCH_MIGRATOR_PASSWORD = $migratorPassword
+    $env:WATCH_RUNTIME_PASSWORD = $runtimePassword
+
     Write-Host "Disposable container: $containerName"
-    Write-Host "Both database URLs target the isolated database: $database"
+    Write-Host "DATABASE_ADMIN_URL and TEST_DATABASE_URL use the isolated bootstrap administrator."
+    Write-Host "DATABASE_URL uses watch_migrator for Alembic CLI migrations."
 
     $ready = $false
     for ($attempt = 0; $attempt -lt 60; $attempt++) {
-        & docker exec $containerName pg_isready -U $user -d $database *> $null
+        & docker exec $containerName pg_isready -U $adminUser -d $database *> $null
         if ($LASTEXITCODE -eq 0) { $ready = $true; break }
         Start-Sleep -Seconds 2
     }
     if (-not $ready) { throw "PostgreSQL did not become ready within 120 seconds." }
 
+    Invoke-Checked -Command "uv" -Arguments @("run", "python", "scripts/provision_database_roles.py")
     Invoke-Checked -Command "uv" -Arguments @("run", "alembic", "upgrade", "head")
     $headOutput = & uv run alembic heads
     if ($LASTEXITCODE -ne 0) { throw "Could not read Alembic heads." }
@@ -99,7 +118,7 @@ finally {
                 throw "Environment-value restoration failed for $name."
             }
         }
-        Write-Host "DATABASE_URL, TEST_DATABASE_URL, and PGPASSWORD restored exactly."
+        Write-Host "All tracked database and role-bootstrap environment variables restored exactly."
     }
     finally {
         if ($containerCreated) {
