@@ -13,6 +13,12 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
+from core.control_room import (
+    create_assess_knowledge_lifecycle_task,
+    create_assess_knowledge_quality_task,
+    create_assess_knowledge_revalidation_task,
+    create_evaluate_outcome_task,
+)
 from core.learning_history import (
     KnowledgeHistoryError,
     decode_state_snapshot,
@@ -3280,34 +3286,13 @@ class TaskRuntime:
                 ) from error
             return existing
 
-        task = Task(
-            id=task_id,
+        return create_assess_knowledge_quality_task(
+            session,
+            task_id=task_id,
             team_id=source_task.team_id,
-            task_type=TASK_TYPE,
-            status="pending",
-            attempt_count=0,
             policy_version=source_task.policy_version,
-            objective_id=None,
-            plan_id=None,
-            plan_action_id=None,
-            allowed_writes=list(ALLOWED_WRITES),
-            budget=dict(TASK_BUDGET),
-            completed_at=None,
-            max_attempts=TASK_MAX_ATTEMPTS,
+            event_payload=payload,
         )
-        session.add(task)
-        session.flush()
-        session.add(
-            Event(
-                id=uuid4(),
-                task_id=task.id,
-                type=REQUEST_EVENT_TYPE,
-                payload=payload,
-                created_at=datetime.now(timezone.utc),
-            )
-        )
-        session.flush()
-        return task
 
     def _create_knowledge_revalidation_task_request(
         self,
@@ -3352,34 +3337,13 @@ class TaskRuntime:
         except KnowledgeRevalidationAssessmentError as error:
             raise TaskNotFinalizable(error.reason) from error
 
-        task = Task(
-            id=task_id,
+        return create_assess_knowledge_revalidation_task(
+            session,
+            task_id=task_id,
             team_id=source_task.team_id,
-            task_type=TASK_TYPE,
-            status="pending",
-            attempt_count=0,
             policy_version=payload["policy_version"],
-            objective_id=None,
-            plan_id=None,
-            plan_action_id=None,
-            allowed_writes=list(ALLOWED_WRITES),
-            budget=dict(TASK_BUDGET),
-            completed_at=None,
-            max_attempts=TASK_MAX_ATTEMPTS,
+            event_payload=payload,
         )
-        session.add(task)
-        session.flush()
-        session.add(
-            Event(
-                id=uuid4(),
-                task_id=task.id,
-                type=REQUEST_EVENT_TYPE,
-                payload=payload,
-                created_at=datetime.now(timezone.utc),
-            )
-        )
-        session.flush()
-        return task
 
     def _create_knowledge_lifecycle_task_request(
         self,
@@ -3420,34 +3384,13 @@ class TaskRuntime:
         except KnowledgeLifecycleAssessmentError as error:
             raise TaskNotFinalizable(error.reason) from error
 
-        task = Task(
-            id=task_id,
+        return create_assess_knowledge_lifecycle_task(
+            session,
+            task_id=task_id,
             team_id=source_task.team_id,
-            task_type=TASK_TYPE,
-            status="pending",
-            attempt_count=0,
             policy_version=payload["policy_version"],
-            objective_id=None,
-            plan_id=None,
-            plan_action_id=None,
-            allowed_writes=list(ALLOWED_WRITES),
-            budget=dict(TASK_BUDGET),
-            completed_at=None,
-            max_attempts=TASK_MAX_ATTEMPTS,
+            event_payload=payload,
         )
-        session.add(task)
-        session.flush()
-        session.add(
-            Event(
-                id=uuid4(),
-                task_id=task.id,
-                type=REQUEST_EVENT_TYPE,
-                payload=payload,
-                created_at=datetime.now(timezone.utc),
-            )
-        )
-        session.flush()
-        return task
 
     @staticmethod
     def _source_action_for_evaluation(
@@ -3729,29 +3672,13 @@ class TaskRuntime:
         task_id = self._evaluation_task_id(payload)
         if session.get(Task, task_id) is not None:
             raise TaskNotFinalizable("evaluation_task_id_conflict")
-        evaluation_task = Task(
-            id=task_id,
-            team_id=source_task.team_id,
-            task_type=_EVALUATION_TASK_TYPE,
-            status="pending",
-            attempt_count=0,
-            policy_version=source_task.policy_version,
-            objective_id=None,
-            plan_id=None,
-            plan_action_id=None,
-            allowed_writes=list(_EVALUATION_ALLOWED_WRITES),
-            budget=dict(_R6G_EVALUATION_BUDGET),
-            max_attempts=_EVALUATION_MAX_ATTEMPTS,
-        )
-        session.add(evaluation_task)
-        session.flush()
-        ObjectiveService._add_event(
+        evaluation_task = create_evaluate_outcome_task(
             session,
-            evaluation_task.id,
-            _EVALUATION_REQUEST_EVENT_TYPE,
-            payload,
+            task_id=task_id,
+            team_id=source_task.team_id,
+            policy_version=source_task.policy_version,
+            event_payload=payload,
         )
-        session.flush()
         self._validate_evaluation_task_request(session, evaluation_task)
         return evaluation_task.id
 
