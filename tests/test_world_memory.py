@@ -399,6 +399,13 @@ def test_operator_update_creates_low_hypothesis_and_verified_evidence(
                 )
             )
         ) == 1
+        assert list(
+            session.scalars(
+                select(TeamExperienceChunk).where(
+                    TeamExperienceChunk.team_id == context.team_id
+                )
+            )
+        ) == []
 
 
 
