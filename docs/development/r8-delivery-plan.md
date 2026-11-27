@@ -28,6 +28,21 @@ R8 must demonstrate:
 - Poor, conflicting, irrelevant, or insufficient evidence produces safe abstention or rejection rather than unsupported decisions or writes.
 - A later run can demonstrate measurable benefit from retained experience under a predefined value harness.
 
+## R8-ready Path A — minimum-scope delivery track
+
+Path A is the selected R8-ready planning direction: defer SignalDisposition and the full `triage_signal` workflow; use only existing, authorized, governed operations. This is not a finding that a suitable path has already been proven. The scenario and capability matrix in [R8-ready scope and capability matrix](r8-ready-scope-and-capability-matrix.md) is the next required deliverable.
+
+1. **Freeze candidate internal scenarios.** State the observable Watch behavior, inputs, expected durable effects, failure/abstention behavior, and what the test is intended to learn. Do not begin with a milestone or a desired schema.
+2. **Map every exercised capability.** For each operation, record the exact existing entrypoint, contract/decision authority, source SHA, Team/domain/provenance boundary, TaskRuntime ownership, replay/concurrency behavior, and PostgreSQL proof. Mark unknowns explicitly.
+3. **Validate Path A feasibility.** Confirm that each scenario can use an already-authorized governed path without SignalDisposition or a new triage writer. If not, stop the affected scenario and return with the missing capability and evidence; no caller/Event-only substitute or partial rollout.
+4. **Freeze scope and deferments.** Record required/not-required/blocked capabilities, known limitations, Full Design dependencies deferred, and the trigger that would reopen each deferment. An unresolved capability classification cannot pass the gate.
+5. **Authorize only the bounded missing work.** Reuse existing code/contracts where valid; implement only missing behavior required by the frozen scenario. Every exercised path retains its full integrity, provenance, authority, atomicity, isolation, replay, and concurrency guarantees. Implementation requires a separate explicit authorization.
+6. **Verify and authorize R8-ready entry.** Require focused tests, real-PostgreSQL proofs for relied-upon database claims, exact SHA, reproducible fixtures/baseline/logs, disposable-database cleanup, known limitations, and explicit Operator authorization recorded in `PLAN.md`.
+
+**Explicit Path A exclusion:** RW4-1B physical SignalDisposition persistence, RW4-1C TaskRuntime triage integration, RW4-1D PostgreSQL triage proof design, RW4-1E independent design review/acceptance, and RW4-1F implementation authorization remain Full Design work. RW4-1A remains complete as a historical source audit; it is not a reason to implement the deferred capability. RW4-2 Stage A decisions remain accepted, but accepted design decisions do not authorize a triage Task creator or implementation.
+
+No R8-ready internal testing is authorized by this plan change. The project remains Pre-R8-ready until the scope, proofs, implementation, and entry authorization are complete.
+
 ## 2. Full Design path before formal/scored R8 acceptance
 
 The active path is:
@@ -36,10 +51,10 @@ The active path is:
 2. **R7-B B5.4 — complete and closed.** Do not reopen it without a demonstrated defect.
 3. **R7-B B6 — complete and formally closed on 2026-11-16.** Test-only PR #124 merged at `419312bc678901e2d22179313e6285086bee42da`; exact-head local and hosted verification are recorded in `docs/testing.md` and the [B6 delivery/closeout record](r7-b-b6-legacy-lifecycle-hardening-plan.md). Do not treat B6 as outstanding R8 work.
 4. **RW-0 — reasoning-loop decision freeze and value harness.** Reconcile the approved RW-0 decision record, implementation plan/proof matrix, value harness, and this R8 plan; freeze the newsroom measurement methodology and capability boundaries; and prepare the actual experiment package (selected completed story, source corpus/manifest, scored brief, answer key, independent outcome reference, story-specific scoring examples, and execution configuration) or explicitly track each remaining pre-execution deliverable with a named owner and acceptance gate. RW-0 freezes the EvidenceLink architectural contract; the exact physical relational/migration design is a separately accepted RW-1 pre-implementation gate under D132. RW-0 decision approval does not authorize implementation.
-5. **RW-1 — minimum durable world-memory model.** Implement only the accepted Thread, competing Hypothesis, evidence, confidence-change, and immutable source-reference contract. Add SignalDisposition only if the vertical slice requires it.
+5. **RW-1 — minimum durable world-memory model.** Implement only the accepted Thread, competing Hypothesis, evidence, confidence-change, and immutable source-reference contract. SignalDisposition is excluded from the selected R8-ready Path A and remains Full Design work unless a separately approved scope change establishes a necessary dependency.
 6. **RW-2 — deterministic Operator update and commit path.** Prove provenance, confidence, cause, rival-preservation, atomicity, replay, and concurrency rules without model nondeterminism.
 7. **RW-3 — model reasoning worker.** Add `update_thread` behind the existing generation-provider and cost-accounting boundaries. Model output remains an untrusted proposal.
-8. **RW-4 — signal triage and reasoning retrieval.** Implement the minimum accepted signal-intake path and expose current, relevant Hypotheses to bounded Task Context with Team isolation.
+8. **RW-4 — signal triage and reasoning retrieval.** Complete the Full Design RW-4 contracts and implementation in their accepted dependency order. SignalDisposition/`triage_signal` is not part of R8-ready Path A; bounded Context retrieval remains subject to its own consumer gate and Experiment A disposition.
 9. **RW-5 — confidence decay.** Implement the accepted deterministic decay behavior and its proofs before the foundation exit gate.
 10. **Foundation exit gate.** Verify all required layers end-to-end, including the value harness, migrations, tests, docs, exact-head local verification, and hosted CI. Record explicit Operator acceptance.
 
