@@ -16,7 +16,7 @@ PR [#209](https://github.com/abtn/Watch-Architecture-Rev2/pull/209) was reviewed
 - The fixture-seeded `ingest_source` Task and Signal/Snapshot are historical prerequisite state. They are not produced by PlanService, TaskDispatcher, or IngestionService in CG-01.
 - The scenario does not create a Thread, execute source intake, invoke retrieval/Context, or compare control and treatment outcomes. The matrix correctly keeps full C-01 separate.
 
-**Review disposition:** no production-boundary or architecture blocker was found in the bounded CG-01 implementation. One small evidence-completeness follow-up remains: the no-Team-Experience assertion is made before the operation and after the first successful update, but not repeated after the replay call. This is not evidence that replay writes experience; it is a missing explicit assertion against the plan's stated before/after update-and-replay invariant. Add that assertion before treating the baseline test as the final reusable CG-01 proof. No new abstraction is warranted.
+**Review disposition:** no production-boundary or architecture blocker was found in the bounded CG-01 implementation. The evidence-completeness follow-up is now closed by [PR #211](https://github.com/abtn/Watch-Architecture-Rev2/pull/211), merged at `97732042fa746f6c60cb48335df244efea79588d`. The test now checks the no-Team-Experience invariant before the operation, after the first successful update, and after exact replay. Exact-head CI #2338 passed PostgreSQL provisioning, migrations/current-head verification, Ruff, Mypy, patch whitespace, and the full test job. The change is test-only; no production behavior was modified.
 
 ## 2. C-01 behavior to prepare
 
@@ -75,15 +75,15 @@ These classifications are a preparation aid, not the final accepted matrix. Any 
 
 ## 5. Sequenced preparation and implementation gate
 
-### Step 0 — Close the CG-01 evidence follow-up
+### Step 0 — Close the CG-01 evidence follow-up — COMPLETE
 
-1. Add the no-`TeamExperienceChunk` assertion after the exact replay call in the existing baseline test.
-2. Run the exact CG-01 test against disposable PostgreSQL.
-3. Run focused WorldMemory, Operator application, Control Room, and TaskRuntime tests.
-4. Run Ruff, Mypy, migration-head verification, and the full hosted CI suite on the exact PR head.
-5. Update the foundation record with the exact tested SHA and result.
+1. Added the no-`TeamExperienceChunk` assertion after the exact replay checks in the existing baseline test.
+2. The exact test is included in the full hosted test job on the disposable PostgreSQL environment.
+3. The focused WorldMemory/Operator/Control Room/TaskRuntime checks are covered by the exact-head full test suite; no separate local-shell run is claimed.
+4. Exact-head CI #2338 passed PostgreSQL provisioning, migrations/current-head verification, Ruff, Mypy, patch whitespace, and the full test job.
+5. The foundation record now records the tested PR head, merge commit, and CI run.
 
-**Exit:** the no-experience invariant is explicitly checked before, after first execution, and after replay. No production code/schema changes.
+**Exit:** satisfied. The no-experience invariant is explicitly checked before, after first execution, and after replay. No production code/schema changes. Post-merge `main` CI remains to be verified separately.
 
 ### Step 1 — Freeze one-source C-01 scenario
 
