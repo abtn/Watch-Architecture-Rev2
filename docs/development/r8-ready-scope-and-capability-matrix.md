@@ -33,11 +33,11 @@ If a candidate scenario requires SignalDisposition or any other gated capability
 
 **Audited source baseline:** `main` at `d671d066940d0dc06b1198c5ed474dc66653cccb`, the base of the Path A documentation PR. Source-file blob SHAs are recorded in the candidate rows below. This was a GitHub source inspection, not a local checkout, test execution, migration run, or live database inspection.
 
-**Blocking architecture finding — accepted D1 is not yet implemented in source.**
+**Blocking architecture finding at the audited baseline — accepted D1 was not implemented in source.**
 
 - The accepted D1 contract makes the application Control Room the sole logical authority for all supported Task creation. It explicitly says the Control Room is a logical boundary, not a claim that a dedicated implementation already exists.
 - The accepted writer audit now inventories ten production Task producers and requires all of them to delegate to named Control Room-owned operations, without direct-persistence fallback. The inventory includes `update_thread`, `operator_update`, `ingest_source` Plan materialization, TaskRuntime follow-ons, and the KnowledgeRevalidation producer.
-- The current source still contains direct Task persistence in all nine originally inventoried producer paths. A current-source check of the actual insert sites confirms the audit inventory:
+- At the audited `d671d066...` baseline, source contained direct Task persistence in all nine originally inventoried producer paths. A current-source check of the actual insert sites confirms the audit inventory:
   
   | # | Producer / operation | Current direct insert site | Source blob SHA |
   |---:|---|---|---|
@@ -53,7 +53,7 @@ If a candidate scenario requires SignalDisposition or any other gated capability
   | 10 | KnowledgeLifecycleAssessmentService producer | `core/knowledge_lifecycle.py:1731` (`Task(...)`) | `58dc94bdbcd89b57b55f1aa5bdb59c02571c1032` |
 
 - A follow-up complete producer-path review found a tenth supported writer: `KnowledgeLifecycleAssessmentService.create_task`. It was not included in the original nine-site baseline table and is now included in the D1 conformance inventory. The implementation delegates its Task/Event persistence to the existing `create_assess_knowledge_lifecycle_task` operation while preserving the service's own workflow and transaction. The historical source blob SHA and line above refer to the baseline before D1 implementation.
-- Current source search did not find a Control Room implementation or the named `create_operator_update_task` / `create_update_thread_task` Control Room operations. The original nine-site inventory was later expanded with a tenth supported producer in the accepted [RW4-2 writer compatibility audit](rw4-2-migration-and-writer-compatibility-audit.md) §4.
+- At the audited baseline, source search did not find a Control Room implementation or the named `create_operator_update_task` / `create_update_thread_task` Control Room operations. The original nine-site inventory was later expanded with a tenth supported producer in the accepted [RW4-2 writer compatibility audit](rw4-2-migration-and-writer-compatibility-audit.md) §4.
 - The accepted audit requires all ten producers to conform; implementing a new facade for only one selected scenario would not satisfy D1. The Operator separately authorized the D1 existing-writer implementation on 2026-11-27; it is in progress on `d1-control-room-writer-conformance-20261127`. This authorization does not grant R8-ready internal-testing permission.
 
 **Consequence:** candidate scenarios that create Tasks through these existing adapters are currently **Blocked** pending separately authorized D1 conformance (or an explicit Operator decision that changes the accepted boundary). A pre-seeded Task fixture would not prove the real user-facing Task-creation path and must not be presented as end-to-end scenario evidence.
