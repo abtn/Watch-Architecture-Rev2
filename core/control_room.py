@@ -45,6 +45,8 @@ def _create_task(
         max_attempts=max_attempts,
     )
     session.add(task)
+    if flush:
+        session.flush()
     if request_event_type is not None:
         if request_event_payload is None:
             raise ValueError("request_event_payload_required")
@@ -57,7 +59,6 @@ def _create_task(
                 created_at=datetime.now(timezone.utc),
             )
         )
-    if flush:
         session.flush()
     return task
 
