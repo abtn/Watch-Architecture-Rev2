@@ -211,7 +211,7 @@ The schema must be deployed before any triage creator is enabled. Existing non-t
 Before the migration/creator contract can be frozen, the implementation design and later tests must prove:
 
 1. Upgrade from the exact current Alembic head with existing rows from each representative non-triage Task type; all retain NULL identity fields and remain loadable.
-2. All nine inventoried producers delegate to named Control Room operations; each preserves prior authorization and transaction behavior, and existing non-triage Tasks retain NULL identity fields.
+2. All ten inventoried producers delegate to named Control Room operations; this was implemented by PR #207/#208. Existing non-triage Tasks retain NULL identity fields. Creator-specific authorization, transaction, replay, and race proofs remain separate Stage B obligations.
 3. A `triage_signal` Task with either identity field missing is rejected by PostgreSQL.
 4. A half-populated identity pair is rejected.
 5. A non-triage Task with either or both identity fields populated is rejected; existing non-triage writers that omit both fields remain valid.
