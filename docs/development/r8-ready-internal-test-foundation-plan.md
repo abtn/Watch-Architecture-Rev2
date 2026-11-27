@@ -2,7 +2,7 @@
 
 **Status:** bounded implementation plan; Operator authorization recorded in `PLAN.md` on 2026-11-27.
 **Development state:** Pre-R8-ready preparation. This plan authorizes only the minimum test-only baseline foundation and its technical verification; it does not authorize scored newsroom runs, formal R8, production use, or a state transition to R8-ready.
-**Planning baseline:** D1 implementation head `8532f573170b23b95bd98ccd56b3d8ea8d36cea8`; PR #207 CI is still the merge gate at the time this plan was prepared.
+**Planning baseline:** PR #207 D1 merged to `main` at `d03297c2b4e3522b0dc59ce001955cda130fd14f`; tested PR head `8532f573170b23b95bd98ccd56b3d8ea8d36cea8` passed hosted CI run #2326.
 **Authority:** `PLAN.md`, [R8 development states](r8-development-states.md), [R8-ready Path A scope matrix](r8-ready-scope-and-capability-matrix.md), and accepted RW-0 decisions.
 
 ## 1. Purpose
@@ -48,8 +48,8 @@ A baseline case must be isolated and reproducible:
 
 - A fresh Team and policy state, with explicit domain and policy identity.
 - One active Thread belonging to that Team and domain.
-- A configured source and immutable source content/Snapshot with exact content hash.
-- One ordinary intake Task created through the existing PlanService/Control Room path.
+- One immutable same-Team Signal/Snapshot with exact content hash, seeded as historical prerequisite evidence.
+- A fixture-seeded source-attribution Task only; the Task under test is the authenticated `operator_update` Task created through Control Room.
 - One authenticated Operator principal and exact Team/action grant for the subsequent `operator_update`.
 - No retained Team Experience chunks/snapshot supplied to the case; no hidden prompt/operator hint that acts as a substitute.
 - A recorded fixture identity/version and the exact source/test-code revision. The fixture may use generated UUIDs, but all relationships and source bytes must be deterministic.
@@ -57,7 +57,7 @@ A baseline case must be isolated and reproducible:
 
 The fixture should be a small pytest helper or fixture composed from existing test factories. Prefer reusing existing helpers and test setup over creating a new harness package. Do not introduce a general-purpose factory or runner until a second real test demonstrates the need.
 
-The fixture is setup only. It must not bypass Control Room Task creation, TaskRuntime lifecycle, Operator authorization, IngestionService provenance checks, WorldMemoryCommitService validation, or transaction boundaries.
+The fixture is setup only. It must not bypass Control Room creation of the `operator_update` Task, TaskRuntime lifecycle, Operator authorization, WorldMemoryCommitService validation, or transaction boundaries. IngestionService/PlanService are outside this baseline's integrated path and retain their separate existing proofs.
 
 ## 5. Detailed implementation and verification sequence
 
@@ -76,11 +76,11 @@ The fixture is setup only. It must not bypass Control Room Task creation, TaskRu
 
 1. Read `PLAN.md`, the R8 development-state document, R8 delivery plan, Path A matrix, RW-0 decisions, RW-4 readiness plan, Task specifications, and the relevant source/tests.
 2. Reconcile historical statements in the matrix that describe the pre-D1 source baseline. Preserve their historical meaning, but add a current-source result at the post-D1 SHA.
-3. Classify each capability used by C-01 as Required, Not required, Unknown, or Blocked. Unknown is not a pass.
+3. Classify each capability used by the bounded `operator_update` subset as Required, Not required, Unknown, or Blocked. Unknown is not a pass.
 4. Record the exact entrypoints, owner, persistence effect, current tests, missing proof, and any Full Design dependency.
 5. Keep the distinction explicit: this plan's test-only baseline is not R8-ready entry, formal R8, or the RWN-01 scored value harness.
 
-**Exit:** a current-source capability map exists with no stale D1 blocker and no unclassified dependency hidden as a deferment.
+**Exit:** a current-source capability map exists with no stale D1 blocker and no unclassified dependency hidden as a deferment. D1 is already merged; the remaining classification is limited to the bounded `operator_update` baseline.
 
 ### Phase 2 — Freeze the minimum technical scenario
 
@@ -91,7 +91,7 @@ The fixture is setup only. It must not bypass Control Room Task creation, TaskRu
 5. Record all fixture identities as generated test data and preserve deterministic source bytes.
 6. Map each relied-upon invariant to existing tests or a required new integrated proof.
 
-**Exit:** one bounded scenario and its proof subset are explicit. If C-01 cannot be exercised without a gated capability, stop and return with the exact dependency; do not substitute a pre-seeded Task for the real Task-creation path.
+**Exit:** one bounded scenario and its proof subset are explicit. The fixture-seeded source Task is only historical provenance input; the `operator_update` Task itself must be created by the real application entrypoint through Control Room.
 
 ### Phase 3 — Implement the test-only Control Group baseline
 
@@ -126,7 +126,7 @@ Do not duplicate already-adequate unit proofs merely to increase test count. The
 ### Phase 5 — Full verification and independent review
 
 1. Run the new focused integration test first.
-2. Run focused existing ingestion, PlanService, Operator application, WorldMemory, and TaskRuntime tests affected by the path.
+2. Run focused existing Operator application, WorldMemory, TaskRuntime, and Control Room tests affected by the path. Ingestion and PlanService tests are supporting regression evidence, not required for this narrowed baseline.
 3. Run Ruff, Mypy, patch whitespace checks, migration-head checks, and the full CI suite.
 4. Review the diff for direct Task writes, transaction ownership changes, hidden experience inputs, new production authority, test fixture leakage, and unrelated refactors.
 5. Review the documentation against actual source/test behavior and exact tested SHA.
@@ -161,7 +161,7 @@ The following existing tests are relevant starting points; their presence is not
 - `tests/test_world_memory.py::test_committed_operator_update_is_recovered_without_replaying_writes`
 - `tests/test_task_runtime.py::test_transaction_failure_rolls_back_task_and_event`
 
-Before implementation, verify these test names still exist at the post-D1 baseline and inspect their fixtures/contracts. Add an integrated test only for behavior not already proven by their composition.
+These test names and their relevant fixtures/contracts were inspected at the post-D1 baseline. The existing Operator update test is extended with the explicit no-retained-experience assertion; do not add a duplicate integration test if this existing test already exercises the required path.
 
 ## 7. Explicit non-goals and stop conditions
 
