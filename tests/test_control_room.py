@@ -6,6 +6,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from core.control_room import (
+    _create_task,
     create_approve_learning_change_task,
     create_assess_knowledge_lifecycle_task,
     create_assess_knowledge_quality_task,
@@ -142,3 +143,33 @@ def test_idempotent_creator_conflict_does_not_create_request_event() -> None:
 
     assert session.added == []
     assert session.flush_count == 0
+
+
+def test_invalid_request_event_configuration_does_not_mutate_session() -> None:
+    session = RecordingSession()
+    db = cast(Session, session)
+    common = {
+        "task_id": uuid4(),
+        "team_id": uuid4(),
+        "task_type": "test_task",
+        "policy_version": 1,
+        "allowed_writes": [],
+        "budget": {},
+        "max_attempts": 1,
+    }
+
+    for event_type, payload in (("task_requested", None), (None, {"request": True})):
+        try:
+            _create_task(
+                db,
+                **common,
+                request_event_type=event_type,
+                request_event_payload=payload,
+            )
+        except ValueError as error:
+            assert str(error) == "request_event_type_and_payload_must_be_provided_together"
+        else:
+            raise AssertionError("invalid request Event configuration was accepted")
+
+        assert session.added == []
+        assert session.flush_count == 0
