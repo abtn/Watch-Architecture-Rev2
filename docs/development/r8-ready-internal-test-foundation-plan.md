@@ -119,13 +119,13 @@ Add or reuse focused tests to prove:
 - The Control Group has no Team Experience projection rows and no retained-experience payload or retrieval result is supplied.
 - Each case uses disposable PostgreSQL for the database claims; in-memory mocks may test pure validation only.
 
-Do not duplicate already-adequate unit proofs merely to increase test count. The new integrated proof should close the vertical-slice gap; existing focused tests remain the detailed invariant proofs.
+Do not duplicate already-adequate unit proofs merely to increase test count. The existing Operator update test plus the explicit no-retained-experience assertion is the focused integrated baseline proof; existing focused tests remain the detailed invariant proofs.
 
 **Exit:** every exercised invariant maps to a passing exact test, with PostgreSQL evidence for database behavior.
 
 ### Phase 5 — Full verification and independent review
 
-1. Run the new focused integration test first.
+1. Run `tests/test_world_memory.py::test_operator_update_creates_low_hypothesis_and_verified_evidence` first.
 2. Run focused existing Operator application, WorldMemory, TaskRuntime, and Control Room tests affected by the path. Ingestion and PlanService tests are supporting regression evidence, not required for this narrowed baseline.
 3. Run Ruff, Mypy, patch whitespace checks, migration-head checks, and the full CI suite.
 4. Review the diff for direct Task writes, transaction ownership changes, hidden experience inputs, new production authority, test fixture leakage, and unrelated refactors.
