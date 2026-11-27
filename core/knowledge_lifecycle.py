@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from core.control_room import create_assess_knowledge_lifecycle_task
 from core.experience_distiller import ExperienceDistiller, ExperienceDistillerError
 from core.learning_history import (
     KNOWLEDGE_CONTENT_HASH_SCHEME,
@@ -1728,33 +1729,13 @@ class KnowledgeLifecycleAssessmentService:
                 self._snapshot_store,
                 change,
             )
-            task = Task(
-                id=task_id,
+            task = create_assess_knowledge_lifecycle_task(
+                session,
+                task_id=task_id,
                 team_id=change.team_id,
-                task_type=TASK_TYPE,
-                status="pending",
-                attempt_count=0,
                 policy_version=payload["policy_version"],
-                objective_id=None,
-                plan_id=None,
-                plan_action_id=None,
-                allowed_writes=list(ALLOWED_WRITES),
-                budget=dict(TASK_BUDGET),
-                completed_at=None,
-                max_attempts=TASK_MAX_ATTEMPTS,
+                event_payload=payload,
             )
-            session.add(task)
-            session.flush()
-            session.add(
-                Event(
-                    id=uuid4(),
-                    task_id=task.id,
-                    type=REQUEST_EVENT_TYPE,
-                    payload=payload,
-                    created_at=datetime.now(timezone.utc),
-                )
-            )
-            session.flush()
             return task.id
 
     def record(self, task_id: UUID) -> KnowledgeLifecycleAssessmentResult:

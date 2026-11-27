@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, sessionmaker
 
+from core.control_room import create_ingest_source_task
 from core.models import Event, Objective, Plan, PlanAction, Task, Team, TeamPolicy
 from core.objectives import ObjectiveService, TaskNotFound
 from core.policy import InvalidPolicyError, daily_task_quota
@@ -236,22 +237,16 @@ class PlanService:
             session.add_all(plan_actions)
             session.flush()
             materialized_tasks = [
-                Task(
-                    id=uuid4(),
+                create_ingest_source_task(
+                    session,
                     team_id=team_id,
                     objective_id=objective_id,
                     plan_id=plan.id,
                     plan_action_id=action.id,
-                    task_type=action.task_type,
-                    status="pending",
                     policy_version=task.policy_version,
-                    allowed_writes=["Signal"],
-                    budget=dict(_TASK_BUDGET),
-                    max_attempts=3,
                 )
                 for action in actions
             ]
-            session.add_all(materialized_tasks)
             session.flush()
             event = ObjectiveService._add_event(
                 session,
