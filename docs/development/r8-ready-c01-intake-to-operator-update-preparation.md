@@ -85,16 +85,13 @@ These classifications are a preparation aid, not the final accepted matrix. Any 
 
 **Exit:** satisfied. The no-experience invariant is explicitly checked before, after first execution, and after replay. No production code/schema changes. Post-merge `main` CI remains to be verified separately.
 
-### Step 1 — Freeze one-source C-01 scenario
+### Step 1 — Freeze one-source C-01 scenario — COMPLETE
 
-1. Use one fresh Team, one pinned TeamPolicy, one configured HTTPS test URL, one Objective/PlanAction, and one pre-existing active same-Team Thread.
-2. Use deterministic synthetic response bytes and a fixed source type. Keep a single source so this test does not imply cross-origin canonicalization.
-3. Define the expected source-intake records: one Plan-materialized Task, one immutable Signal/Snapshot, one Task-attributed intake Event, and the TaskRuntime terminal evidence.
-4. Define the subsequent Operator update: one ordinary request Task, one low-confidence Hypothesis, one exact-quote EvidenceLink, its commit/rejection Events, and terminal Outcome.
-5. Freeze safe failure cases: unconfigured source; invalid/missing PlanAction; fetch failure; content-hash mismatch; cross-Team or wrong-domain evidence; invalid Operator grant; quote/offset mismatch; exact replay; conflicting idempotency reuse; and injected database failure.
-6. Keep the Thread pre-existing; do not add Thread creation or triage to make the scenario pass.
+The scenario definition and proof boundary are frozen in [the one-source C-01 scenario freeze](r8-ready-c01-one-source-scenario-freeze.md).
 
-**Exit:** a single end-to-end question, expected durable effects, safe-failure outcomes, and explicit exclusions are written down.
+The freeze specifies one active Team and pinned TeamPolicy source, one PlanService/Control Room-materialized PlanAction-backed ingestion Task, deterministic `FakeFetcher` bytes, one immutable Signal/Snapshot and TaskRuntime terminal evidence, and one authenticated Operator update citing that exact ingested evidence on a pre-existing active same-Team Thread. It also records the expected durable evidence, safe-failure matrix, existing evaluation follow-on constraint, and exclusions.
+
+**Exit:** satisfied for scenario preparation. This is not implementation authorization; Step 2 and later implementation work remain gated by a separate explicit authorization.
 
 ### Step 2 — Build the integrated fixture by composition
 
