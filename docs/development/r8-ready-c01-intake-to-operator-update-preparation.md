@@ -149,6 +149,6 @@ A stop condition is a finding, not permission to weaken the architecture or sile
 
 ## 7. Expected outcome and current state
 
-The expected outcome of this preparation is a reviewable, one-source, deterministic C-01 implementation packet. It is not evidence that C-01 has been implemented or that R8-ready entry criteria are met.
+The preparation has resulted in a reviewable, one-source, deterministic C-01 test-only integration, with exact-head verification recorded above. This is evidence of the bounded success-path composition and mapped component-level failure contracts; it is not evidence that production C-01 capabilities are complete or that R8-ready entry criteria are met.
 
 **Current project state remains Pre-R8-ready.** CG-01 remains a technical baseline. The C-01 one-source success-path integration is implemented as test-only evidence, with terminal/replay assertions completed and existing component-level failure proofs mapped. This does not establish a treatment comparison, retrieval/Context capability, cross-origin canonicalization, production Experiment/ControlGroup behavior, RWN-01 scoring, formal R8, or R8-ready transition. Those remain blocked by their existing gates.
