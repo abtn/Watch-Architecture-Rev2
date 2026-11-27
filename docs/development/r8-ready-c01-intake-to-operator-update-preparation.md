@@ -1,7 +1,7 @@
 # R8-ready C-01 — Intake-to-Operator-Update Preparation
 
-**Status:** source-audited preparation only; no C-01 implementation authorization is implied.
-**Development state:** Pre-R8-ready. CG-01 is a bounded test-only technical baseline, not a complete C-01 run, treatment condition, or R8-ready acceptance.
+**Status:** C-01 one-source success-path integration implemented as test-only evidence; component-level failure proofs audited and recorded.
+**Development state:** Pre-R8-ready. CG-01 remains a bounded test-only technical baseline. C-01 integration is not a treatment condition, scored run, or R8-ready acceptance.
 **Audit baseline:** `main` at PR #209 merge commit `9702b941090b7c1cd49756d497f3d462c7b5e08e`. PR #209 exact head `7c0cafefad75264dc73e105c65cfb4259c3844e5` passed CI #2334; post-merge `main` CI #2335 (run ID `45958592015`) also passed the full PostgreSQL, migration, Ruff, Mypy, and test job.
 **Authority:** `PLAN.md`, [R8 development states](r8-development-states.md), [R8-ready Path A matrix](r8-ready-scope-and-capability-matrix.md), and the [Control-Group foundation plan](r8-ready-internal-test-foundation-plan.md).
 
@@ -73,66 +73,65 @@ Use one synthetic configured source and deterministic bytes. Reuse the existing 
 
 These classifications are a preparation aid, not the final accepted matrix. Any newly discovered Unknown or Blocked capability must be surfaced before scope freeze.
 
-## 5. Sequenced preparation and implementation gate
+## 5. Implementation and verification record
 
 ### Step 0 — Close the CG-01 evidence follow-up — COMPLETE
 
-1. Added the no-`TeamExperienceChunk` assertion after the exact replay checks in the existing baseline test.
-2. The exact test is included in the full hosted test job on the disposable PostgreSQL environment.
-3. The focused WorldMemory/Operator/Control Room/TaskRuntime checks are covered by the exact-head full test suite; no separate local-shell run is claimed.
-4. Exact-head CI #2338 passed PostgreSQL provisioning, migrations/current-head verification, Ruff, Mypy, patch whitespace, and the full test job.
-5. The foundation record now records the tested PR head, merge commit, and CI run.
-
-**Exit:** satisfied. The no-experience invariant is explicitly checked before, after first execution, and after replay. No production code/schema changes. Post-merge `main` CI remains to be verified separately.
+1. Added the no-`TeamExperienceChunk` assertion after exact replay in the existing baseline test.
+2. Exact-head CI #2338 passed PostgreSQL provisioning, migrations/current-head verification, Ruff, Mypy, patch whitespace, and the full test job.
+3. Post-merge `main` CI run ID `45979010439` passed.
+4. The test checks the no-experience invariant before the operation, after first execution, and after replay. No production code/schema changes.
 
 ### Step 1 — Freeze one-source C-01 scenario — COMPLETE
 
-The scenario definition and proof boundary are frozen in [the one-source C-01 scenario freeze](r8-ready-c01-one-source-scenario-freeze.md).
+The scenario definition and proof boundary are frozen in [the one-source C-01 scenario freeze](r8-ready-c01-one-source-scenario-freeze.md). It specifies one configured RSS source, PlanAction-backed PlanService materialization, deterministic fake fetching, one immutable Signal/Snapshot, TaskRuntime terminal evidence, and one authenticated Operator update citing that exact evidence on a pre-existing active same-Team Thread. It also records the safe-failure matrix, evaluation follow-on constraint, and exclusions.
 
-The freeze specifies one active Team and pinned TeamPolicy source, one PlanService/Control Room-materialized PlanAction-backed ingestion Task, deterministic `FakeFetcher` bytes, one immutable Signal/Snapshot and TaskRuntime terminal evidence, and one authenticated Operator update citing that exact ingested evidence on a pre-existing active same-Team Thread. It also records the expected durable evidence, safe-failure matrix, existing evaluation follow-on constraint, and exclusions.
+### Step 2 — Build the integrated fixture by composition — COMPLETE
 
-**Exit:** satisfied for scenario preparation. This is not implementation authorization; Step 2 and later implementation work remain gated by a separate explicit authorization.
+Implemented in [PR #215](https://github.com/abtn/Watch-Architecture-Rev2/pull/215), merged at `e83101cfffa51897327a3651087f2ec464329115`. Exact tested PR head: `b34f48545325b6f34fd73a30dd78c660a91340b0`; exact-head CI #2355 passed PostgreSQL provisioning, migrations/current-head verification, Ruff, Mypy, patch whitespace, and the full test job.
 
-### Step 2 — Build the integrated fixture by composition
+The test-only integration lives in `tests/test_c01_intake_to_operator_update.py`. It composes Strategy acceptance, PlanService/Control Room PlanAction-backed source Task materialization, deterministic fake dispatch and ingestion, TaskRuntime terminalization and its existing evaluation follow-on, and an authenticated Operator update against a pre-existing active Thread using the ingested Snapshot evidence. It verifies low-confidence Hypothesis/EvidenceLink provenance, exact replay identity, and no Team Experience creation. No production code, schema, migration, or runtime behavior was changed.
 
-1. Reuse the existing Plan/Objective fixtures and PlanService materialization flow. Do not hand-insert the source Task for the integrated proof.
-2. Reuse the `dispatch_fixture` / `FakeFetcher` pattern from `tests/test_r6b_dispatcher.py`, adapting only what is needed to start from a real PlanService-created PlanAction.
-3. Reuse `world_memory_context` setup only where appropriate for the active Thread and Operator target; do not create a generic C-01 harness package.
-4. Ensure the source Task's policy pin and PlanAction identity are exactly those accepted by PlanService.
-5. Run TaskDispatcher and wait for its TaskRuntime terminal result before submitting the Operator update.
-6. Use the actual ingested Signal/Snapshot identifiers and bytes to build the exact-quote Operator proposal.
-7. Preserve disposable PostgreSQL and fixture cleanup, including any existing evaluation follow-on request created by TaskRuntime.
+PR #215 review identified two assertion gaps; these were corrected in [PR #216](https://github.com/abtn/Watch-Architecture-Rev2/pull/216), merged at `ffa3703be22a7e8e8078582f287e8acb46031241`. PR #216 exact head `d787d2142645520ac2773326c2f32e20dec460a5` passed CI #2357, including the full PostgreSQL, migration, Ruff, Mypy, whitespace, and test job. The follow-up asserts exactly one `task_completed` Event for each of the source and Operator Tasks, then re-queries after exact replay to assert exactly one each of `operator_update_requested`, `operator_update_committed`, and `task_completed` Events.
 
-**Exit:** one deterministic integration test exercises PlanService → TaskDispatcher → IngestionService → TaskRuntime → OperatorApplicationAdapter → Control Room/WorldMemoryCommitService → TaskRuntime.
+The initial PR #215 integration fixture had a CI failure caused by dependent Task rows being flushed before their TeamPolicy parent under a composite foreign key. The fixture ordering was corrected before the final exact-head green run; this was a test-fixture ordering issue, not a production behavior change.
 
-### Step 3 — Prove boundaries without duplicating component suites
+### Step 3 — Prove boundaries without duplicating component suites — COMPLETE WITH QUALIFICATIONS
 
-- Assert configured-source Task creation is PlanAction-backed and Control Room-owned.
-- Assert the fetcher receives exactly the PlanAction URL/source type and is never called for an unconfigured source.
-- Assert the committed Signal points to the exact immutable Snapshot bytes/hash and is attributed to the source Task.
-- Assert source Task terminal Outcome/status/Event and any existing evaluation follow-on are valid and correctly attributed.
-- Assert the Operator update uses the same Team/domain and exact ingested Signal/Snapshot quote and offsets.
-- Assert no business writes occur for invalid grants, cross-Team references, malformed quotes, or conflicting replay.
-- Assert exact replay creates no duplicate Signal, EvidenceLink, or Hypothesis.
-- Use existing injected-failure tests for component rollback; add an integrated rollback test only if it reveals a boundary not already proven.
-- Assert no Team Experience is supplied, retrieved, or created by this direct Operator update path. Do not add a fake empty Context.
+The integrated success-path test proves the intended one-source composition. The targeted component-test audit maps the principal safe-failure contracts to existing tests; it does not claim that every failure has been injected at every point in the combined journey.
 
-**Exit:** each claim maps to an existing or new exact test; PostgreSQL evidence supports database guarantees.
+| Boundary / failure | Existing component proof | Evidence assessment |
+|---|---|---|
+| Missing PlanAction / unconfigured source | `test_task_without_durable_source_configuration_is_rejected_before_admission`; `test_task_whose_source_is_not_configured_is_rejected_before_admission` (`tests/test_r6b_dispatcher.py`) | Covered at dispatcher admission |
+| Restricted source URL, DNS, redirect, media type, encoding and response validation | RestrictedFetcher safety tests (`tests/test_r6b_dispatcher.py`) | Covered at fetch boundary |
+| Fetch failure, retry and recovery | R6-B dispatcher and TaskRuntime retry/recovery suites | Covered at component/lifecycle boundaries |
+| Ingestion hash mismatch | `test_invalid_hash_records_rejection_without_publishing_snapshot` (`tests/test_ingestion.py`) | Covered |
+| Ingestion database failure | `test_database_failure_rolls_back_signal_and_success_event` (`tests/test_ingestion.py`) | Covered |
+| Same-Task ingestion replay | `test_same_task_retry_reuses_existing_outcome` (`tests/test_ingestion.py`) | Covered |
+| Wrong or overbroad grant | `test_host_grant_is_team_and_action_scoped` (`tests/test_world_memory.py`); `test_host_grant_must_match_the_proposal_team_and_exact_action` (`tests/test_operator_application.py`) | Covered |
+| Conflicting Operator idempotency reuse | `test_reusing_idempotency_key_with_different_request_is_rejected`, plus changed-proposal/changed-Operator cases (`tests/test_operator_application.py`) | Covered |
+| Cross-Team / wrong-domain evidence | `test_cross_team_hypothesis_signal_and_snapshot_references_fail_closed` (`tests/test_world_memory.py`) | Covered |
+| Cross-Team Thread admission | `test_cross_team_thread_reference_is_rejected_at_task_admission` | Covered |
+| Invalid quote / wrong offsets | `test_invalid_quote_is_rejected_without_discarding_valid_proposal`; `test_exact_quote_with_wrong_offsets_is_rejected` (`tests/test_operator_application.py`) | Covered |
+| Operator commit database failure | `test_database_failure_rolls_back_the_entire_valid_proposal_set` (`tests/test_world_memory.py`) | Covered |
+| Operator update interruption/recovery | `test_committed_operator_update_is_recovered_without_replaying_writes`; `test_exhausted_interrupted_operator_update_fails_with_attributed_rejections` (`tests/test_operator_application.py`) | Covered |
+| Plan provenance, incomplete state, changed identity and concurrency | `test_durable_provenance_rejection`, `test_unsupported_candidate_rejected`, `test_current_authority_revalidated`, `test_missing_task_cannot_create`, `test_identical_retry_and_concurrency`, `test_conflicting_creation_identity`, `test_changed_same_task_request_rejects`, `test_incomplete_plan_state_is_rejected_not_repaired`, `test_tampered_accepted_provenance_is_rejected`, `test_retry_does_not_repair_incomplete_plan_state` (`tests/test_plans.py`) | Covered |
 
-### Step 4 — Verification and independent review
+**Evidence boundary:** component tests establish individual rejection, rollback, and recovery contracts. The C-01 integration test establishes the successful composition and replay invariants. Neither should be overstated as a full cross-product of injected failures across the integrated workflow. No additional integrated failure harness was justified by this audit: it would duplicate established component guarantees without identifying a specific uncovered contract. If a future change alters one of these boundaries, reassess whether an integrated failure test is then necessary.
 
-1. Run the new integrated C-01 test first.
-2. Run focused PlanService, dispatcher, ingestion, TaskRuntime/evaluation-follow-on, Operator application, and WorldMemory suites.
-3. Run Ruff, Mypy, migration current/head checks, whitespace, and full test suite.
-4. Review the diff for direct Task writes, Task lifecycle bypass, policy-pin drift, source-identity substitution, live network use, transaction ownership changes, hidden experience inputs, and unrelated refactors.
-5. Verify the exact tested PR head, CI conclusion, merge base, and disposable database cleanup.
-6. Record any missing proof or environment limitation without treating Unknown as Pass.
+### Step 4 — Verification and independent review — COMPLETE FOR THE TEST-ONLY SLICE
 
-**Exit:** exact-head hosted CI is green; no unresolved P1/P2 finding; all exercised boundaries have source-backed evidence.
+1. The integrated test was added and verified in PR #215; exact-head CI #2355 passed the full hosted PostgreSQL/static/test job.
+2. The two missing terminal/replay assertions were added in PR #216; exact-head CI #2357 passed the full hosted PostgreSQL/static/test job.
+3. The diffs were constrained to `tests/test_c01_intake_to_operator_update.py`; no production code, schema, migration, runtime, or application behavior changed.
+4. Review checked the PlanAction-backed Task path, Control Room authority, TaskRuntime lifecycle, policy/source identity, fake-only fetch, existing evaluation follow-on, evidence provenance, replay behavior, and no-Team-Experience invariant.
+5. The safe-failure matrix above was mapped to existing component tests. It remains component-level evidence rather than integrated failure injection.
 
-### Step 5 — Return for explicit scope/implementation authorization
+**Exit:** the authorized test-only C-01 success-path slice and the identified assertion corrections are implemented and exact-head CI verified. This does not certify untested cross-component failure combinations or authorize production changes.
 
-After the preparation and review are accepted, submit a separate authorization request naming the exact files, behavior, test cases, database impact (expected none), rollback, and verification. Do not begin C-01 implementation merely because this preparation document is merged.
+### Step 5 — Scope boundary after implementation
+
+The explicit authorization for the bounded test-only Step 2 work was granted and consumed by PR #215. It does not authorize production implementation, new persistence/runtime behavior, retrieval/Context, cross-origin arbitration, scoring, or formal R8. Any expansion beyond the merged test-only slice requires a new scoped proposal and explicit authorization.
 
 ## 6. Stop conditions
 
@@ -152,4 +151,4 @@ A stop condition is a finding, not permission to weaken the architecture or sile
 
 The expected outcome of this preparation is a reviewable, one-source, deterministic C-01 implementation packet. It is not evidence that C-01 has been implemented or that R8-ready entry criteria are met.
 
-**Current project state remains Pre-R8-ready.** CG-01 is a technical baseline only. C-01 remains a candidate pending scenario freeze, resolution of the stated proof questions, and separate explicit authorization. Formal/scored R8, RWN-01, treatment comparison, and R8-ready transition remain blocked by their existing gates.
+**Current project state remains Pre-R8-ready.** CG-01 remains a technical baseline. The C-01 one-source success-path integration is implemented as test-only evidence, with terminal/replay assertions completed and existing component-level failure proofs mapped. This does not establish a treatment comparison, retrieval/Context capability, cross-origin canonicalization, production Experiment/ControlGroup behavior, RWN-01 scoring, formal R8, or R8-ready transition. Those remain blocked by their existing gates.
