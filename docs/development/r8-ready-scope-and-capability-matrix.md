@@ -50,7 +50,7 @@ If a candidate scenario requires SignalDisposition or any other gated capability
   | 7 | TaskRuntime Knowledge Lifecycle follow-on | `core/task_runtime.py:3423` (`Task(...)`) | `c19c1d6e87137441306cdb454f7ca304297d75d3` |
   | 8 | TaskRuntime follow-on Evaluation | `core/task_runtime.py:3732` (`Task(...)`) | `c19c1d6e87137441306cdb454f7ca304297d75d3` |
   | 9 | KnowledgeRevalidationAssessmentService producer | `core/knowledge_revalidation.py:1095` (`Task(...)`) | `38ee4e77ba8dff77f0a1cf174f4321df4cbbb7f2` |
-  | 10 | KnowledgeLifecycleAssessmentService producer | `core/knowledge_lifecycle.py:1729` (`Task(...)`) | `a1e2c6e7c7b1d9a1f0c4c0a3b8c2f5b2` |
+  | 10 | KnowledgeLifecycleAssessmentService producer | `core/knowledge_lifecycle.py:1731` (`Task(...)`) | `58dc94bdbcd89b57b55f1aa5bdb59c02571c1032` |
 
 - A follow-up complete producer-path review found a tenth supported writer: `KnowledgeLifecycleAssessmentService.create_task`. It was not included in the original nine-site baseline table and is now included in the D1 conformance inventory. The implementation delegates its Task/Event persistence to the existing `create_assess_knowledge_lifecycle_task` operation while preserving the service's own workflow and transaction. The historical source blob SHA and line above refer to the baseline before D1 implementation.
 - Current source search did not find a Control Room implementation or the named `create_operator_update_task` / `create_update_thread_task` Control Room operations. The original nine-site inventory was later expanded with a tenth supported producer in the accepted [RW4-2 writer compatibility audit](rw4-2-migration-and-writer-compatibility-audit.md) §4.
