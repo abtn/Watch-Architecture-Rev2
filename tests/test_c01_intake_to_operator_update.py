@@ -248,6 +248,14 @@ def test_c01_configured_source_intake_then_operator_update(
                     )
                 )
             )
+            source_terminal_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == source_task_id,
+                        Event.type == "task_completed",
+                    )
+                )
+            )
             evaluation_requests = list(
                 session.scalars(
                     select(Event).where(
@@ -270,6 +278,7 @@ def test_c01_configured_source_intake_then_operator_update(
             assert source_outcome.outcome_type == "task_execution"
             assert source_outcome.recorded_by_task_id == source_task_id
             assert len(intake_events) == 1
+            assert len(source_terminal_events) == 1
             # TaskRuntime's existing evaluation follow-on is an expected
             # side effect, not a second source Task or a C-01-created queue.
             assert len(evaluation_requests) == 1
@@ -343,6 +352,14 @@ def test_c01_configured_source_intake_then_operator_update(
                     )
                 )
             )
+            operator_terminal_events = list(
+                session.scalars(
+                    select(Event).where(
+                        Event.task_id == operator_result.task_id,
+                        Event.type == "task_completed",
+                    )
+                )
+            )
             operator_outcome = session.get(Outcome, operator_result.outcome_id)
             assert hypothesis is not None
             assert hypothesis.team_id == team_id
@@ -357,6 +374,7 @@ def test_c01_configured_source_intake_then_operator_update(
             assert evidence.quote_start == quote_start
             assert evidence.quote_end == quote_start + len(_QUOTE)
             assert len(request_events) == len(commit_events) == 1
+            assert len(operator_terminal_events) == 1
             assert operator_outcome is not None
             assert operator_outcome.recorded_by_task_id == operator_result.task_id
             assert session.scalar(
@@ -395,6 +413,36 @@ def test_c01_configured_source_intake_then_operator_update(
                         select(Outcome).where(
                             Outcome.recorded_by_task_id == operator_result.task_id,
                             Outcome.outcome_type == "task_execution",
+                        )
+                    )
+                )
+            ) == 1
+            assert len(
+                list(
+                    session.scalars(
+                        select(Event).where(
+                            Event.task_id == operator_result.task_id,
+                            Event.type == "operator_update_requested",
+                        )
+                    )
+                )
+            ) == 1
+            assert len(
+                list(
+                    session.scalars(
+                        select(Event).where(
+                            Event.task_id == operator_result.task_id,
+                            Event.type == "operator_update_committed",
+                        )
+                    )
+                )
+            ) == 1
+            assert len(
+                list(
+                    session.scalars(
+                        select(Event).where(
+                            Event.task_id == operator_result.task_id,
+                            Event.type == "task_completed",
                         )
                     )
                 )
