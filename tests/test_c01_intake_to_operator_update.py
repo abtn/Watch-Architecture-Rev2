@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select
@@ -428,8 +428,12 @@ def test_c01_configured_source_intake_then_operator_update(
             # accepted Strategy Event remains until after the Plan is deleted.
             linked_task_ids = select(Task.id).where(Task.plan_id.in_(plan_ids))
             session.execute(delete(Event).where(Event.task_id.in_(linked_task_ids)))
-            session.execute(delete(Task).where(Task.id.in_(linked_task_ids)))
-            session.execute(delete(PlanAction).where(PlanAction.plan_id.in_(plan_ids)))
+            session.execute(
+                delete(Task).where(Task.id.in_(linked_task_ids))
+            )
+            session.execute(
+                delete(PlanAction).where(PlanAction.plan_id.in_(plan_ids))
+            )
             session.execute(delete(Plan).where(Plan.id.in_(plan_ids)))
             session.execute(delete(Event).where(Event.task_id.in_(team_task_ids)))
             session.execute(delete(Task).where(Task.team_id == team_id))
