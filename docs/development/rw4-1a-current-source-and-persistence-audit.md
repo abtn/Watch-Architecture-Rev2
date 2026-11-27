@@ -1,8 +1,8 @@
 # RW4-1A — Current-source and persistence audit
 
-**Status:** Source audit complete; physical schema design remains open.  
-**Audited baseline:** `main` at `d2a6f7d4f939a7c18ea00ad6c77574c7b1f63ec3` (PR #197 merge).  
-**Scope:** Read-only inspection of current ORM models, ingestion and TaskRuntime paths, migration history, relevant tests, and accepted D3/D5/D6 contracts.  
+**Status:** Source audit complete; physical schema design remains open.
+**Historical audited baseline:** `main` at `d2a6f7d4f939a7c18ea00ad6c77574c7b1f63ec3` (PR #197 merge). This is a source snapshot, not the current main baseline. D2 Task identity migration `0020_rw4_task_identity` was subsequently merged by PR #203; the current RW4-1 physical-design review is based on main at `3a1d897c989a181cfb7f4bf53e7766608dbd8578`.
+**Scope:** Read-only inspection of current ORM models, ingestion and TaskRuntime paths, migration history, relevant tests, and accepted D3/D5/D6 contracts.
 **Not performed:** No code or schema changes, tests, Alembic execution, database queries, provider calls, or inspection of persistent database rows. This document does not authorize implementation.
 
 ## 1. Executive result
@@ -58,7 +58,7 @@ Important limitations:
 
 The D4.1a first-successfully-committed Team/hash winner therefore needs its own reviewed database-arbitrated representation and two-session proof. It cannot be inferred from `fetched_at`, Event timestamps, UUID ordering, or the existing origin/hash constraint. Keep that C1/D4.1a engineering gate separate from the disposition table.
 
-There is also a current domain-integrity gap across all three existing-Signal reuse paths in `IngestionService._commit`:
+There is also a current domain-integrity gap across all three existing-Signal reuse paths in `IngestionService._commit`. This older audit records the specific missing domain comparison; the later 2026-11-27 current-source review broadens the required closure to prove the complete fail-closed provenance/eligibility decision on each path, including whether the Event is post-cutover and DB-attested. These are complementary statements, not contradictory coverage claims:
 
 - The ordinary `fetch_no_change` path does not compare `Signal.domain` with the current Task Team's `domain` before writing the Team-attributed Event.
 - The `ON CONFLICT` winner path has the same omission.
