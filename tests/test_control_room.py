@@ -125,14 +125,15 @@ def test_all_named_creators_use_the_supplied_session() -> None:
         "knowledge_lifecycle_assessment_task_requested",
         "evaluation_task_requested",
     }
-    assert session.flush_count == 7
+    assert session.flush_count == 12
 
 
 def test_idempotent_creator_conflict_does_not_create_request_event() -> None:
     session = RecordingSession((None,))
+    db = cast(Session, session)
 
     assert create_update_thread_task(
-        session,
+        db,
         task_id=uuid4(),
         team_id=uuid4(),
         policy_version=1,
