@@ -30,14 +30,15 @@ The accepted RW-D09 decision places retrieval-quality evaluation and small-sampl
 
 ## 3. Initial bounded vertical slice
 
-Use Path A and candidate C-01 from the R8-ready scope matrix, narrowed to the existing governed operations:
+Use Path A and the smallest governed portion of candidate C-01: an authenticated Operator evidence update against a pre-existing, same-Team source. This deliberately does **not** exercise the full C-01 configured-source intake sequence.
 
 1. Start from an isolated Team with an already-existing active Thread. The fixture may seed this Thread because `activate_team` is not implemented; do not imply that Thread creation is part of this test.
-2. Use a configured, deterministic source fixture and the existing PlanService → TaskDispatcher → IngestionService path to create the attributed intake Task and persist the Signal/Snapshot/Events.
-3. Use the existing authenticated Operator application entrypoint to submit a bounded `operator_update` request for the seeded active Thread, adding a low-confidence Hypothesis and a verified EvidenceLink to the same-Team Signal/Snapshot.
-4. Let TaskRuntime own admission and terminalization. Verify durable state only through the supported application/Kernel path and ordinary read-side inspection.
+2. Seed one immutable same-Team Signal/Snapshot as prerequisite evidence, using the existing `world_memory_context` test fixture pattern. The source-attribution Task is fixture state, not the Task-creation path under test.
+3. Use the authenticated Operator application entrypoint to submit a bounded `operator_update` request for the seeded active Thread, adding a low-confidence Hypothesis and a verified EvidenceLink to that Signal/Snapshot. The request Task must be created through the D1 Control Room operation.
+4. Let TaskRuntime own admission and terminalization. Verify durable state only through ordinary read-side inspection.
+5. Assert that the Team has no retained `TeamExperienceChunk` available to this baseline and that no retrieval/Context path is invoked.
 
-The first Control Group condition has **no retained Team Experience supplied to the Task** and makes **no retrieval or claim-level knowledge-use assertion**. It is a technical baseline, not a treatment comparison and not evidence of product-value improvement.
+The first Control Group condition has **no retained Team Experience supplied to the Task** and makes **no retrieval or claim-level knowledge-use assertion**. It is a technical baseline for the governed Operator update path, not the full C-01 intake journey, not a treatment comparison, and not evidence of product-value improvement. Existing ingestion and PlanService tests remain separate proofs of those components.
 
 Use synthetic, deterministic test inputs. Do not use the unfrozen RWN-01 newsroom corpus, publisher files, real scored briefs, reviewer materials, or the scored 20-run protocol for this internal technical baseline.
 
@@ -83,8 +84,8 @@ The fixture is setup only. It must not bypass Control Room Task creation, TaskRu
 
 ### Phase 2 — Freeze the minimum technical scenario
 
-1. Confirm C-01 is the smallest meaningful existing governed vertical slice after D1.
-2. Freeze the observable question: can a configured source be ingested and then used by an authenticated Operator to record an evidence-backed low-confidence Hypothesis on an existing active Thread, with safe rejection and no partial writes?
+1. Confirm the bounded `operator_update` subset is the smallest meaningful existing governed vertical slice after D1; do not label it full C-01.
+2. Freeze the observable question: can an authenticated Operator use an existing same-Team immutable Signal/Snapshot to record an evidence-backed low-confidence Hypothesis on an existing active Thread through the governed `operator_update` path, with safe rejection and no partial writes?
 3. Freeze expected durable effects and safe-failure outcomes.
 4. Explicitly exclude Thread creation, automatic triage, retained-experience retrieval, claim-level attribution, and treatment/control value claims.
 5. Record all fixture identities as generated test data and preserve deterministic source bytes.
@@ -94,28 +95,28 @@ The fixture is setup only. It must not bypass Control Room Task creation, TaskRu
 
 ### Phase 3 — Implement the test-only Control Group baseline
 
-1. Inspect and reuse existing fixtures in `tests/conftest.py`, ingestion tests, PlanService tests, Operator application tests, and WorldMemory tests.
-2. Add the smallest fixture helper necessary to build one isolated baseline case. Keep it in the test layer.
-3. Ensure the fixture calls supported public/application entrypoints for Task creation and business updates; only seed the already-existing active Thread and prerequisite source/configuration state.
+1. Reuse the existing `world_memory_context` fixture in `tests/test_world_memory.py`; it already seeds an isolated Team, policy, source Task, immutable Signal/Snapshot, and active Thread.
+2. Add only a named test fixture wrapper (or an equivalent explicit assertion in the existing test) that verifies the baseline Team has no `TeamExperienceChunk` rows. Do not duplicate the fixture's data model or build a general harness abstraction.
+3. Run the existing authenticated `OperatorApplicationAdapter.operator_update` entrypoint. Its target Task must be created through the D1 Control Room operation; the fixture-seeded source Task is only historical provenance input.
 4. Make the absence of retained experience explicit and testable. Do not add a fake retrieval result or invent an empty Context path.
-5. Avoid adding production files, models, migrations, runtime flags, or Event types.
-6. Add one integrated test that drives the actual sequence and checks the resulting Task/Outcome/Event, Signal/Snapshot, Hypothesis, and EvidenceLink identities and ownership.
+5. Reuse the existing `test_operator_update_creates_low_hypothesis_and_verified_evidence` assertions for Task/Outcome/Event, Hypothesis, EvidenceLink, exact quote/Snapshot identity, and replay. Add only the missing explicit baseline assertion.
+6. Avoid adding production files, models, migrations, runtime flags, Event types, or an experiment runner.
 
-**Exit:** the fixture is small, deterministic, isolated, and cannot be mistaken for production functionality.
+**Exit:** the existing fixture plus one explicit no-retained-experience assertion provides the smallest deterministic baseline. If this requires a new generic fixture abstraction, stop and reuse the existing fixture directly.
 
 ### Phase 4 — Prove the integrity boundary
 
 Add or reuse focused tests to prove:
 
 - Task creation delegates through Control Room; TaskRuntime alone admits and finalizes.
-- Intake Task, Signal, Snapshot, and attributed Events are consistent and atomic.
+- The pre-seeded Signal/Snapshot is immutable, same-Team, and the exact evidence source referenced by the Operator update. (The ingestion write path is covered by its separate existing tests, not this baseline integration.)
 - Operator principal and exact Team/action grant are required.
 - The Thread, Signal, Snapshot, Task, and Hypothesis are same-Team and same-domain where required.
 - Exact quote and offsets match immutable Snapshot bytes.
 - Invalid, cross-Team, stale, or malformed proposals do not create partial business state.
 - Exact request replay is idempotent; conflicting reuse fails closed.
 - Database failure rolls back the complete business proposal set.
-- The Control Group receives no retained-experience payload or retrieval result.
+- The Control Group has no Team Experience projection rows and no retained-experience payload or retrieval result is supplied.
 - Each case uses disposable PostgreSQL for the database claims; in-memory mocks may test pure validation only.
 
 Do not duplicate already-adequate unit proofs merely to increase test count. The new integrated proof should close the vertical-slice gap; existing focused tests remain the detailed invariant proofs.
@@ -148,10 +149,10 @@ Do not duplicate already-adequate unit proofs merely to increase test count. The
 
 The following existing tests are relevant starting points; their presence is not a claim that they were rerun by this planning change:
 
-- `tests/test_ingestion.py::test_successful_ingestion_commits_signal_event_and_snapshot`
-- `tests/test_ingestion.py::test_database_failure_rolls_back_signal_and_success_event`
-- `tests/test_ingestion.py::test_same_task_retry_reuses_existing_outcome`
-- `tests/test_plans.py::test_materialized_task_uses_existing_ingestion`
+- `tests/test_ingestion.py::test_successful_ingestion_commits_signal_event_and_snapshot` (separate supporting proof; not part of the baseline vertical slice)
+- `tests/test_ingestion.py::test_database_failure_rolls_back_signal_and_success_event` (separate supporting proof)
+- `tests/test_ingestion.py::test_same_task_retry_reuses_existing_outcome` (separate supporting proof)
+- `tests/test_plans.py::test_materialized_task_uses_existing_ingestion` (separate supporting proof)
 - `tests/test_operator_application.py::test_request_creates_one_pending_task_and_one_attributed_event`
 - `tests/test_operator_application.py::test_concurrent_identical_requests_create_one_task_and_request_event`
 - `tests/test_world_memory.py::test_operator_update_creates_low_hypothesis_and_verified_evidence`
