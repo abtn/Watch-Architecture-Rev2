@@ -266,3 +266,14 @@ The Operator confirmed Watch has no production deployment. The checked-in source
 
 The two fallback paths above are narrow developer-tool safety defects and should be hardened in a separately authorized change. This RW4-1B audit remains documentation-only; it does not silently change application, test, migration, or database behavior.
 
+
+
+## Post-audit implementation reconciliation (2026-11-27)
+
+This document records the source audit as it stood on 2026-11-25; its historical audit baseline and findings are not rewritten. The following delivery has since occurred:
+
+- **D1 existing-writer migration:** all ten inventoried production Task producers now delegate to the eight named operations in `core/control_room.py`. PR [#207](https://github.com/abtn/Watch-Architecture-Rev2/pull/207) (including correction #208) merged at `d03297c2b4e3522b0dc59ce001955cda130fd14f`. Exact-head CI #2326 passed the PostgreSQL, migration, Ruff, Mypy, patch-whitespace, and full-test checks. The exact ten-producer mapping and retained caller transaction semantics are recorded in [the D1 implementation record](d1-control-room-writer-conformance-implementation.md).
+- **D2 schema migration:** PR [#203](https://github.com/abtn/Watch-Architecture-Rev2/pull/203) merged at `5d3370127718cee839834b6473b8b5883be95d0b`, adding migration `0020_rw4_task_identity.py`. It installs nullable identity columns, Signal FK, triage-only identity CHECK, logical-pair unique constraint, four-column support key, partial unique request-Event index, triage-only Team-lock insert trigger, identity immutability, locked zero-history preflight, and fail-closed downgrade. PR #203 records the PostgreSQL proofs for these schema/migration properties.
+- **Still not implemented:** the typed `triage_signal` creator, runtime request Event validation, Task/Event creation path, exact replay, caller authorization integration, creator race/retry handling, and creator-specific two-session PostgreSQL proofs. The D2 migration and D1 writer retrofit do not prove these behaviors.
+
+The exact Event v1 payload/fingerprint and creator lock/retry contract are frozen for independent Stage A review in [RW4-2 Stage A contract closure](rw4-2-stage-a-contract-closure.md). The migration's locked zero-history assertion is evidence about the database state at the time that migration ran; it is not an attestation of any separate persistent or production deployment. Historical repair remains unsupported. No Stage B implementation is authorized by this reconciliation.
