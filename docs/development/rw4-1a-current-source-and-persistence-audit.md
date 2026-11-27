@@ -1,7 +1,7 @@
 # RW4-1A — Current-source and persistence audit
 
 **Status:** Source audit complete; physical schema design remains open.  
-**Audited baseline:** `main` at `d2a6f7d4f939a7c18ea00ad6c77574c7b1f63ec3` (PR #197 merge).  
+**Historical audited baseline:** `main` at `d2a6f7d4f939a7c18ea00ad6c77574c7b1f63ec3` (PR #197 merge). This is a source snapshot, not the current main baseline. D2 Task identity migration `0020_rw4_task_identity` was subsequently merged by PR #203; the current RW4-1 physical-design review is based on main at `3a1d897c989a181cfb7f4bf53e7766608dbd8578`.  
 **Scope:** Read-only inspection of current ORM models, ingestion and TaskRuntime paths, migration history, relevant tests, and accepted D3/D5/D6 contracts.  
 **Not performed:** No code or schema changes, tests, Alembic execution, database queries, provider calls, or inspection of persistent database rows. This document does not authorize implementation.
 
