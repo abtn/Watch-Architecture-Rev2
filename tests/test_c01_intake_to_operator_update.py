@@ -111,6 +111,9 @@ def test_c01_configured_source_intake_then_operator_update(
                 status="active",
             )
         )
+        # Persist every referenced parent row before inserting Tasks: the
+        # database enforces (team_id, policy_version) as a composite FK.
+        session.flush()
         session.add_all(
             [
                 Task(
