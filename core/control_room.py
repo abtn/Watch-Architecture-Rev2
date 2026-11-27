@@ -29,6 +29,9 @@ def _create_task(
     request_event_payload: dict[str, Any] | None = None,
     flush: bool = True,
 ) -> Task:
+    if (request_event_type is None) != (request_event_payload is None):
+        raise ValueError("request_event_type_and_payload_must_be_provided_together")
+
     task = Task(
         id=task_id,
         team_id=team_id,
@@ -47,9 +50,7 @@ def _create_task(
     session.add(task)
     if flush:
         session.flush()
-    if request_event_type is not None:
-        if request_event_payload is None:
-            raise ValueError("request_event_payload_required")
+    if request_event_type is not None and request_event_payload is not None:
         session.add(
             Event(
                 id=uuid4(),
