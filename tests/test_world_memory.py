@@ -322,6 +322,17 @@ def test_operator_update_creates_low_hypothesis_and_verified_evidence(
     session_factory, snapshot_store, r8_control_group
 ):
     context = r8_control_group
+    with session_factory() as session:
+        experience_before = len(
+            list(
+                session.scalars(
+                    select(TeamExperienceChunk).where(
+                        TeamExperienceChunk.team_id == context.team_id
+                    )
+                )
+            )
+        )
+    assert experience_before == 0
     hypothesis_id = uuid4()
     request = OperatorUpdateRequest(
         thread_id=context.thread_id,
@@ -373,13 +384,16 @@ def test_operator_update_creates_low_hypothesis_and_verified_evidence(
                 Outcome.outcome_type == "task_execution",
             )
         ) is not None
-        assert list(
-            session.scalars(
-                select(TeamExperienceChunk).where(
-                    TeamExperienceChunk.team_id == context.team_id
+        experience_after_commit = len(
+            list(
+                session.scalars(
+                    select(TeamExperienceChunk).where(
+                        TeamExperienceChunk.team_id == context.team_id
+                    )
                 )
             )
-        ) == []
+        )
+        assert experience_after_commit == 0
 
     replay = adapter.operator_update(_principal(context.team_id), request)
     assert replay.replayed
@@ -484,6 +498,8 @@ def test_operator_update_creates_low_hypothesis_and_verified_evidence(
                     "completion_event_count": len(completion_events),
                     "evidence_link_count": 1,
                     "confidence_change_count": 0,
+                    "team_experience_chunk_count_before_operation": experience_before,
+                    "team_experience_chunk_count_after_commit": experience_after_commit,
                     "team_experience_chunk_count_after_replay": experience_count,
                 },
             },
