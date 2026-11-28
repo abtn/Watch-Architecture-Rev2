@@ -1,7 +1,7 @@
 # RW4-1 F1 — production DML writer audit
 
-**Status:** source-level audit complete; deployment identity and runtime privilege proof remain open  
-**Audited revision:** `3ec965148385608f0edaf6e7d99c168239ee830f` (PR #222 branch)  
+**Status:** source-level audit complete; deployment identity and runtime privilege proof remain open
+**Audited revision:** `3ec965148385608f0edaf6e7d99c168239ee830f` (PR #222 branch)
 **Scope:** all 45 `core/*.py` modules, all 20 checked-in Alembic version files, the role bootstrap script, and the disposable embedding smoke utility. Tests and migration DML are classified separately from production application DML.
 
 This document is an inventory, not an accepted grant manifest. It does not authorize role grants, SECURITY DEFINER functions, migrations, runtime changes, or a production cutover.
