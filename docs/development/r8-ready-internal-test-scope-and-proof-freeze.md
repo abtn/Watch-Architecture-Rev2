@@ -124,7 +124,7 @@ This document closes the documentation reconciliation and scenario/proof freeze 
 
 Recommended next sequence:
 1. Review this scenario/proof freeze against current source and exact merged test heads.
-2. Define the exploratory result-recording protocol: scenario run identity, fixture/source version, expected/actual observations, durable-state evidence, failure classification, logs, cleanup, and preservation of the original baseline.
+2. Review the documentation-only draft [R8 internal technical-test result-recording protocol](r8-internal-test-result-recording-protocol.md), which defines scenario/run identity, fixture/source pinning, expected/actual observations, durable-state evidence, failure classification, logs/artifacts, cleanup, retries, and final dispositions. Acceptance of that protocol does not authorize execution.
 3. Review any missing scenario-specific PostgreSQL proof without broadening production scope.
 4. Submit a separate request before running a new exploratory campaign or adding tests.
 5. Review R8-ready entry criteria and explicit authorization separately; passing existing CI is not the state transition.
