@@ -23,6 +23,12 @@ The implementation direction is therefore hybrid:
 - A helper only acquires a transaction-scoped lock. The caller retains transaction ownership and performs the normal SELECT in that same transaction. The helper does not return application data, commit, or refresh SQLAlchemy identity-map state.
 - The final matrix remains deployment-specific. The repository has no production composition root/runtime DSN consumer or complete maintenance/external writer inventory. Do not claim F1 feasibility or freeze grants until that identity is supplied and exercised.
 
+## 1.1 Complete DML writer audit
+
+The companion [rw4-1b-f1-dml-writer-audit.md](rw4-1b-f1-dml-writer-audit.md) now records the full source-level writer inventory across all 45 `core/*.py` modules, all 20 migration version files, role provisioning, and the disposable embedding smoke utility. It distinguishes 21 production application DML tables from migration-only, smoke-only, and no-writer tables; records exact insert/update/delete surfaces and transaction ownership; and reconciles the row-lock helper candidates.
+
+The main result is that row locks on `teams`, `team_policies`, `threads`, `events`, `signals`, `evidence_links`, and immutable assessment tables must not create UPDATE grants. Projection replacement on `knowledge_chunks` and `team_experience_chunks` is the only production application DELETE path found. The audit also establishes that a single shared runtime login can only receive the union of application DML capabilities; per-service isolation requires separate deployed identities that do not yet exist in the repository.
+
 ## 2. Classification key
 
 | Code | Meaning | Privilege consequence |
