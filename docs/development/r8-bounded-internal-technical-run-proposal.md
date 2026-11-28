@@ -29,7 +29,7 @@ No scenario may start until the Operator explicitly authorizes that scenario aga
 - Command, from repository root in PowerShell:
 
 ```powershell
-.\scripts\test-disposable-postgres.ps1 -PytestArgs "tests/test_world_memory.py::test_operator_update_creates_low_hypothesis_and_verified_evidence"
+.\scripts\test-disposable-postgres.ps1 -PytestArgs "-s","tests/test_world_memory.py::test_operator_update_creates_low_hypothesis_and_verified_evidence"
 ```
 
 Expected evidence includes the isolated Team and pre-existing Thread/Signal/Snapshot fixture; authenticated Operator Task creation; one low-confidence active Hypothesis; one exact Snapshot-backed EvidenceLink; terminal Task/Outcome evidence; exact replay preserving Task/Outcome identity; no duplicate EvidenceLink or ConfidenceChange; and zero TeamExperienceChunk before, after success, and after replay.
@@ -44,7 +44,7 @@ This run does not test configured-source intake, Thread creation, retrieval/Cont
 - Command, from repository root in PowerShell:
 
 ```powershell
-.\scripts\test-disposable-postgres.ps1 -PytestArgs "tests/test_c01_intake_to_operator_update.py::test_c01_configured_source_intake_then_operator_update"
+.\scripts\test-disposable-postgres.ps1 -PytestArgs "-s","tests/test_c01_intake_to_operator_update.py::test_c01_configured_source_intake_then_operator_update"
 ```
 
 Expected evidence includes the frozen one-Team/one-policy/one-source cardinality; accepted Strategy proposal and Plan/PlanAction; one Plan-materialized `ingest_source` Task; exactly one FakeFetcher request with the fixed synthetic bytes; one Signal/Snapshot with exact source provenance and hash; one source-attributed intake Event and one source Task completion Event; the existing evaluation follow-on; one authenticated Operator update Task; one low-confidence Hypothesis and exact Snapshot-backed EvidenceLink; exactly one request/commit/completion Event for the Operator Task; exact replay preserving Task/Outcome identity and business-write cardinality; and zero TeamExperienceChunk at all required checkpoints.
@@ -73,7 +73,7 @@ The generated-identity gap is addressed by the narrowly scoped test-only instrum
 - The manifest records actual generated fixture/business identities, source/Snapshot provenance, Task/Outcome/Event identities, replay identity, and the relevant observed cardinalities.
 - Both tests record TeamExperienceChunk counts before the operation, after the first successful operation, and after exact replay.
 - C-01 also records the FakeFetcher request count and the generated Strategy/Plan/source-intake/evaluation/Operator identities.
-- The line is written to pytest stdout and must be retained verbatim in the raw transcript/log; it is not a replacement for the full expected-versus-observed evidence record or runner/environment/cleanup evidence.
+- The line is written by `print()` and therefore must be run with pytest capture disabled (`-s`); both exact commands below include that selector. Retain the line verbatim in the raw transcript/log; it is not a replacement for the full expected-versus-observed evidence record or runner/environment/cleanup evidence.
 
 This is test-only output from the existing frozen nodes. It adds no scenario, production behavior, schema, migration, grant, or role change. The instrumentation still requires exact-head review and passing CI before it becomes part of the accepted source baseline. Until that change is merged, do not treat the manifest mechanism as available on `main`.
 
