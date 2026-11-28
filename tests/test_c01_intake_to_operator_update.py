@@ -150,6 +150,18 @@ def test_c01_configured_source_intake_then_operator_update(
             ]
         )
 
+    with session_factory() as session:
+        experience_before = len(
+            list(
+                session.scalars(
+                    select(TeamExperienceChunk).where(
+                        TeamExperienceChunk.team_id == team_id
+                    )
+                )
+            )
+        )
+    assert experience_before == 0
+
     try:
         runtime = TaskRuntime(session_factory, snapshot_store)
 
@@ -383,13 +395,16 @@ def test_c01_configured_source_intake_then_operator_update(
                     ConfidenceChange.created_by_task_id == operator_result.task_id
                 )
             ) is None
-            assert list(
-                session.scalars(
-                    select(TeamExperienceChunk).where(
-                        TeamExperienceChunk.team_id == team_id
+            experience_after_operator = len(
+                list(
+                    session.scalars(
+                        select(TeamExperienceChunk).where(
+                            TeamExperienceChunk.team_id == team_id
+                        )
                     )
                 )
-            ) == []
+            )
+            assert experience_after_operator == 0
 
         replay = adapter.operator_update(_operator_principal(team_id), request)
         assert replay.replayed
@@ -548,7 +563,9 @@ def test_c01_configured_source_intake_then_operator_update(
                         "operator_replay": replay.replayed,
                         "replay_task_id": str(replay.task_id),
                         "replay_outcome_id": str(replay.outcome_id),
-                        "team_experience_chunk_count_after_replay": experience_count,
+                        "team_experience_chunk_count_before_operation": experience_before,
+                    "team_experience_chunk_count_after_operator_update": experience_after_operator,
+                    "team_experience_chunk_count_after_replay": experience_count,
                     },
                 },
                 sort_keys=True,
