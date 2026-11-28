@@ -222,7 +222,7 @@ Proposed trigger/function pairs and execution contract:
 
 Use small purpose-specific functions rather than a generic integrity framework. The shared TRUNCATE rejection function is intentionally narrow and follows the existing repository pattern; do not build a generic configurable trigger framework.
 
-**Proposed SQLSTATE contract:** row-local CHECK violations and invalid intake payload/state/marker/domain inputs raise `23514` (`check_violation`); a missing Signal referenced by an intake Event raises `23503` (`foreign_key_violation`); attempts to mutate protected Event/Signal/Task/Team/Thread/SignalDisposition history or TRUNCATE protected tables raise `55000` (`object_not_in_prerequisite_state`). Native PK/unique/FK constraint errors retain PostgreSQL's native `23505`/`23503` codes. The migration's NOWAIT lock conflict remains native `55P03`; roll back the entire migration transaction and do not translate it into a retry-success response. Tests must assert the SQLSTATE, not only exception text.
+**Proposed SQLSTATE contract:** row-local CHECK violations and invalid intake payload/state/marker/domain inputs raise `23514` (`check_violation`); a missing Task, Team, or Signal referenced by an intake Event raises `23503` (`foreign_key_violation`); attempts to mutate protected Event/Signal/Task/Team/Thread/SignalDisposition history or TRUNCATE protected tables raise `55000` (`object_not_in_prerequisite_state`). Native PK/unique/FK constraint errors retain PostgreSQL's native `23505`/`23503` codes. The migration's NOWAIT lock conflict remains native `55P03`; roll back the entire migration transaction and do not translate it into a retry-success response. Tests must assert the SQLSTATE, not only exception text.
 
 
 
