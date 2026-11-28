@@ -281,12 +281,35 @@ The database migration and its table locks cannot atomically change an external 
 
 This is an external deployment prerequisite, not something the current disposable-CI role tests or the migration can prove on their own. The repository currently has no production host/runtime DSN consumer, so F1 remains open.
 
+### 6.2 Current source lock/writer inventory — partial evidence only
+
+The current `watch_runtime` bootstrap role is SELECT-only, and the role tests prove that it cannot UPDATE/DELETE application rows. That is a privilege-isolation proof, not proof that the existing application can run under this identity. PostgreSQL requires UPDATE privilege on at least one column of each table used by a row-locking SELECT; the current source has existing `FOR UPDATE`/`FOR SHARE` call sites. Examples include:
+
+- `core/ingestion.py`: Task `FOR UPDATE`, then Team `FOR SHARE`.
+- `core/task_runtime.py`: Team `FOR UPDATE`, TeamPolicy `FOR SHARE`, plus Task row locks through the shared Task lock helper.
+- `core/operator_application.py`: Team and existing Thread `FOR UPDATE`.
+- `core/update_thread_context.py`: Task and Team `FOR UPDATE`.
+- `core/context_assembly.py`: optional Task `FOR UPDATE`, Team `FOR UPDATE`, and Objective `FOR SHARE`.
+- `core/knowledge_index.py`: Signal and KnowledgeItem `FOR UPDATE`.
+- Additional row-locking sites exist in learning, evaluation, strategy, lifecycle, cost, and other services; this list is representative, not a complete grant matrix.
+
+Therefore the read-only role cannot execute all current service paths as written. Do not solve this by granting blanket UPDATE on every locked table. The complete F1 inventory must classify each call site as (a) a real mutation writer needing narrowly scoped DML, (b) a lock-only read that should use a separately reviewed owner-controlled lock helper/SECURITY DEFINER operation, or (c) a test-only/admin path. Verify the resulting effective privileges and actual operations through the intended runtime identity. The RW4-1 Event attestation function's SECURITY DEFINER decision solves only its new Task/Team/Signal lock operation; it does not solve existing application lock privileges.
+
+The current source audit also confirms the F2 gap:
+
+- No production `Thread()` creation/insert path exists; direct Thread creation/deletion found by repository search is in tests/fixtures.
+- No production assignment to `Thread.status` or `Thread.domain` exists. `core/operator_application.py` and `core/update_thread_context.py` lock/read existing Threads and validate availability; the world-memory commit path writes Hypotheses, EvidenceLinks, and ConfidenceChanges rather than Thread lifecycle fields.
+- `activate_team` as the canonical starter-Thread creator and Operator-authorized `resolve_thread` as a lifecycle writer are accepted future owners, not implemented production paths.
+- No production host composition root or complete bootstrap/maintenance/external writer inventory exists in this repository.
+
+F2 is therefore not closed by the presence of the F3 domain trigger. Before matched writes, every actual/future Thread create/status/domain writer must be brought under the accepted Team → Thread lock order and Team revision contract, and the deployed host/maintenance writer inventory must be reconciled. Until those writers exist and are proved, do not grant runtime Thread INSERT/UPDATE/DELETE merely because the table is part of the future design.
+
 ## 7. Unresolved design gates (must not be papered over)
 
 | Gate | Current evidence | What remains before this DDL can be accepted |
 |---|---|---|
 | Option A feasibility / F1 | Role bootstrap exists; runtime remains SELECT-only; no host consumer. | Prove all required trigger reads/writes and effective grants under the actual runtime/migrator identities. If Option A cannot be enforced, stop and return with a separately scoped Option B design. |
-| F2 Thread writers | No supported production Thread create/status/domain writer or deployment inventory. | Identify every host, worker, bootstrap, maintenance, and external writer; reconcile least privilege before matched writes. |
+| F2 Thread writers | Source audit found no production Thread create/status/domain writer; `activate_team` and Operator `resolve_thread` are accepted future owners, not implemented. No host/maintenance/external inventory exists. | Implement and inventory every authorized writer under Team → Thread locking/revision rules; reconcile deployed and maintenance identities before matched writes. |
 | F3 Thread domain | Behavioral contract specified in §7.1; no function implementation or PostgreSQL race proof. | Independently review the exact PL/pgSQL body and prove both race orders at READ COMMITTED with the VOLATILE trigger; matched writes remain disabled until both pass. |
 | F4 ORM freshness | Query/refresh contract specified in §7.2; no triage finalizer implementation or PostgreSQL/SQLAlchemy proof. | Implement only under separate authorization, then prove stale identity-map refresh after row-lock wait and exact replay after a later legal status transition. |
 | D4.1a | Canonical Team/hash arbitration not implemented. | No duplicate disposition until separately implemented/proven. |
