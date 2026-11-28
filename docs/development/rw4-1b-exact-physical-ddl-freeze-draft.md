@@ -283,7 +283,7 @@ This is an external deployment prerequisite, not something the current disposabl
 
 ### 6.2 Current source lock/writer inventory — partial evidence only
 
-The current `watch_runtime` bootstrap role is SELECT-only, and the role tests prove that it cannot UPDATE/DELETE application rows. That is a privilege-isolation proof, not proof that the existing application can run under this identity. PostgreSQL requires UPDATE privilege on at least one column of each table used by a row-locking SELECT; the current source has existing `FOR UPDATE`/`FOR SHARE` call sites. Examples include:
+The current `watch_runtime` bootstrap role is SELECT-only, and the role tests prove table-level INSERT/UPDATE/DELETE/TRUNCATE denial. That is a privilege-isolation proof, not proof that the existing application can run under this identity. The current test uses `has_table_privilege(..., 'UPDATE')`; this does not detect a future column-level UPDATE grant. Before introducing any column-level grants, extend the test to assert `NOT has_any_column_privilege('watch_runtime', relation, 'UPDATE')` for relations expected to remain lock-helper-only, and enumerate `has_column_privilege` for every explicitly granted writer column. PostgreSQL requires UPDATE privilege on at least one column of each table used by a row-locking SELECT; the current source has existing `FOR UPDATE`/`FOR SHARE` call sites. Examples include:
 
 - `core/ingestion.py`: Task `FOR UPDATE`, then Team `FOR SHARE`.
 - `core/task_runtime.py`: Team `FOR UPDATE`, TeamPolicy `FOR SHARE`, plus Task row locks through the shared Task lock helper.
@@ -341,6 +341,8 @@ The least-complex viable design is a **hybrid**, not blanket UPDATE and not a SE
 6. **Preserve authority boundaries:** these helpers grant serialization, not permission to perform business writes. They must not create Tasks, mutate Team/Thread lifecycle, write Events, or bypass Control Room/TaskRuntime. Do not turn every existing lock into a database function if the operation already has a narrowly justified UPDATE grant for a real mutation.
 
 **Important qualification:** The table above is not yet a final grant matrix. The next audit artifact must map every one of the 114 call sites to (a) transaction owner, (b) exact lock target/mode/order, (c) whether the same transaction mutates that relation and exact columns, (d) required INSERT/UPDATE/DELETE/sequence privileges, and (e) chosen direct-DML or helper mechanism. No grants or helper functions should be implemented until that matrix is reviewed and the actual host/runtime connection identity is identified.
+
+The current role test logs in as `watch_runtime` and proves a simple SELECT plus several forbidden direct SQL operations, but it does not execute any production service workflow through that identity. No production host/composition root consumes the runtime DSN in this repository. Thus the current evidence proves that the role is read-only, not that the application is deployable under it; the first future host integration must run representative service operations under the exact runtime login and fail closed for ungranted operations.
 
 The current source audit also confirms the F2 gap:
 
