@@ -79,6 +79,7 @@ CREATE TABLE signal_dispositions (
     CONSTRAINT ck_signal_dispositions_deferred_reason
         CHECK (
             (disposition = 'deferred'
+                AND reason_code IS NOT NULL
                 AND reason_code IN (
                     'no_eligible_thread',
                     'ambiguous_thread_match',
@@ -174,7 +175,7 @@ The trigger must reject UPDATE/DELETE of either intake Event type and reject typ
 The marker is not merely diagnostic metadata. It is the only accepted post-cutover proof that a Signal was associated with a particular Team through a validated intake Event. Because `signals` has no `team_id`, the association is established through the immutable Event → Task relationship:
 
 - Before a triage Task is created, the trusted Control Room admission path must find at least one `signal_ingested` or `fetch_no_change` Event for the requested Signal with `intake_witness_version = 1`, whose immutable ingestion Task has `task_type = 'ingest_source'` and `team_id` equal to the requested Team. The Event's canonical `signal_id` payload must equal the Signal primary key. A legacy Event with a NULL marker never qualifies, even if its payload currently appears valid.
-- At the D4.2 receipt transaction and again at business finalization, TaskRuntime must revalidate that same Team/Signal witness for the canonical triage Task. It must also revalidate that the Team is active and that Signal.domain equals Team.domain under the accepted lock protocol. The Event trigger's payload checks plus the Event, Task, Signal, and Team immutability guards make the witnessed association stable after it is established.
+- At the D4.2 receipt transaction and again at business finalization, TaskRuntime must revalidate that same Team/Signal witness for the canonical triage Task. It must also revalidate that the Team is active, that Signal.domain equals Team.domain, and that the exact source origin/source_type and greatest supported immutable TeamPolicy/source scope remain eligible under the accepted lock protocol. The Event trigger's payload checks plus the Event, Task, Signal, and Team immutability guards make the witnessed association stable after it is established.
 - The later composite Task FK binds the disposition's `decided_by_task_id`, `team_id`, `signal_id`, and `identity_version` to the exact D2 Task identity. It does not prove that the canonical request Event exists or is valid; TaskRuntime must independently validate exactly one valid `triage_signal_requested` Event and the canonical Task identity on insert and replay, as required by the accepted Stage A contract.
 - A Signal with no valid post-cutover witness for the requested Team is ineligible before Task creation; do not create a Task or a deferred disposition for it. If a previously admitted Task later lacks or disagrees with its required witness, treat that as a technical/integrity failure and create no disposition. Missing, partial, mismatched, corrupt, or legacy-only provenance is never a D5 deferred reason.
 - The same global Signal may qualify independently for more than one Team, but each Team requires its own marked Event → ingestion Task association. This does not select a canonical Team/hash duplicate; that remains D4.1a.
@@ -198,6 +199,8 @@ The table/function/trigger names below are proposed stable names for review. Eve
 The Signal guard covers both `signal_id` and `duplicate_of_signal_id` references in SignalDisposition. The duplicate target's same-Team/same-hash canonicality remains D4.1a's responsibility; this FK/guard does not decide the canonical winner.
 
 The Team guard is based on marked intake Events and SignalDisposition rows, not untrusted legacy Events. The Thread-domain guard is narrower and conditional on a matched reference. Its function must be VOLATILE so a READ COMMITTED trigger query after waiting for the Thread row lock observes a concurrently committed matched disposition. Both lock orders require two-session proof.
+
+**TRUNCATE and table-topology proof:** Runtime effective TRUNCATE must be revoked on every application data table, including `knowledge_chunks`, not only the five tables with unconditional rejection triggers. Under the actual runtime role, prove direct TRUNCATE attempts against each protected table fail; prove relevant `TRUNCATE ... CASCADE` paths also fail before any protected history is removed (including a Thread-to-matched-disposition cascade); and verify effective privileges through inherited roles and PUBLIC, not just direct ACL entries. Inspect `pg_partitioned_table` and `pg_inherits` during cutover. The current design expects these five protected tables to be non-partitioned and non-inherited. If that is false, stop unless every directly truncatable leaf has the rejection trigger and every partition attach/create path installs and verifies it before the leaf becomes writable. Include direct-leaf and parent/CASCADE cases in the PostgreSQL proof. The migration/owner role remains outside the application trust boundary and must be restricted to audited migrations/break-glass operations.
 
 Do not freeze Thread.status. It is evaluated at the serialized decision point; later valid status transitions do not invalidate historical disposition or exact replay.
 
@@ -241,7 +244,7 @@ Keep separate from the initial cutover. Install only:
 `fk_signal_dispositions_task_identity`:
 `(decided_by_task_id, team_id, signal_id, identity_version) → tasks(id, team_id, signal_id, identity_version)`.
 
-Use the accepted single ordered `SHARE ROW EXCLUSIVE NOWAIT` preflight lock on `tasks, events, signal_dispositions`, with locked preflight and transactional rollback. Verify the exact D2 support key exists. Require no pre-gate triage/disposition history and install the FK without a temporary Task-ID-only substitute. Runtime disposition INSERT remains revoked until this migration and every Decision 7 prerequisite are independently verified.
+Use the accepted single ordered `SHARE ROW EXCLUSIVE NOWAIT` preflight lock on `tasks, events, signal_dispositions`, with locked preflight and transactional rollback. Verify the exact D2 support key exists. Require no pre-gate triage/disposition history and install the FK without a temporary Task-ID-only substitute. The FK is non-deferrable and uses `ON UPDATE RESTRICT ON DELETE RESTRICT`, consistent with every other SignalDisposition FK. Runtime disposition INSERT remains revoked until this migration and every Decision 7 prerequisite are independently verified.
 
 ## 6. Role/ownership contract — proposed, not yet grant-ready
 
