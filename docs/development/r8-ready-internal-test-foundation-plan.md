@@ -188,7 +188,7 @@ The post-replay no-Team-Experience assertion follow-up is complete.
 - Change scope: one assertion in `tests/test_world_memory.py`; no production code, fixture, schema, migration, or runtime changes.
 - The test now checks the no-`TeamExperienceChunk` invariant before the operation (fixture), after the first successful update, and after exact replay. Existing replay identity, single EvidenceLink, and no-ConfidenceChange assertions remain intact.
 
-**Disposition:** CG-01's explicit no-retained-Team-Experience evidence gap is closed at the tested head above. This closes only the test-only baseline proof; it does not establish full C-01, retrieval/Context, treatment comparison, scored R8, or R8-ready status. Post-merge `main` CI remains a separate verification item.
+**Historical disposition (recorded before the post-merge check):** CG-01's explicit no-retained-Team-Experience evidence gap was closed at the tested head above. The subsequent post-merge `main` CI check passed, as recorded in §9. This closes only the test-only baseline proof; it does not establish full C-01, retrieval/Context, treatment comparison, scored R8, or R8-ready status.
 
 
 ## 9. Current implementation/evidence reconciliation (2026-11-28)
