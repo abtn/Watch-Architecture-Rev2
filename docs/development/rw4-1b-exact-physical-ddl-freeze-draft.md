@@ -319,7 +319,7 @@ A source search of the 19 production modules containing SQLAlchemy `.with_for_up
 | TeamExperienceIndexState | 1 | 0 | Index-state upsert/update path. |
 | KnowledgeLifecycleAssessment | 1 | 0 | Recorded-assessment validation/replay lock. |
 | KnowledgeRevalidationAssessment | 1 | 0 | Recorded-assessment validation/replay lock. |
-| **Total** | **108** | **26** | **114 call sites** |
+| **Total** | **90** | **24** | **114 call sites** |
 
 The counts above are grouped by the relation selected at the locking query. Some call sites are constructed through query variables; their target was resolved from the enclosing query before grouping. The table intentionally distinguishes the number of lock calls from the number of distinct business writers: several calls are helper/validation paths, and one transaction may lock multiple relations.
 
