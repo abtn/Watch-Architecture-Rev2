@@ -65,15 +65,17 @@ For each invocation independently:
 
 Do not run both selectors in one invocation: each scenario requires its own fresh disposable database and independent Run ID/disposition.
 
-## 5. Evidence readiness gap
+## 5. Evidence readiness: test-only manifest instrumentation
 
-The current scenario tests use generated UUIDs and assert the resulting relationships in-process, but the test output does not currently emit a generated-identity manifest. The accepted protocol asks the run record to retain generated fixture identities.
+The generated-identity gap is addressed by the narrowly scoped test-only instrumentation proposed in the companion change:
 
-Before a run can be claimed PASS, resolve this gap by one of the following, with explicit review:
-- add minimal test-only structured identity output to the two existing scenario tests (without adding a new scenario or changing production behavior); or
-- demonstrate an existing, approved way to capture the generated identities and durable-state observations from the same run.
+- Each existing scenario test emits exactly one `R8_IDENTITY_MANIFEST=` line containing a JSON object.
+- The manifest records actual generated fixture/business identities, source/Snapshot provenance, Task/Outcome/Event identities, replay identity, and the relevant observed cardinalities.
+- Both tests record TeamExperienceChunk counts before the operation, after the first successful operation, and after exact replay.
+- C-01 also records the FakeFetcher request count and the generated Strategy/Plan/source-intake/evaluation/Operator identities.
+- The line is written to pytest stdout and must be retained verbatim in the raw transcript/log; it is not a replacement for the full expected-versus-observed evidence record or runner/environment/cleanup evidence.
 
-Do not silently omit the manifest, invent identifiers, or broaden database grants. Until this is resolved, a test may complete but its recording disposition cannot be PASS under the accepted protocol.
+This is test-only output from the existing frozen nodes. It adds no scenario, production behavior, schema, migration, grant, or role change. The instrumentation still requires exact-head review and passing CI before it becomes part of the accepted source baseline. Until that change is merged, do not treat the manifest mechanism as available on `main`.
 
 ## 6. Explicit authorization request
 
