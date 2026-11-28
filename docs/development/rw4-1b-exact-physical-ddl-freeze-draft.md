@@ -344,6 +344,8 @@ The least-complex viable design is a **hybrid**, not blanket UPDATE and not a SE
 
 The current role test logs in as `watch_runtime` and proves a simple SELECT plus several forbidden direct SQL operations, but it does not execute any production service workflow through that identity. No production host/composition root consumes the runtime DSN in this repository. Thus the current evidence proves that the role is read-only, not that the application is deployable under it; the first future host integration must run representative service operations under the exact runtime login and fail closed for ungranted operations.
 
+The detailed 114-site F1 source ledger and staged reconciliation plan are maintained in [`rw4-1b-f1-lock-and-dml-grant-matrix.md`](rw4-1b-f1-lock-and-dml-grant-matrix.md). It distinguishes locked-row mutation from writes to other relations in the same transaction, records transaction ownership and per-site lock mode, and explicitly leaves final grants blocked on the complete writer inventory and deployed runtime identity.
+
 The current source audit also confirms the F2 gap:
 
 - No production `Thread()` creation/insert path exists; direct Thread creation/deletion found by repository search is in tests/fixtures.
