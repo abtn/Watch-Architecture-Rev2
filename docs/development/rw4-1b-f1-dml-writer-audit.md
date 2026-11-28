@@ -159,3 +159,10 @@ Recommended current path: keep `watch_runtime` SELECT-only; complete the deploym
 ## 8. Scope and non-authorization
 
 This audit does not implement any role grant, helper function, migration, ORM change, application DML change, or database operation. It does not create SignalDisposition, enable disposition writes, close F1, close F2, accept the RW4-1 physical design, or authorize RW4-1 implementation. The exact physical DDL draft in PR #222 remains a draft pending independent review and separate Operator acceptance/authorization.
+
+
+## 9. Deployment identity decision follow-up
+
+The deployment identity question is now documented separately in [the F1 deployment identity model proposal](rw4-1b-f1-deployment-identity-model-proposal.md). Its recommendation is one shared core application login for transaction-sharing domain services, with a conditional separate indexer login only if SignalIndexer and TeamExperienceIndexer are proven to run in a distinct process with their own engine/pool/DSN. Do not split identities by Python class or create unused roles.
+
+The DML inventory is source-complete but is not yet a grant manifest. The exact initial topology, external/maintenance writers, indexer process boundary, emitted INSERT SQL, and runtime positive/negative workflow proofs remain open. Keep watch_runtime SELECT-only until the Operator accepts the deployment topology and a separate implementation authorization is issued.
