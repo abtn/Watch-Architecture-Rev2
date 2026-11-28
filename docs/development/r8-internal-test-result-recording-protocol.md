@@ -1,6 +1,6 @@
 # R8 internal technical-test result-recording protocol
 
-**Status:** proposed protocol for review; documentation only.
+**Status:** accepted recording protocol; documentation only. Merged by PR [#224](https://github.com/abtn/Watch-Architecture-Rev2/pull/224) at `6c9732b41f3a701ecb11ce2b4bbab7a6e40badc4`.
 **Development state:** Pre-R8-ready.
 **Applies to:** the selected initial technical internal-test scenarios CG-01 and C-01 only.
 **Authority:** `PLAN.md` and [the initial internal-test scope and proof freeze](r8-ready-internal-test-scope-and-proof-freeze.md).
@@ -64,6 +64,8 @@ Record the environment before and after execution:
 - Exact command, working directory, relevant non-secret environment configuration, exit code, start/end timestamps, and elapsed duration.
 - CI provider, workflow/run number, job names, attempt, and exact tested SHA for hosted runs.
 - Whether the test used the existing disposable PostgreSQL runner. SQLite or in-memory substitutes do not satisfy PostgreSQL-specific proof obligations.
+
+For a bounded scenario run, the runner accepts pytest selectors through `-PytestArgs`; each invocation creates a fresh disposable PostgreSQL instance and executes only the selected pytest node(s) after provisioning and migration. Example commands are recorded in the execution proposal. Omitting `-PytestArgs` retains the existing full-suite behavior. The runner still performs Ruff and Mypy unless `-SkipStaticChecks` is explicitly supplied.
 
 The existing local disposable runner's bootstrap identity is for container/database setup and role provisioning; Alembic runs as `watch_migrator`. `watch_runtime` remains read-only. Do not invent or assume a production DML identity for these in-process scenarios.
 
@@ -177,7 +179,7 @@ Use immutable artifact names containing Run ID and evidence ID. Do not edit raw 
 
 A run cannot be PASS until cleanup is verified:
 
-1. Confirm disposable PostgreSQL container and its anonymous volumes are removed.
+1. Capture the container's attached volume names before cleanup; remove the container with `docker rm -fv`; then verify the container is absent and every captured anonymous volume name is absent from `docker volume ls`.
 2. Confirm temporary database artifacts and generated files are removed or deliberately retained as named, non-sensitive evidence artifacts.
 3. Confirm test-created background processes are stopped.
 4. Confirm environment variables and process-local configuration are restored to their exact pre-run set/unset/value state where the runner promises restoration.
@@ -265,7 +267,7 @@ The template is a record format, not an executable test manifest. Replace placeh
 
 ## 12. Authorization and scope boundary
 
-This protocol is documentation only. Its acceptance would establish a consistent recording method, not authorize execution.
+This protocol is documentation only. Its acceptance establishes a consistent recording method; it does not authorize execution.
 
 Before any new exploratory run or campaign:
 
