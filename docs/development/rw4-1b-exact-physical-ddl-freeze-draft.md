@@ -151,10 +151,10 @@ ALTER TABLE events
     CHECK (
         intake_witness_version IS NULL
         OR intake_witness_version = 1
-    );
+    ) NOT VALID;
 ```
 
-No default, no backfill, no legacy scan, and no payload rewrite. Every pre-cutover Event remains NULL and permanently ineligible as RW4-1 provenance. A malformed legacy Event must not block cutover.
+No default, no backfill, no legacy scan, and no payload rewrite. The CHECK is deliberately `NOT VALID`: adding an ordinary validated CHECK would scan the existing Events table while the cutover holds ACCESS EXCLUSIVE. Because this is a newly added nullable column with no default, every pre-cutover row reads as NULL by construction; the unvalidated CHECK still enforces NULL-or-1 on every subsequent INSERT or UPDATE. Do not run `VALIDATE CONSTRAINT` in this cutover or as an implicit follow-up; it would perform the historical scan that this design deliberately avoids. Any later request to validate the catalog flag requires a separate maintenance decision. Every pre-cutover Event remains NULL and permanently ineligible as RW4-1 provenance. A malformed legacy Event must not block cutover.
 
 A single `BEFORE INSERT` trigger owns the marker:
 
@@ -243,7 +243,7 @@ LOCK TABLE tasks, teams, signals, events, threads
 
 Do not acquire these locks piecemeal and do not prelock at SHARE ROW EXCLUSIVE then upgrade. If NOWAIT fails, roll back the entire migration transaction so every acquired lock is released; retry in a quiet maintenance window.
 
-While all five locks remain held: add the nullable marker and CHECK; create the empty SignalDisposition table and its row-local constraints/indexes; create/attach the marker, immutability, identity, Thread-domain, timestamp, and TRUNCATE guards; set ownership and reviewed grants; verify trigger definitions, role memberships, effective privileges, and protected-table inventory; then commit. No full-table historical Event scan. No legacy update/backfill.
+While all five locks remain held: add the nullable marker and its `NOT VALID` CHECK without scanning Events; create the empty SignalDisposition table and its row-local constraints/indexes; create/attach the marker, immutability, identity, Thread-domain, timestamp, and TRUNCATE guards; set ownership and reviewed grants; verify trigger definitions, role memberships, effective privileges, and protected-table inventory; then commit. No full-table historical Event scan. No legacy update/backfill.
 
 **Downgrade:** unconditional refusal after the forward-only cutover is committed. A migration failure before commit relies on PostgreSQL transactional rollback; there is no destructive post-commit downgrade.
 
@@ -338,7 +338,7 @@ F4 remains open until real PostgreSQL/SQLAlchemy two-session tests prove at leas
 4. Verify the Event trigger's Task → Team → Signal locks are compatible with all three current ingestion branches and fail closed on cross-domain reuse.
 5. Review the five-table ACCESS EXCLUSIVE NOWAIT cutover and the separate Task-FK migration lock/preflight; prove no partial lock retention after NOWAIT failure.
 6. Reconcile runtime grants with F1/F2 and refuse to claim Option A feasible while any supported writer can bypass the guards.
-7. Check forward-only downgrade refusal and fresh-install/current-head migration ordering.
+7. Check forward-only downgrade refusal and fresh-install/current-head migration ordering; verify the Event marker CHECK is installed `NOT VALID` and no historical Event scan/validation occurs.
 8. Run independent review; resolve all findings; only then ask the Operator to accept/revise the physical contract.
 9. Request separate implementation authorization. Do not start ORM, migration, trigger SQL, or tests under this design-only step.
 
