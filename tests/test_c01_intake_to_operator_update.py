@@ -150,19 +150,19 @@ def test_c01_configured_source_intake_then_operator_update(
             ]
         )
 
-    with session_factory() as session:
-        experience_before = len(
-            list(
-                session.scalars(
-                    select(TeamExperienceChunk).where(
-                        TeamExperienceChunk.team_id == team_id
+    try:
+        with session_factory() as session:
+            experience_before = len(
+                list(
+                    session.scalars(
+                        select(TeamExperienceChunk).where(
+                            TeamExperienceChunk.team_id == team_id
+                        )
                     )
                 )
             )
-        )
-    assert experience_before == 0
+        assert experience_before == 0
 
-    try:
         runtime = TaskRuntime(session_factory, snapshot_store)
 
         # Accept one ordinary nested Strategy proposal against the pinned
@@ -578,9 +578,9 @@ def test_c01_configured_source_intake_then_operator_update(
                         "operator_replay": replay.replayed,
                         "replay_task_id": str(replay.task_id),
                         "replay_outcome_id": str(replay.outcome_id),
-                        "team_experience_chunk_count_before_operation": experience_before,
-                        "team_experience_chunk_count_after_operator_update": experience_after_operator,
-                        "team_experience_chunk_count_after_replay": experience_count,
+                        "team_experience_before": experience_before,
+                        "team_experience_after_operator_update": experience_after_operator,
+                        "team_experience_after_replay": experience_count,
                     },
                 },
                 sort_keys=True,
