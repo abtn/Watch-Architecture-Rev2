@@ -86,7 +86,7 @@ If a candidate scenario requires SignalDisposition or any other gated capability
 - Current-source and persistence limitations: [RW4-1A audit](rw4-1a-current-source-and-persistence-audit.md).
 - R8-ready state and authorization: [`PLAN.md`](../../PLAN.md).
 
-## 3. Candidate scenario register (not accepted/frozen)
+## 3. Selected initial technical scenarios and future candidates
 
 CG-01 and C-01 are selected for the initial bounded technical internal-test scope only. C-02 and C-03 remain unselected supporting/future candidates. The selection does not freeze the broader R8-ready scope or authorize a state transition.
 
