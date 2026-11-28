@@ -147,6 +147,21 @@ def test_database_roles_have_separated_effective_privileges() -> None:
                         {"table": qualified, "privilege": privilege},
                     ) is False, f"runtime unexpectedly has {privilege} on {qualified}"
 
+                # Table-level privilege checks do not make the intended
+                # column-level boundary explicit. In particular, UPDATE on
+                # any one column is enough for PostgreSQL row-locking SELECTs.
+                for privilege in ("INSERT", "UPDATE"):
+                    assert connection.scalar(
+                        text(
+                            "SELECT has_any_column_privilege("
+                            "'watch_runtime', :table, :privilege)"
+                        ),
+                        {"table": qualified, "privilege": privilege},
+                    ) is False, (
+                        f"runtime unexpectedly has column-level {privilege} "
+                        f"on {qualified}"
+                    )
+
             sequences = connection.scalars(
                 text(
                     "SELECT sequence_name FROM information_schema.sequences "
