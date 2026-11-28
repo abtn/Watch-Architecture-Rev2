@@ -6,7 +6,7 @@
 
 **Purpose:** Turn the accepted logical SignalDisposition and provenance decisions into a concrete PostgreSQL contract, identify the exact boundaries between migrations, and expose any unresolved design questions before SQL/ORM work begins.
 
-**Strict scope:** Documentation and design only. No ORM, migration, SQL, application code, role grants, tests, database execution, TaskRuntime, ingestion, D4.1a, D4.2, RW-5, RW4-2 Stage B, RW4-3, RW4-4, or RW4-5 implementation.
+**Strict scope:** Physical DDL, ORM, migration, trigger SQL, application runtime, role grants, and database execution remain design-only and are not implemented. The companion F1 audit adds a source inventory and a narrowly scoped regression assertion to the existing PostgreSQL role-isolation test; it does not change runtime privileges or exercise a production host. No TaskRuntime, ingestion, D4.1a, D4.2, RW-5, RW4-2 Stage B, RW4-3, RW4-4, or RW4-5 implementation is included.
 
 ---
 
@@ -342,7 +342,7 @@ The least-complex viable design is a **hybrid**, not blanket UPDATE and not a SE
 
 **Important qualification:** The table above is not yet a final grant matrix. The next audit artifact must map every one of the 114 call sites to (a) transaction owner, (b) exact lock target/mode/order, (c) whether the same transaction mutates that relation and exact columns, (d) required INSERT/UPDATE/DELETE/sequence privileges, and (e) chosen direct-DML or helper mechanism. No grants or helper functions should be implemented until that matrix is reviewed and the actual host/runtime connection identity is identified.
 
-The current role test logs in as `watch_runtime` and proves a simple SELECT plus several forbidden direct SQL operations, but it does not execute any production service workflow through that identity. No production host/composition root consumes the runtime DSN in this repository. Thus the current evidence proves that the role is read-only, not that the application is deployable under it; the first future host integration must run representative service operations under the exact runtime login and fail closed for ungranted operations.
+The current role test logs in as `watch_runtime`, proves a simple SELECT plus forbidden direct SQL operations, and now checks that no table-level or column-level INSERT/UPDATE privilege has leaked onto any application table. It still does not execute any production service workflow through that identity. No production host/composition root consumes the runtime DSN in this repository. Thus the current evidence proves the SELECT-only isolation boundary, not that the application is deployable under it; the first future host integration must run representative service operations under the exact runtime login and fail closed for ungranted operations.
 
 The detailed 114-site F1 source ledger and staged reconciliation plan are maintained in [`rw4-1b-f1-lock-and-dml-grant-matrix.md`](rw4-1b-f1-lock-and-dml-grant-matrix.md). It distinguishes locked-row mutation from writes to other relations in the same transaction, records transaction ownership and per-site lock mode, and explicitly leaves final grants blocked on the complete writer inventory and deployed runtime identity.
 
@@ -414,5 +414,5 @@ F4 remains open until real PostgreSQL/SQLAlchemy two-session tests prove at leas
 6. Reconcile runtime grants with F1/F2 and refuse to claim Option A feasible while any supported writer can bypass the guards.
 7. Check forward-only downgrade refusal and fresh-install/current-head migration ordering; verify the Event marker CHECK is installed `NOT VALID` and no historical Event scan/validation occurs.
 8. Run independent review; resolve all findings; only then ask the Operator to accept/revise the physical contract.
-9. Request separate implementation authorization. Do not start ORM, migration, trigger SQL, or tests under this design-only step.
+9. Request separate implementation authorization. Do not start RW4-1 ORM, migration, trigger SQL, disposition runtime, or RW4-1 concurrency tests under this design-only step. The companion F1 role-isolation regression assertion is limited to verifying the already-provisioned SELECT-only role boundary.
 
