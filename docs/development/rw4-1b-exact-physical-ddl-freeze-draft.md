@@ -295,6 +295,53 @@ The current `watch_runtime` bootstrap role is SELECT-only, and the role tests pr
 
 Therefore the read-only role cannot execute all current service paths as written. Do not solve this by granting blanket UPDATE on every locked table. The complete F1 inventory must classify each call site as (a) a real mutation writer needing narrowly scoped DML, (b) a lock-only read that should use a separately reviewed owner-controlled lock helper/SECURITY DEFINER operation, or (c) a test-only/admin path. Verify the resulting effective privileges and actual operations through the intended runtime identity. The RW4-1 Event attestation function's SECURITY DEFINER decision solves only its new Task/Team/Signal lock operation; it does not solve existing application lock privileges.
 
+### 6.3 Production row-lock inventory — exact source search at current main
+
+A source search of the 19 production modules containing SQLAlchemy `.with_for_update()` found **114 row-lock call sites**. This is a source inventory, not a claim that all paths have been exercised under `watch_runtime`. Default `.with_for_update()` means `FOR UPDATE`; `read=True` means `FOR SHARE`. PostgreSQL requires SELECT plus UPDATE privilege on at least one column of each locked table for both modes.
+
+| Locked relation | `FOR UPDATE` | `FOR SHARE` | Preliminary classification |
+|---|---:|---:|---|
+| Task | 19 | 2 | Mixed: TaskRuntime and workers update lifecycle columns; other paths lock for validation/replay. |
+| Team | 15 | 4 | Lock/serialization only in the inventoried paths; no production Team status/domain assignment or `UPDATE(Team)` was found. |
+| TeamPolicy | 1 | 14 | Immutable pinned-policy reads/locks; no production policy mutation path found. |
+| Objective | 5 | 1 | Mixed: ObjectiveService transitions status; strategy/validation paths also lock for read/serialization. |
+| Plan | 2 | 1 | Mixed: Plan lifecycle transitions plus read/validation locks. |
+| Event | 1 | 0 | Read/idempotency lock; Event is append-only in application paths. |
+| Evaluation | 2 | 0 | Lifecycle record/reject paths update Evaluation state. |
+| Thread | 4 | 0 | Existing Operator/context/world-memory paths lock/read and validate; no production Thread lifecycle mutation path found. |
+| Hypothesis | 2 | 0 | Lock/read in commit/context paths; no direct Hypothesis row update was identified in the inventoried code. |
+| EvidenceLink | 1 | 0 | Lock/read in context assembly; no production update path found. |
+| LearningChange | 9 | 2 | Mixed: decision/lifecycle state transitions plus immutable/request validation locks. |
+| KnowledgeItem | 18 | 0 | Mixed, with real conditional state/content updates in learning/lifecycle flows. |
+| TaskGenerationCharge | 5 | 0 | Real reservation/charge status and accounting updates. |
+| KnowledgeQualityAssessment | 2 | 0 | Recorded-assessment validation/replay lock; no mutation in the lock-owning validation path. |
+| Signal | 1 | 0 | Knowledge-index path locks the immutable Signal while reconciling derived index state; no Signal mutation. |
+| TeamExperienceIndexState | 1 | 0 | Index-state upsert/update path. |
+| KnowledgeLifecycleAssessment | 1 | 0 | Recorded-assessment validation/replay lock. |
+| KnowledgeRevalidationAssessment | 1 | 0 | Recorded-assessment validation/replay lock. |
+| **Total** | **108** | **26** | **114 call sites** |
+
+The counts above are grouped by the relation selected at the locking query. Some call sites are constructed through query variables; their target was resolved from the enclosing query before grouping. The table intentionally distinguishes the number of lock calls from the number of distinct business writers: several calls are helper/validation paths, and one transaction may lock multiple relations.
+
+**Preliminary lock-only candidates** (must be confirmed at each call site before any helper API is frozen): Team, TeamPolicy, Thread, Event, Signal, EvidenceLink, KnowledgeQualityAssessment, KnowledgeLifecycleAssessment, KnowledgeRevalidationAssessment, and selected read-only locks on Objective, Plan, LearningChange, Hypothesis, and Task. For these, the runtime should not receive UPDATE merely to acquire a row lock.
+
+**Mixed/actual-writer relations** (column-level UPDATE grants may be justified only for columns the corresponding service actually mutates): Task, Objective, Plan, Evaluation, LearningChange, KnowledgeItem, TaskGenerationCharge, and TeamExperienceIndexState. The lock inventory alone is not a complete DML grant list: every INSERT, UPDATE, DELETE, sequence use, and trigger-side write must be audited independently. For example, Signal ingestion needs INSERT on Signal and Event, while the KnowledgeIndex Signal lock is lock-only; these are different capabilities on the same table.
+
+Do not use `GRANT UPDATE (id)` or another arbitrary column solely to satisfy row-lock permission. A column-level grant is still authority to attempt changing that column; it is not harmless unless a separately accepted database invariant makes the column immutable for this principal. Do not add fake `lock_version` columns to every table merely to satisfy PostgreSQL's privilege check.
+
+### 6.4 Recommended F1 design — hybrid narrow DML plus owner-controlled lock functions
+
+The least-complex viable design is a **hybrid**, not blanket UPDATE and not a SECURITY DEFINER wrapper around every query:
+
+1. **Real application writers:** grant the runtime only the exact INSERT/UPDATE column/DELETE capabilities required by the audited service operations. Prefer column-level UPDATE where it materially narrows authority. Keep Task lifecycle writes in TaskRuntime, disposition writes withheld, and immutable Event/Signal/Thread rules enforced independently. Sequence privileges must be granted only where the relevant INSERT actually uses a sequence.
+2. **Lock-only reads:** move only the identified lock-only `FOR UPDATE`/`FOR SHARE` operations behind small, static, owner-controlled functions owned by `watch_owner`. Each function should name one relation and one lock mode (or one reviewed canonical multi-relation lock sequence), accept typed primary-key inputs, use schema-qualified SQL with `SET search_path = pg_catalog`, and return only a minimal found/locked result. It must not accept caller SQL, relation names, arbitrary predicates, or dynamic SQL. The lock is transaction-scoped and remains held after the function returns; caller retains transaction ownership.
+3. **No generic dynamic lock function:** a `regclass`/text-driven generic helper would broaden the callable surface and make it harder to audit relation, predicate, scope, lock order, and authorization. Do not use it.
+4. **Same transaction and visibility:** the helper must not open/commit a connection or transaction. The caller performs its ordinary SELECT after the helper call, in the same transaction. Any path relying on fresh post-wait visibility must explicitly require READ COMMITTED; a helper does not refresh an existing SQLAlchemy identity-map object by itself.
+5. **Function hardening:** revoke PUBLIC EXECUTE in the creation transaction; grant EXECUTE only to the intended runtime identity; fixed trusted search_path; schema-qualified relation references; no caller-settable GUC/bypass; no direct runtime table UPDATE grant solely for helper use. Tests must prove the runtime cannot invoke owner-only operations outside the narrowly granted functions and that a row lock survives function return until caller rollback/commit.
+6. **Preserve authority boundaries:** these helpers grant serialization, not permission to perform business writes. They must not create Tasks, mutate Team/Thread lifecycle, write Events, or bypass Control Room/TaskRuntime. Do not turn every existing lock into a database function if the operation already has a narrowly justified UPDATE grant for a real mutation.
+
+**Important qualification:** The table above is not yet a final grant matrix. The next audit artifact must map every one of the 114 call sites to (a) transaction owner, (b) exact lock target/mode/order, (c) whether the same transaction mutates that relation and exact columns, (d) required INSERT/UPDATE/DELETE/sequence privileges, and (e) chosen direct-DML or helper mechanism. No grants or helper functions should be implemented until that matrix is reviewed and the actual host/runtime connection identity is identified.
+
 The current source audit also confirms the F2 gap:
 
 - No production `Thread()` creation/insert path exists; direct Thread creation/deletion found by repository search is in tests/fixtures.
