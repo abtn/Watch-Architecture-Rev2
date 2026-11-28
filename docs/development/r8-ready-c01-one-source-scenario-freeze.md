@@ -1,7 +1,7 @@
 # R8-ready C-01 — One-source scenario freeze
 
-**Status:** scenario definition frozen for preparation and implementation planning; implementation is not authorized by this document.
-**Development state:** Pre-R8-ready. CG-01 is the completed test-only baseline. C-01 remains a deterministic technical candidate, not a production experiment, treatment condition, or R8-ready acceptance.
+**Status:** scenario definition was frozen before implementation; the test-only integration and its evidence follow-ups are now merged and reconciled in §9. This document does not authorize production implementation or expand the tested scenario.
+**Development state:** Pre-R8-ready. CG-01 is the completed test-only baseline; C-01 is implemented and merged as a deterministic test-only integration. Neither is a production experiment, treatment condition, or R8-ready acceptance.
 **Baseline:** `main` at `c1008b20eda49b53a1f44256c7d14de8065ed4db`.
 **Authority:** `PLAN.md`, [R8 development states](r8-development-states.md), [R8-ready Path A scope matrix](r8-ready-scope-and-capability-matrix.md), [Control-Group foundation plan](r8-ready-internal-test-foundation-plan.md), and [C-01 source-audit preparation](r8-ready-c01-intake-to-operator-update-preparation.md).
 
@@ -91,7 +91,7 @@ Do not duplicate the restricted-fetcher URL/DNS/redirect/size suite, component i
 
 The one-origin ingestion deduplication behavior must not be represented as Team-wide canonicalization.
 
-## 7. Implementation and verification sequence (not authorized yet)
+## 7. Implementation and verification sequence (historical plan; completed by PRs #215/#216)
 
 1. Reconfirm current `main` and the exact preparation baseline before opening an implementation branch.
 2. Inspect the current `plan_request`, Strategy proposal, PlanService, TaskDispatcher, IngestionService, TaskRuntime evaluation follow-on, and Operator application contracts; resolve any drift from this freeze.
@@ -101,9 +101,9 @@ The one-origin ingestion deduplication behavior must not be represented as Team-
 6. Independently review for direct Task writes, Task lifecycle bypass, policy-pin drift, source-identity substitution, live network use, transaction ownership changes, hidden experience inputs, and unrelated refactors.
 7. Record exact tested SHA, database/test evidence, and any unproven boundary. Stop on any scope or architecture condition in the C-01 preparation document.
 
-**Exit:** the one-source scenario and proof boundary are frozen for a separate implementation proposal. This document does not authorize implementation.
+**Historical exit:** the one-source scenario and proof boundary were frozen for a separate implementation proposal. The implementation was later authorized separately and completed as recorded in §9.
 
-## 8. Required authorization gate
+## 8. Historical implementation authorization gate (satisfied before PR #215)
 
 Before implementation, return with a separate, explicit authorization request that names:
 
@@ -114,4 +114,16 @@ Before implementation, return with a separate, explicit authorization request th
 - exact local/hosted verification commands and acceptance criteria;
 - all known limitations and any unresolved Unknown/Blocked classification.
 
-No C-01 implementation begins until that authorization is explicitly granted.
+The separate implementation authorization was granted before PR #215. This historical gate is closed for the bounded test-only implementation recorded in §9; it does not authorize any expansion or production implementation.
+
+
+## 9. Implementation and verification reconciliation (2026-11-28)
+
+The frozen scenario was implemented as a test-only integration and merged:
+
+- Implementation: PR [#215](https://github.com/abtn/Watch-Architecture-Rev2/pull/215), exact tested head `b34f48545325b6f34fd73a30dd78c660a91340b0`, merge commit `e83101cfffa51897327a3651087f2ec464329115`. Exact-head CI #2355 passed PostgreSQL setup/role provisioning, migrations, Ruff, Mypy, whitespace, and the full test suite.
+- Evidence correction: PR [#216](https://github.com/abtn/Watch-Architecture-Rev2/pull/216), exact tested head `d787d2142645520ac2773326c2f32e20dec460a5`, merge commit `ffa3703be22a7e8e8078582f287e8acb46031241`. It asserts exactly one task_completed Event for both source and Operator Tasks and rechecks request/commit/completion Event counts after replay. Exact-head CI #2357 passed.
+- Documentation reconciliation: PRs [#217](https://github.com/abtn/Watch-Architecture-Rev2/pull/217) and [#218](https://github.com/abtn/Watch-Architecture-Rev2/pull/218) record the integrated success-path proof, mapped component failure proofs, and corrected current outcome wording. PR #217 post-merge main CI passed.
+- Current main baseline for this reconciliation: `c648892e4896113700c8103397be01c11c0d22ed`.
+
+**Current disposition:** C-01 is implemented and technically verified as a one-source test-only integration. Its frozen limitations remain: pre-existing active Thread, one configured source, deterministic fake fetcher, no live network/provider, no retrieval/Context, no retained-experience use, no cross-origin canonicalization, no triage/disposition, no scoring, and no R8-ready transition. This implementation record does not expand the original scenario or authorize new production behavior.
