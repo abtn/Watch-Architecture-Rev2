@@ -1,6 +1,6 @@
 # R8-ready Path A — Scope and Capability Matrix
 
-**Status:** planning record opened by Operator decision on 2026-11-27. Path A is selected; candidate scenarios and capability classifications are not yet frozen.
+**Status:** Path A remains selected. The initial technical internal-test scope (CG-01 + C-01) and its current-source capability/proof reconciliation are recorded in [the internal-test scope and proof freeze](r8-ready-internal-test-scope-and-proof-freeze.md). This is not R8-ready entry or scored-execution authorization.
 **Current state:** Pre-R8-ready. The bounded test-only Control Group baseline and its technical verification are authorized as recorded in `PLAN.md`; this does not authorize R8-ready entry, scored execution, production use, or a state transition.
 **Status authority:** [`PLAN.md`](../../PLAN.md).
 **State/behavior authority:** [R8 development states](r8-development-states.md) and [R8 delivery plan](r8-delivery-plan.md).
@@ -88,16 +88,16 @@ If a candidate scenario requires SignalDisposition or any other gated capability
 
 ## 3. Candidate scenario register (not accepted/frozen)
 
-These are source-backed candidates for Operator selection, not frozen R8-ready scope. D1 Task-creation conformance is now merged; the remaining feasibility and proof classifications still apply.
+CG-01 and C-01 are selected for the initial bounded technical internal-test scope only. C-02 and C-03 remain unselected supporting/future candidates. The selection does not freeze the broader R8-ready scope or authorize a state transition.
 
 | ID | Candidate behavior | Input and expected durable effect | Safe failure / abstention | Candidate entrypoint and source | Status |
 |---|---|---|---|---|---|
-| C-01 | Configured-source intake followed by an Operator recording an evidence-backed Hypothesis on an existing active Thread | A configured source is ingested through an ordinary `ingest_source` Task; an authorized Operator then proposes a low-confidence Hypothesis and exact-quote EvidenceLink(s) using a same-Team Signal or Outcome Snapshot. Durable effects are the existing Signal/Snapshot/intake Event and the ordinary `operator_update` Task/business Events/Hypothesis/EvidenceLinks. | Unconfigured source, invalid Task/Team/policy, invalid grant, cross-Team source, invalid quote/offset, stale target, conflicting request, or database failure must fail/reject without partial business writes; exact replay must not duplicate business writes. | `PlanService` → `TaskDispatcher` → `IngestionService`; then `OperatorApplicationAdapter.operator_update` → `WorldMemoryCommitService.commit` → `TaskRuntime`. See source SHAs in §4. | **Candidate — D1 cleared; full intake-to-update integration and exact proof subset still need review/freeze.** Thread must already exist. |
+| C-01 | Configured-source intake followed by an Operator recording an evidence-backed Hypothesis on an existing active Thread | A configured source is ingested through an ordinary `ingest_source` Task; an authorized Operator then proposes a low-confidence Hypothesis and exact-quote EvidenceLink(s) using a same-Team Signal or Outcome Snapshot. Durable effects are the existing Signal/Snapshot/intake Event and the ordinary `operator_update` Task/business Events/Hypothesis/EvidenceLinks. | Unconfigured source, invalid Task/Team/policy, invalid grant, cross-Team source, invalid quote/offset, stale target, conflicting request, or database failure must fail/reject without partial business writes; exact replay must not duplicate business writes. | `PlanService` → `TaskDispatcher` → `IngestionService`; then `OperatorApplicationAdapter.operator_update` → `WorldMemoryCommitService.commit` → `TaskRuntime`. See source SHAs in §4. | **Selected; implemented and merged as a test-only integration.** Exact proof and limitation record is in the current internal-test scope freeze. Thread must already exist. |
 | CG-01 | Test-only Control Group baseline for an authenticated Operator evidence update | Isolated Team, active pre-existing Thread, immutable same-Team Signal/Snapshot, and authenticated Operator request; the `operator_update` Task is created through Control Room and finalized by TaskRuntime. No retained Team Experience is present or supplied. | Invalid grant, cross-Team Thread/source/Snapshot, malformed proposal, quote/hash/offset mismatch, conflicting replay, or database failure must fail closed without partial business writes. | Existing `tests/test_world_memory.py::world_memory_context` plus `r8_control_group` fixture; `OperatorApplicationAdapter.operator_update` → Control Room `create_operator_update_task` → WorldMemoryCommitService → TaskRuntime. | **Selected and authorized for bounded technical internal testing only.** Not a frozen R8-ready scenario, not full C-01 intake, and not a control/treatment value comparison. |
 | C-02 | Model proposes bounded updates to an existing active Thread from its verified Context | An authorized Operator requests `update_thread`; the worker assembles bounded Context and a deterministic test provider returns typed proposals. Durable effects are the existing request/attempt/receipt/proposal/commit/terminal records and any accepted Hypothesis/EvidenceLink/ConfidenceChange updates. | Invalid principal/grant/target, malformed provider output, stale/invalid Context, timeout/cost failure, invalid evidence, or commit conflict must fail closed; no provider-supplied authority and no partial proposal writes. | `OperatorApplicationAdapter.create_update_thread_task` → `UpdateThreadWorker.run` → `WorldMemoryCommitService.commit_model` → `TaskRuntime`. See source SHAs in §4. | **Blocked** — live provider is unauthorized and seven RW3.4 qualifications remain PARTIAL. Deterministic-fake-only testing remains a possible narrower candidate, subject to Operator selection. |
 | C-03 | Configured-source Signal intake only (supporting setup, not a complete R8 reasoning scenario) | An already-created configured-source Task is dispatched; the worker stores an immutable Signal Snapshot and Task-attributed intake Event, or records no-change/replay. | Invalid/unconfigured source, hash mismatch, Task/Team/policy mismatch, snapshot integrity failure, or DB failure must not publish partial Signal state. | `PlanService` → `TaskDispatcher.dispatch` → `IngestionService.ingest`. See source SHAs in §4. | **Candidate — D1 cleared; standalone intake still does not prove Signal interpretation, Thread/Hypothesis reasoning, or retained-experience claims.** |
 
-No candidate currently qualifies as a frozen R8-ready scenario. Do not convert a candidate into an accepted scenario without Operator selection and closure of its capability blockers.
+CG-01 and C-01 are selected as the initial technical internal-test scenarios. They are not, by this selection, accepted R8-ready entry scenarios, scored experiments, or evidence of retained-experience value. Broader R8-ready scope remains subject to its own entry gate.
 
 ## 4. Provisional capability-to-candidate matrix
 
@@ -151,16 +151,29 @@ A stop is a scope/design finding, not permission to improvise a workaround.
 
 ## 7. Freeze record (complete only after review)
 
-- Accepted R8-ready scenario IDs: **None; C-01 to C-03 remain candidates only**
+- Selected initial technical internal-test scenarios: **CG-01 and C-01**. This is not R8-ready entry acceptance; C-02/C-03 remain unselected.
 - Selected technical test baseline: **CG-01**, test-only Control Group fixture for `operator_update`; authorized for internal technical verification, not R8-ready entry or scored execution
 - Historical source-audit baseline SHA: `d671d066940d0dc06b1198c5ed474dc66653cccb`
-- Current source baseline SHA: `d03297c2b4e3522b0dc59ce001955cda130fd14f`
-- Relevant Alembic source head: `0020_rw4_task_identity`; actual disposable DB current/head not verified in this audit
+- Current source baseline SHA for this reconciliation: `c648892e4896113700c8103397be01c11c0d22ed`
+- Relevant Alembic source head: `0020_rw4_task_identity`; disposable PostgreSQL migration/current-head and role provisioning are covered by PR #221 local evidence and hosted CI; PR #222 role-test hardening also passed exact-head CI but remains unmerged.
 - Existing governed entrypoints: D1 ten-producer conformance merged and CI-verified; CG-01 uses the existing authenticated Operator update path
-- Required capability set: provisional only; see §4
+- Required capability/proof set for CG-01 and C-01: reconciled in `r8-ready-internal-test-scope-and-proof-freeze.md`; the older §4 remains the historical candidate audit.
 - Deferred capability set and reopen triggers: see §5
-- Required PostgreSQL proof set: not frozen; exact role/migration/concurrency proof remains outstanding
-- Fixtures, baseline, and expected outputs: not frozen
-- Known limitations: CG-01 does not exercise source intake, Thread creation, retrieval, or treatment; live update_thread provider unauthorized; RW3.4 seven PARTIAL qualifications; Team Experience is not retrieved by update_thread; no triage/disposition; production credential topology is not established by this test fixture
+- Required PostgreSQL proof set: scenario-specific requirements are frozen in `r8-ready-internal-test-scope-and-proof-freeze.md`; production application-host identity proof remains out of scope and open.
+- Fixtures and expected technical outcomes: CG-01 and C-01 are documented in their respective scenario records; exploratory result protocol remains the next planning step.
+- Known limitations: neither scenario creates a Thread, invokes Team Experience retrieval, demonstrates treatment, or proves claim-level knowledge use; C-01 uses one source and does not prove cross-origin canonicalization; C-02/live provider remain gated; RW3.4 retains seven PARTIAL qualifications; no triage/disposition; no production host identity is established by these tests.
 - D1 existing-writer implementation: merged by PR #207 at `d03297c2b4e3522b0dc59ce001955cda130fd14f`; hosted CI #2326 passed on exact PR head
 - R8-ready internal technical-test foundation authorization: granted for CG-01 only on 2026-11-26; R8-ready state transition and scored RWN-01 execution remain unauthorized
+
+
+## 8. Current-source internal-test reconciliation (2026-11-28)
+
+The current implementation and evidence status supersede the historical candidate wording and baseline notes above. Historical source-audit tables remain preserved as historical evidence.
+
+- **CG-01:** test-only baseline implementation and post-replay no-Team-Experience assertion are merged (PRs #209, #211, #212). Exact-head PostgreSQL/static/full-suite verification passed on PR #211; post-merge main CI passed. CG-01 remains a bounded operator_update technical baseline with fixture-seeded Signal/Snapshot and pre-existing active Thread.
+- **C-01:** one-source configured-intake-to-Operator-update test is merged (PR #215); missing terminal/replay Event assertions were added in PR #216; documentation evidence was reconciled in PRs #217 and #218. Exact-head CI for #215 and #216 passed; #217 post-merge main CI passed. The integrated test includes Strategy acceptance, Plan materialization, deterministic FakeFetcher dispatch, Signal/Snapshot ingestion, TaskRuntime terminalization and evaluation follow-on, authenticated Operator update, exact evidence linkage, replay, and no-Team-Experience assertions.
+- **D1:** all ten inventoried Task producers delegate through Control Room (PR #207/#208), and TaskRuntime remains lifecycle authority.
+- **Disposable PostgreSQL and roles:** PR #221 merged after Windows full-suite verification (1,341 passed) and hosted exact-head CI. Its runner provisions watch_owner, watch_migrator, and read-only watch_runtime, uses the migrator for Alembic, and restores environment variables. PR #222 adds column-level privilege-test hardening and its exact head passed CI, but PR #222 is still open/unmerged; do not count its changes as part of main.
+- **Current source baseline:** `c648892e4896113700c8103397be01c11c0d22ed`.
+
+The detailed scenario boundary, capability classifications, proof references, and unresolved limitations are in [the internal-test scope and proof freeze](r8-ready-internal-test-scope-and-proof-freeze.md). This reconciliation is documentation only; it does not authorize a test run, production capability, R8-ready transition, or scored execution.
