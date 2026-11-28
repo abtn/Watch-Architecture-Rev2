@@ -159,14 +159,27 @@ A single `BEFORE INSERT` trigger owns the marker:
 
 - For `signal_ingested` and `fetch_no_change`, ignore/overwrite caller-supplied marker data only after validating the complete intake witness; set marker to integer `1`.
 - For all other Event types, reject non-NULL caller-supplied marker values and persist NULL.
-- Require the Task to exist, be `ingest_source`, and be `running`; require its Team to exist and be active; require the Signal to exist; require Signal.domain = Team.domain; and require the five payload fields to be JSON strings and equal the stored Signal fields.
-- Parse the payload Signal UUID strictly; reject malformed/non-canonical identity rather than coercing it silently.
+- Require the Event payload to be a JSON object with exactly these five keys and no extensions: `origin_url`, `source_type`, `content_hash`, `signal_id`, and `snapshot_ref`. Require every value to be a JSON string and equal the corresponding stored Signal field; reject missing keys, unknown keys, wrong JSON types, and mismatches.
+- Require the Task to exist, be `ingest_source`, and be `running`; require its Team to exist and be active; require the Signal to exist; and require Signal.domain = Team.domain.
+- Require `signal_id` to be a lowercase canonical hyphenated UUID string. Parse it only after the JSON-type check, then require the original string to equal the parsed UUID's canonical text representation; do not silently normalize uppercase, braces, compact, or otherwise non-canonical input.
 - Acquire compatible row locks in exact order Task `FOR SHARE` → Team `FOR SHARE` → Signal `FOR SHARE`. The existing ingestion path already holds Task `FOR UPDATE` and Team `FOR SHARE`; do not upgrade Team to `FOR NO KEY UPDATE`.
 - Preserve the current Event payload contract; do not add a new payload key as a substitute for the marker.
 
 The trigger must reject UPDATE/DELETE of either intake Event type and reject type changes into or out of the protected set. It must also prevent marker changes. Runtime is separately denied Event UPDATE/DELETE for all Event types.
 
 **Reuse-path implication:** an existing-Signal `fetch_no_change` or ON-CONFLICT winner whose Signal domain differs from the Task Team will fail the new Event trigger and roll back that ingestion transaction. Same-Task prior-outcome replay creates no Event and cannot manufacture a marker. These are explicit fail-closed boundaries; any desired ingestion behavior change is a separately scoped decision, not an RW4-1 silent fallback.
+
+### 3.1 Required use of the intake witness at triage admission and finalization
+
+The marker is not merely diagnostic metadata. It is the only accepted post-cutover proof that a Signal was associated with a particular Team through a validated intake Event. Because `signals` has no `team_id`, the association is established through the immutable Event → Task relationship:
+
+- Before a triage Task is created, the trusted Control Room admission path must find at least one `signal_ingested` or `fetch_no_change` Event for the requested Signal with `intake_witness_version = 1`, whose immutable ingestion Task has `task_type = 'ingest_source'` and `team_id` equal to the requested Team. The Event's canonical `signal_id` payload must equal the Signal primary key. A legacy Event with a NULL marker never qualifies, even if its payload currently appears valid.
+- At the D4.2 receipt transaction and again at business finalization, TaskRuntime must revalidate that same Team/Signal witness for the canonical triage Task. It must also revalidate that the Team is active and that Signal.domain equals Team.domain under the accepted lock protocol. The Event trigger's payload checks plus the Event, Task, Signal, and Team immutability guards make the witnessed association stable after it is established.
+- The later composite Task FK binds the disposition's `decided_by_task_id`, `team_id`, `signal_id`, and `identity_version` to the exact D2 Task identity. It does not prove that the canonical request Event exists or is valid; TaskRuntime must independently validate exactly one valid `triage_signal_requested` Event and the canonical Task identity on insert and replay, as required by the accepted Stage A contract.
+- A Signal with no valid post-cutover witness for the requested Team is ineligible before Task creation; do not create a Task or a deferred disposition for it. If a previously admitted Task later lacks or disagrees with its required witness, treat that as a technical/integrity failure and create no disposition. Missing, partial, mismatched, corrupt, or legacy-only provenance is never a D5 deferred reason.
+- The same global Signal may qualify independently for more than one Team, but each Team requires its own marked Event → ingestion Task association. This does not select a canonical Team/hash duplicate; that remains D4.1a.
+
+This is a trusted TaskRuntime/Control Room validation obligation over a database-attested, immutable witness. It must not be reduced to an unprotected application timestamp or a caller-supplied provenance assertion, and it must not be replaced by a new Team/Signal registry in this stage.
 
 ## 4. Proposed protected identity and history guards
 
@@ -242,6 +255,18 @@ Use the accepted single ordered `SHARE ROW EXCLUSIVE NOWAIT` preflight lock on `
 - Other table/column grants must be derived from a complete supported-writer inventory. Do not copy a speculative blanket grant matrix into the migration while F1/F2 remain open.
 
 The current bootstrap proves the role foundation only. It does not yet provision the complete future application DML matrix, establish a host runtime consumer, or close F1/F2.
+
+### 6.1 External credential cutover is a separate deployment gate
+
+The database migration and its table locks cannot atomically change an external application's connection string or revoke credentials held by already-running processes. Therefore Option A also requires an explicit stopped-writer credential cutover before any deployment that relies on these protections:
+
+1. Provision the NOLOGIN owner, distinct migrator, and least-privilege runtime roles; configure the intended runtime DSN, but do not restart application writers yet.
+2. Stop and drain every application process and worker, and terminate/drain every old application connection using the bootstrap superuser, table owner, or migration credential. No application writer may remain on a bypass-capable identity.
+3. Run the cutover migration only as the reviewed migrator assuming `watch_owner`, with no application writers active. The migration verifies ownership, role membership, effective privileges, trigger inventory, and protected-table/partition topology before commit.
+4. After commit, restart application processes only with the runtime DSN. Verify active application sessions through PostgreSQL session/role inspection (including `pg_stat_activity`) and verify that none uses the bootstrap superuser, `watch_owner`, or `watch_migrator`; repeat effective privilege and role-membership checks.
+5. If the deployment cannot stop/drain writers and prove the post-cutover runtime identity, Option A is not acceptable for that deployment. Stop and return for a separately reviewed Option B relational-witness design; do not treat the migration's ACCESS EXCLUSIVE lock as a substitute for credential cutover.
+
+This is an external deployment prerequisite, not something the current disposable-CI role tests or the migration can prove on their own. The repository currently has no production host/runtime DSN consumer, so F1 remains open.
 
 ## 7. Unresolved design gates (must not be papered over)
 
