@@ -1,7 +1,7 @@
 # R8-ready C-01 — One-source scenario freeze
 
 **Status:** scenario definition was frozen before implementation; the test-only integration and its evidence follow-ups are now merged and reconciled in §9. This document does not authorize production implementation or expand the tested scenario.
-**Development state:** Pre-R8-ready. CG-01 is the completed test-only baseline. C-01 remains a deterministic technical candidate, not a production experiment, treatment condition, or R8-ready acceptance.
+**Development state:** Pre-R8-ready. CG-01 is the completed test-only baseline; C-01 is implemented and merged as a deterministic test-only integration. Neither is a production experiment, treatment condition, or R8-ready acceptance.
 **Baseline:** `main` at `c1008b20eda49b53a1f44256c7d14de8065ed4db`.
 **Authority:** `PLAN.md`, [R8 development states](r8-development-states.md), [R8-ready Path A scope matrix](r8-ready-scope-and-capability-matrix.md), [Control-Group foundation plan](r8-ready-internal-test-foundation-plan.md), and [C-01 source-audit preparation](r8-ready-c01-intake-to-operator-update-preparation.md).
 
@@ -103,7 +103,7 @@ The one-origin ingestion deduplication behavior must not be represented as Team-
 
 **Historical exit:** the one-source scenario and proof boundary were frozen for a separate implementation proposal. The implementation was later authorized separately and completed as recorded in §9.
 
-## 8. Required authorization gate
+## 8. Historical implementation authorization gate (satisfied before PR #215)
 
 Before implementation, return with a separate, explicit authorization request that names:
 
@@ -114,7 +114,7 @@ Before implementation, return with a separate, explicit authorization request th
 - exact local/hosted verification commands and acceptance criteria;
 - all known limitations and any unresolved Unknown/Blocked classification.
 
-No C-01 implementation begins until that authorization is explicitly granted.
+The separate implementation authorization was granted before PR #215. This historical gate is closed for the bounded test-only implementation recorded in §9; it does not authorize any expansion or production implementation.
 
 
 ## 9. Implementation and verification reconciliation (2026-11-28)
