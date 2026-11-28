@@ -2,6 +2,7 @@
 
 from __future__ import annotations  # noqa: I001
 
+import json
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select
@@ -454,6 +455,105 @@ def test_c01_configured_source_intake_then_operator_update(
                     )
                 )
             ) == []
+            source_events = list(
+                session.scalars(
+                    select(Event).where(Event.task_id == source_task_id)
+                )
+            )
+            operator_events = list(
+                session.scalars(
+                    select(Event).where(Event.task_id == operator_result.task_id)
+                )
+            )
+            strategy_events = list(
+                session.scalars(
+                    select(Event).where(Event.task_id == strategy_task_id)
+                )
+            )
+            plan_events = list(
+                session.scalars(
+                    select(Event).where(Event.task_id == plan_task_id)
+                )
+            )
+            source_task_row = session.get(Task, source_task_id)
+            operator_task_row = session.get(Task, operator_result.task_id)
+            experience_count = len(
+                list(
+                    session.scalars(
+                        select(TeamExperienceChunk).where(
+                            TeamExperienceChunk.team_id == team_id
+                        )
+                    )
+                )
+            )
+    print(
+        "R8_IDENTITY_MANIFEST="
+        + json.dumps(
+            {
+                "scenario": "C-01",
+                "identities": {
+                    "team_id": str(team_id),
+                    "team_policy_id": str(policy_id),
+                    "objective_id": str(objective_id),
+                    "strategy_task_id": str(strategy_task_id),
+                    "strategy_event_id": str(strategy_result.event_id),
+                    "plan_task_id": str(plan_task_id),
+                    "plan_id": str(plan_result.plan_id),
+                    "plan_event_id": str(plan_result.event_id),
+                    "plan_action_id": str(plan_action.action_id),
+                    "source_task_id": str(source_task_id),
+                    "evaluation_task_id": str(evaluation_task.id),
+                    "preexisting_thread_id": str(thread_id),
+                    "configured_origin_url": origin_url,
+                    "signal_id": str(dispatch_result.signal_id),
+                    "snapshot_ref": snapshot_ref,
+                    "snapshot_hash": snapshot_hash,
+                    "operator_request_idempotency_key": str(request.idempotency_key),
+                    "operator_task_id": str(operator_result.task_id),
+                    "hypothesis_id": str(hypothesis_id),
+                    "evidence_link_id": str(evidence.id),
+                    "operator_outcome_id": str(operator_result.outcome_id),
+                    "source_outcome_id": str(dispatch_result.outcome_id),
+                    "source_event_ids": [str(event.id) for event in source_events],
+                    "operator_event_ids": [
+                        str(event.id) for event in operator_events
+                    ],
+                    "strategy_event_ids": [
+                        str(event.id) for event in strategy_events
+                    ],
+                    "plan_event_ids": [str(event.id) for event in plan_events],
+                },
+                "observations": {
+                    "strategy_terminal_status": strategy_terminal.status,
+                    "plan_terminal_status": plan_terminal.status,
+                    "source_task_status": source_task_row.status,
+                    "operator_task_status": operator_task_row.status,
+                    "fake_fetcher_request_count": len(fetcher.requests),
+                    "source_task_completed_event_count": sum(
+                        event.type == "task_completed" for event in source_events
+                    ),
+                    "operator_request_event_count": sum(
+                        event.type == "operator_update_requested"
+                        for event in operator_events
+                    ),
+                    "operator_commit_event_count": sum(
+                        event.type == "operator_update_committed"
+                        for event in operator_events
+                    ),
+                    "operator_completion_event_count": sum(
+                        event.type == "task_completed" for event in operator_events
+                    ),
+                    "operator_evidence_link_count": 1,
+                    "operator_outcome_count": 1,
+                    "operator_replay": replay.replayed,
+                    "replay_task_id": str(replay.task_id),
+                    "replay_outcome_id": str(replay.outcome_id),
+                    "team_experience_chunk_count_after_replay": experience_count,
+                },
+            },
+            sort_keys=True,
+        )
+    )
     finally:
         with session_factory.begin() as session:
             team_task_ids = select(Task.id).where(Task.team_id == team_id)
