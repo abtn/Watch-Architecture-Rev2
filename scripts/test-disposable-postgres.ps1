@@ -135,14 +135,20 @@ finally {
     finally {
         if ($containerCreated) {
             $volumeNames = @()
+            $mountInspectionSucceeded = $false
             $mountOutput = & docker inspect --format '{{json .Mounts}}' $containerName
-            if ($LASTEXITCODE -ne 0) { throw "Could not inspect disposable container mounts before cleanup." }
-            $mounts = @($mountOutput | ConvertFrom-Json)
-            $volumeNames = @(
-                $mounts |
-                    Where-Object { $_.Type -eq "volume" -and $_.Name } |
-                    ForEach-Object { [string]$_.Name }
-            )
+            if ($LASTEXITCODE -eq 0) {
+                $mounts = @($mountOutput | ConvertFrom-Json)
+                $volumeNames = @(
+                    $mounts |
+                        Where-Object { $_.Type -eq "volume" -and $_.Name } |
+                        ForEach-Object { [string]$_.Name }
+                )
+                $mountInspectionSucceeded = $true
+            }
+            else {
+                Write-Warning "Could not inspect disposable container mounts; removal will still be attempted, but volume cleanup cannot be fully verified."
+            }
 
             Write-Host "Removing disposable container and its anonymous volumes..."
             & docker rm -fv $containerName
@@ -152,6 +158,10 @@ finally {
             if ($LASTEXITCODE -ne 0) { throw "Could not verify disposable container removal." }
             if (@($remainingContainers | Where-Object { $_.Trim() }).Count -gt 0) {
                 throw "Disposable container remains after cleanup: $containerName"
+            }
+
+            if (-not $mountInspectionSucceeded) {
+                throw "Container was removed, but attached anonymous-volume cleanup could not be verified."
             }
 
             $remainingVolumes = & docker volume ls --format "{{.Name}}"
