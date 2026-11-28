@@ -294,7 +294,7 @@ This is an external deployment prerequisite, not something the current disposabl
 
 1. Validate every table/column/type/constraint against the current ORM and migration source; reconcile names and actions.
 2. Independently review CHECK truth tables, FK support keys, partial-index predicates, and all child-side FK indexes.
-3. Review the trigger inventory and each trigger's exact event, timing, row/statement level, function volatility, security mode, search path, and SQLSTATE.
+3. Review the trigger inventory and each trigger's exact event, timing, row/statement level, function volatility, security mode, search path, SQLSTATE, and required PostgreSQL privileges for every row-locking SELECT. Prove the intake attestation trigger can acquire Task → Team → Signal locks through its owner function without granting runtime UPDATE on Signal or direct runtime EXECUTE on the helper; separately reconcile the existing ingestion Task/Team lock privileges.
 4. Verify the Event trigger's Task → Team → Signal locks are compatible with all three current ingestion branches and fail closed on cross-domain reuse.
 5. Review the five-table ACCESS EXCLUSIVE NOWAIT cutover and the separate Task-FK migration lock/preflight; prove no partial lock retention after NOWAIT failure.
 6. Reconcile runtime grants with F1/F2 and refuse to claim Option A feasible while any supported writer can bypass the guards.
