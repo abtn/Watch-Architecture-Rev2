@@ -287,8 +287,8 @@ This is an external deployment prerequisite, not something the current disposabl
 |---|---|---|
 | Option A feasibility / F1 | Role bootstrap exists; runtime remains SELECT-only; no host consumer. | Prove all required trigger reads/writes and effective grants under the actual runtime/migrator identities. If Option A cannot be enforced, stop and return with a separately scoped Option B design. |
 | F2 Thread writers | No supported production Thread create/status/domain writer or deployment inventory. | Identify every host, worker, bootstrap, maintenance, and external writer; reconcile least privilege before matched writes. |
-| F3 Thread domain | Design only. | Freeze exact function body, VOLATILE/read-committed visibility, and both concurrent race orders. |
-| F4 ORM freshness | Design only. | Name the exact finalizer query and prove stale identity-map refresh after row-lock wait. |
+| F3 Thread domain | Behavioral contract specified in §7.1; no function implementation or PostgreSQL race proof. | Independently review the exact PL/pgSQL body and prove both race orders at READ COMMITTED with the VOLATILE trigger; matched writes remain disabled until both pass. |
+| F4 ORM freshness | Query/refresh contract specified in §7.2; no triage finalizer implementation or PostgreSQL/SQLAlchemy proof. | Implement only under separate authorization, then prove stale identity-map refresh after row-lock wait and exact replay after a later legal status transition. |
 | D4.1a | Canonical Team/hash arbitration not implemented. | No duplicate disposition until separately implemented/proven. |
 | D4.2 | Durable receipt and stale-receipt finalization not implemented. | Receipt schema, one-per-Task identity, recovery and fingerprint contract remain separate prerequisites. |
 | RW-5 | Canonical lock helper/revision/writer retrofit not implemented. | Matched writes remain disabled until all relevant writers participate and two-session proof passes. |
