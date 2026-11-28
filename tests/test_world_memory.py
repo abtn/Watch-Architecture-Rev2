@@ -453,6 +453,20 @@ def test_operator_update_creates_low_hypothesis_and_verified_evidence(
                 )
             )
         )
+        evidence_ids = list(
+            session.scalars(
+                select(EvidenceLink.id).where(
+                    EvidenceLink.originating_task_id == result.task_id
+                )
+            )
+        )
+        confidence_change_ids = list(
+            session.scalars(
+                select(ConfidenceChange.id).where(
+                    ConfidenceChange.created_by_task_id == result.task_id
+                )
+            )
+        )
         experience_count = len(
             list(
                 session.scalars(
@@ -466,6 +480,8 @@ def test_operator_update_creates_low_hypothesis_and_verified_evidence(
         assert len(commit_events) == 1
         assert len(completion_events) == 1
         assert len(outcome_ids) == 1
+        assert len(evidence_ids) == 1
+        assert len(confidence_change_ids) == 0
     print(
         "R8_IDENTITY_MANIFEST="
         + json.dumps(
@@ -500,8 +516,8 @@ def test_operator_update_creates_low_hypothesis_and_verified_evidence(
                     "request_event_count": len(request_events),
                     "commit_event_count": len(commit_events),
                     "completion_event_count": len(completion_events),
-                    "evidence_link_count": 1,
-                    "confidence_change_count": 0,
+                    "evidence_link_count": len(evidence_ids),
+                    "confidence_change_count": len(confidence_change_ids),
                     "team_experience_chunk_count_before_operation": experience_before,
                     "team_experience_chunk_count_after_commit": experience_after_commit,
                     "team_experience_chunk_count_after_replay": experience_count,
