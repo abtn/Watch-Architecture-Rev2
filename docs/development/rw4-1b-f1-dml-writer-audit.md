@@ -163,6 +163,6 @@ This audit does not implement any role grant, helper function, migration, ORM ch
 
 ## 9. Deployment identity decision follow-up
 
-The deployment identity question is now documented separately in [the F1 deployment identity model proposal](rw4-1b-f1-deployment-identity-model-proposal.md). Its recommendation is one shared core application login for transaction-sharing domain services, with a conditional separate indexer login only if SignalIndexer and TeamExperienceIndexer are proven to run in a distinct process with their own engine/pool/DSN. Do not split identities by Python class or create unused roles.
+The Operator accepted the identity architecture: one shared core application login for the first deployable host, with indexer separation deferred until an independently deployed process, pool, and DSN exist. See the [accepted identity model](rw4-1b-f1-deployment-identity-model-proposal.md) and [host/process-composition audit](rw4-1b-f1-deployment-host-composition-audit.md).
 
-The DML inventory is source-complete but is not yet a grant manifest. The exact initial topology, external/maintenance writers, indexer process boundary, emitted INSERT SQL, and runtime positive/negative workflow proofs remain open. Keep watch_runtime SELECT-only until the Operator accepts the deployment topology and a separate implementation authorization is issued.
+The source DML inventory is not yet a grant manifest. No production host or runtime DSN consumer currently exists, so the accepted identity has no application process to consume it. External/maintenance writers, emitted INSERT SQL, and runtime positive/negative workflow proofs remain open. Keep watch_runtime SELECT-only until a host and exact grant manifest are separately designed, reviewed, and authorized.
