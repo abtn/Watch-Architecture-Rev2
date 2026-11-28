@@ -294,6 +294,39 @@ This is an external deployment prerequisite, not something the current disposabl
 | RW-5 | Canonical lock helper/revision/writer retrofit not implemented. | Matched writes remain disabled until all relevant writers participate and two-session proof passes. |
 | Decision 7 | All three outcomes enabled together. | No matched/deferred-only rollout; no disposition write-enable until every listed dependency is complete and independently reviewed. |
 
+### 7.1 F3 — exact Thread-domain guard and race contract
+
+The proposed `watch_protect_matched_thread_domain()` trigger function has this exact behavioral contract:
+
+- Attach as `BEFORE UPDATE OF domain FOR EACH ROW` on `threads`.
+- If `NEW.domain IS NOT DISTINCT FROM OLD.domain`, return `NEW` without querying dispositions. No-op assignments are not domain transfers.
+- Otherwise query `signal_dispositions` for an existing row with `disposition = 'matched'`, `thread_id = OLD.id`, and `team_id = OLD.team_id`. If found, reject the domain change with SQLSTATE `55000`; otherwise return `NEW`.
+- Do not block status/title changes. Duplicate and deferred dispositions do not freeze a Thread domain because neither stores a Thread reference.
+- The function must be explicitly `VOLATILE` and the relevant writer/finalizer transactions must use READ COMMITTED. It does not need its own Thread row lock: PostgreSQL has acquired the Thread row lock for the UPDATE before the BEFORE trigger runs. The post-wait query must use a fresh snapshot so it can observe a matched disposition committed while the UPDATE waited. SECURITY INVOKER is preferred because this function only reads SignalDisposition; the runtime SELECT grant must be proved under F1.
+
+Both race orders are mandatory PostgreSQL proofs:
+
+1. **Matched finalizer wins:** finalizer acquires Thread `FOR NO KEY UPDATE`, validates active/same-Team/same-domain state, inserts the matched disposition, and commits. A concurrent domain UPDATE waits on the Thread row. After the finalizer commits, the trigger's VOLATILE query sees the matched disposition and rejects the UPDATE with `55000`.
+2. **Domain UPDATE wins:** domain UPDATE acquires the Thread row first and commits the new domain. The finalizer waits, then its locked/refreshing read sees the committed domain and rejects the proposed match before any disposition or terminal evidence is written.
+
+A status update is serialized by the same Thread row lock but is not frozen by the guard: if it commits first, a first-time finalizer sees the non-active status and cannot match; if the matched finalizer commits first, a later legal transition to dormant/resolved is allowed and does not invalidate replay.
+
+### 7.2 F4 — exact ORM freshness contract
+
+The current `TaskRuntime.finalize()` locks the Task and owns the terminal Outcome/Task/Event transaction, but has no triage-specific Thread finalizer yet. The future triage branch must not assume that a SQLAlchemy row lock refreshes a Thread object already present in the Session identity map.
+
+For first-time business finalization, after Task and Team locks and before validating candidate state:
+
+- Form the union of the receipt's candidate Thread IDs and the currently discovered bounded candidate Thread IDs.
+- Lock that union in ascending UUID order with a same-session query equivalent to `SELECT ... FROM threads WHERE team_id = :team_id AND id IN (:thread_ids) ORDER BY id FOR NO KEY UPDATE`.
+- Execute the locking query with SQLAlchemy `populate_existing=True` (or explicitly `Session.refresh(instance, with_for_update=...)`) so scalar values already loaded into the identity map are overwritten from the row returned after the lock is granted.
+- Validate `team_id`, `domain`, and `status` only from those refreshed instances. A matched result requires the selected Thread to be same-Team/same-domain and active at this serialized decision point.
+- Keep the refreshed Thread locks in the same transaction through disposition, Outcome, terminal Task state/time, and `task_completed` commit. Continue the accepted lock order: Task → Team → sorted Thread → sorted Hypothesis → sorted Signal.
+
+The exact replay path is different: after a prior terminal result is found, validate the immutable receipt, disposition, Outcome, Task terminal fields, and exact terminal Event evidence. Do not require the Thread's current status to remain active; a later legal dormant/resolved transition cannot invalidate a committed historical match. The domain guard and immutable disposition preserve the historical domain relationship.
+
+F4 remains open until real PostgreSQL/SQLAlchemy two-session tests prove at least: (a) a Thread is preloaded into Session A's identity map, Session B changes domain/status and commits while A waits, and A's post-lock `populate_existing=True` query sees the committed values and refuses stale eligibility; (b) the finalizer locks first and a concurrent domain UPDATE waits, then is rejected by F3 after disposition commit; and (c) replay succeeds after a later legal status transition without re-running current active eligibility. Assert no disposition/Outcome/terminal Event partial commit on first-finalization rejection. These are proof requirements, not evidence that the implementation exists.
+
 **No implementation is authorized by closing this draft.** The current task is to review and freeze the physical contract. A separate explicit authorization is still required for RW4-1 implementation and, later, for write enablement.
 
 ## 8. Required review sequence for this draft
