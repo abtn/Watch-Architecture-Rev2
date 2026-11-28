@@ -415,4 +415,3 @@ F4 remains open until real PostgreSQL/SQLAlchemy two-session tests prove at leas
 7. Check forward-only downgrade refusal and fresh-install/current-head migration ordering; verify the Event marker CHECK is installed `NOT VALID` and no historical Event scan/validation occurs.
 8. Run independent review; resolve all findings; only then ask the Operator to accept/revise the physical contract.
 9. Request separate implementation authorization. Do not start RW4-1 ORM, migration, trigger SQL, disposition runtime, or RW4-1 concurrency tests under this design-only step. The companion F1 role-isolation regression assertion is limited to verifying the already-provisioned SELECT-only role boundary.
-
