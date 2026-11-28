@@ -492,6 +492,21 @@ def test_c01_configured_source_intake_then_operator_update(
             )
             source_task_row = session.get(Task, source_task_id)
             operator_task_row = session.get(Task, operator_result.task_id)
+            operator_evidence_ids = list(
+                session.scalars(
+                    select(EvidenceLink.id).where(
+                        EvidenceLink.originating_task_id == operator_result.task_id
+                    )
+                )
+            )
+            operator_outcome_ids = list(
+                session.scalars(
+                    select(Outcome.id).where(
+                        Outcome.recorded_by_task_id == operator_result.task_id,
+                        Outcome.outcome_type == "task_execution",
+                    )
+                )
+            )
             experience_count = len(
                 list(
                     session.scalars(
