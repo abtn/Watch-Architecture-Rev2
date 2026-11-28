@@ -168,7 +168,7 @@ The 114 sites below reconcile to the source count in PR #222 §6.3: 89 unconditi
 | Source module | Sites |
 |---|---:|
 | `core/objectives.py` | 6 |
-| `core/strategy.py` | 6 |
+| `core/strategy.py` | 7 |
 | `core/ingestion.py` | 4 |
 | `core/plans.py` | 7 |
 | `core/evaluations.py` | 3 |
@@ -178,7 +178,7 @@ The 114 sites below reconcile to the source count in PR #222 §6.3: 89 unconditi
 | `core/learning_commit.py` | 10 |
 | `core/context_assembly.py` | 4 |
 | `core/update_thread_worker.py` | 4 |
-| `core/world_memory.py` | 8 |
+| `core/world_memory.py` | 7 |
 | `core/knowledge_quality.py` | 5 |
 | `core/task_runtime.py` | 16 |
 | `core/knowledge_index.py` | 4 |
