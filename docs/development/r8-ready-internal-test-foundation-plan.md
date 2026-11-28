@@ -189,3 +189,15 @@ The post-replay no-Team-Experience assertion follow-up is complete.
 - The test now checks the no-`TeamExperienceChunk` invariant before the operation (fixture), after the first successful update, and after exact replay. Existing replay identity, single EvidenceLink, and no-ConfidenceChange assertions remain intact.
 
 **Disposition:** CG-01's explicit no-retained-Team-Experience evidence gap is closed at the tested head above. This closes only the test-only baseline proof; it does not establish full C-01, retrieval/Context, treatment comparison, scored R8, or R8-ready status. Post-merge `main` CI remains a separate verification item.
+
+
+## 9. Current implementation/evidence reconciliation (2026-11-28)
+
+The original CG-01 foundation and the later C-01 integration are both implemented. The initial technical internal-test scope is now **CG-01 + C-01**, as recorded in [the internal-test scope and proof freeze](r8-ready-internal-test-scope-and-proof-freeze.md).
+
+- CG-01 test foundation: PR #209 merged; post-replay no-Team-Experience assertion completed in PR #211; evidence closure recorded in PR #212. Exact-head CI #2338 and post-merge main CI passed.
+- C-01 one-source integration: PR #215 merged; terminal/replay Event assertion completion in PR #216; documentation reconciliation in PRs #217/#218. Exact-head CI #2355/#2357 passed; PR #217 post-merge main CI passed.
+- Disposable PostgreSQL runner role correction: PR #221 merged at `c648892e4896113700c8103397be01c11c0d22ed`. Operator-local Windows run passed 1,341 tests; hosted exact-head CI #2376 passed. This verifies the test/migration runner role setup, not a deployed application host.
+- PR #222 is separate and remains open/unmerged. Its exact-head CI passed, but it is not included in the current main baseline and does not close RW4-1 F1.
+
+**Scope:** this reconciliation records the implemented technical test foundation. It does not authorize exploratory test execution beyond existing CI, production host construction, runtime grants, retrieval/Context, treatment, scoring, formal R8, or R8-ready state transition. The next planning item is the exploratory result-recording protocol, followed by an explicit review of the entry gate before any new execution authorization.
