@@ -462,6 +462,10 @@ def test_operator_update_creates_low_hypothesis_and_verified_evidence(
                 )
             )
         )
+        assert len(request_events) == 1
+        assert len(commit_events) == 1
+        assert len(completion_events) == 1
+        assert len(outcome_ids) == 1
     print(
         "R8_IDENTITY_MANIFEST="
         + json.dumps(
