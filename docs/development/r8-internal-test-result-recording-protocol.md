@@ -267,7 +267,7 @@ The template is a record format, not an executable test manifest. Replace placeh
 
 ## 12. Authorization and scope boundary
 
-This protocol is documentation only. Its acceptance would establish a consistent recording method, not authorize execution.
+This protocol is documentation only. Its acceptance establishes a consistent recording method; it does not authorize execution.
 
 Before any new exploratory run or campaign:
 
