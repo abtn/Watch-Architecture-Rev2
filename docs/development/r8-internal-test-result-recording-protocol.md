@@ -249,11 +249,11 @@ failure:
   explanation: null
 
 cleanup:
-  container_removed: false
-  volumes_removed: false
-  temporary_artifacts_removed_or_retained_by_reference: false
-  environment_restored: false
-  no_persistent_db_or_external_provider_contact: false
+  container_removed: null
+  volumes_removed: null
+  temporary_artifacts_removed_or_retained_by_reference: null
+  environment_restored: null
+  no_persistent_db_or_external_provider_contact: null
   evidence_locator: null
 
 disposition: INCONCLUSIVE
