@@ -206,19 +206,25 @@ Do not freeze Thread.status. It is evaluated at the serialized decision point; l
 
 ### 4.1 Trigger/function execution model
 
-Proposed names:
+Proposed trigger/function pairs and execution contract:
 
-- `trg_events_attest_intake_witness`
-- `trg_events_protect_intake_witness`
-- `trg_signals_protect_intake_identity`
-- `trg_tasks_protect_intake_identity`
-- `trg_teams_protect_intake_domain`
-- `trg_threads_protect_matched_domain`
-- `trg_signal_dispositions_assign_created_at`
-- `trg_signal_dispositions_immutable`
-- `trg_<protected_table>_no_truncate` for each of the five protected tables.
+| Trigger | Function | Event/timing | Security and visibility |
+|---|---|---|---|
+| `trg_events_attest_intake_witness` | `watch_attest_intake_witness()` | BEFORE INSERT, row | SECURITY DEFINER; VOLATILE; fixed `pg_catalog` search_path; schema-qualified application tables. |
+| `trg_events_protect_intake_witness` | `watch_protect_intake_event()` | BEFORE UPDATE OR DELETE, row | SECURITY INVOKER; reject protected Event/marker mutation. |
+| `trg_signals_protect_intake_identity` | `watch_protect_signal_identity()` | BEFORE UPDATE OR DELETE, row | SECURITY INVOKER; SELECT-only cross-table checks. |
+| `trg_tasks_protect_intake_identity` | `watch_protect_ingestion_task_identity()` | BEFORE UPDATE, row | SECURITY INVOKER; SELECT-only Event reference check; preserve the separate D2 trigger. |
+| `trg_teams_protect_intake_domain` | `watch_protect_team_domain()` | BEFORE UPDATE OF domain, row | SECURITY INVOKER; SELECT-only witness/disposition checks. |
+| `trg_threads_protect_matched_domain` | `watch_protect_matched_thread_domain()` | BEFORE UPDATE OF domain, row | SECURITY INVOKER; explicitly VOLATILE for the post-lock READ COMMITTED visibility check. |
+| `trg_signal_dispositions_assign_created_at` | `watch_assign_signal_disposition_created_at()` | BEFORE INSERT, row | SECURITY INVOKER; VOLATILE; assign `clock_timestamp()`. |
+| `trg_signal_dispositions_immutable` | `watch_reject_signal_disposition_mutation()` | BEFORE UPDATE OR DELETE, row | SECURITY INVOKER; unconditional rejection. |
+| `trg_<protected_table>_no_truncate` | `watch_reject_protected_truncate()` | BEFORE TRUNCATE, statement; one trigger on each of the five protected tables | SECURITY INVOKER; unconditional rejection. |
 
-Functions should be small and purpose-specific rather than a generic integrity framework.
+Use small purpose-specific functions rather than a generic integrity framework. The shared TRUNCATE rejection function is intentionally narrow and follows the existing repository pattern; do not build a generic configurable trigger framework.
+
+**Proposed SQLSTATE contract:** row-local CHECK violations and invalid intake payload/state/marker/domain inputs raise `23514` (`check_violation`); a missing Signal referenced by an intake Event raises `23503` (`foreign_key_violation`); attempts to mutate protected Event/Signal/Task/Team/Thread/SignalDisposition history or TRUNCATE protected tables raise `55000` (`object_not_in_prerequisite_state`). Native PK/unique/FK constraint errors retain PostgreSQL's native `23505`/`23503` codes. The migration's NOWAIT lock conflict remains native `55P03`; roll back the entire migration transaction and do not translate it into a retry-success response. Tests must assert the SQLSTATE, not only exception text.
+
+
 
 **Required security mode for the intake-attestation trigger:** `trg_events_attest_intake_witness` must be `SECURITY DEFINER`, owned by `watch_owner`, with `SET search_path = pg_catalog` and every application-table reference schema-qualified. PostgreSQL requires `UPDATE` privilege (in addition to `SELECT`) for `SELECT ... FOR SHARE`; the trigger must lock Task → Team → Signal, but the runtime role must not receive Signal UPDATE merely to acquire the Signal row lock. The owner function supplies the narrowly scoped lock authority inside the caller's transaction; the row locks remain held through the transaction. Revoke PUBLIC EXECUTE in the same migration transaction. Trigger firing does not require a direct runtime EXECUTE grant.
 
