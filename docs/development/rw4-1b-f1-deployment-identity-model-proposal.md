@@ -107,7 +107,7 @@ The following is the proposed target model. Role names are design labels; only t
 | `watch_indexer` (conditional, future) | Yes | SignalIndexer and TeamExperienceIndexer only, when deployed as a separate process | Projection writes only: `knowledge_chunks`, `team_experience_chunks`, and `team_experience_index_state`; read access only to required source tables |
 | Maintenance/repair operator | Not provisioned by this application bootstrap | Human-approved, audited break-glass repair, backup/restore, or controlled data maintenance | External DBA/operations policy; no standing application membership and no shared app DSN |
 
-### 4.1 Core application identity
+### 5.1 Core application identity
 
 The core application identity is deliberately shared across domain services that currently share transaction ownership. It covers the actual workflows in the DML audit, not a fictional per-module role split.
 
@@ -122,7 +122,7 @@ The eventual grant manifest must be generated from the DML writer audit and actu
 
 Lock-only reads must use the reviewed fixed lock-helper design where no real UPDATE allow-list exists. Helpers retain the caller's transaction and do not create a new transaction.
 
-### 4.2 Conditional indexer identity
+### 5.2 Conditional indexer identity
 
 The indexer role is justified only if deployment proves all of the following:
 
@@ -136,7 +136,7 @@ The indexer role is justified only if deployment proves all of the following:
 
 If these conditions are not met, keep indexing under `watch_app` for the initial deployment and document the union privilege trade-off. Do not create a nominal `watch_indexer` login that the host does not actually use.
 
-### 4.3 Identities explicitly not split
+### 5.3 Identities explicitly not split
 
 Do not create separate logins for:
 - Control Room: it receives a caller-owned Session and is not a transaction owner.
