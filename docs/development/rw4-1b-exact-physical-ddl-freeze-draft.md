@@ -297,7 +297,7 @@ Therefore the read-only role cannot execute all current service paths as written
 
 ### 6.3 Production row-lock inventory — exact source search at current main
 
-A source search of the 19 production modules containing SQLAlchemy `.with_for_update()` found **114 row-lock call sites**. This is a source inventory, not a claim that all paths have been exercised under `watch_runtime`. Default `.with_for_update()` means `FOR UPDATE`; `read=True` means `FOR SHARE`. PostgreSQL requires SELECT plus UPDATE privilege on at least one column of each locked table for both modes.
+A source search of the following 19 production modules containing SQLAlchemy `.with_for_update()` found **114 row-lock call sites**: `core/objectives.py`, `core/strategy.py`, `core/ingestion.py`, `core/plans.py`, `core/evaluations.py`, `core/update_thread_context.py`, `core/operator_application.py`, `core/update_thread.py`, `core/learning_commit.py`, `core/context_assembly.py`, `core/update_thread_worker.py`, `core/world_memory.py`, `core/knowledge_quality.py`, `core/task_runtime.py`, `core/knowledge_index.py`, `core/knowledge_lifecycle.py`, `core/generation_cost.py`, `core/knowledge_revalidation.py`, and `core/experience_distiller.py`. This is a source inventory, not a claim that all paths have been exercised under `watch_runtime`. Default `.with_for_update()` means `FOR UPDATE`; `read=True` means `FOR SHARE`. PostgreSQL requires SELECT plus UPDATE privilege on at least one column of each locked table for both modes.
 
 | Locked relation | Unconditional `FOR UPDATE` | Unconditional `FOR SHARE` | Conditional mode | Preliminary classification |
 |---|---:|---:|---:|---|
