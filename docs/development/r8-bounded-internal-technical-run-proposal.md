@@ -29,7 +29,7 @@ No scenario may start until the Operator explicitly authorizes that scenario aga
 - Command, from repository root in PowerShell:
 
 ```powershell
-.\scripts\test-disposable-postgres.ps1 -PytestArgs "tests/test_world_memory.py::test_operator_update_creates_low_hypothesis_and_verified_evidence"
+.\scripts\test-disposable-postgres.ps1 -PytestArgs @("tests/test_world_memory.py::test_operator_update_creates_low_hypothesis_and_verified_evidence", "-s")
 ```
 
 Expected evidence includes the isolated Team and pre-existing Thread/Signal/Snapshot fixture; authenticated Operator Task creation; one low-confidence active Hypothesis; one exact Snapshot-backed EvidenceLink; terminal Task/Outcome evidence; exact replay preserving Task/Outcome identity; no duplicate EvidenceLink or ConfidenceChange; and zero TeamExperienceChunk before, after success, and after replay.
@@ -44,7 +44,7 @@ This run does not test configured-source intake, Thread creation, retrieval/Cont
 - Command, from repository root in PowerShell:
 
 ```powershell
-.\scripts\test-disposable-postgres.ps1 -PytestArgs "tests/test_c01_intake_to_operator_update.py::test_c01_configured_source_intake_then_operator_update"
+.\scripts\test-disposable-postgres.ps1 -PytestArgs @("tests/test_c01_intake_to_operator_update.py::test_c01_configured_source_intake_then_operator_update", "-s")
 ```
 
 Expected evidence includes the frozen one-Team/one-policy/one-source cardinality; accepted Strategy proposal and Plan/PlanAction; one Plan-materialized `ingest_source` Task; exactly one FakeFetcher request with the fixed synthetic bytes; one Signal/Snapshot with exact source provenance and hash; one source-attributed intake Event and one source Task completion Event; the existing evaluation follow-on; one authenticated Operator update Task; one low-confidence Hypothesis and exact Snapshot-backed EvidenceLink; exactly one request/commit/completion Event for the Operator Task; exact replay preserving Task/Outcome identity and business-write cardinality; and zero TeamExperienceChunk at all required checkpoints.
@@ -65,15 +65,13 @@ For each invocation independently:
 
 Do not run both selectors in one invocation: each scenario requires its own fresh disposable database and independent Run ID/disposition.
 
-## 5. Evidence readiness gap
+## 5. Identity-manifest capture
 
-The current scenario tests use generated UUIDs and assert the resulting relationships in-process, but the test output does not currently emit a generated-identity manifest. The accepted protocol asks the run record to retain generated fixture identities.
+Both frozen scenario tests now emit exactly one structured `R8_IDENTITY_MANIFEST=` JSON line after their assertions and replay checks. The line contains generated identifiers and observed cardinalities from that test execution; it is not a precomputed or reconstructed manifest.
 
-Before a run can be claimed PASS, resolve this gap by one of the following, with explicit review:
-- add minimal test-only structured identity output to the two existing scenario tests (without adding a new scenario or changing production behavior); or
-- demonstrate an existing, approved way to capture the generated identities and durable-state observations from the same run.
+The commands in §§3.1–3.2 include pytest's `-s` option so the manifest is written to the PowerShell transcript rather than being hidden by pytest output capture. Retain the complete line verbatim in the run record and preserve the raw transcript before producing any sanitized copy.
 
-Do not silently omit the manifest, invent identifiers, or broaden database grants. Until this is resolved, a test may complete but its recording disposition cannot be PASS under the accepted protocol.
+The manifest supplements, but does not replace, the expected-versus-observed evidence table, durable-state evidence, exact source/environment pins, or verified cleanup required by the accepted recording protocol. Do not infer unreported values or broaden database grants to fill an evidence gap.
 
 ## 6. Explicit authorization request
 

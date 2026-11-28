@@ -27,6 +27,7 @@ Create one record per scenario execution.
 ### 2.1 Required identity fields
 
 - **Run ID:** unique, immutable identifier. Recommended form: `R8IT-<SCENARIO>-<UTC timestamp>-<short sequence>`, for example `R8IT-CG01-20261128T153000Z-01`.
+- **Generated identity manifest:** retain the single test-output line prefixed `R8_IDENTITY_MANIFEST=` from the selected CG-01 or C-01 test. The suffix is one JSON object containing generated fixture/business identities and the test's observed cardinality/checkpoint values. Preserve it verbatim in the raw log and extract it unchanged into the run evidence artifact. Run pytest with capture disabled (`-s`) so the passing test's line is present in the transcript.
 - **Scenario:** exactly `CG-01` or `C-01`.
 - **Run type:** `existing-ci-evidence`, `authorized-local-technical-run`, or `authorized-hosted-technical-run`.
 - **Authorization reference:** explicit Operator decision or instruction authorizing this specific execution; use `not applicable — historical CI evidence` only for already-existing CI records.
@@ -166,6 +167,7 @@ A test process exit code of zero is necessary but not sufficient for PASS. Any m
 For each run, preserve:
 
 - Full raw test/CI logs and a sanitized human-readable excerpt.
+- The exact `R8_IDENTITY_MANIFEST=` JSON line emitted by the selected scenario test; do not manually reconstruct or edit generated identifiers.
 - Exact command and environment manifest.
 - Source SHA, scenario contract version, fixture/input manifest, and migration revision.
 - Expected/observed evidence table and read-only query outputs.

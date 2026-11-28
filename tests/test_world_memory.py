@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -321,6 +322,17 @@ def test_operator_update_creates_low_hypothesis_and_verified_evidence(
     session_factory, snapshot_store, r8_control_group
 ):
     context = r8_control_group
+    with session_factory() as session:
+        experience_before = len(
+            list(
+                session.scalars(
+                    select(TeamExperienceChunk).where(
+                        TeamExperienceChunk.team_id == context.team_id
+                    )
+                )
+            )
+        )
+    assert experience_before == 0
     hypothesis_id = uuid4()
     request = OperatorUpdateRequest(
         thread_id=context.thread_id,
@@ -372,13 +384,16 @@ def test_operator_update_creates_low_hypothesis_and_verified_evidence(
                 Outcome.outcome_type == "task_execution",
             )
         ) is not None
-        assert list(
-            session.scalars(
-                select(TeamExperienceChunk).where(
-                    TeamExperienceChunk.team_id == context.team_id
+        experience_after_commit = len(
+            list(
+                session.scalars(
+                    select(TeamExperienceChunk).where(
+                        TeamExperienceChunk.team_id == context.team_id
+                    )
                 )
             )
-        ) == []
+        )
+        assert experience_after_commit == 0
 
     replay = adapter.operator_update(_principal(context.team_id), request)
     assert replay.replayed
@@ -406,6 +421,111 @@ def test_operator_update_creates_low_hypothesis_and_verified_evidence(
                 )
             )
         ) == []
+        request_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == result.task_id,
+                    Event.type == "operator_update_requested",
+                )
+            )
+        )
+        commit_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == result.task_id,
+                    Event.type == "operator_update_committed",
+                )
+            )
+        )
+        completion_events = list(
+            session.scalars(
+                select(Event).where(
+                    Event.task_id == result.task_id,
+                    Event.type == "task_completed",
+                )
+            )
+        )
+        outcome_ids = list(
+            session.scalars(
+                select(Outcome.id).where(
+                    Outcome.recorded_by_task_id == result.task_id,
+                    Outcome.outcome_type == "task_execution",
+                )
+            )
+        )
+        evidence_ids = list(
+            session.scalars(
+                select(EvidenceLink.id).where(
+                    EvidenceLink.originating_task_id == result.task_id
+                )
+            )
+        )
+        confidence_change_ids = list(
+            session.scalars(
+                select(ConfidenceChange.id).where(
+                    ConfidenceChange.created_by_task_id == result.task_id
+                )
+            )
+        )
+        experience_count = len(
+            list(
+                session.scalars(
+                    select(TeamExperienceChunk).where(
+                        TeamExperienceChunk.team_id == context.team_id
+                    )
+                )
+            )
+        )
+        assert len(request_events) == 1
+        assert len(commit_events) == 1
+        assert len(completion_events) == 1
+        assert len(outcome_ids) == 1
+        assert len(evidence_ids) == 1
+        assert len(confidence_change_ids) == 0
+    print(
+        "R8_IDENTITY_MANIFEST="
+        + json.dumps(
+            {
+                "scenario": "CG-01",
+                "identities": {
+                    "team_id": str(context.team_id),
+                    "team_policy_id": str(context.policy_id),
+                    "preexisting_thread_id": str(context.thread_id),
+                    "source_task_id": str(context.source_task_id),
+                    "signal_id": str(context.signal_id),
+                    "snapshot_ref": context.snapshot_ref,
+                    "snapshot_hash": context.snapshot_hash,
+                    "operator_request_idempotency_key": str(request.idempotency_key),
+                    "operator_task_id": str(result.task_id),
+                    "hypothesis_id": str(hypothesis_id),
+                    "evidence_link_id": str(link.id),
+                    "outcome_id": str(result.outcome_id),
+                    "request_event_ids": [str(event.id) for event in request_events],
+                    "commit_event_ids": [str(event.id) for event in commit_events],
+                    "completion_event_ids": [
+                        str(event.id) for event in completion_events
+                    ],
+                    "durable_outcome_ids": [str(value) for value in outcome_ids],
+                },
+                "observations": {
+                    "first_result_status": result.task_status,
+                    "first_result_committed_count": result.committed_count,
+                    "replay": replay.replayed,
+                    "replay_task_id": str(replay.task_id),
+                    "replay_outcome_id": str(replay.outcome_id),
+                    "request_event_count": len(request_events),
+                    "commit_event_count": len(commit_events),
+                    "completion_event_count": len(completion_events),
+                    "evidence_link_count": len(evidence_ids),
+                    "confidence_change_count": len(confidence_change_ids),
+                    "team_experience_before": experience_before,
+                    "team_experience_after_commit": experience_after_commit,
+                    "team_experience_after_replay": experience_count,
+                },
+            },
+            sort_keys=True,
+        )
+    )
 
 
 
