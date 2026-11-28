@@ -218,7 +218,11 @@ Proposed names:
 - `trg_signal_dispositions_immutable`
 - `trg_<protected_table>_no_truncate` for each of the five protected tables.
 
-Functions should be small and purpose-specific rather than a generic integrity framework. Use SECURITY INVOKER where runtime's audited SELECT grants suffice. Where a function genuinely needs elevated reads, use SECURITY DEFINER owned by `watch_owner`, fixed trusted search_path, schema-qualified references, explicit VOLATILE where post-wait visibility is required, and revoke PUBLIC EXECUTE in the creation transaction. Trigger firing does not imply a direct runtime EXECUTE grant. No caller-settable GUC, session flag, temporary-table bypass, or replication-role bypass is permitted.
+Functions should be small and purpose-specific rather than a generic integrity framework.
+
+**Required security mode for the intake-attestation trigger:** `trg_events_attest_intake_witness` must be `SECURITY DEFINER`, owned by `watch_owner`, with `SET search_path = pg_catalog` and every application-table reference schema-qualified. PostgreSQL requires `UPDATE` privilege (in addition to `SELECT`) for `SELECT ... FOR SHARE`; the trigger must lock Task → Team → Signal, but the runtime role must not receive Signal UPDATE merely to acquire the Signal row lock. The owner function supplies the narrowly scoped lock authority inside the caller's transaction; the row locks remain held through the transaction. Revoke PUBLIC EXECUTE in the same migration transaction. Trigger firing does not require a direct runtime EXECUTE grant.
+
+Other guards that only read protected tables may use `SECURITY INVOKER` if the runtime's audited SELECT grants suffice. The existing Python ingestion path itself also uses Task `FOR UPDATE` and Team `FOR SHARE`, which require UPDATE privilege on at least one column of those tables; F1 must explicitly resolve that pre-existing grant requirement (or a separately reviewed controlled lock helper) without silently granting broad Team/Signal mutation rights. Any other trigger that performs row-locking SELECTs must receive the same privilege/security review. Use `SECURITY DEFINER` only where that elevated operation is actually required, always with a fixed trusted search_path and schema-qualified references. Functions requiring post-wait visibility must be explicitly VOLATILE. No caller-settable GUC, session flag, temporary-table bypass, or replication-role bypass is permitted.
 
 ## 5. Migration boundaries and exact lock protocols
 
