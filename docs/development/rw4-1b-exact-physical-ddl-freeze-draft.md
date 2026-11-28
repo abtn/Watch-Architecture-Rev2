@@ -404,7 +404,11 @@ F4 remains open until real PostgreSQL/SQLAlchemy two-session tests prove at leas
 
 **No implementation is authorized by closing this draft.** The current task is to review and freeze the physical contract. A separate explicit authorization is still required for RW4-1 implementation and, later, for write enablement.
 
-## 8. Required review sequence for this draft
+## 8. Deployment identity dependency
+
+The complete source-level DML inventory is recorded in rw4-1b-f1-dml-writer-audit.md. The deployment identity recommendation and acceptance checklist are recorded in rw4-1b-f1-deployment-identity-model-proposal.md. Until the Operator accepts the actual process/connection topology, no runtime grant manifest, lock-helper EXECUTE grant, or production role provisioning change should be implemented. The proposed baseline is one core application login for transaction-sharing domain services; a separate indexer login is conditional on a genuinely separate worker process and DSN.
+
+## 9. Required review sequence for this draft
 
 1. Validate every table/column/type/constraint against the current ORM and migration source; reconcile names and actions.
 2. Independently review CHECK truth tables, FK support keys, partial-index predicates, and all child-side FK indexes.
