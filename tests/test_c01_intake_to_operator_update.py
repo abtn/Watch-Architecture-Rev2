@@ -563,15 +563,15 @@ def test_c01_configured_source_intake_then_operator_update(
                         "operator_replay": replay.replayed,
                         "replay_task_id": str(replay.task_id),
                         "replay_outcome_id": str(replay.outcome_id),
-                        "team_experience_chunk_count_before_operation": experience_before,
-                    "team_experience_chunk_count_after_operator_update": experience_after_operator,
-                    "team_experience_chunk_count_after_replay": experience_count,
+                            "team_experience_chunk_count_before_operation": experience_before,
+                        "team_experience_chunk_count_after_operator_update": experience_after_operator,
+                        "team_experience_chunk_count_after_replay": experience_count,
                     },
                 },
                 sort_keys=True,
             )
         )
-        finally:
+    finally:
         with session_factory.begin() as session:
             team_task_ids = select(Task.id).where(Task.team_id == team_id)
             plan_ids = select(Plan.id).where(Plan.team_id == team_id)
