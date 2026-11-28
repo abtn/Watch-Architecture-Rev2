@@ -573,12 +573,12 @@ def test_c01_configured_source_intake_then_operator_update(
                         "operator_completion_event_count": sum(
                             event.type == "task_completed" for event in operator_events
                         ),
-                        "operator_evidence_link_count": 1,
-                        "operator_outcome_count": 1,
+                        "operator_evidence_link_count": len(operator_evidence_ids),
+                        "operator_outcome_count": len(operator_outcome_ids),
                         "operator_replay": replay.replayed,
                         "replay_task_id": str(replay.task_id),
                         "replay_outcome_id": str(replay.outcome_id),
-                            "team_experience_chunk_count_before_operation": experience_before,
+                        "team_experience_chunk_count_before_operation": experience_before,
                         "team_experience_chunk_count_after_operator_update": experience_after_operator,
                         "team_experience_chunk_count_after_replay": experience_count,
                     },
