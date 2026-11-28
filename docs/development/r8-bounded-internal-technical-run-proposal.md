@@ -11,13 +11,23 @@ This proposal is for two separately recorded, bounded technical runs. It is not 
 
 No scenario may start until the Operator explicitly authorizes that scenario against the final exact source SHA, environment, and command. Authorization for CG-01 does not authorize C-01, and vice versa. Do not execute either scenario as part of PR validation.
 
-## 2. Source baseline
+## 2. Frozen technical-run baseline
 
-- Repository: `abtn/Watch-Architecture-Rev2`.
-- Required branch at execution: `main`.
-- The exact full source SHA is intentionally **not yet frozen**. It must be copied from `main` after the targeted-runner correction in PR [#225](https://github.com/abtn/Watch-Architecture-Rev2/pull/225) is accepted and merged.
-- The scenario contract revision must be the same merged source baseline, including the accepted result-recording protocol.
-- Any change to source SHA, test node, scenario contract, or runner command after authorization requires a fresh authorization decision.
+The following revisions are the immutable baseline for preparing either bounded technical run. The source baseline is the exact current `main` commit after PR #226 merged.
+
+| Baseline element | Exact revision | Meaning |
+|---|---|---|
+| **Source baseline / main** | `19a46fef615c5b4c1d18cd8092d6e70b7dbaa1b4` | Exact merged `main` SHA, including the frozen scenario tests, identity manifests, protocol, and runner. |
+| **Scenario scope and proof contract** | PR #223 merge commit `634ffd24fbaaa1ee531c876ca4f529d89e4d49e2` | CG-01 + C-01 scope, expected proof, cardinality, limitations, and stop conditions. |
+| **Result-recording protocol** | PR #224 merge commit `6c9732b41f3a701ecb11ce2b4bbab7a6e40badc4` | Run identity, authorization, evidence, dispositions, artifacts, checksums, and retry rules. |
+| **Disposable PostgreSQL runner** | PR #225 merge commit `b5d6a79c85e30f0dd41ed40b5c86e3fb7a60e001` | Targeted pytest-node invocation, static checks, role/migration setup, and verified cleanup behavior. |
+| **Scenario identity-manifest instrumentation** | PR #226 merge commit `19a46fef615c5b4c1d18cd8092d6e70b7dbaa1b4` | Test-only generated-identity and observed-cardinality output for both frozen scenario tests. |
+
+The source baseline was verified against GitHub: `main` and the PR #226 merge commit are identical, with zero commits ahead or behind. The exact source SHA above is the required checkout for a run unless a later reviewed baseline is explicitly adopted.
+
+The scenario contract, recording protocol, runner, and test instrumentation revisions are separately identified to make their responsibilities and provenance unambiguous. They are all included in the pinned source tree; the separate revision pins are traceability anchors, not instructions to mix files from different checkouts.
+
+Any change to the source SHA, scenario contract, protocol, runner, test node, or command after authorization requires a fresh authorization decision.
 
 ## 3. Separate run definitions
 
@@ -67,7 +77,7 @@ Do not run both selectors in one invocation: each scenario requires its own fres
 
 ## 5. Identity-manifest capture
 
-Both frozen scenario tests now emit exactly one structured `R8_IDENTITY_MANIFEST=` JSON line after their assertions and replay checks. The line contains generated identifiers and observed cardinalities from that test execution; it is not a precomputed or reconstructed manifest.
+Both frozen scenario tests emit exactly one structured `R8_IDENTITY_MANIFEST=` JSON line after their assertions and replay checks. The line contains generated identifiers and observed cardinalities from that test execution; it is not a precomputed or reconstructed manifest.
 
 The commands in §§3.1–3.2 include pytest's `-s` option so the manifest is written to the PowerShell transcript rather than being hidden by pytest output capture. Retain the complete line verbatim in the run record and preserve the raw transcript before producing any sanitized copy.
 
@@ -76,11 +86,12 @@ The manifest supplements, but does not replace, the expected-versus-observed evi
 ## 6. Explicit authorization request
 
 No execution is authorized by this proposal. Before either run, submit and obtain explicit authorization for:
+
 - the selected scenario;
 - its assigned Run ID;
-- the final merged `main` source SHA and scenario-contract revision;
+- the frozen `main` source SHA and scenario-contract revision from §2;
 - the exact command and immutable PostgreSQL image digest;
-- the evidence-manifest approach resolving §5;
+- the evidence-manifest approach in §5;
 - the transcript/artifact location and cleanup procedure.
 
 A correction after a failed run must be reviewed and authorized before a new attempt. Preserve the original run record unchanged.
