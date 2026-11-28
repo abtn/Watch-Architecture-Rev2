@@ -300,25 +300,25 @@ Therefore the read-only role cannot execute all current service paths as written
 A source search of the 19 production modules containing SQLAlchemy `.with_for_update()` found **114 row-lock call sites**. This is a source inventory, not a claim that all paths have been exercised under `watch_runtime`. Default `.with_for_update()` means `FOR UPDATE`; `read=True` means `FOR SHARE`. PostgreSQL requires SELECT plus UPDATE privilege on at least one column of each locked table for both modes.
 
 | Locked relation | Unconditional `FOR UPDATE` | Unconditional `FOR SHARE` | Conditional mode | Preliminary classification |
-|---|---:|---:|---|
-| Task | 19 | 2 | Mixed: TaskRuntime and workers update lifecycle columns; other paths lock for validation/replay. |
-| Team | 15 | 4 | Lock/serialization only in the inventoried paths; no production Team status/domain assignment or `UPDATE(Team)` was found. |
-| TeamPolicy | 1 | 14 | Immutable pinned-policy reads/locks; no production policy mutation path found. |
-| Objective | 5 | 1 | Mixed: ObjectiveService transitions status; strategy/validation paths also lock for read/serialization. |
-| Plan | 2 | 1 | Mixed: Plan lifecycle transitions plus read/validation locks. |
+|---|---:|---:|---:|---|
+| Task | 19 | 2 | 0 | Mixed: TaskRuntime and workers update lifecycle columns; other paths lock for validation/replay. |
+| Team | 15 | 4 | 0 | Lock/serialization only in the inventoried paths; no production Team status/domain assignment or `UPDATE(Team)` was found. |
+| TeamPolicy | 1 | 14 | 0 | Immutable pinned-policy reads/locks; no production policy mutation path found. |
+| Objective | 5 | 1 | 0 | Mixed: ObjectiveService transitions status; strategy/validation paths also lock for read/serialization. |
+| Plan | 2 | 1 | 0 | Mixed: Plan lifecycle transitions plus read/validation locks. |
 | Event | 0 | 0 | 1 (`read=not exclusive`) | Read/idempotency lock; Event is append-only in application paths. |
-| Evaluation | 2 | 0 | Lifecycle record/reject paths update Evaluation state. |
-| Thread | 4 | 0 | Existing Operator/context/world-memory paths lock/read and validate; no production Thread lifecycle mutation path found. |
-| Hypothesis | 2 | 0 | Lock/read in commit/context paths; no direct Hypothesis row update was identified in the inventoried code. |
-| EvidenceLink | 1 | 0 | Lock/read in context assembly; no production update path found. |
-| LearningChange | 9 | 2 | Mixed: decision/lifecycle state transitions plus immutable/request validation locks. |
-| KnowledgeItem | 18 | 0 | Mixed, with real conditional state/content updates in learning/lifecycle flows. |
-| TaskGenerationCharge | 5 | 0 | Real reservation/charge status and accounting updates. |
-| KnowledgeQualityAssessment | 2 | 0 | Recorded-assessment validation/replay lock; no mutation in the lock-owning validation path. |
-| Signal | 1 | 0 | Knowledge-index path locks the immutable Signal while reconciling derived index state; no Signal mutation. |
-| TeamExperienceIndexState | 1 | 0 | Index-state upsert/update path. |
-| KnowledgeLifecycleAssessment | 1 | 0 | Recorded-assessment validation/replay lock. |
-| KnowledgeRevalidationAssessment | 1 | 0 | Recorded-assessment validation/replay lock. |
+| Evaluation | 2 | 0 | 0 | Lifecycle record/reject paths update Evaluation state. |
+| Thread | 4 | 0 | 0 | Existing Operator/context/world-memory paths lock/read and validate; no production Thread lifecycle mutation path found. |
+| Hypothesis | 2 | 0 | 0 | Lock/read in commit/context paths; no direct Hypothesis row update was identified in the inventoried code. |
+| EvidenceLink | 1 | 0 | 0 | Lock/read in context assembly; no production update path found. |
+| LearningChange | 9 | 2 | 0 | Mixed: decision/lifecycle state transitions plus immutable/request validation locks. |
+| KnowledgeItem | 18 | 0 | 0 | Mixed, with real conditional state/content updates in learning/lifecycle flows. |
+| TaskGenerationCharge | 5 | 0 | 0 | Real reservation/charge status and accounting updates. |
+| KnowledgeQualityAssessment | 2 | 0 | 0 | Recorded-assessment validation/replay lock; no mutation in the lock-owning validation path. |
+| Signal | 1 | 0 | 0 | Knowledge-index path locks the immutable Signal while reconciling derived index state; no Signal mutation. |
+| TeamExperienceIndexState | 1 | 0 | 0 | Index-state upsert/update path. |
+| KnowledgeLifecycleAssessment | 1 | 0 | 0 | Recorded-assessment validation/replay lock. |
+| KnowledgeRevalidationAssessment | 1 | 0 | 0 | Recorded-assessment validation/replay lock. |
 | **Total** | **89** | **24** | **1** | **114 call sites** |
 
 The counts above are grouped by the relation selected at the locking query. One Event lock in `PlanService._accepted()` uses `with_for_update(read=not exclusive)`, so it is `FOR SHARE` in the ordinary path and `FOR UPDATE` in the exclusive materialization path; it is shown separately rather than counted as either unconditional mode. Some call sites are constructed through query variables; their target was resolved from the enclosing query before grouping. The table intentionally distinguishes the number of lock calls from the number of distinct business writers: several calls are helper/validation paths, and one transaction may lock multiple relations.
