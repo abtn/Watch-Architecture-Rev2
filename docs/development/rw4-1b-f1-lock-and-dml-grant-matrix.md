@@ -130,7 +130,7 @@ The 114 sites below reconcile to the source count in PR #222 §6.3: 89 unconditi
 | 80 | `core/task_runtime.py:728 TaskRuntime._validate_operator_admission` | LearningChange | U | Caller | R |
 | 81 | `core/task_runtime.py:1258 TaskRuntime._commit_due_knowledge_reviews` | Team | U | Caller | R |
 | 82 | `core/task_runtime.py:1282 TaskRuntime._commit_due_knowledge_reviews` | KnowledgeItem | U | Caller | R — review candidate serialization |
-| 83 | `core/task_runtime.py:1990 unique_json_object / receipt validation` | TaskGenerationCharge | U | Caller | R — receipt validation |
+| 83 | `core/task_runtime.py:1990 TaskRuntime._validate_update_thread_result` | TaskGenerationCharge | U | Caller | R — receipt validation |
 | 84 | `core/task_runtime.py:2216 TaskRuntime._committed_operator_decision_observation` | LearningChange | U | Caller | R |
 | 85 | `core/task_runtime.py:4337 TaskRuntime._validate_learning_change_decision_result` | LearningChange | U | Caller | R |
 | 86 | `core/task_runtime.py:4927 TaskRuntime._validate_learning_change_result` | KnowledgeItem | U | Caller | R |
