@@ -29,7 +29,7 @@ No scenario may start until the Operator explicitly authorizes that scenario aga
 - Command, from repository root in PowerShell:
 
 ```powershell
-.\scripts\test-disposable-postgres.ps1 -PytestArgs "tests/test_world_memory.py::test_operator_update_creates_low_hypothesis_and_verified_evidence" -s
+.\scripts\test-disposable-postgres.ps1 -PytestArgs @("tests/test_world_memory.py::test_operator_update_creates_low_hypothesis_and_verified_evidence", "-s")
 ```
 
 Expected evidence includes the isolated Team and pre-existing Thread/Signal/Snapshot fixture; authenticated Operator Task creation; one low-confidence active Hypothesis; one exact Snapshot-backed EvidenceLink; terminal Task/Outcome evidence; exact replay preserving Task/Outcome identity; no duplicate EvidenceLink or ConfidenceChange; and zero TeamExperienceChunk before, after success, and after replay.
@@ -44,7 +44,7 @@ This run does not test configured-source intake, Thread creation, retrieval/Cont
 - Command, from repository root in PowerShell:
 
 ```powershell
-.\scripts\test-disposable-postgres.ps1 -PytestArgs "tests/test_c01_intake_to_operator_update.py::test_c01_configured_source_intake_then_operator_update" -s
+.\scripts\test-disposable-postgres.ps1 -PytestArgs @("tests/test_c01_intake_to_operator_update.py::test_c01_configured_source_intake_then_operator_update", "-s")
 ```
 
 Expected evidence includes the frozen one-Team/one-policy/one-source cardinality; accepted Strategy proposal and Plan/PlanAction; one Plan-materialized `ingest_source` Task; exactly one FakeFetcher request with the fixed synthetic bytes; one Signal/Snapshot with exact source provenance and hash; one source-attributed intake Event and one source Task completion Event; the existing evaluation follow-on; one authenticated Operator update Task; one low-confidence Hypothesis and exact Snapshot-backed EvidenceLink; exactly one request/commit/completion Event for the Operator Task; exact replay preserving Task/Outcome identity and business-write cardinality; and zero TeamExperienceChunk at all required checkpoints.
