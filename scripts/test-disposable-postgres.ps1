@@ -1,5 +1,9 @@
 [CmdletBinding()]
-param([string]$Image = "pgvector/pgvector:pg16", [switch]$SkipStaticChecks)
+param(
+    [string]$Image = "pgvector/pgvector:pg16",
+    [switch]$SkipStaticChecks,
+    [string[]]$PytestArgs = @()
+)
 $ErrorActionPreference = "Stop"
 
 function Invoke-Checked {
@@ -90,7 +94,15 @@ try {
         Invoke-Checked -Command "uv" -Arguments @("run", "ruff", "check", "core", "tests", "migrations")
         Invoke-Checked -Command "uv" -Arguments @("run", "mypy", "core")
     }
-    Invoke-Checked -Command "uv" -Arguments @("run", "pytest", "-q")
+
+    $pytestArguments = @("run", "pytest", "-q") + $PytestArgs
+    if ($PytestArgs.Count -gt 0) {
+        Write-Host ("Running targeted pytest selection: " + ($PytestArgs -join " "))
+    }
+    else {
+        Write-Host "No pytest selectors supplied; running the full suite."
+    }
+    Invoke-Checked -Command "uv" -Arguments $pytestArguments
     Write-Host "Disposable PostgreSQL verification completed successfully." -ForegroundColor Green
 }
 finally {
@@ -122,9 +134,34 @@ finally {
     }
     finally {
         if ($containerCreated) {
-            Write-Host "Removing disposable container $containerName..."
-            & docker rm -f $containerName
-            if ($LASTEXITCODE -ne 0) { Write-Warning "Could not remove container $containerName. Remove it manually." }
+            $volumeNames = @()
+            $mountOutput = & docker inspect --format '{{json .Mounts}}' $containerName
+            if ($LASTEXITCODE -ne 0) { throw "Could not inspect disposable container mounts before cleanup." }
+            $mounts = @($mountOutput | ConvertFrom-Json)
+            $volumeNames = @(
+                $mounts |
+                    Where-Object { $_.Type -eq "volume" -and $_.Name } |
+                    ForEach-Object { [string]$_.Name }
+            )
+
+            Write-Host "Removing disposable container and its anonymous volumes..."
+            & docker rm -fv $containerName
+            if ($LASTEXITCODE -ne 0) { throw "Could not remove disposable container and attached anonymous volumes: $containerName" }
+
+            $remainingContainers = & docker container ls -a --filter "name=^/$containerName$" --format "{{.ID}}"
+            if ($LASTEXITCODE -ne 0) { throw "Could not verify disposable container removal." }
+            if (@($remainingContainers | Where-Object { $_.Trim() }).Count -gt 0) {
+                throw "Disposable container remains after cleanup: $containerName"
+            }
+
+            $remainingVolumes = & docker volume ls --format "{{.Name}}"
+            if ($LASTEXITCODE -ne 0) { throw "Could not verify Docker volume cleanup." }
+            foreach ($volumeName in $volumeNames) {
+                if (@($remainingVolumes | Where-Object { $_.Trim() -eq $volumeName }).Count -gt 0) {
+                    throw "Disposable PostgreSQL volume remains after cleanup: $volumeName"
+                }
+            }
+            Write-Host "Verified disposable container and all attached anonymous volumes are removed."
         }
     }
 }
