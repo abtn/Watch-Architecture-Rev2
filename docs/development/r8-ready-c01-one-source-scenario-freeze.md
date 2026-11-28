@@ -115,3 +115,15 @@ Before implementation, return with a separate, explicit authorization request th
 - all known limitations and any unresolved Unknown/Blocked classification.
 
 No C-01 implementation begins until that authorization is explicitly granted.
+
+
+## 9. Implementation and verification reconciliation (2026-11-28)
+
+The frozen scenario was implemented as a test-only integration and merged:
+
+- Implementation: PR [#215](https://github.com/abtn/Watch-Architecture-Rev2/pull/215), exact tested head `b34f48545325b6f34fd73a30dd78c660a91340b0`, merge commit `e83101cfffa51897327a3651087f2ec464329115`. Exact-head CI #2355 passed PostgreSQL setup/role provisioning, migrations, Ruff, Mypy, whitespace, and the full test suite.
+- Evidence correction: PR [#216](https://github.com/abtn/Watch-Architecture-Rev2/pull/216), exact tested head `d787d2142645520ac2773326c2f32e20dec460a5`, merge commit `ffa3703be22a7e8e8078582f287e8acb46031241`. It asserts exactly one task_completed Event for both source and Operator Tasks and rechecks request/commit/completion Event counts after replay. Exact-head CI #2357 passed.
+- Documentation reconciliation: PRs [#217](https://github.com/abtn/Watch-Architecture-Rev2/pull/217) and [#218](https://github.com/abtn/Watch-Architecture-Rev2/pull/218) record the integrated success-path proof, mapped component failure proofs, and corrected current outcome wording. PR #217 post-merge main CI passed.
+- Current main baseline for this reconciliation: `c648892e4896113700c8103397be01c11c0d22ed`.
+
+**Current disposition:** C-01 is implemented and technically verified as a one-source test-only integration. Its frozen limitations remain: pre-existing active Thread, one configured source, deterministic fake fetcher, no live network/provider, no retrieval/Context, no retained-experience use, no cross-origin canonicalization, no triage/disposition, no scoring, and no R8-ready transition. This implementation record does not expand the original scenario or authorize new production behavior.
