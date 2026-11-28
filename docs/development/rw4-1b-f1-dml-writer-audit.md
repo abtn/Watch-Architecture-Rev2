@@ -8,7 +8,7 @@ This document is an inventory, not an accepted grant manifest. It does not autho
 
 ## 1. Executive result
 
-The production application source has **22 tables with application DML** and a further set of tables that are read/locked but have no application writer. The write surface is not equivalent to the lock surface:
+The production application source has **21 tables with application DML** and a further set of tables that are read/locked but have no application writer. The write surface is not equivalent to the lock surface:
 
 - The 114-site row-lock ledger remains 89 unconditional `FOR UPDATE`, 24 unconditional `FOR SHARE`, and one conditional Event lock.
 - The application writes Events in many transactions, but Events are append-only in application source; the one conditional Event lock is not an Event update.
