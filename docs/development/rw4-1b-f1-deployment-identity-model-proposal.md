@@ -1,16 +1,30 @@
 # RW4-1 F1 — deployment database identity model (decision proposal)
 
-**Status:** Proposed deployment identity model; requires Operator acceptance. This is not a grant manifest and does not authorize role provisioning changes, grants, helper functions, migrations, runtime wiring, or database cutover.
+**Status:** Identity architecture accepted by the Operator. The accepted decision is one shared core application login for the first deployable host, with indexer separation deferred until a genuinely independent process/pool/DSN exists. This is not a grant manifest and does not authorize role provisioning changes, grants, helper functions, migrations, host implementation, runtime wiring, or database cutover.
 
 **Baseline:** PR #222 F1 DML writer audit, audited revision `3ec965148385608f0edaf6e7d99c168239ee830f`; current `main` baseline remains PR #221 merge `c648892e4896113700c8103397be01c11c0d22ed`.
 
-## 1. Decision to make
+## 1. Accepted decision and current blocker
+
+The Operator accepted the recommended identity model:
+
+- One shared core application login for the first deployable Watch application.
+- No per-Python-class logins for transaction-sharing services.
+- No separate indexer login until an independently deployed worker with its own engine/pool/DSN is actually implemented and verified.
+- `watch_owner` remains NOLOGIN; `watch_migrator` remains migration-only; bootstrap/maintenance identities remain outside application processes.
+- Existing `watch_runtime` remains SELECT-only until a real host, exact grant manifest, and separately authorized implementation exist. The accepted decision does not itself promote or rename that role.
+
+The follow-up source audit found that **there is currently no production application host or process composition root in this repository**. `compose.yaml` contains only PostgreSQL; `pyproject.toml` contains no API/server/worker dependencies or `[project.scripts]` entrypoint; no production API/CLI/worker/scheduler/queue consumer or runtime DSN consumer was found. The domain services are composed by tests and developer utilities. The details are in `rw4-1b-f1-deployment-host-composition-audit.md`.
+
+Therefore Step 2 does not produce a process-to-login mapping for a non-existent host. It produces a precise boundary: the accepted identity model is a future host contract. The next design task is to specify the first deployable host and its composition root, not to create grants or invent a worker.
+
+## 2. Decision context
 
 The source audit identifies application write capabilities, but the repository has no production host/composition root or runtime DSN consumer. Therefore the next decision is not a list of PostgreSQL grants. It is the deployment topology that determines which code executes under each login.
 
 The design must preserve transaction ownership. A role boundary is useful only when the corresponding code has a real process/connection boundary and can use a separate engine/pool/DSN for the complete transaction.
 
-## 2. Source facts
+## 3. Source facts
 
 The current repository supports these findings:
 
@@ -27,7 +41,7 @@ The current repository supports these findings:
 11. The embedding smoke utility is explicitly disposable/test-database-only. Its temporary Team/TeamPolicy/Signal writes do not justify production runtime privileges.
 12. No production Team, TeamPolicy, or Thread lifecycle writer exists in the audited application source. Those capabilities must not be assigned speculatively.
 
-## 3. Options considered
+## 4. Options considered
 
 ### Option A — one shared application login
 
@@ -80,7 +94,7 @@ Use one core application login for the current transaction-sharing domain servic
 
 **Assessment:** Recommended target evolution, conditional on proving a real separate worker boundary. Do not provision or grant the indexer role until that boundary exists.
 
-## 4. Recommended identity topology
+## 5. Recommended identity topology
 
 The following is the proposed target model. Role names are design labels; only the currently provisioned roles in §2 exist today.
 
@@ -133,7 +147,7 @@ Do not create separate logins for:
 
 If a future architecture introduces independently deployed services with explicit transaction and connection boundaries, revisit the identity split as a separate design change.
 
-## 5. Credential and connection rules
+## 6. Credential and connection rules
 
 1. Each LOGIN role has a distinct secret. No shared password between bootstrap, migrator, core app, and indexer.
 2. The application host receives only the core app DSN. An isolated indexer receives only its own DSN if §4.2 is satisfied.
@@ -146,7 +160,7 @@ If a future architecture introduces independently deployed services with explici
 9. Runtime credentials must not be members of owner/migrator roles and must not have SUPERUSER, CREATEDB, CREATEROLE, REPLICATION, BYPASSRLS, schema CREATE, trigger-disable, or replication-role bypass capabilities.
 10. Maintenance access is explicit, time-bounded, separately audited, and never obtained by granting the application login owner membership.
 
-## 6. Consequences for the F1 grant matrix
+## 7. Consequences for the F1 grant matrix
 
 The DML audit should be interpreted in two stages:
 
@@ -162,7 +176,7 @@ The DML audit's column inventory is a candidate grant source, not a ready-to-app
 
 The current `watch_runtime` name may either be retained and explicitly designated as the core app login, or replaced by `watch_app` in a separately reviewed provisioning change. Do not rename or provision roles as part of this design-only step.
 
-## 7. Deployment topology acceptance checklist
+## 8. Deployment topology acceptance checklist
 
 Before approving any grant implementation, the deployment owner must confirm:
 
@@ -178,7 +192,7 @@ Before approving any grant implementation, the deployment owner must confirm:
 
 No database grant can be considered complete while these answers are unknown.
 
-## 8. Sequenced actions after Operator disposition
+## 9. Sequenced actions after Operator disposition
 
 | Step | Action | Acceptance evidence |
 |---|---|---|
@@ -192,8 +206,8 @@ No database grant can be considered complete while these answers are unknown.
 | 8 | Execute controlled credential cutover | Drain old sessions, migrate with migrator, start each process with its assigned DSN, inspect active sessions |
 | 9 | Close F1 only after complete proof | Independent review, exact-head CI, deployment verification and no unknown writer |
 
-## 9. Current disposition and boundaries
+## 10. Current disposition and boundaries
 
-**Recommendation:** accept Option C as the target direction, with Option A as the only honest initial topology until an independently connected indexer process is evidenced. Do not split services by Python class. Do not create a role that no host consumes.
+**Accepted decision:** Option A is the initial identity for the first deployable host: one shared core application login for transaction-sharing workflows. Option C remains a possible later isolation step only after a separately deployed indexer process, pool, and DSN exist. Do not split services by Python class. Do not create a role that no host consumes.
 
-This document is a proposal only. It does not change `scripts/provision_database_roles.py`, `migrations/env.py`, `core/database_config.py`, application runtime, ORM mappings, grants, triggers, migrations, or database state. It does not close F1/F2/F3/F4, accept the RW4-1 physical DDL, enable SignalDisposition writes, or authorize RW4-1 implementation.
+This document records an accepted identity architecture, not implementation authorization. It does not change `scripts/provision_database_roles.py`, `migrations/env.py`, `core/database_config.py`, application runtime, ORM mappings, grants, triggers, migrations, or database state. It does not close F1/F2/F3/F4, accept the RW4-1 physical DDL, enable SignalDisposition writes, authorize creation of the host, or authorize RW4-1 grant/helper implementation.
