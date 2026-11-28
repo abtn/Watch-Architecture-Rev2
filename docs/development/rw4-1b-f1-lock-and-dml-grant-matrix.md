@@ -281,6 +281,8 @@ A function that locks multiple relations is acceptable only when it implements a
 - Do not change TaskRuntime transaction ownership or introduce a second terminalization path.
 
 ### Step 6 — Strengthen privilege tests
+- **Implemented now:** `tests/test_database_roles.py` supplements table-level privilege assertions with `has_any_column_privilege` checks for INSERT and UPDATE on every application table. This catches accidental column-level grants under the current SELECT-only runtime baseline.
+- Before any future writer grant, replace the all-deny expectation for that specific relation with an explicit allow-list using `has_column_privilege`; continue to assert every unlisted column remains non-updatable.
 - For lock-only relations, assert no table-level UPDATE and no column-level UPDATE using `has_any_column_privilege`.
 - For writer relations, assert the exact allow-list using `has_column_privilege`; assert every unlisted column remains non-updatable.
 - Assert effective role membership/inherited privileges and PUBLIC grants, not only direct ACL rows.
@@ -307,4 +309,4 @@ This work implements the **source-audit layer only**. It does not install grants
 - D4.1a, D4.2, RW-5 and Decision 7 remain separate gates.
 - SignalDisposition has no runtime write grant; no disposition outcome is enabled.
 
-**No runtime code, ORM, migration, SQL function, role grant, database operation, or test behavior is changed by this audit.** A separate explicit authorization is still required for any privilege/function/migration implementation after the full DML ledger and runtime identity are accepted.
+**Implementation completed in this step:** the source-audit document is added and the existing PostgreSQL role test is hardened to detect column-level INSERT/UPDATE grants. No runtime code, ORM mapping, migration, SQL function, role grant, or database operation is changed. The new assertion preserves the current SELECT-only role baseline; it does not make the application runnable under `watch_runtime`. A separate explicit authorization is still required for privilege/function/migration implementation after the full DML ledger and runtime identity are accepted.
